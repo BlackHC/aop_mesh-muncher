@@ -40,7 +40,7 @@ using namespace niven;
 
 // assuming even blockResolution
 
-struct VolumeCoordinates {
+struct MipVolume {
 	Volume::IBlockStorage &container;
 	
 	int borderSize;
@@ -56,7 +56,7 @@ struct VolumeCoordinates {
 
 	std::vector<LevelInfo> levels;
 
-	VolumeCoordinates( Volume::IBlockStorage &container ) : container( container ) {}
+	MipVolume( Volume::IBlockStorage &container ) : container( container ) {}
 
 	void Init() {
 		auto layerDescriptor = container.GetLayerDescriptor( "Density" );
@@ -123,7 +123,7 @@ Vector3i indexToCubeCorner(int i ) {
 	return Vector3i( (i & 1) ? 1 : 0, (i & 2) ? 1 : 0, (i & 4) ? 1 : 0 );
 }
 
-void generateMipmaps( VolumeCoordinates &volume ) {
+void generateMipmaps( MipVolume &volume ) {
 	for( int level = 1 ; level < volume.levels.size() ; level++ ) {
 		Iterator3D targetIterator( volume.min, volume.size );
 		for( ; targetIterator != targetIterator.GetEndIterator() ; targetIterator++ ) {
@@ -158,7 +158,7 @@ void generateMipmaps( VolumeCoordinates &volume ) {
 }
 
 struct DenseCache {
-	VolumeCoordinates &volume;
+	MipVolume &volume;
 
 	struct CacheEntry {
 		bool cached;
@@ -182,7 +182,7 @@ struct DenseCache {
 	}
 
 	const std::vector<uint16> & GetBlock( int level, const Vector3i &position ) {
-		const VolumeCoordinates::LevelInfo &levelInfo = volume.levels[level];
+		const MipVolume::LevelInfo &levelInfo = volume.levels[level];
 		int index = position.X() + position.Y() * volume.size.X() + position.Z() * (volume.size.X() * volume.size.Y());
 		CacheEntry &cacheEntry = levelCache[level][index];
 		if( cacheEntry.cached ) {
