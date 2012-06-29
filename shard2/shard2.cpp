@@ -29,7 +29,7 @@
 #include "niven.Render.Texture3D.h"
 #include "niven.Render.VertexFormats.PositionNormal.h"
 #include "niven.Render.VertexLayout.h"
-#include "niven.Volume.ShardFile.h"
+#include "niven.Volume.FileBlockStorage.h"
 #include "niven.Volume.MarchingCubes.h"
 #include "niven.Volume.Volume.h"
 #include <iostream>
@@ -43,18 +43,21 @@ typedef std::vector<byte> ByteVector;
 // only one blockSize and borderSize
 struct DensityShardFile {
 	MemoryLayout3D layout;
-	Volume::ShardFile container;
+	Volume::FileBlockStorage container;
 	int blockSize;
 	int borderSize;
 	int totalSize;
+	int blockVoxelCount;
 
 	bool Open( const IO::Path &path, const bool readOnly = false ) {
 		if( container.Open( path, readOnly ) ) {
 			auto layerDescriptor = container.GetLayerDescriptor( "Density" );
 
-			blockSize = layerDescriptor.blockSize;
+			blockSize = layerDescriptor.blockResolution;
 			borderSize = layerDescriptor.borderSize;
 			totalSize = blockSize + borderSize*2;
+			blockVoxelCount = totalSize * totalSize * totalSize;
+
 			layout = MemoryLayout3D( totalSize );
 
 			return true;
@@ -62,17 +65,19 @@ struct DensityShardFile {
 		return false;
 	}
 
-	template<typename T>
-	std::vector<T> GetBlock( const Vector3i &xyz ) {
-		std::vector<T> block( totalSize * totalSize * totalSize );
+	bool ContainsBlock( const Vector3i &xyz ) {
+		return container.ContainsBlock( "Density", xyz, 0 );
+	}
 
-		container.GetBlock( "Density", xyz, 0, MutableArrayRef( &block.front() ) );
+	std::vector<uint16> GetBlock( const Vector3i &xyz ) {
+		std::vector<uint16> block( blockVoxelCount );
+
+		container.GetBlock( "Density", xyz, 0, MutableArrayRef<uint16>( &block.front(), blockVoxelCount ) );
 
 		return block;
 	}
 
-	template<typename T>
-	T & GetVoxel( ArrayRef<T> &block, const Vector3i &xyz ) {
+	uint16 GetVoxel( const ArrayRef<uint16> &block, const Vector3i &xyz ) {
 		return block[ layout( xyz ) ];
 	}
 
@@ -90,52 +95,11 @@ struct DensityShardFile {
 	}
 
 };
-/*
-Vector3i getStartBlock( const Vector3i &xyz, int blockSize ) {
-	return xyz / blockSize;
-}
-
-Vector3i getEndBlock( const Vector3i &xyz, int blockSize ) {
-	return (xyz + Vector3i::Constant( blockSize - 1 ) ) / blockSize;
-}
-
-Vector3i getNumBlocks( const Vector3i &minXYZ, const Vector3i &maxXYZ, int blockSize ) {
-	const Vector3i minBlockXYZ = getStartBlock( minXYZ, blockSize );
-	const Vector3i maxBlockXYZ = getEndBlock( maxXYZ, blockSize );
-	const Vector3i deltaBlockXYZ = maxBlockXYZ - minBlockXYZ;
-	return deltaBlockXYZ.X() * deltaBlockXYZ.Y() * deltaBlockXYZ.Z();
-}
-
-// func( Vector3i xyz, Vector3i blockXYZ )
-// cache( Vector3i blockXYZ )
-template<typename F, typename G>
-void blockFor( Vector3i minXYZ, Vector3i maxXYZ, int blockSize, F func, G cache ) {
-	for( int bz = minXYZ.Z() ; bz < maxXYZ.Z() ; bz += blockSize ) {
-		for( int by = minXYZ.Y() ; by < maxXYZ.Y() ; by += blockSize ) {
-			for( int bx = minXYZ.X() ; bx < maxXYZ.X() ; bx += blockSize ) {
-				Vector3i blockXYZ = Vector3i( bx, by, bz ) / blockSize;
-				if( cache( blockXYZ ) ) {
-					const int mx = std::min( maxXYZ.X() - bx, blockSize );
-					const int my = std::min( maxXYZ.Y() - by, blockSize );
-					const int mz = std::min( maxXYZ.Z() - bz, blockSize );
-		
-					for( int z = 0 ; z < mz ; z++ ) {
-						for( int y = 0 ; y < my ; y++ ) {
-							for( int x = 0 ; x < mx ; x++ ) {
-								func( Vector3i( x,y,z ), blockXYZ );
-							}
-						}
-					}
-				}
-			}
-		}
-	}		
-}
-*/
 
 struct Cache {
-	typedef std::pair<Vector3i, std::vector<byte>> CacheEntry;
+	typedef std::pair<Vector3i, std::vector<uint16>> CacheEntry;
 	std::vector<CacheEntry> blocks;
+	int lastUsed;
 
 	enum CacheType {
 		UNIQUE_X = 1,
@@ -160,12 +124,15 @@ struct Cache {
 	DensityShardFile &shardFile;
 
 	Cache( DensityShardFile &shardFile, unsigned cacheType ) 
-		: shardFile( shardFile ), cacheType( cacheType ) {}
+		: shardFile( shardFile ), cacheType( cacheType ), lastUsed( -1 ) {}
 	
-	template<typename T>
-	const ArrayRef<T> & GetBlock( const Vector3i &blockXYZ ) {
+	ArrayRef<uint16> GetBlock( const Vector3i &blockXYZ ) {
+		if( lastUsed != -1 && blocks[lastUsed].first == blockXYZ ) {
+			return ArrayRef<uint16>( (uint16*) &blocks[lastUsed].second.front(), shardFile.blockVoxelCount );
+		}
+
 		// search for the block in the cache
-		auto entry = std::find_if( blocks.begin(), blocks.end(), [&] (const CacheEntry &entry) { 
+		auto entry = std::find_if( blocks.begin(), blocks.end(), [&] (const CacheEntry &entry) -> bool { 
 			if( (cacheType & UNIQUE_X) && blockXYZ.X() != entry.first.X() ) {
 				return false;
 			}
@@ -178,33 +145,43 @@ struct Cache {
 			return true;
 		});
 
-		if( entry != blocks.end() && entry.first == blockXYZ ) {
-			return (void*) &blocks.second.front();
+		if( entry != blocks.end() && entry->first == blockXYZ ) {
+			lastUsed = &*entry - &blocks.front();
+			return ArrayRef<uint16>( (uint16*) &entry->second.front(), shardFile.blockVoxelCount );
 		}
 
-		std::vector<byte> blockData = shardFile.GetBlock<byte>( blockXYZ );
+		std::vector<uint16> blockData;
+		if( shardFile.ContainsBlock( blockXYZ ) ) {
+			blockData = shardFile.GetBlock( blockXYZ );
+		}
+
 		if( entry != blocks.end() ) {
-			entry->first = blockXYZ
-			entry->second = blockData;
+			lastUsed = &*entry - &blocks.front();
+			entry->first = blockXYZ;
+			entry->second = blockData;			
+			return ArrayRef<uint16>( (uint16*) &entry->second.front(), !blockData.empty() ? shardFile.blockVoxelCount : 0 );
 		}
 		else {
+			lastUsed = blocks.size();
 			blocks.push_back( std::make_pair( blockXYZ, blockData ) );
+			return ArrayRef<uint16>( (uint16*) &blocks.back().second.front(), !blockData.empty() ? shardFile.blockVoxelCount : 0 );
 		}
-
-		return (void*) &blockData.front();
 	}
 
-	template<typename T>
-	T & GetVoxel( const Vector3i &xyz ) {
+	uint16 GetVoxel( const Vector3i &xyz ) {
 		Vector3i blockXYZ, intraBlockXYZ;
 		shardFile.decomposeIndex( xyz, blockXYZ, intraBlockXYZ );
-		return shardFile.GetVoxel( GetBlock( blockXYZ ), intraBlockXYZ + Vector3i::Constant( shardFile.borderSize ) );
+		ArrayRef<uint16> blockData = GetBlock( blockXYZ );
+		if( blockData.empty() ) {
+			return 0;
+		}
+		return shardFile.GetVoxel( blockData, intraBlockXYZ + Vector3i::Constant( shardFile.borderSize ) );
 	}
 };
 
 bool isEmpty( Cache &cache, const Vector3i &minXYZ, const Vector3i &maxXYZ ) {
 	for( Iterator3D iter = Iterator3D::FromMinMax(minXYZ, maxXYZ) ; iter != iter.GetEndIterator() ; iter++ ) {
-		if( cache.GetVoxel<uint16>( iter.ToVector() ) != 0 ) {
+		if( cache.GetVoxel( iter.ToVector() ) != 0 ) {
 			return false;
 		}
 	}
@@ -231,8 +208,8 @@ bool findDistance( Cache &cache, int x, int y, int minZ, int maxZ, const Vector2
 			Vector3i minXYZ( XY, minZ );
 			Vector3i maxXYZ( XY, maxZ );
 
-			if( !isEmpty( cache, minXYZ, maxXYZ ) ) {				
-				double distance = Length( XY - refXY );
+			if( !isEmpty( cache, minXYZ.ZXY(), maxXYZ.ZXY() ) ) {				
+				double distance = Length( (XY - refXY).Cast<double>() );
 				if( distance < minDistance ) {
 					foundNonEmpty = true;
 					minDistance = distance;
@@ -245,7 +222,7 @@ bool findDistance( Cache &cache, int x, int y, int minZ, int maxZ, const Vector2
 }
 
 double findMaxGap( DensityShardFile &shardFile, const Vector3i &minXYZ, int zHeight, int maxDistance ) {
-	Cache cache( shardFile, Cache::UNIQUE_Z );
+	Cache cache( shardFile, Cache::UNIQUE_Z | Cache::UNIQUE_X | Cache::UNIQUE_Y );
 	// best traversal order:
 	// 2 1 2  
 	// 1 0 1
@@ -256,8 +233,8 @@ double findMaxGap( DensityShardFile &shardFile, const Vector3i &minXYZ, int zHei
 	// 1 0 1
 	// 1 1 1
 	const Vector2i refXY = minXYZ.XY();
-	double minDistance = maxDistance * shardFile.blockSize;
-	for( int i = 0 ; i < maxDistance ; i++ ) {
+	double minDistance = maxDistance;
+	for( int i = 0 ; i < (maxDistance + shardFile.blockSize - 1) / shardFile.blockSize ; i++ ) {
 		// 1 1 2
 		// 4 0 2
 		// 3 3 2
@@ -287,40 +264,28 @@ double findMaxGap( DensityShardFile &shardFile, const Vector3i &minXYZ, int zHei
 	return minDistance;
 }
 
-/*
-struct ShardVolume {
-	MemoryLayout3D blockLayout;
-	Volume::ShardFile shardFile;
-	int blockSize;
-
-	ShardVolume() : blockLayout( 256 + 2 ) {}
-
-	uint16 getXYZ( const Vector3i &position ) {
-		Vector3i blockPosition = position / blockSize;
-
-		if( !shardFile.ContainsBlock( "Density", blockPosition, 0 ) ) {
-			return 0;
-		}
-
-		Vector3i cellPosition = position - blockPosition * blockSize;
-		MutableArrayRef<uint16> buffer;
-		shardFile.GetBlock( "Density", position, 0, buffer );
-
-		return buffer[ blockLayout( cellPosition ) ];
-	}
-};*/
-
 int main(int argc, char* argv[]) 
 {
 	CoreLifeTimeHelper clth;
 
 	try {
-		Volume::ShardFile shardFile;
-		if( !shardFile.Open( "P:\\BlenderScenes\\two_boxes_4.nsf") ) {
-			Log::Error( "shard2", "couldnt open the shard file!" );
+		DensityShardFile shardFile; 
+		if( !shardFile.Open( "P:\\BlenderScenes\\two_boxes_4.nvf", true ) ) {
+			Log::Error( "shard2", "couldnt open the volume file!" );
 		}
 
+		Vector3i center(384,256,256);
+		{
+			Vector3i minXYZ = center - Vector3i( 32, 32, 0 );
+			Vector3i maxXYZ = center + Vector3i( 32, 32, 0 );
+			int maxDistance = findMaxGapAlongAxis( shardFile, minXYZ, maxXYZ, Vector3i::CreateUnit(2), 2048 );
+			std::cout << "maxDistance: " << maxDistance << std::endl;
+		}
 
+		{
+			double maxGap = findMaxGap( shardFile, center + Vector3i( 0,0, -32 ), 64, 2048 );
+			std::cout << "maxGap: " << maxGap << std::endl;
+		}
 	} catch (Exception& e) {
 		std::cerr << e.what() << std::endl;
 		std::cerr << e.where() << std::endl;
