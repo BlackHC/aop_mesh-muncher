@@ -5,9 +5,9 @@ PROJECT(densityPyramid)
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /GR- /D_UNICODE")
 
 # Must link both against niven and Boost
-INCLUDE_DIRECTORIES(${NIVEN_INCLUDE_DIR} ${Boost_INCLUDE_DIR})
+INCLUDE_DIRECTORIES(${NIVEN_INCLUDE_DIR} ${Boost_INCLUDE_DIR} ../gtest/)
 
-ADD_EXECUTABLE(densityPyramid densityPyramid.cpp mipVolume.h cache.h utility.h)
+ADD_EXECUTABLE(densityPyramid densityPyramid.cpp mipVolume.h cache.h utility.h ../gtest/gtest_main.cc ../gtest/gtest-all.cc memoryBlockStorage.h)
 
 # The test application uses niven core, so link against it
 TARGET_LINK_LIBRARIES(densityPyramid ${NIVEN_CORE_LIBRARY})

@@ -61,6 +61,8 @@ namespace niven {
 				level.size = levelMax - level.min;
 				levels.push_back(level);
 			}
+
+			GenerateMipmaps();
 		}
 
 		bool HasBlock( int level, const Vector3i &position ) {
@@ -115,7 +117,7 @@ namespace niven {
 
 			for( int level = 1 ; level < levels.size() ; level++ ) {
 				Iterator3D targetIterator( levels[level].min, levels[level].size );
-				for( ; targetIterator != targetIterator.GetEndIterator() ; targetIterator++ ) {
+				for( ; !targetIterator.IsAtEnd() ; targetIterator++ ) {
 					// only create new mipmap levels
 					if( HasBlock( level, targetIterator.ToVector() ) ) {
 						continue;
@@ -148,7 +150,7 @@ namespace niven {
 						const Vector3i targetVoxelOffset = indexToCubeCorner[ i ] * (blockResolution / 2);
 
 						Iterator3D voxelIterator( Vector3i::Constant( 0 ), Vector3i::Constant( blockResolution / 2 ) );
-						for( ; voxelIterator != voxelIterator.GetEndIterator() ; voxelIterator++ ) {
+						for( ; !voxelIterator.IsAtEnd() ; voxelIterator++ ) {
 							const Vector3i srcOffset = voxelIterator.ToVector() * 2;					
 
 							uint16 value = 0;

@@ -15,6 +15,7 @@ struct DenseCache {
 		CacheEntry() : cached( false ) {}
 	};
 
+	bool empty;
 	std::vector< CacheEntry > cacheEntries;
 	std::vector< CacheEntry* > levelCache;
 
@@ -23,15 +24,19 @@ struct DenseCache {
 	}
 
 	void Init() {
-		levelCache.resize( volume.levels.size() );
-
 		int numBlocks = 0;
 		for( int i = 0 ; i < volume.levels.size() ; i++ ) {
 			const MipVolume::LevelInfo &levelInfo = volume.levels[i];
 			numBlocks += levelInfo.size.X() * levelInfo.size.Y() * levelInfo.size.Z();
 		}
-		cacheEntries.resize( numBlocks );
+		empty = numBlocks == 0;
+		if( empty ) {
+			return;
+		}
 
+		cacheEntries.resize( numBlocks );
+		levelCache.resize( volume.levels.size() );
+		
 		int blockIndex = 0;
 		for( int i = 0 ; i < volume.levels.size() ; i++ ) {
 			levelCache[i] = &cacheEntries.front() + blockIndex;
@@ -42,6 +47,10 @@ struct DenseCache {
 	}
 
 	const std::vector<uint16> & GetBlock( int level, const Vector3i &position ) {
+		if( empty ) {
+			return std::vector<uint16>();
+		}
+
 		const MipVolume::LevelInfo &levelInfo = volume.levels[level];
 		int index = position.X() + position.Y() * levelInfo.size.X() + position.Z() * (levelInfo.size.X() * levelInfo.size.Y());
 		CacheEntry &cacheEntry = levelCache[level][index];

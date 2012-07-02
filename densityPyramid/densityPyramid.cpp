@@ -37,6 +37,10 @@
 #include "mipVolume.h"
 #include "cache.h"
 
+#include "memoryBlockStorage.h"
+
+#include "gtest.h"
+
 using namespace niven;
 
 void filterCandidates( DenseCache &cache, int level, const Vector3i &refPosition, const std::vector<Vector3i> &candidates, std::vector<Vector3i> &nearestCells ) {
@@ -75,7 +79,7 @@ int findDistanceToNearestVoxel( DenseCache &cache, const Vector3i &refPosition, 
 	int level = cache.volume.levels.size() - 1;
 	// handle the upper-most level (1x1)
 	{		
-		Vector3i voxelPosition = cache.volume.GetPositionInLevel( refPosition, level );
+		Vector3i voxelPosition(0,0,0);
 		if( cache.GetVoxel( level, voxelPosition ) > 0 ) {
 			currentLevel.push_back( voxelPosition );
 		}
@@ -107,7 +111,7 @@ int findDistanceToNearestVoxel( DenseCache &cache, const Vector3i &refPosition, 
 		filterCandidates( cache, level, refPosition, candidates, currentLevel );
 	}
 
-	if( level == minLevel ) {
+	if( !candidates.empty() && level == minLevel ) {
 		int minDistanceSquared = squaredDistanceAABoxPoint( candidates[0], candidates[0] + Vector3i::Constant(1), refPosition );
 		for( int i = 1 ; i < candidates.size() ; i++ ) {
 			int distanceSquared = squaredDistanceAABoxPoint( candidates[i], candidates[i] + Vector3i::Constant(1), refPosition );
@@ -168,6 +172,18 @@ enum ConditionedVoxelType {
 	CVT_MATCH = 2
 };
 
+ConditionedVoxelType operator &&( const ConditionedVoxelType a, const ConditionedVoxelType b ) {
+	return ConditionedVoxelType( std::min( a, b ) );
+}
+
+ConditionedVoxelType operator ||( const ConditionedVoxelType a, const ConditionedVoxelType b ) {
+	return ConditionedVoxelType( std::max( a, b ) );
+}
+
+ConditionedVoxelType operator !(const ConditionedVoxelType a) {
+	return ConditionedVoxelType( CVT_MATCH - a );
+}
+
 int findDistanceToNearestConditionedVoxel( DenseCache &cache, const Vector3i &refPosition, const std::function<ConditionedVoxelType (const Vector3i &min, const Vector3i &max)> &conditioner, int minLevel = 0 ) {
 	std::vector<Vector3i> currentLevel, candidates;
 	std::vector<Vector3i> currentLevelPartials, partialCandidates;
@@ -175,7 +191,7 @@ int findDistanceToNearestConditionedVoxel( DenseCache &cache, const Vector3i &re
 	int level = cache.volume.levels.size() - 1;
 	// handle the upper-most level (1x1)
 	{		
-		Vector3i voxelPosition = cache.volume.GetPositionInLevel( refPosition, level );
+		Vector3i voxelPosition(0,0,0);
 		if( cache.GetVoxel( level, voxelPosition ) > 0 ) {
 			currentLevelPartials.push_back( voxelPosition );
 		}
@@ -231,33 +247,118 @@ int findDistanceToNearestConditionedVoxel( DenseCache &cache, const Vector3i &re
 			}
 		}
 
-		if( level == minLevel ) {
-			break;
+		if( level > minLevel ) {
+			// only continue with the best candidates
+			filterConditionedCandidates( cache, level, refPosition, candidates, currentLevel, partialCandidates, currentLevelPartials );
 		}
-
-		// only continue with the best candidates
-		filterConditionedCandidates( cache, level, refPosition, candidates, currentLevel, partialCandidates, currentLevelPartials );
+		else {
+			// reached minLevel -> calculate result
+			int minDistanceSquared = INT_MAX;
+			for( int i = 0 ; i < candidates.size() ; i++ ) {
+				int distanceSquared = squaredDistanceAABoxPoint( candidates[i], candidates[i] + Vector3i::Constant(1), refPosition );
+				minDistanceSquared = std::min( minDistanceSquared, distanceSquared );
+			}
+			for( int i = 0 ; i < partialCandidates.size() ; i++ ) {
+				int distanceSquared = squaredDistanceAABoxPoint( partialCandidates[i], partialCandidates[i] + Vector3i::Constant(1), refPosition );
+				minDistanceSquared = std::min( minDistanceSquared, distanceSquared );
+			}
+			return minDistanceSquared;
+		}
 	}
 
-	if( level == minLevel ) {
-		int minDistanceSquared = squaredDistanceAABoxPoint( candidates[0], candidates[0] + Vector3i::Constant(1), refPosition );
-		for( int i = 1 ; i < candidates.size() ; i++ ) {
-			int distanceSquared = squaredDistanceAABoxPoint( candidates[i], candidates[i] + Vector3i::Constant(1), refPosition );
-			minDistanceSquared = std::min( minDistanceSquared, distanceSquared );
-		}
-		for( int i = 0 ; i < partialCandidates.size() ; i++ ) {
-			int distanceSquared = squaredDistanceAABoxPoint( partialCandidates[i], partialCandidates[i] + Vector3i::Constant(1), refPosition );
-			minDistanceSquared = std::min( minDistanceSquared, distanceSquared );
-		}
-		return minDistanceSquared;
-	}
 	return INT_MAX;
 }
 
-static bool between( int a, int v, int b) {
-	return a <= v && v <= b;
+struct DistanceTests : public ::testing::Test {
+	CoreLifeTimeHelper helper;
+	
+	static void setupVolume( niven::Volume::IBlockStorage &volume, int blockSize, int borderSize ) {
+		using namespace niven::Volume;
+
+		IBlockStorage::Metadata metadata;
+		metadata.blockSize = blockSize;
+		volume.SetMetadata( metadata );
+
+		IBlockStorage::LayerDescriptor densityLayer;
+		densityLayer.blockResolution = blockSize;
+		densityLayer.borderSize = borderSize;
+		densityLayer.dataType = DataType::UInt16;
+		
+		volume.AddLayer( "Density", densityLayer );
+	}
+
+	static void setDensity( niven::Volume::IBlockStorage &volume, niven::Vector3i position, const uint16 density ) {
+		using namespace niven::Volume;
+
+		IBlockStorage::LayerDescriptor densityLayer = volume.GetLayerDescriptor( "Density" );
+		Vector3i blockIndex = position / densityLayer.blockResolution;
+
+		int blockSize = densityLayer.blockResolution + densityLayer.borderSize*2;
+		std::vector<uint16> block( blockSize * blockSize * blockSize );
+
+		MemoryLayout3D layout( blockSize );
+		if( volume.ContainsBlock( "Density", blockIndex, 0 ) ) {
+			volume.GetBlock( "Density", blockIndex, 0, block );
+
+			block[ layout( position ) ] = density;
+
+			volume.UpdateBlock( "Density", blockIndex, 0, block );
+		}
+		else {
+			block[ layout( position ) ] = density;
+			volume.AddBlock( "Density", blockIndex, 0, block );
+		}
+	}
+};
+
+TEST_F( DistanceTests, emptyVolume ) {
+	using namespace niven::Volume;
+
+	MemoryBlockStorage blockStorage;
+	setupVolume( blockStorage, 256, 0 );
+
+	MipVolume volume( blockStorage );
+	DenseCache cache( volume );
+	EXPECT_EQ( INT_MAX, findDistanceToNearestVoxel( cache, Vector3i( 0,0,0 ), 0 ) );
+	EXPECT_EQ( INT_MAX, findDistanceToNearestConditionedVoxel( cache, Vector3i( 0,0,0 ), []( const Vector3i &min, const Vector3i &max ) { return CVT_MATCH; } ) );
 }
 
+TEST_F( DistanceTests, singleVoxel ) {
+	using namespace niven::Volume;
+
+	MemoryBlockStorage blockStorage;
+	setupVolume( blockStorage, 16, 0 );
+	setDensity( blockStorage, Vector3i(0,0,0), 65535 );
+
+	MipVolume volume( blockStorage );
+	DenseCache cache( volume );
+	EXPECT_EQ( 0, findDistanceToNearestVoxel( cache, Vector3i( 0,0,0 ), 0 ) );
+	EXPECT_EQ( 254*254, findDistanceToNearestVoxel( cache, Vector3i( 255,0,0 ), 0 ) );
+	EXPECT_EQ( 0, findDistanceToNearestConditionedVoxel( cache, Vector3i( 0,0,0 ), []( const Vector3i &min, const Vector3i &max ) { return CVT_MATCH; } ) );
+	EXPECT_EQ( 254*254, findDistanceToNearestConditionedVoxel( cache, Vector3i( 255,0,0 ), []( const Vector3i &min, const Vector3i &max ) { return CVT_MATCH; } ) );
+	EXPECT_EQ( INT_MAX, findDistanceToNearestConditionedVoxel( cache, Vector3i( 255,0,0 ), []( const Vector3i &min, const Vector3i &max ) { return CVT_NO_MATCH; } ) );
+}
+
+TEST_F( DistanceTests, twoVoxels ) {
+	using namespace niven::Volume;
+
+	MemoryBlockStorage blockStorage;
+	setupVolume( blockStorage, 16, 0 );
+	setDensity( blockStorage, Vector3i(0,0,0), 65535 );
+	setDensity( blockStorage, Vector3i(15,0,0), 65535 );
+
+	MipVolume volume( blockStorage );
+	DenseCache cache( volume );
+	EXPECT_EQ( 0, findDistanceToNearestVoxel( cache, Vector3i( 0,0,0 ), 0 ) );
+	EXPECT_EQ( 14*14, findDistanceToNearestVoxel( cache, Vector3i( 0,15,0 ), 0 ) );
+	EXPECT_EQ( 0, findDistanceToNearestConditionedVoxel( cache, Vector3i( 0,0,0 ), []( const Vector3i &min, const Vector3i &max ) { return CVT_MATCH; } ) );
+	EXPECT_EQ( 15*15, findDistanceToNearestConditionedVoxel( cache, Vector3i( 0,0,0 ), []( const Vector3i &min, const Vector3i &max ) -> ConditionedVoxelType { if( min.X() > 0 ) return CVT_MATCH; else if( max.X() > 1 ) return CVT_PARTIAL; else return CVT_NO_MATCH; } ) );
+	EXPECT_EQ( 3*3, findDistanceToNearestVoxel( cache, Vector3i( 0,4,0 ), 0 ) );
+
+	// left and right distances different because 0|0|0 is at the corner of voxel 0|0|0!
+}
+
+/*
 int main(int argc, char* argv[]) 
 {
 	CoreLifeTimeHelper clth;
@@ -299,4 +400,4 @@ int main(int argc, char* argv[])
 	}
 
 	return 0;
-}
+}*/
