@@ -31,6 +31,7 @@ struct DenseCache {
 		}
 		empty = numBlocks == 0;
 		if( empty ) {
+			cacheEntries.resize(1);
 			return;
 		}
 
@@ -48,7 +49,7 @@ struct DenseCache {
 
 	const std::vector<uint16> & GetBlock( int level, const Vector3i &position ) {
 		if( empty ) {
-			return std::vector<uint16>();
+			return cacheEntries[0].data;
 		}
 
 		const MipVolume::LevelInfo &levelInfo = volume.levels[level];

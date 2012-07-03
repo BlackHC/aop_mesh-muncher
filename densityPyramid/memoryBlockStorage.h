@@ -42,7 +42,7 @@ namespace niven {
 					std::fill( resultBuffer.begin(), resultBuffer.end(), false );
 					return true;				
 				}
-				auto layer = it->second;
+				auto &layer = it->second;
 				for( int i = 0 ; i < ids.GetCount() ; i++ ) {
 					resultBuffer[i] = layer.find( ids[i] ) != layer.end();
 				}

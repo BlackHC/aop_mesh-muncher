@@ -15,7 +15,7 @@ namespace niven {
 		Vector3i( 1,1,0 ), Vector3i( 0,1,1 ), Vector3i( 1,0,1 ), Vector3i( 1,1,1 )
 	};
 
-	int squaredDistanceAABoxPoint( const Vector3i &min, const Vector3i &max, const Vector3i &point ) {
+	inline int squaredDistanceAABoxPoint( const Vector3i &min, const Vector3i &max, const Vector3i &point ) {
 		Vector3i distance;
 		for( int i = 0 ; i < 3 ; i++ ) {
 			if( point[i] > max[i] ) {
@@ -31,7 +31,7 @@ namespace niven {
 		return LengthSquared( distance );
 	}
 
-	int squaredMaxDistanceAABoxPoint( const Vector3i &min, const Vector3i &max, const Vector3i &point ) {
+	inline int squaredMaxDistanceAABoxPoint( const Vector3i &min, const Vector3i &max, const Vector3i &point ) {
 		Vector3i distanceA = VectorAbs( point - min );
 		Vector3i distanceB = VectorAbs( point - max );
 		Vector3i distance = VectorMax( distanceA, distanceB );
