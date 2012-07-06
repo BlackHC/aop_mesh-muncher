@@ -14,6 +14,8 @@
 
 #include "utility.h"
 
+#include <iostream>
+
 namespace niven {
 	// assuming even blockResolution
 	struct MipVolume {

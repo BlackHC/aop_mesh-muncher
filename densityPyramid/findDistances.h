@@ -20,5 +20,5 @@ inline ConditionedVoxelType operator !(const ConditionedVoxelType a) {
 	return ConditionedVoxelType( CVT_MATCH - a );
 }
 
-int findSquaredDistanceToNearestVoxel( niven::DenseCache &cache, const niven::Vector3i &refPosition, int minLevel = 0 );
-int findSquaredDistanceToNearestConditionedVoxel( niven::DenseCache &cache, const niven::Vector3i &refPosition, const std::function<ConditionedVoxelType (const niven::Vector3i &min, const niven::Vector3i &max)> &conditioner, int minLevel = 0 );
+int findSquaredDistanceToNearestVoxel( niven::DenseCache &cache, const niven::Vector3i &refPosition, int minLevel = 0, niven::Vector3i *nearestPoint = nullptr );
+int findSquaredDistanceToNearestConditionedVoxel( niven::DenseCache &cache, const niven::Vector3i &refPosition, const std::function<ConditionedVoxelType (const niven::Vector3i &min, const niven::Vector3i &max)> &conditioner, int minLevel = 0, niven::Vector3i *nearestPoint = nullptr );

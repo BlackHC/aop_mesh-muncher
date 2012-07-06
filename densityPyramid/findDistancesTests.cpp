@@ -1,10 +1,8 @@
 #include "Core/inc/Core.h"
-#include "Core/inc/CommandlineParser.h"
 #include "Core/inc/Exception.h"
 #include "Core/inc/Log.h"
 #include "Core/inc/nString.h"
 
-#include "Engine/inc/BaseApplication3D.h"
 #include "niven.Volume.FileBlockStorage.h"
 #include "niven.Volume.MarchingCubes.h"
 #include "niven.Volume.Volume.h"

@@ -134,11 +134,12 @@ namespace niven {
 
 		private:
 			struct CompareIds {
-				bool operator() ( const Id &a, const Id &b ) {
+				bool operator() ( const Id &a, const Id &b ) const {
 					return VectorLexicographicCompare<>()( a.position, b.position) || (a.position == b.position && a.mip < b.mip);
 				}
 			};
 
+			// TODO: use unordered_map and boost::hash
 			std::vector< String > layerNames;
 			std::map< String, std::map< Id, std::vector<byte>, CompareIds> > layers;
 			std::map< String, std::vector<byte> > attributes;
