@@ -320,6 +320,7 @@ struct DistanceContext {
 	}
 
 	// normalize into the [-1,1]^3 unit cube
+	// the distance field is transformed as if we had sampled from the center of "mass" of the distance field
 	void normalizeIntoUnitCube() {
 		Vector3f min, max;
 		min = max = distances[0][0] * directions[0][0];
