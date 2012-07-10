@@ -239,3 +239,11 @@ int findSquaredDistanceToNearestConditionedVoxel( DenseCache &cache, const Vecto
 
 	return INT_MAX;
 }
+
+/*
+TODO:
+
+query multiple distances at once using multiple conditioners
+either by using totally separate arrays and being more efficient by using fewer block queries, or
+by using the same candidate buffers at first and only filtering differently and splitting the results in the end
+*/

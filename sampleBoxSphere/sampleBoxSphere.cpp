@@ -58,19 +58,20 @@ struct AxisCone {
 	const static int axisSwizzle[];
 
 	static ConditionedVoxelType query(const Vector3i &_min, const Vector3i &_max, const Vector3i &center ) {
-		const Vector3i min = _min - center;
-		const Vector3i max = _max - center;
+		const Vector3i minCorner = _min - center;
+		const Vector3i maxCorner = _max - center;
 
-		const int z = positiveAxis ? min( axisSwizzle[2] ) : -max( axisSwizzle[2] );
+		const int z = positiveAxis ? minCorner( axisSwizzle[2] ) : -maxCorner( axisSwizzle[2] );
 		if( z <= 0 ) {
 			// try the far plane
-			z = positiveAxis ? max( axisSwizzle[2] ) : -min( axisSwizzle[2] );
+			z = positiveAxis ? maxCorner( axisSwizzle[2] ) : -minCorner( axisSwizzle[2] );
 			if( z <= 0 ) {
+				// the box is on the other side of the origin
 				return CVT_NO_MATCH;
 			}
 
 			for( int i = 0 ; i < 2 ; i++  ) {
-				if( max( axisSwizzle[ i ] ) < -z || z < min( axisSwizzle[ i ] ) ) {
+				if( maxCorner( axisSwizzle[ i ] ) < -z || z < minCorner( axisSwizzle[ i ] ) ) {
 					return CVT_NO_MATCH;
 				}
 			}
@@ -79,108 +80,23 @@ struct AxisCone {
 		}
 
 		for( int i = 0 ; i < 2 ; i++  ) {
-			if( max( axisSwizzle[ i ] ) < -z || z < min( axisSwizzle[ i ] ) ) {
+			if( maxCorner( axisSwizzle[ i ] ) < -z || z < minCorner( axisSwizzle[ i ] ) ) {
 				return CVT_NO_MATCH;
 			}
 		}
-		// => -z <= max( axisSwizzle( i ) ) && min( axisSwizzle( i ) ) <= z
+		// => -z <= maxCorner( axisSwizzle( i ) ) && minCorner( axisSwizzle( i ) ) <= z
 		for( int i = 0 ; i < 2 ; i++  ) {
-			if( min( axisSwizzle[ i ] ) < -z || z < max( axisSwizzle[ i ] ) ) {
+			if( minCorner( axisSwizzle[ i ] ) < -z || z < maxCorner( axisSwizzle[ i ] ) ) {
 				return CVT_PARTIAL;
 			}
 		}
-		// => max( axisSwizzle( i ) ) <= z && -z <= min( axisSwizzle( i ) )     && -z <= max( axisSwizzle( i ) ) && min( axisSwizzle( i ) ) <= z
+		// => maxCorner( axisSwizzle( i ) ) <= z && -z <= minCorner( axisSwizzle( i ) ) && -z <= maxCorner( axisSwizzle( i ) ) && minCorner( axisSwizzle( i ) ) <= z
 		return CVT_MATCH;
 	}
 };
 
 template< int zAxis, bool positiveAxis >
 const int AxisCone<zAxis, positiveAxis>::axisSwizzle[] = { (zAxis + 1) % 3, (zAxis + 2) % 3, zAxis };
-
-template<int axis, bool positiveAxis>
-struct AARay {
-	const static int axisSwizzle[];
-
-	static ConditionedVoxelType query(const Vector3i &_min, const Vector3i &_max, const Vector3i &center ) {
-		const Vector3i min = _min - center;
-		const Vector3i max = _max - center;
-
-		const int z = positiveAxis ? max[ axisSwizzle[2] ] : -min[ axisSwizzle[2] ];
-		if( z < 0 ) {
-			return CVT_NO_MATCH;
-		}
-
-		for( int i = 0 ; i < 2 ; i++ ) {
-			if( max[ axisSwizzle[i] ] < 0 || 0 < min[ axisSwizzle[i] ] ) {
-				return CVT_NO_MATCH;
-			}
-		}
-		// => 0 <= max( axisSwizzle( i ) ) && min( axisSwizzle( i ) ) <= 0
-		for( int i = 0 ; i < 2 ; i++  ) {
-			if( min[ axisSwizzle[i] ] < 0 || 1 < max[ axisSwizzle[i] ] ) {
-				return CVT_PARTIAL;
-			}
-		}
-		return CVT_MATCH;
-	}
-};
-
-template< int zAxis, bool positiveAxis >
-const int AARay<zAxis, positiveAxis>::axisSwizzle[] = { (zAxis + 1) % 3, (zAxis + 2) % 3, zAxis };
-/*
-template<typename PolytopeA, typename PolytopeB>
-struct ConvexPolytopeCollision {
-	ConditionedVoxelType result;
-	PolytopeA A;
-	PolytopeB B;
-
-	template<typename PolytopeX, typename PolytopeY>
-	static bool overlapPointsOfXAndPlanesOfY( const PolytopeX &X, const PolytopeY &Y, ConditionedVoxelType &result) {
-		bool inside = true;
-		for( int j = 0 ; j < PolytopeY::numPlanes ; ++j ) {
-			bool outside = true;
-			const Plane<float> &plane = Y.getPlane(j);
-
-			for( int i = 0 ; i < PolytopeX::numPoints ; ++i ) {
-				if( plane.Distance( X.getPoint(i) ) > 0 ) {
-					inside = false;
-				}
-				else {
-					outside = false;
-				}
-			}
-			for( int i = 0 ; i < PolytopeX::numDirections ; ++i ) {
-				if( Dot( plane.GetNormal(), X.getDirection(i) ) > 0 ) {
-					inside = false;
-				}
-				else {
-					outside = false;
-				}
-			}
-			if( outside ) {
-				result = CVT_NO_MATCH;
-				return true;
-			}
-		}
-		if( inside ) {
-			result = CVT_MATCH;
-			return true;
-		}
-		return false;
-	}
-
-	template<typename PolytopeX, typename PolytopeY>
-	static ConditionedVoxelType polytopeOverlap( const PolytopeX &X, const PolytopeY &Y ) {
-		ConditionedVoxelType result;
-		if( overlapPointsOfXAndPlanesOfY( X, Y, result ) ) {
-			return result;
-		}
-		if( overlapPointsOfXAndPlanesOfY( Y, X, result ) ) {
-			return result;
-		}
-		return CVT_PARTIAL;
-	}
-};*/
 
 struct RayQuery {
 	const Ray<Vector3f> ray;
@@ -241,31 +157,10 @@ struct FrutumQuery {
 		return CVT_PARTIAL;
 	}
 };
-/*
-struct ConeQuery {
-	Vector3f start;
-	Vector3f position;
-	float radius;
 
-	ConditionedVoxelType query( const Vector3i &_min, const Vector3i &_max ) {
+const float MAX_DISTANCE = 128.0f;
 
-};*/
-
-void findEmptySpaceInBox( DenseCache &cache, const Vector3i &position, /*const Vector3i &minSize,*/ Vector3i &minEmpty, Vector3i &maxEmpty ) {
-	int posX = floor( sqrt( (float) findSquaredDistanceToNearestConditionedVoxel( cache, position, [&] (const Vector3i &min, const Vector3i &max ) { return AARay<0,true>::query( min, max, position ); } ) ));
-	int posY = floor( sqrt( (float) findSquaredDistanceToNearestConditionedVoxel( cache, position, [&] (const Vector3i &min, const Vector3i &max ) { return AARay<1,true>::query( min, max, position ); } ) ));
-	int posZ = floor( sqrt( (float) findSquaredDistanceToNearestConditionedVoxel( cache, position, [&] (const Vector3i &min, const Vector3i &max ) { return AARay<2,true>::query( min, max, position ); } ) ));
-
-	int negX = floor( sqrt( (float) findSquaredDistanceToNearestConditionedVoxel( cache, position, [&] (const Vector3i &min, const Vector3i &max ) { return AARay<0,false>::query( min, max, position ); } ) ));
-	int negY = floor( sqrt( (float) findSquaredDistanceToNearestConditionedVoxel( cache, position, [&] (const Vector3i &min, const Vector3i &max ) { return AARay<1,false>::query( min, max, position ); } ) ));
-	int negZ = floor( sqrt( (float) findSquaredDistanceToNearestConditionedVoxel( cache, position, [&] (const Vector3i &min, const Vector3i &max ) { return AARay<2,false>::query( min, max, position ); } ) ));
-
-	minEmpty = position - Vector3i( negX, negY, negZ );
-	maxEmpty = position + Vector3i( posX, posY, posZ );
-}
-
-
-template< int _uSteps = 12, int _vSteps = 12 >
+template< int _uSteps = 5, int _vSteps = 5 >
 struct DistanceContext {
 	static const int numUSteps = _uSteps, numVSteps = _vSteps;
 	static Vector3f directions[numUSteps][numVSteps];
@@ -287,8 +182,7 @@ struct DistanceContext {
 				//FrutumQuery query( position.Cast<float>(), directions[uIndex][vIndex], Math::Tan( 1.0 ) );
 				RayQuery query( position.Cast<float>(), directions[uIndex][vIndex] );
 
-				//distances[uIndex][vIndex] = Math::Sqrt<float>( findSquaredDistanceToNearestConditionedVoxel( cache, position, [&] (const Vector3i &min, const Vector3i &max) { return query.query(min, max); } ) );
-				distances[uIndex][vIndex] = Math::Sqrt<float>( findSquaredDistanceToNearestConditionedVoxel( cache, position, query ) );
+				distances[uIndex][vIndex] = std::min( MAX_DISTANCE, Math::Sqrt<float>( findSquaredDistanceToNearestConditionedVoxel( cache, position, query ) ) / 32.0f );
 			}
 		}
 	}
@@ -363,12 +257,21 @@ struct DistanceContext {
 		}
 	}
 
+	static int indexWithFlip( int i, int iShift, int iMax ) {
+		if( iShift < iMax ) {
+			return (i + iShift) % iMax;
+		}
+		else {
+			return (3 * iMax - i - iShift) % iMax;
+		}
+	}
+
 	static double compare( const DistanceContext &a, const DistanceContext &b, int uShift = 0, int vShift = 0 ) {
 		// use L2 norm because it accentuates big differences better than L1
 		double norm = 0.;
 		for( int uIndex = 0 ; uIndex < numUSteps ; ++uIndex ) {
 			for( int vIndex = 0 ; vIndex < numVSteps ; ++vIndex ) {
-				double delta = a.distances[uIndex][vIndex] - b.distances[ (uIndex + uShift) % numUSteps ][ (vIndex + vShift) % numVSteps ];
+				double delta = a.distances[uIndex][vIndex] - b.distances[ indexWithFlip(uIndex, uShift, numUSteps) ][ indexWithFlip(vIndex, vShift, numVSteps) ];
 				norm += delta * delta;
 			}
 		}
@@ -378,8 +281,8 @@ struct DistanceContext {
 	static double compareAndShift( const DistanceContext &a, const DistanceContext &b, int *uShift = nullptr, int *vShift = nullptr) {
 		double bestNorm = DBL_MAX;
 
-		for( int uIndex = 0 ; uIndex < numUSteps ; ++uIndex ) {
-			for( int vIndex = 0 ; vIndex < numVSteps ; ++vIndex ) {
+		for( int uIndex = 0 ; uIndex < numUSteps * 2 ; ++uIndex ) {
+			for( int vIndex = 0 ; vIndex < numVSteps * 2 ; ++vIndex ) {
 				double norm = compare( a, b, uIndex, vIndex );
 				if( norm < bestNorm ) {
 					bestNorm = norm;
@@ -395,9 +298,203 @@ struct DistanceContext {
 	}
 };
 
+struct UnorderedDistanceContext {
+	static const int numSamples = 27;
+	static Vector3f directions[numSamples];
+	float distances[numSamples];
+
+	static void setDirections() {
+		for( int i = 0 ; i < numSamples ; i++ ) {
+			directions[i] = neighborOffsets[i].Cast<float>();
+		}
+	}
+
+	void fill( DenseCache &cache, const Vector3i &position ) {
+		for( int index = 0 ; index < numSamples ; ++index ) {
+				RayQuery query( position.Cast<float>(), directions[index] );
+
+				distances[index] = std::min( MAX_DISTANCE, Math::Sqrt<float>( findSquaredDistanceToNearestConditionedVoxel( cache, position, query ) ) );
+		}
+		std::sort( distances, distances + numSamples );
+	}
+
+	double calculateAverage() const {
+		double average = 0.;
+		for( int index = 0 ; index < numSamples ; ++index ) {
+			average += distances[index];
+		}
+		average /= numSamples;
+		return average;
+	}
+
+	void normalizeWithAverage() {
+		double average = calculateAverage();
+		for( int index = 0 ; index < numSamples ; ++index ) {
+			distances[index] /= average;
+		}
+	}
+
+	static double compare( const UnorderedDistanceContext &a, const UnorderedDistanceContext &b ) {
+		// use L2 norm because it accentuates big differences better than L1
+		double norm = 0.;
+		for( int index = 0 ; index < numSamples ; ++index ) {
+			double delta = a.distances[index] - b.distances[index];
+			norm = std::max( norm, Math::Abs(delta) );
+		}
+		return norm;
+	}
+};
+
 template<int _uSteps, int _vSteps>
 Vector3f DistanceContext<_uSteps, _vSteps>::directions[DistanceContext<_uSteps,_vSteps>::numUSteps][DistanceContext<_uSteps,_vSteps>::numVSteps];
 
+Vector3f UnorderedDistanceContext::directions[UnorderedDistanceContext::numSamples];
+
+typedef UnorderedDistanceContext Probe;
+typedef std::vector<Probe> ProbeVector;
+
+template< typename Data >
+struct DataVolume {
+	Vector3i min, size;
+	int step;
+	Vector3i probeDims;
+	int probeCount;
+
+	MemoryLayout3D layout;
+
+	Data *data;
+
+	DataVolume( Vector3i min, Vector3i size, int step ) : min( min ), size( size ), step( step ), probeDims( (size + Vector3i::Constant(step-1)) / step ), probeCount( probeDims.X() * probeDims.Y() * probeDims.Z() ), layout( probeDims ) {
+		data = new Data[probeCount];
+	}
+
+	~DataVolume() {
+		delete[] data;
+	}
+	
+	Iterator3D getIterator() const { return Iterator3D(layout); }
+
+	Vector3i getPosition( const Iterator3D &it ) const {
+		return VecCompMult( it.ToVector(), probeDims ) + min;
+	}
+
+	Data& operator[] (const Iterator3D &it) {
+		return data[ layout( it.ToVector() ) ];
+	}
+
+	const Data& operator[] (const Iterator3D &it) const {
+		return data[ layout( it.ToVector() ) ];
+	}
+
+	bool validIndex( const Vector3i &index ) const {
+		for( int i = 0 ; i < 3 ; ++i ) {
+			if( index[i] < 0 || index[i] >= probeDims[i] ) {
+				return false;
+			}
+		}
+		return true;
+	}
+};
+
+typedef DataVolume<Probe> Probes;
+
+const float PROBE_MAX_DELTA = 16;
+
+Vector3i getCubeSize( const Vector3i &min, const Vector3i &max ) {
+	return max - min + Vector3i::Splat(1);
+}
+
+int getVolume( const Vector3i &size ) {
+	return size.X() * size.Y() * size.Z();
+}
+
+bool canMatchProbe( const ProbeVector &refProbes, const Probe &probe ) {
+	for( int i = 0 ; i < refProbes.size() ; ++i ) {
+		if( Probe::compare( refProbes[i], probe ) < PROBE_MAX_DELTA ) {
+			return true;
+		}
+	}
+	return false;
+}
+
+double calcMatchRatio( const DataVolume<bool> &matches, const Vector3i &min, const Vector3i &max ) {
+	const Vector3i size = getCubeSize(min, max);
+	int count = 0;
+	for( Iterator3D it( min, size ) ; !it.IsAtEnd() ; ++it ) {
+		if( !matches.validIndex( it.ToVector() ) ) {
+			continue;
+		}
+
+		if( matches[it] ) {
+			++count;
+		}
+	}
+	return double( count ) / getVolume( size );
+}
+
+// in positions = data volume indices
+void getExpandedCubeSide( int side, const Vector3i &min, const Vector3i &max, Vector3i &outMin, Vector3i &outMax ) {
+	outMin = min;
+	outMax = max;
+	switch( side ) {
+	case 0:
+		outMin.X() = outMax.X() += 1;
+		break;
+	case 1:
+		outMin.Y() = outMax.Y() += 1;
+		break;
+	case 2:
+		outMin.Z() = outMax.Z() += 1;
+		break;
+	case 3:
+		outMax.X() = outMin.X() -= 1;
+		break;
+	case 4:
+		outMax.Y() = outMin.Y() -= 1;
+		break;
+	case 5:
+		outMax.Z() = outMin.Z() -= 1;
+		break;
+	}
+}
+
+void expandVolume( const DataVolume<bool> &matches, const Vector3i &startPosition, int targetVolume, Vector3i &min, Vector3i &max ) {
+	struct Candidate {
+		Vector3i min, max;
+		double matchRatio;
+	};
+
+	Candidate currentSolution;
+	currentSolution.min = currentSolution.max = startPosition;
+	currentSolution.matchRatio = 1.0;
+	while(getVolume(getCubeSize(currentSolution.min,currentSolution.max)) < targetVolume ) {
+		Candidate candidates[6];
+
+		for( int i = 0 ; i < 6 ; i++ ) {
+			Candidate &candidate = candidates[i];
+			getExpandedCubeSide( i, currentSolution.min, currentSolution.max, candidate.min, candidate.max);
+			candidate.matchRatio = calcMatchRatio( matches, candidate.min, candidate.max );
+		}
+
+		double bestRatio = candidates[0].matchRatio;
+		Vector3i bestMin, bestMax;
+		bestMin = VectorMin( currentSolution.min, candidates[0].min );
+		bestMax = VectorMax( currentSolution.max, candidates[0].max );
+		for( int i = 1 ; i < 6 ; i++ ) {
+			if( candidates[i].matchRatio > bestRatio ) {
+				bestRatio = candidates[i].matchRatio;
+				bestMin = VectorMin( currentSolution.min, candidates[i].min );
+				bestMax = VectorMax( currentSolution.max, candidates[i].max );
+			}
+		}
+		currentSolution.min = bestMin;
+		currentSolution.max = bestMax;
+		currentSolution.matchRatio = bestRatio;
+	}
+
+	min = currentSolution.min;
+	max = currentSolution.max;
+}
 
 int main(int argc, char* argv[]) 
 {
@@ -412,48 +509,43 @@ int main(int argc, char* argv[])
 		MipVolume volume( shardFile );
 		DenseCache cache( volume );
 
-		const int centerShift = 32;
-		Vector3i centerBox(986,256,256), centerBox2(986 + centerShift,256,256 + centerShift);
-		Vector3i centerSphere(256,256,256), centerSphere2(256 + centerShift, 256, 256 + centerShift);
+		UnorderedDistanceContext::setDirections();
 
-		DistanceContext<>::setDirections();
+		const Vector3i min(850,120,120);
+		const Vector3i size(280, 280, 280);
+		Probes probes(min, size, 16);
 
-		//std::cout << sqrt( (float) findSquaredDistanceToNearestVoxel( cache, center, 0 ) );
-		//Vector3i minSpace, maxSpace;
-		//findEmptySpaceInBox( cache, center, minSpace, maxSpace );
-		//std::cout << StringConverter::ToString(minSpace) << StringConverter::ToString(maxSpace) << "\n";
+		for( Iterator3D it = probes.getIterator() ; !it.IsAtEnd() ; ++it ) {
+			Probe &probe = probes[it];
+			probe.fill( cache, probes.getPosition( it ) );
+			//probes[ it ].normalizeWithAverage();
 
-		DistanceContext<> contextBox[2], contextSphere[2];
-		contextBox[0].fill( cache, centerBox );
-		contextBox[0].normalizeIntoUnitCube();
-		contextBox[1].fill( cache, centerBox2 );
-		contextBox[1].normalizeIntoUnitCube();
-
-		contextSphere[0].fill( cache, centerSphere );
-		contextSphere[0].normalizeIntoUnitCube();
-		contextSphere[1].fill( cache, centerSphere2 );
-		contextSphere[1].normalizeIntoUnitCube();
-		
-		int uShift, vShift;
-		double normB0S0 = DistanceContext<>::compareAndShift( contextBox[0], contextSphere[0], &uShift, &vShift );
-		double normB0S1 = DistanceContext<>::compareAndShift( contextBox[0], contextSphere[1], &uShift, &vShift );
-		double normB1S0 = DistanceContext<>::compareAndShift( contextBox[1], contextSphere[0], &uShift, &vShift );
-		double normB1S1 = DistanceContext<>::compareAndShift( contextBox[1], contextSphere[1], &uShift, &vShift );
-		double normB0B1 = DistanceContext<>::compareAndShift( contextBox[0], contextBox[1], &uShift, &vShift );
-		double normS0S1 = DistanceContext<>::compareAndShift( contextSphere[0], contextSphere[1], &uShift, &vShift );
-
-		/*std::cout << findDistanceToNearestConditionedVoxel( cache, center, [yMin,yMax](const Vector3i &min, const Vector3i &max) -> ConditionedVoxelType {
-			if( max.Z() < yMin || yMax < min.Z() ) {
-				return CVT_NO_MATCH;
+			std::cout << StringConverter::ToString(it.ToVector()) << " " << StringConverter::ToString( probes.getPosition( it ) );
+			for( int i = 0 ; i < Probe::numSamples ; i++ ) {
+				std::cout << " " << probe.distances[i];
 			}
-			if( yMin <= min.Z() && max.Z() <= yMax ) {
-				return CVT_MATCH;
-			}
-			return CVT_PARTIAL;
-		} );*/
+			std::cout << "\n";
+		}
 
+		std::cout << "\n";
+
+		ProbeVector refProbes;
+		for( Iterator3D it( Vector3i(4,1,1 ) ) ; !it.IsAtEnd() ; ++it ) {
+			refProbes.push_back( probes[it] );
+		}
+
+		DataVolume<bool> matches( min, size, 16 );
+		for( Iterator3D it = probes.getIterator() ; !it.IsAtEnd() ; ++it ) {
+			matches[ it ] = canMatchProbe( refProbes, probes[ it ] );
+		}
+
+		/*Vector3i sugMin, sugMax;
+		expandVolume( matches, Vector3i( 0,0,0 ), 4, sugMin, sugMax );*/
+
+		for( Iterator3D it = matches.getIterator() ; !it.IsAtEnd() ; ++it ) {
+			std::cout << StringConverter::ToString(it.ToVector()) << ": " << matches[ it ] << "\n";
+		}
 		shardFile.Flush();
-
 	} catch (Exception& e) {
 		std::cerr << e.what() << std::endl;
 		std::cerr << e.GetDetailMessage() << std::endl;
