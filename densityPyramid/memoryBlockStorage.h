@@ -1,10 +1,22 @@
 #pragma once
 
 #include "niven.Volume.BlockStorage.h"
-#include <map>
+#include <unordered_map>
+#include <niven.Core.Math.VectorHash.h>
+#include <boost/functional/hash.hpp>
 
 namespace niven {
 	namespace Volume {
+		inline size_t hash_value( const IBlockStorage::Id &id ) {
+			// boost::hash_value does not work some reason for Vectors
+			return id.mip ^ VectorHash( id.position );
+		}
+
+		inline bool operator == ( const IBlockStorage::Id &a, const IBlockStorage::Id & b ) {
+			return a.mip == b.mip && a.position == b.position;
+		}
+
+
 		class MemoryBlockStorage : public IBlockStorage {
 		private:
 			virtual bool AddBlocksImpl( const String& layerName, const ArrayRef<Id>& ids, const ArrayRef<ArrayRef<>>& buffers ) 
@@ -84,21 +96,22 @@ namespace niven {
 			}
 
 			virtual void AddLayerImpl( const String& name ) 
-			{
-				layerNames.push_back( name );
+			{				
 			}
 
 			virtual void RemoveLayerImpl( const String& name ) 
 			{
-				auto it = std::find( layerNames.begin(), layerNames.end(), name );
-				if( it != layerNames.end() ) {
-					layerNames.erase( it );
-					layers.erase( name );
-				}
+				layers.erase( name );
 			}
 
 			virtual std::vector<String> GetLayerNamesImpl() const
 			{
+				std::vector<String> layerNames;
+
+				for( auto it = layers.cbegin() ; it != layers.cend() ; ++it ) {
+					layerNames.push_back( it->first );
+				}				
+
 				return layerNames;
 			}
 
@@ -124,7 +137,11 @@ namespace niven {
 
 			virtual int GetAttributeSizeImpl( const String& key ) const
 			{
-				return attributes.find( key )->second.size();
+				auto it = attributes.find( key );
+				if( it == attributes.end() ) {
+					return 0;
+				}
+				return it->second.size();
 			}
 
 			virtual void RemoveAttributeImpl( const String& key ) 
@@ -133,16 +150,8 @@ namespace niven {
 			}
 
 		private:
-			struct CompareIds {
-				bool operator() ( const Id &a, const Id &b ) const {
-					return VectorLexicographicCompare<>()( a.position, b.position) || (a.position == b.position && a.mip < b.mip);
-				}
-			};
-
-			// TODO: use unordered_map and boost::hash
-			std::vector< String > layerNames;
-			std::map< String, std::map< Id, std::vector<byte>, CompareIds> > layers;
-			std::map< String, std::vector<byte> > attributes;
+			std::unordered_map< String, std::unordered_map< Id, std::vector<byte>, boost::hash<Id> > > layers;
+			std::unordered_map< String, std::vector<byte> > attributes;
 		};
 	}
 }
