@@ -358,7 +358,7 @@ void expandVolume( const DataVolume<bool> &matches, const Vector3i &startPositio
 }
 
 Vector3f getMean( const DataVolume<bool> &matches, const Vector3i &min, const Vector3i &max ) {
-	int count;
+	int count = 0;
 	Vector3f mean = Vector3f::CreateZero();
 	for( Iterator3D it(min, getCubeSize( min, max )) ; !it.IsAtEnd() ; ++it ) {
 		if( matches[ it ] ) {
@@ -419,7 +419,7 @@ void computeMinimumDensityClusters( const std::vector<Point> &points, LengthType
 	std::vector<bool> isSeedPoint(points.size());
 	std::vector<std::vector<int>> neighbors(points.size());
 
-	int numClusters;
+	int numClusters = 0;
 	std::vector<int> clusters;
 
 	// calculate distances
