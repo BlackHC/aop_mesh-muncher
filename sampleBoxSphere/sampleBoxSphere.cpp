@@ -31,6 +31,8 @@ discriminate between a box and a sphere
 
 #include <iostream>
 
+#include "Eigen/Eigen"
+
 using namespace niven;
 
 /*
@@ -160,144 +162,6 @@ struct FrutumQuery {
 
 const float MAX_DISTANCE = 128.0f;
 
-template< int _uSteps = 5, int _vSteps = 5 >
-struct DistanceContext {
-	static const int numUSteps = _uSteps, numVSteps = _vSteps;
-	static Vector3f directions[numUSteps][numVSteps];
-	float distances[numUSteps][numVSteps];
-
-	static void setDirections() {
-		for( int uIndex = 0 ; uIndex < numUSteps ; ++uIndex ) {
-			const float u = float(uIndex + 0.5) / numUSteps;
-			for( int vIndex = 0 ; vIndex < numVSteps ; ++vIndex ) {
-				const float v = float(vIndex) / numVSteps;
-				directions[uIndex][vIndex] = UniformSampleSphere( u, v );
-			}
-		}
-	}
-
-	void fill( DenseCache &cache, const Vector3i &position ) {
-		for( int uIndex = 0 ; uIndex < numUSteps ; ++uIndex ) {
-			for( int vIndex = 0 ; vIndex < numVSteps ; ++vIndex ) {
-				//FrutumQuery query( position.Cast<float>(), directions[uIndex][vIndex], Math::Tan( 1.0 ) );
-				RayQuery query( position.Cast<float>(), directions[uIndex][vIndex] );
-
-				distances[uIndex][vIndex] = std::min( MAX_DISTANCE, Math::Sqrt<float>( findSquaredDistanceToNearestConditionedVoxel( cache, position, query ) ) / 32.0f );
-			}
-		}
-	}
-
-	double calculateAverage() const {
-		double average = 0.;
-		for( int uIndex = 0 ; uIndex < numUSteps ; ++uIndex ) {
-			for( int vIndex = 0 ; vIndex < numVSteps ; ++vIndex ) {
-				average += distances[uIndex][vIndex];
-			}
-		}
-		average /= numUSteps * numVSteps;
-		return average;
-	}
-
-	void normalizeWithAverage() {
-		double average = calculateAverage();
-		for( int uIndex = 0 ; uIndex < numUSteps ; ++uIndex ) {
-			for( int vIndex = 0 ; vIndex < numVSteps ; ++vIndex ) {
-				distances[uIndex][vIndex] /= average;
-			}
-		}
-	}
-
-	static void getBestDirection( const Vector3f mappedPoints[numUSteps][numVSteps], const Vector3f &direction, int *u, int *v ) {
-		float best = -2;
-		for( int uIndex = 0 ; uIndex < numUSteps ; ++uIndex ) {
-			for( int vIndex = 0 ; vIndex < numVSteps ; ++vIndex ) {
-				float dot = Dot( direction, Normalize( mappedPoints[uIndex][vIndex] ) );
-				if( dot > best ) {
-					*u = uIndex;
-					*v = vIndex;
-					best = dot;
-				}
-			}
-		}
-	}
-
-	// normalize into the [-1,1]^3 unit cube
-	// the distance field is transformed as if we had sampled from the center of "mass" of the distance field
-	void normalizeIntoUnitCube() {
-		Vector3f min, max;
-		min = max = distances[0][0] * directions[0][0];
-		for( int uIndex = 0 ; uIndex < numUSteps ; ++uIndex ) {
-			for( int vIndex = 0 ; vIndex < numVSteps ; ++vIndex ) {
-				Vector3f point = distances[uIndex][vIndex] * directions[uIndex][vIndex];
-				min = VectorMin( min, point );
-				max = VectorMax( max, point );
-			}
-		}
-
-		Vector3f size = max - min;
-		
-		Vector3f mappedPoints[numUSteps][numVSteps];
-		for( int uIndex = 0 ; uIndex < numUSteps ; ++uIndex ) {
-			for( int vIndex = 0 ; vIndex < numVSteps ; ++vIndex ) {
-				Vector3f &mappedPoint = mappedPoints[uIndex][vIndex];
-				mappedPoint = (distances[uIndex][vIndex] * directions[uIndex][vIndex] - min) * 2;
-				for( int i = 0 ; i < 3 ; i++ ) {
-					mappedPoint[i] /= size[i];
-				}
-				mappedPoint += Vector3f::Constant( -1 );
-			}
-		}
-
-		for( int uIndex = 0 ; uIndex < numUSteps ; ++uIndex ) {
-			for( int vIndex = 0 ; vIndex < numVSteps ; ++vIndex ) {
-				int u, v;
-				getBestDirection( mappedPoints, directions[uIndex][vIndex], &u, &v );
-				distances[uIndex][vIndex] = Length( mappedPoints[u][v] );
-			}
-		}
-	}
-
-	static int indexWithFlip( int i, int iShift, int iMax ) {
-		if( iShift < iMax ) {
-			return (i + iShift) % iMax;
-		}
-		else {
-			return (3 * iMax - i - iShift) % iMax;
-		}
-	}
-
-	static double compare( const DistanceContext &a, const DistanceContext &b, int uShift = 0, int vShift = 0 ) {
-		// use L2 norm because it accentuates big differences better than L1
-		double norm = 0.;
-		for( int uIndex = 0 ; uIndex < numUSteps ; ++uIndex ) {
-			for( int vIndex = 0 ; vIndex < numVSteps ; ++vIndex ) {
-				double delta = a.distances[uIndex][vIndex] - b.distances[ indexWithFlip(uIndex, uShift, numUSteps) ][ indexWithFlip(vIndex, vShift, numVSteps) ];
-				norm += delta * delta;
-			}
-		}
-		return Math::Sqrt( norm );
-	}
-
-	static double compareAndShift( const DistanceContext &a, const DistanceContext &b, int *uShift = nullptr, int *vShift = nullptr) {
-		double bestNorm = DBL_MAX;
-
-		for( int uIndex = 0 ; uIndex < numUSteps * 2 ; ++uIndex ) {
-			for( int vIndex = 0 ; vIndex < numVSteps * 2 ; ++vIndex ) {
-				double norm = compare( a, b, uIndex, vIndex );
-				if( norm < bestNorm ) {
-					bestNorm = norm;
-
-					if( uShift )
-						*uShift = uIndex;
-					if( vShift )
-						*vShift = vIndex;
-				}
-			}
-		}
-		return bestNorm;
-	}
-};
-
 struct UnorderedDistanceContext {
 	static const int numSamples = 27;
 	static Vector3f directions[numSamples];
@@ -344,9 +208,6 @@ struct UnorderedDistanceContext {
 		return norm;
 	}
 };
-
-template<int _uSteps, int _vSteps>
-Vector3f DistanceContext<_uSteps, _vSteps>::directions[DistanceContext<_uSteps,_vSteps>::numUSteps][DistanceContext<_uSteps,_vSteps>::numVSteps];
 
 Vector3f UnorderedDistanceContext::directions[UnorderedDistanceContext::numSamples];
 
@@ -496,6 +357,126 @@ void expandVolume( const DataVolume<bool> &matches, const Vector3i &startPositio
 	max = currentSolution.max;
 }
 
+Vector3f getMean( const DataVolume<bool> &matches, const Vector3i &min, const Vector3i &max ) {
+	int count;
+	Vector3f mean = Vector3f::CreateZero();
+	for( Iterator3D it(min, getCubeSize( min, max )) ; !it.IsAtEnd() ; ++it ) {
+		if( matches[ it ] ) {
+			++count;
+			mean += it.ToVector().Cast<float>();
+		}
+	}
+	return mean / count;
+}
+
+void PCA( const DataVolume<bool> &matches, const Vector3i &min, const Vector3i &max ) {
+	Vector3f mean = getMean( matches, min, max );
+	Eigen::Matrix3f covarianceMatrix = Eigen::Matrix3f::Zero();
+
+	int count = 0;
+	for( Iterator3D it(min, getCubeSize( min, max )) ; !it.IsAtEnd() ; ++it ) {
+		Vector3f shifted = it.ToVector().Cast<float>() - mean;
+		float xx = shifted.X() * shifted.X();
+		float yy = shifted.Y() * shifted.Y();
+		float zz = shifted.Z() * shifted.Z();
+
+		float xy = shifted.X() * shifted.Y();
+		float xz = shifted.X() * shifted.Z();
+		float yz = shifted.Y() * shifted.Z();
+
+		covarianceMatrix(0,0) += xx;
+		covarianceMatrix(1,1) += yy;
+		covarianceMatrix(2,2) += zz;
+		covarianceMatrix(1,0) += xy;
+		covarianceMatrix(2,0) += xz;
+		covarianceMatrix(2,1) += yz;
+
+		count++;
+	}
+	covarianceMatrix(0,1) = covarianceMatrix(1,0);
+	covarianceMatrix(0,2) = covarianceMatrix(2,0);
+	covarianceMatrix(1,2) = covarianceMatrix(2,1);
+
+	covarianceMatrix /= count;
+
+	Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> eigenSolver(covarianceMatrix);
+	std::cout << "The eigenvalues of A are:\n" << eigenSolver.eigenvalues() << std::endl;
+	std::cout << "Here's a matrix whose columns are eigenvectors of A \n"
+		<< "corresponding to these eigenvalues:\n"
+		<< eigenSolver.eigenvectors() << std::endl;
+}
+
+struct MinimumDensityClusterResult {
+	//int numPoints;
+	int numClusters; 
+	// 0 for no cluster
+	std::vector<int> cluster;
+};
+
+template<typename Point, typename LengthType>
+void computeMinimumDensityClusters( const std::vector<Point> &points, LengthType metric, int minNeighbors, float radius/*, float fuzzyness*/ ) {
+	std::vector<int> seedPoints;
+	std::vector<bool> isSeedPoint(points.size());
+	std::vector<std::vector<int>> neighbors(points.size());
+
+	int numClusters;
+	std::vector<int> clusters;
+
+	// calculate distances
+	const int numPoints = points.size();
+
+	//const float fuzzyRadius = fuzzyness * radius;
+
+	for( int a = 0 ; a < numPoints ; ++a ) {
+		int numNeighbors = 0;
+		for( int b = 0 ; b < numPoints ; ++b ) {
+			const float distance = metric( points[a], points[b] );
+			/*if( distance <= fuzzyRadius ) {
+				neighbors[a].push_back( b );
+			}*/
+			if( distance <= radius ) {
+				neighbors[a].push_back( b );
+				++numNeigbors;
+			}
+		}
+		if( numNeighbors >= minNeighbors ) {
+			seedPoints.push_back(a);
+			isSeedPoint[a] = true;
+		}
+		else {
+			isSeedPoint[a] = false;
+		}
+	}
+
+	if( seedPoints.empty() ) {
+		return;
+	}
+
+	const int numSeeds = seedPoints.size();
+	for( int seed = 0 ; seed < numSeeds ; ++seed ) {
+		if( clusters[seed] != 0 ) {
+			// already in cluster
+			continue;
+		}
+		++numClusters;
+
+		std::vector<int> stack;
+		stack.push_back( seed );
+		while( !stack.empty() ) {
+			int point = stack.back();
+			stack.pop_back();
+
+			clusters[point] = numClusters;
+
+			if( !isSeedPoint[point] ) {
+				continue;
+			}
+
+			stack.insert( stack.end(), neighbors[point].cbegin(), neighbors[point].cend() );
+		}
+	}
+}
+
 int main(int argc, char* argv[]) 
 {
 	CoreLifeTimeHelper clth;
@@ -520,14 +501,14 @@ int main(int argc, char* argv[])
 			probe.fill( cache, probes.getPosition( it ) );
 			//probes[ it ].normalizeWithAverage();
 
-			std::cout << StringConverter::ToString(it.ToVector()) << " " << StringConverter::ToString( probes.getPosition( it ) );
+			/*std::cout << StringConverter::ToString(it.ToVector()) << " " << StringConverter::ToString( probes.getPosition( it ) );
 			for( int i = 0 ; i < Probe::numSamples ; i++ ) {
 				std::cout << " " << probe.distances[i];
 			}
-			std::cout << "\n";
+			std::cout << "\n";*/
 		}
 
-		std::cout << "\n";
+		//std::cout << "\n";
 
 		ProbeVector refProbes;
 		for( Iterator3D it( Vector3i(4,1,1 ) ) ; !it.IsAtEnd() ; ++it ) {
@@ -541,10 +522,12 @@ int main(int argc, char* argv[])
 
 		/*Vector3i sugMin, sugMax;
 		expandVolume( matches, Vector3i( 0,0,0 ), 4, sugMin, sugMax );*/
-
+		/*
 		for( Iterator3D it = matches.getIterator() ; !it.IsAtEnd() ; ++it ) {
 			std::cout << StringConverter::ToString(it.ToVector()) << ": " << matches[ it ] << "\n";
-		}
+		}*/
+
+		PCA( matches, Vector3i(0,0,0), Vector3i(3,0,0) );
 		shardFile.Flush();
 	} catch (Exception& e) {
 		std::cerr << e.what() << std::endl;
