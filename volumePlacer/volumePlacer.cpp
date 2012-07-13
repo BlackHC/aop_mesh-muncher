@@ -1,9 +1,3 @@
-/*
-sample twice from box and sphere and compare the (transformed) distance fields
-
-discriminate between a box and a sphere
-*/
-
 #include "Core/inc/Core.h"
 #include "Core/inc/Exception.h"
 #include "Core/inc/Log.h"
@@ -298,7 +292,7 @@ void addObjectInstanceToDatabase( Probes &probes, ProbeDatabase &database, const
 void printCandidates( const ProbeDatabase::WeightedCandidateIdVector &candidates ) {
 	std::cout << candidates.size() << " candidates\n";
 	for( int i = 0 ; i < candidates.size() ; ++i ) {
-		std::cout << "Weight: " << candidates[i].second << "\t\tId: " << candidates[i].second << "\n";
+		std::cout << "Weight: " << candidates[i].second << "\t\tId: " << candidates[i].first << "\n";
 	}
 }
 
