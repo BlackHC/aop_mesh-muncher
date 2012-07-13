@@ -61,88 +61,39 @@ struct NivenSummarizer {
 	}
 };
 
-/////////////////////////////////////////////////////////////////////////////
-class SampleApplication : public BaseApplication3D, IEventHandler
-{
-	NIV_DEFINE_CLASS(SampleApplication, BaseApplication3D)
-
+class AntTweakBarEventHandler : public niven::IEventHandler {
 public:
-	SampleApplication ()
-	{
-	}
-
-private:
-	void InitImpl ()
-	{
-		Super::InitImpl ();
-
-		void *device;
-		renderSystem_->GenericQuery( niven::Render::GenericQueryIds::DX11_GetDevice, &device );
-		TwInit(  TW_DIRECT3D11, device );
-
-		TW_TYPE_VECTOR3I = AntTWBarGroupTypes::Struct<Vector3i,AntTWBarGroupTypes::Vector3i, NivenSummarizer<Vector3i> >( "Vector3i" ).
-			add( "x", &AntTWBarGroupTypes::Vector3i::x ).
-			add( "y", &AntTWBarGroupTypes::Vector3i::y ).
-			add( "z", &AntTWBarGroupTypes::Vector3i::z ).
-			define();
-
-		TwWindowSize( renderWindow_->GetWidth(), renderWindow_->GetHeight() );
-
-		effectManager_.Initialize (renderSystem_.get (), &effectLoader_);	
-
-		objModel_.Init( renderSystem_, effectManager_, IO::Path( "P:\\BlenderScenes\\two_boxes.obj" ) );
-
-		camera_->GetFrustum ().SetPerspectiveProjection (
-			Degree (75.0f),
-			renderWindow_->GetAspectRatio (),
-			0.1f, 10000.0f);
-
-		ui = std::unique_ptr<AntTWBarGroup>( new AntTWBarGroup("UI") );
-
-		ui->_addVarRW("min target", (TwType) TW_TYPE_VECTOR3I, (void*) &min );
-		ui->_addVarRW("size target", (TwType) TW_TYPE_VECTOR3I, (void*) &size );
-
-		eventForwarder_.Prepend( this );
-
+	void Init(Render::IRenderWindow *renderWindow) {
+		renderWindow_ = renderWindow;
 		uiActive_ = false;
 		keyModifiers_ = TW_KMOD_NONE;
 		mouseWheelPos_ = 0;
 	}
 
-	void ShutdownImpl() {
-		effectManager_.Shutdown ();
-	}
-
-	void DrawImpl ()
-	{
-		objModel_.Draw( renderContext_ );
-
-		TwDraw();
-	}
-
+private:
 	bool OnKeyboardImpl(const KeyboardEvent& event) {
-		if (!renderWindow_->IsCursorCaptured() && uiActive_) {
-			KeyCodes::Enum keyCode = event.GetCode();
+		KeyCodes::Enum keyCode = event.GetCode();
 
-			if (keyCode == KeyCodes::Key_Alt) {
-				if (event.IsPressed())
-					keyModifiers_ |= TW_KMOD_ALT;
-				else
-					keyModifiers_ &= ~TW_KMOD_ALT;
-			} else if (keyCode == KeyCodes::Key_Control_Left ||
-				keyCode == KeyCodes::Key_Control_Right) {
+		if (keyCode == KeyCodes::Key_Alt) {
+			if (event.IsPressed())
+				keyModifiers_ |= TW_KMOD_ALT;
+			else
+				keyModifiers_ &= ~TW_KMOD_ALT;
+		} else if (keyCode == KeyCodes::Key_Control_Left ||
+			keyCode == KeyCodes::Key_Control_Right) {
 				if (event.IsPressed())
 					keyModifiers_ |= TW_KMOD_CTRL;
 				else 
 					keyModifiers_ &= ~TW_KMOD_CTRL;
-			} else if (keyCode == KeyCodes::Key_Shift_Left ||
-				keyCode == KeyCodes::Key_Shift_Right) {
+		} else if (keyCode == KeyCodes::Key_Shift_Left ||
+			keyCode == KeyCodes::Key_Shift_Right) {
 				if (event.IsPressed())
 					keyModifiers_ |= TW_KMOD_SHIFT;
 				else
 					keyModifiers_ &= ~TW_KMOD_SHIFT;
-			}
+		}
 
+		if (!renderWindow_->IsCursorCaptured() && uiActive_) {
 			if (!event.IsPressed())
 				return false;
 			int key = -1;
@@ -216,17 +167,17 @@ private:
 			bool handled = (TwMouseButton(action, button) == 1);
 			return handled;
 		}
-		
+
 		return false;
 	}
 
 	bool OnMouseMoveImpl(const MouseMoveEvent& event) {
 		if (!renderWindow_->IsCursorCaptured()) {
 			const Vector2i& mousePosition = event.GetPosition();
-			
+
 			bool handled = (TwMouseMotion(mousePosition[0], mousePosition[1]) == 1);
-			uiActive_ = handled;
-			
+			SetActive( handled );
+
 			return handled;
 		}
 
@@ -241,14 +192,6 @@ private:
 			}
 			if( TwMouseWheel(mouseWheelPos_) == 1 )
 				return true;
-		}
-
-		if (event.GetDirection() == MouseWheelDirection::Vertical) {
-			if (event.GetAmount() > 0) {
-				camera_->SetMoveSpeedMultiplier(camera_->GetMoveSpeedMultiplier() * 1.05f);
-			} else {
-				camera_->SetMoveSpeedMultiplier(camera_->GetMoveSpeedMultiplier() / 1.05f);
-			}
 		}
 
 		return true;
@@ -267,18 +210,81 @@ private:
 	}
 
 	bool OnRenderWindowResizedImpl(const RenderWindowResizedEvent& event) {
-			TwWindowSize(event.GetWidth(), event.GetHeight());
+		TwWindowSize(event.GetWidth(), event.GetHeight());
 
-			// Log::Info("IsoTessViewer", String::Format("Resized to {0}x{1} (aspect {2})")	% event.GetWidth() % event.GetHeight() % event.GetAspectRatio());
+		return false;
+	}
 
-			return false;
+	void SetActive (bool active) {
+		uiActive_ = active;
+	}
+
+	Render::IRenderWindow *renderWindow_;
+	bool uiActive_;
+	int keyModifiers_;
+	int mouseWheelPos_;
+};
+
+/////////////////////////////////////////////////////////////////////////////
+class SampleApplication : public BaseApplication3D, IEventHandler
+{
+	NIV_DEFINE_CLASS(SampleApplication, BaseApplication3D)
+
+public:
+	SampleApplication ()
+	{
 	}
 
 private:
-	bool uiActive_;
+	void InitImpl ()
+	{
+		Super::InitImpl ();
+
+		void *device;
+		renderSystem_->GenericQuery( niven::Render::GenericQueryIds::DX11_GetDevice, &device );
+		TwInit(  TW_DIRECT3D11, device );
+
+		TW_TYPE_VECTOR3I = AntTWBarGroupTypes::Struct<Vector3i,AntTWBarGroupTypes::Vector3i, NivenSummarizer<Vector3i> >( "Vector3i" ).
+			add( "x", &AntTWBarGroupTypes::Vector3i::x ).
+			add( "y", &AntTWBarGroupTypes::Vector3i::y ).
+			add( "z", &AntTWBarGroupTypes::Vector3i::z ).
+			define();
+
+		TwWindowSize( renderWindow_->GetWidth(), renderWindow_->GetHeight() );
+
+		effectManager_.Initialize (renderSystem_.get (), &effectLoader_);	
+
+		objModel_.Init( renderSystem_, effectManager_, IO::Path( "P:\\BlenderScenes\\two_boxes.obj" ) );
+
+		camera_->GetFrustum ().SetPerspectiveProjection (
+			Degree (75.0f),
+			renderWindow_->GetAspectRatio (),
+			0.1f, 10000.0f);
+
+		ui = std::unique_ptr<AntTWBarGroup>( new AntTWBarGroup("UI") );
+
+		ui->_addVarRW("min target", (TwType) TW_TYPE_VECTOR3I, (void*) &min );
+		ui->_addVarRW("size target", (TwType) TW_TYPE_VECTOR3I, (void*) &size );
+
+		antTweakBarEventHandler.Init( renderWindow_ );
+		eventForwarder_.Prepend( &antTweakBarEventHandler );	
+	}
+
+	void ShutdownImpl() {
+		effectManager_.Shutdown ();
+	}
+
+	void DrawImpl ()
+	{
+		objModel_.Draw( renderContext_ );
+
+		TwDraw();
+	}
+
+private:
 	ObjModel objModel_;
-	int keyModifiers_;
-	int mouseWheelPos_;
+	AntTweakBarEventHandler antTweakBarEventHandler;
+
 
 	Render::EffectManager effectManager_;
 	Render::EffectLoader effectLoader_;
