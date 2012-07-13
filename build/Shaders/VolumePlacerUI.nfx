@@ -1,0 +1,27 @@
+{
+	"type" : "effect",
+	"shaders"	:
+	{
+		"vertex"	:	"VolumePlacerUI",
+		"pixel"		:	"VolumePlacerUI"
+	},
+	"texture-samplers"	:
+	{
+		"pixel" : 
+		[
+			{
+				"filter"	:	"anisotropic",
+				"max-aniso"	:	16,
+				"wrap-u"	:	"wrap",
+				"wrap-v"	:	"wrap"
+			}
+		]
+	},
+	"state"		:
+	{
+		"raster"	:
+		{
+			"cull"	:	"none"
+		}
+	}
+}

@@ -15,7 +15,10 @@
 #include <niven.Render.EffectLoader.h>
 #include <niven.Render.EffectManager.h>
 
-#include <objModel.h>
+#include "objModel.h"
+#include "anttwbargroup.h"
+
+#include <memory>
 
 #include <iostream>
 
@@ -50,6 +53,12 @@ private:
 	{
 		Super::InitImpl ();
 
+		void *device;
+		renderSystem_->GenericQuery( niven::Render::GenericQueryIds::DX11_GetDevice, &device );
+		TwInit(  TW_DIRECT3D11, device );
+
+		TwWindowSize( renderWindow_->GetWidth(), renderWindow_->GetHeight() );
+
 		effectManager_.Initialize (renderSystem_.get (), &effectLoader_);	
 
 		objModel_.Init( renderSystem_, effectManager_, IO::Path( "P:\\BlenderScenes\\two_boxes.obj" ) );
@@ -58,6 +67,8 @@ private:
 			Degree (75.0f),
 			renderWindow_->GetAspectRatio (),
 			0.1f, 10000.0f);
+
+		ui = std::unique_ptr<AntTWBarGroup>( new AntTWBarGroup("UI") );
 	}
 
 	void ShutdownImpl() {
@@ -67,6 +78,8 @@ private:
 	void DrawImpl ()
 	{
 		objModel_.Draw( renderContext_ );
+
+		TwDraw();
 	}
 
 private:
@@ -74,6 +87,8 @@ private:
 
 	Render::EffectManager effectManager_;
 	Render::EffectLoader effectLoader_;
+
+	std::unique_ptr<AntTWBarGroup> ui;
 };
 
 NIV_IMPLEMENT_CLASS(SampleApplication, TypeInfo::Default, AppTest)
