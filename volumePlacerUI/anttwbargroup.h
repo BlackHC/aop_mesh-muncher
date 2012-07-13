@@ -1,6 +1,8 @@
 #pragma once
 
 #include <string>
+#include <sstream>
+#include <vector>
 
 #include <AntTweakBar.h>
 
@@ -15,9 +17,7 @@ void TW_CALL memberCallback( T p, Caller &caller ) {
 	(caller.*callback)(p);
 }
 
-class AntTWBarGroup
-{
-public:
+namespace AntTWBarGroupTypes {
 	template< typename T >
 	struct TypeMapping {
 		enum {
@@ -54,7 +54,7 @@ public:
 	};
 
 	template<>
-	struct TypeMapping< int > {
+	struct TypeMapping< __int32 > {
 		enum {
 			Type = TW_TYPE_INT32
 		};
@@ -78,12 +78,99 @@ public:
 		};
 	};
 
+	template< int twTypeValue >
+	struct TwTypeMapping {
+		typedef void Type;
+	};
+
+	template<>
+	struct TwTypeMapping< TW_TYPE_BOOLCPP > {
+		typedef bool Type;
+	};
+
+	template<>
+	struct TwTypeMapping< TW_TYPE_CDSTRING > {
+		typedef char * Type;
+	};
+
+	template<>
+	struct TwTypeMapping< TW_TYPE_FLOAT > {
+		typedef float Type;
+	};
+
+	template<>
+	struct TwTypeMapping< TW_TYPE_INT32 > {
+		typedef __int32 Type;
+	};
+
 	struct Vector3f {
 		float x,y,z;
 	};
 
+	struct Vector3i {
+		int x,y,z;
+	};
 
 
+	template<typename S>
+	struct StdSummarizer {
+		static void summarize( char *summary, size_t maxLength, const S* object) {
+			std::ostringstream out;
+			out << *object;
+			out.str().copy( summary, maxLength );
+		}
+	};
+
+	template<typename S, typename R = S, typename Summarizer=StdSummarizer<S> >
+	struct Struct {
+		const char *name;
+		std::vector<TwStructMember> members;
+
+		Struct( const char *name ) : name( name ) {}
+
+		template<typename T>
+		Struct & add( const char *name, T R::*pointer, const char *defString = nullptr ) {
+			TwStructMember member;
+			
+			member.Name = name;
+			member.Type = (TwType) TypeMapping<T>::Type;
+			member.Offset = reinterpret_cast<size_t>(&(static_cast<R*>(nullptr)->*pointer));
+			member.DefString = defString;
+			members.push_back( member );
+
+			return *this;
+		}
+
+		TwType define() {
+			return TwDefineStruct( name, &members.front(), members.size(), sizeof( S ), &SummaryCallback, /*(void*) this*/ nullptr);
+		}
+
+		static void TW_CALL SummaryCallback(char *summaryString, size_t summaryMaxLength, const void *value, void *clientData) {
+			/*Struct *_ = static_cast<Struct*>(clientData);
+			S *s = static_cast<const S*>(value);
+
+			std::ostringstream out;
+			out << "{ ";
+			for( auto it = members.cbegin() ; it != members.cend() ; ++it ) {
+				out << it->Name << "='";
+				
+				switch( it->Type ) {
+#define TYPE_CASE( t ) \
+				case t:\
+						out << *reinterpret_cast< const TwTypeMapping<t>::Type *>( reinterpret_cast<const char*>(value) + it->Offset ) << " ";
+
+				TYPE_CASE( TW_TYPE_INT32 );
+#undef TYPE_CASE
+				}
+			}
+			out << "}";*/
+			Summarizer::summarize( summaryString, summaryMaxLength, static_cast<const S*>(value) );
+		}
+	};
+}
+
+class AntTWBarGroup
+{
 protected:
 	AntTWBarGroup * getParent();
 	TwBar * getBar();
@@ -110,17 +197,17 @@ public:
 
 	template< class T, typename V >
 	void addVarCB(const std::string &name, void (TW_CALL *setCallback)( const V & , T & ), void (TW_CALL *getCallback)( V&, T & ), T *clientData, const std::string &def = "", const std::string &internalName = "") {
-		_addVarCB( name, (TwType) TypeMapping< V >::Type, (TwSetVarCallback) setCallback, (TwGetVarCallback) getCallback, clientData, def, internalName );
+		addVarCB( name, (TwType) AntTWBarGroupTypes::TypeMapping< V >::Type, (TwSetVarCallback) setCallback, (TwGetVarCallback) getCallback, clientData, def, internalName );
 	}
 
 	template< typename V >
 	void addVarRW(const std::string &name, V &var, const std::string &def = "", const std::string &internalName = "") {
-		_addVarRW( name, (TwType) TypeMapping< V >::Type, &var, def, internalName );
+		addVarRW( name, (TwType) AntTWBarGroupTypes::TypeMapping< V >::Type, &var, def, internalName );
 	}
 
 	template< typename V >
 	void addVarRO(const std::string &name, V &var, const std::string &def = "", const std::string &internalName = "") {
-		_addVarRO( name, (TwType) TypeMapping< V >::Type, &var, def, internalName );
+		addVarRO( name, (TwType) AntTWBarGroupTypes::TypeMapping< V >::Type, &var, def, internalName );
 	}
 
 	void changeItem( const std::string &internalName, const std::string &def );
@@ -131,6 +218,10 @@ public:
 	void removeItem( const std::string &name );
 
 	void clear();
+
+	void _addVarCB(const std::string &name, TwType type, TwSetVarCallback setCallback, TwGetVarCallback getCallback, void *clientData, const std::string &def, const std::string &internalName);
+	void _addVarRW(const std::string &name, TwType type, void *var, const std::string &def = "", const std::string &internalName = "");
+	void _addVarRO(const std::string &name, TwType type, void *var, const std::string &def = "", const std::string &internalName = "");
 
 private:
 	static int s_groupCounter;
@@ -145,9 +236,6 @@ private:
 	bool m_expanded;
 
 	void _addButton(const std::string &name, TwButtonCallback callback, void *clientData, const std::string &def, const std::string &internalName);
-	void _addVarCB(const std::string &name, TwType type, TwSetVarCallback setCallback, TwGetVarCallback getCallback, void *clientData, const std::string &def, const std::string &internalName);
-	void _addVarRW(const std::string &name, TwType type, void *var, const std::string &def, const std::string &internalName);
-	void _addVarRO(const std::string &name, TwType type, void *var, const std::string &def, const std::string &internalName);
 
 	void checkInit();
 

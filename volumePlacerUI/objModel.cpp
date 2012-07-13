@@ -15,6 +15,7 @@
 #include <niven.Engine.Render.Texture2D.h>
 #include <niven.Core.Math.Matrix.h>
 #include <niven.Core.Math.MatrixOperators.h>
+#include <niven.Engine.Interop.ObjReader.h>
 
 using namespace niven;
 

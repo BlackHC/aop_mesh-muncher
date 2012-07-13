@@ -11,7 +11,6 @@
 #include <niven.Render.IndexBuffer.h>
 
 #include <niven.Engine.Geometry.SimpleMesh.h>
-#include <niven.Engine.Interop.ObjReader.h>
 
 #include "materialLibrary.h"
 
