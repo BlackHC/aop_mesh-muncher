@@ -98,7 +98,6 @@ private:
 			Degree (75.0f),
 			renderWindow_->GetAspectRatio (),
 			0.1f, 10000.0f);
-		
 
 		InitUI();		
 
@@ -108,21 +107,24 @@ private:
 
 		const Vector3i min(850,120,120);
 		const Vector3i size(280, 280, 280);
-		probes = new Probes(min, size, 16);
+		probes_ = std::unique_ptr<Probes>( new Probes(min, size, 16) );
 		CreateProbeCrosses();
 
-		sampleProbes( *denseCache, *probes );
+		if( !probes_->readFromFile( "probes.data" ) ) {
+			sampleProbes( *denseCache_, *probes_ );
+			probes_->writeToFile( "probes.data" );
+		}
 
-		targetCube = probes->getVolumeFromIndexCube( Cubei::fromMinSize( Vector3i::CreateZero(), Vector3i::Constant(4) ) );
+		targetCube_ = probes_->getVolumeFromIndexCube( Cubei::fromMinSize( Vector3i::CreateZero(), Vector3i::Constant(4) ) );
 
-		probeVolume = createCube( layerCalibration.getPosition( min ), layerCalibration.getPosition( min + size ), Color3f( 1.0, 0.0, 0.0 ) );
+		probeVolume = createCube( layerCalibration_.getPosition( min ), layerCalibration_.getPosition( min + size ), Color3f( 1.0, 0.0, 0.0 ) );
 
 		Cubei cube[2] = { Cubei::fromMinSize( Vector3i(0,0,0), Vector3i(4,1,1) ), Cubei::fromMinSize( Vector3i(5,5,5), Vector3i(4,1,1) ) };
 		for( int i = 0 ; i < 2 ; i++ ) {
-			Cubei volumeCoords = probes->getVolumeFromIndexCube( cube[i] );
-			volume[i] = createCube( layerCalibration.getPosition( volumeCoords.minCorner ), layerCalibration.getPosition( volumeCoords.maxCorner ), Color3f( 1.0, 1.0, 1.0 ) );
+			Cubei volumeCoords = probes_->getVolumeFromIndexCube( cube[i] );
+			volume[i] = createCube( layerCalibration_.getPosition( volumeCoords.minCorner ), layerCalibration_.getPosition( volumeCoords.maxCorner ), Color3f( 1.0, 1.0, 1.0 ) );
 
-			addObjectInstanceToDatabase( *probes, database, volumeCoords, i );
+			addObjectInstanceToDatabase( *probes_, database, volumeCoords, i );
 		}
 	}
 
@@ -134,14 +136,14 @@ private:
 	{
 		objModel_.Draw( renderContext_ );
 
-		Vector3f minCorner = layerCalibration.getPosition( targetCube.minCorner );
-		Vector3f maxCorner = layerCalibration.getPosition( targetCube.maxCorner );
+		Vector3f minCorner = layerCalibration_.getPosition( targetCube_.minCorner );
+		Vector3f maxCorner = layerCalibration_.getPosition( targetCube_.maxCorner );
 		DebugRenderObject targetVolume = createCube( minCorner, maxCorner, Color3f( 0.0, 1.0, 0.0 ) );
 		Draw( targetVolume );
 		
 		Draw( probeVolume );
 		if( showProbePositions ) {
-			Draw( probeCrosses );
+			Draw( probeCrosses_ );
 		}
 
 		for( int i = 0 ; i < 2 ; i++ ) {
@@ -173,57 +175,57 @@ private:
 			add( "z", &AntTWBarGroupTypes::Vector3i::z ).
 			define();
 
-		antTweakBarEventHandler.Init( renderWindow_ );
-		eventForwarder_.Prepend( &antTweakBarEventHandler );
+		antTweakBarEventHandler_.Init( renderWindow_ );
+		eventForwarder_.Prepend( &antTweakBarEventHandler_ );
 	}
 
 	void InitUI() {
-		ui = std::unique_ptr<AntTWBarGroup>( new AntTWBarGroup("UI") );
+		ui_ = std::unique_ptr<AntTWBarGroup>( new AntTWBarGroup("UI") );
 
-		minCallback.getCallback = [&](Vector3i &v) { v = targetCube.minCorner; };
-		minCallback.setCallback = [&](const Vector3i &v) { targetCube = Cubei::fromMinSize( v, targetCube.getSize() ); };
-		ui->addVarCB("Min target", TW_TYPE_VECTOR3I, minCallback );
+		minCallback_.getCallback = [&](Vector3i &v) { v = targetCube_.minCorner; };
+		minCallback_.setCallback = [&](const Vector3i &v) { targetCube_ = Cubei::fromMinSize( v, targetCube_.getSize() ); };
+		ui_->addVarCB("Min target", TW_TYPE_VECTOR3I, minCallback_ );
 
-		sizeCallback.getCallback = [&](Vector3i &v) { v = targetCube.getSize(); };
-		sizeCallback.setCallback = [&](const Vector3i &v) { targetCube = Cubei::fromMinSize( targetCube.minCorner, v ); };
-		ui->addVarCB("Size target", TW_TYPE_VECTOR3I, sizeCallback );
+		sizeCallback_.getCallback = [&](Vector3i &v) { v = targetCube_.getSize(); };
+		sizeCallback_.setCallback = [&](const Vector3i &v) { targetCube_ = Cubei::fromMinSize( targetCube_.minCorner, v ); };
+		ui_->addVarCB("Size target", TW_TYPE_VECTOR3I, sizeCallback_ );
 
 		showProbePositions = false;
-		ui->addVarRW( "Show probe positions", showProbePositions );
+		ui_->addVarRW( "Show probe positions", showProbePositions );
 
-		findCandidatesCallback.callback = std::bind(&SampleApplication::Do_findCandidates, this);
-		ui->addButton("Find candidates", findCandidatesCallback );
+		findCandidatesCallback_.callback = std::bind(&SampleApplication::Do_findCandidates, this);
+		ui_->addButton("Find candidates", findCandidatesCallback_ );
 
-		candidateResultsUI = std::unique_ptr<AntTWBarGroup>( new AntTWBarGroup( "Candidates", ui.get() ) );
+		candidateResultsUI_ = std::unique_ptr<AntTWBarGroup>( new AntTWBarGroup( "Candidates", ui_.get() ) );
 	}
 
 	void InitVolume() {
-		fbs = new Volume::FileBlockStorage;
-		if( !fbs->Open( "P:\\BlenderScenes\\two_boxes_4.nvf", true ) ) {
+		fbs_ = std::unique_ptr<Volume::FileBlockStorage>( new Volume::FileBlockStorage );
+		if( !fbs_->Open( "P:\\BlenderScenes\\two_boxes_4.nvf", true ) ) {
 			Log::Error( "VolumePlacerUI", "couldn't open the volume file!" );
 		}
 
-		mipVolume = new MipVolume(*fbs);
-		denseCache = new DenseCache(*mipVolume);
+		mipVolume_ = std::unique_ptr<MipVolume>( new MipVolume(*fbs_) );
+		denseCache_ = std::unique_ptr<DenseCache>( new DenseCache(*mipVolume_) );
 
-		volumeCalibration.readFrom( *fbs );
-		layerCalibration.readFrom( *fbs, volumeCalibration, "Density" );
+		volumeCalibration_.readFrom( *fbs_ );
+		layerCalibration_.readFrom( *fbs_, volumeCalibration_, "Density" );
 	}
 
 	void CreateProbeCrosses() {
 		Render::DebugRenderUtility dru;
-		for( Iterator3D iter(probes->probeDims) ; !iter.IsAtEnd() ; ++iter ) {
-			dru.AddCross( layerCalibration.getPosition( probes->getPosition( iter ) ), Color3f(0.0, 1.0, 0.0), 0.05 );
+		for( Iterator3D iter(probes_->probeDims) ; !iter.IsAtEnd() ; ++iter ) {
+			dru.AddCross( layerCalibration_.getPosition( probes_->getPosition( iter ) ), Color3f(0.0, 1.0, 0.0), 0.05 );
 		}
-		probeCrosses = dru.GetLineSegments();
+		probeCrosses_ = dru.GetLineSegments();
 	}
 
 	void Do_findCandidates() {
-		results = findCandidates( *probes, database, targetCube );
+		results = findCandidates( *probes_, database, targetCube_ );
 
-		candidateResultsUI->clear();
+		candidateResultsUI_->clear();
 		for( auto it = results.cbegin() ; it != results.cend() ; ++it ) {
-			candidateResultsUI->addVarRO( AntTWBarGroup::format( "Candidate %i", it->first ), it->second );
+			candidateResultsUI_->addVarRO( AntTWBarGroup::format( "Candidate %i", it->first ), it->second );
 		}
 	}
 
@@ -233,20 +235,20 @@ private:
 	Render::EffectLoader effectLoader_;
 
 	// AntTweakBar members
-	AntTweakBarEventHandler antTweakBarEventHandler;
-	std::unique_ptr<AntTWBarGroup> ui, candidateResultsUI;
+	AntTweakBarEventHandler antTweakBarEventHandler_;
+	std::unique_ptr<AntTWBarGroup> ui_, candidateResultsUI_;
 	
 	ObjModel objModel_;
 	
-	Cubei targetCube;
+	Cubei targetCube_;
 
 	// volume members
-	Volume::FileBlockStorage *fbs;
-	MipVolume *mipVolume;
-	DenseCache *denseCache;
-	VolumeCalibration volumeCalibration;
-	LayerCalibration layerCalibration;
-	Probes *probes;
+	std::unique_ptr<Volume::FileBlockStorage> fbs_;
+	std::unique_ptr<MipVolume> mipVolume_;
+	std::unique_ptr<DenseCache> denseCache_;
+	VolumeCalibration volumeCalibration_;
+	LayerCalibration layerCalibration_;
+	std::unique_ptr<Probes> probes_;
 
 	ProbeDatabase database;
 
@@ -256,11 +258,11 @@ private:
 	DebugRenderObject probeVolume;
 	DebugRenderObject volume[2];
 
-	DebugRenderObject probeCrosses;
+	DebugRenderObject probeCrosses_;
 
 	// ui callbacks
-	AntTWBarGroup::ButtonCallback findCandidatesCallback;
-	AntTWBarGroup::VariableCallback<Vector3i> minCallback, sizeCallback;
+	AntTWBarGroup::ButtonCallback findCandidatesCallback_;
+	AntTWBarGroup::VariableCallback<Vector3i> minCallback_, sizeCallback_;
 
 	// ui fields
 	bool showProbePositions;
