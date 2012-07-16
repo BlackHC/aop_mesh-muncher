@@ -3,6 +3,7 @@
 #include <string>
 #include <sstream>
 #include <vector>
+#include <functional>
 
 #include <AntTweakBar.h>
 
@@ -22,6 +23,13 @@ namespace AntTWBarGroupTypes {
 	struct TypeMapping {
 		enum {
 			Type = TW_TYPE_UNDEF
+		};
+	};
+
+	template< typename T >
+	struct TypeMapper {
+		enum {
+			Type = TypeMapping< std::remove_cv< T >::type >::Type
 		};
 	};
 
@@ -177,37 +185,75 @@ protected:
 
 	const std::string getBarIdentifier();
 	const std::string getQualifiedIdentifier();
-	const std::string getQualifiedIdentifier( const std::string &itemName );
+	const std::string getQualifiedChildIdentifier( const std::string &itemName );
 
 	const std::string getName();
 	const std::string getGroupDefineText();
 	const std::string getNameDefineText( const std::string &name );
-	const std::string getIdentifier( const std::string &itemName );
+	const std::string getChildIdentifier( const std::string &itemName );
 
 	// identifier to be used for the AntTweakBar group
 	const std::string getIdentifier();
 
 public:
+	struct ButtonCallback {
+		std::function<void()> callback;
+
+		//ButtonCallback( const std::function<void> &callback ) : callback( callback ) {}
+
+		static void TW_CALL Execute(ButtonCallback &me) {
+			me.callback();
+		}
+	};
+
+	template<typename V>
+	struct VariableCallback {
+		std::function<void (V&)> getCallback;
+		std::function<void (const V&)> setCallback;
+
+		static void TW_CALL ExecuteGet(V &variable, VariableCallback &me) {
+			me.getCallback(variable);
+		}
+
+		static void TW_CALL ExecuteSet(const V &variable, VariableCallback &me) {
+			me.setCallback(variable);
+		}
+	};
+
 	template< class T >
 	void addButton(const std::string &name, void (TW_CALL *callback )( T& ), T *clientData, const std::string &def = "", const std::string &internalName = "") {
 		_addButton(name, (TwButtonCallback) callback, clientData, def, internalName );
+	}
+
+	void addButton(const std::string &name, ButtonCallback &callback, const std::string &def = "", const std::string &internalName = "") {
+		_addButton(name, (TwButtonCallback) &ButtonCallback::Execute, &callback, def, internalName );
 	}
 
 	void addSeparator();
 
 	template< class T, typename V >
 	void addVarCB(const std::string &name, void (TW_CALL *setCallback)( const V & , T & ), void (TW_CALL *getCallback)( V&, T & ), T *clientData, const std::string &def = "", const std::string &internalName = "") {
-		addVarCB( name, (TwType) AntTWBarGroupTypes::TypeMapping< V >::Type, (TwSetVarCallback) setCallback, (TwGetVarCallback) getCallback, clientData, def, internalName );
+		_addVarCB( name, (TwType) AntTWBarGroupTypes::TypeMapper< V >::Type, (TwSetVarCallback) setCallback, (TwGetVarCallback) getCallback, clientData, def, internalName );
+	}
+
+	template< typename V >
+	void addVarCB(const std::string &name, VariableCallback< V > &callbacks, const std::string &def = "", const std::string &internalName = "") {
+		_addVarCB( name, (TwType) AntTWBarGroupTypes::TypeMapper< V >::Type, (TwSetVarCallback) &VariableCallback<V>::ExecuteSet, (TwGetVarCallback) &VariableCallback<V>::ExecuteGet, clientData, def, internalName );
+	}
+
+	template< typename V >
+	void addVarCB(const std::string &name, int type, VariableCallback< V > &callbacks, const std::string &def = "", const std::string &internalName = "") {
+		_addVarCB( name, (TwType) type, (TwSetVarCallback) &VariableCallback<V>::ExecuteSet, (TwGetVarCallback) &VariableCallback<V>::ExecuteGet, &callbacks, def, internalName );
 	}
 
 	template< typename V >
 	void addVarRW(const std::string &name, V &var, const std::string &def = "", const std::string &internalName = "") {
-		addVarRW( name, (TwType) AntTWBarGroupTypes::TypeMapping< V >::Type, &var, def, internalName );
+		_addVarRW( name, (TwType) AntTWBarGroupTypes::TypeMapper< V >::Type, &var, def, internalName );
 	}
 
 	template< typename V >
 	void addVarRO(const std::string &name, V &var, const std::string &def = "", const std::string &internalName = "") {
-		addVarRO( name, (TwType) AntTWBarGroupTypes::TypeMapping< V >::Type, &var, def, internalName );
+		_addVarRO( name, (TwType) AntTWBarGroupTypes::TypeMapper< V >::Type, (void*) &var, def, internalName );
 	}
 
 	void changeItem( const std::string &internalName, const std::string &def );
@@ -219,6 +265,7 @@ public:
 
 	void clear();
 
+	void _addButton(const std::string &name, TwButtonCallback callback, void *clientData, const std::string &def, const std::string &internalName);
 	void _addVarCB(const std::string &name, TwType type, TwSetVarCallback setCallback, TwGetVarCallback getCallback, void *clientData, const std::string &def, const std::string &internalName);
 	void _addVarRW(const std::string &name, TwType type, void *var, const std::string &def = "", const std::string &internalName = "");
 	void _addVarRO(const std::string &name, TwType type, void *var, const std::string &def = "", const std::string &internalName = "");
@@ -234,8 +281,6 @@ private:
 	bool m_initialized;
 	bool m_visible;
 	bool m_expanded;
-
-	void _addButton(const std::string &name, TwButtonCallback callback, void *clientData, const std::string &def, const std::string &internalName);
 
 	void checkInit();
 

@@ -15,7 +15,7 @@ std::string AntTWBarGroup::format( const char *format, ... ) {
 	return buffer;
 }
 
-const std::string AntTWBarGroup::getIdentifier( const std::string &itemName ) {
+const std::string AntTWBarGroup::getChildIdentifier( const std::string &itemName ) {
 	if( itemName != "" ) {
 		return format( "%s--%s", getIdentifier().c_str(), itemName.c_str() );
 	}
@@ -23,8 +23,27 @@ const std::string AntTWBarGroup::getIdentifier( const std::string &itemName ) {
 }
 
 const std::string AntTWBarGroup::getIdentifier() {
-	return format( "%i", m_groupIndex );
+	return format( "group-%i", m_groupIndex );
 }
+
+const std::string AntTWBarGroup::getBarIdentifier() {
+	return TwGetBarName(m_bar);
+}
+
+const std::string AntTWBarGroup::getQualifiedIdentifier() {
+	if( m_parent ) {
+		return m_parent->getBarIdentifier() + "/" + getIdentifier();
+	}
+	return getIdentifier();
+}
+
+const std::string AntTWBarGroup::getQualifiedChildIdentifier( const std::string &itemName ) {
+	if( itemName != "" ) {
+		return m_parent->getBarIdentifier() + "/" + getChildIdentifier( itemName );
+	}
+	return "";
+}
+
 void AntTWBarGroup::setVisible( bool visible ) {
 	m_visible = visible;
 
@@ -116,14 +135,14 @@ void AntTWBarGroup::clear() {
 void AntTWBarGroup::removeItem( const std::string &name ) {
 	assert( name != "" );
 	if( name != "" ) {
-		TwRemoveVar( m_bar, getIdentifier( name ).c_str() );
+		TwRemoveVar( m_bar, getChildIdentifier( name ).c_str() );
 	}
 }
 
 void AntTWBarGroup::changeItem( const std::string &name, const std::string &def ) {
 	assert( name != "" );
 	if( name != "" ) {
-		TwDefine( format( " %s %s ", getQualifiedIdentifier( name ).c_str(), def.c_str() ).c_str() );
+		TwDefine( format( " %s %s ", getQualifiedChildIdentifier( name ).c_str(), def.c_str() ).c_str() );
 	}
 }
 
@@ -132,22 +151,22 @@ void AntTWBarGroup::changeItemLabel( const std::string &internalName, const std:
 }
 
 void AntTWBarGroup::_addVarCB( const std::string &name, TwType type, TwSetVarCallback setCallback, TwGetVarCallback getCallback, void *clientData, const std::string &def, const std::string &internalName ) {
-	TwAddVarCB( m_bar, getIdentifier( internalName ).c_str(), type, setCallback, getCallback, clientData, (def + getGroupDefineText() + getNameDefineText( name )).c_str() );
+	TwAddVarCB( m_bar, getChildIdentifier( internalName ).c_str(), type, setCallback, getCallback, clientData, (def + getGroupDefineText() + getNameDefineText( name )).c_str() );
 	checkInit();
 }
 
 void AntTWBarGroup::_addButton( const std::string &name, TwButtonCallback callback, void *clientData, const std::string &def, const std::string &internalName ) {
-	TwAddButton( m_bar, getIdentifier( internalName ).c_str(), (TwButtonCallback) callback, clientData, (def + getGroupDefineText() + getNameDefineText( name )).c_str() );
+	TwAddButton( m_bar, getChildIdentifier( internalName ).c_str(), (TwButtonCallback) callback, clientData, (def + getGroupDefineText() + getNameDefineText( name )).c_str() );
 	checkInit();
 }
 
 void AntTWBarGroup::_addVarRW( const std::string &name, TwType type, void *var, const std::string &def, const std::string &internalName ) {
-	TwAddVarRW( m_bar, getIdentifier( internalName ).c_str(), type, var, (def + getGroupDefineText() + getNameDefineText( name )).c_str() );
+	TwAddVarRW( m_bar, getChildIdentifier( internalName ).c_str(), type, var, (def + getGroupDefineText() + getNameDefineText( name )).c_str() );
 	checkInit();
 }
 
 void AntTWBarGroup::_addVarRO( const std::string &name, TwType type, void *var, const std::string &def, const std::string &internalName ) {
-	TwAddVarRO( m_bar, getIdentifier( internalName ).c_str(), type, var, (def + getGroupDefineText() + getNameDefineText( name )).c_str() );
+	TwAddVarRO( m_bar, getChildIdentifier( internalName ).c_str(), type, var, (def + getGroupDefineText() + getNameDefineText( name )).c_str() );
 	checkInit();
 }
 
@@ -157,24 +176,6 @@ AntTWBarGroup * AntTWBarGroup::getParent() {
 
 TwBar * AntTWBarGroup::getBar() {
 	return m_bar;
-}
-
-const std::string AntTWBarGroup::getBarIdentifier() {
-	return TwGetBarName(m_bar);
-}
-
-const std::string AntTWBarGroup::getQualifiedIdentifier() {
-	if( m_parent ) {
-		return m_parent->getBarIdentifier() + "/" + getIdentifier();
-	}
-	return getIdentifier();
-}
-
-const std::string AntTWBarGroup::getQualifiedIdentifier( const std::string &itemName ) {
-	if( itemName != "" ) {
-		return m_parent->getBarIdentifier() + "/" + getIdentifier( itemName );
-	}
-	return "";
 }
 
 const std::string AntTWBarGroup::getName() {

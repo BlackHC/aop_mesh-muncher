@@ -7,10 +7,11 @@ FIND_PACKAGE(AntTweakBar REQUIRED)
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /GR- /D_UNICODE")
 
 # Must link both against niven and Boost
-INCLUDE_DIRECTORIES(${ANTTWEAKBAR_INCLUDE_DIR} ${NIVEN_INCLUDE_DIR} ${Boost_INCLUDE_DIR} ../gtest/ ../densityPyramid/ ../calibrateVolumeBB)
+INCLUDE_DIRECTORIES(${ANTTWEAKBAR_INCLUDE_DIR} ${NIVEN_INCLUDE_DIR} ${Boost_INCLUDE_DIR} ../gtest/ ../densityPyramid/ ../calibrateVolumeBB ../volumePlacer)
 
 # ../gtest/gtest_main.cc
-ADD_EXECUTABLE(volumePlacerUI 
+ADD_EXECUTABLE(volumePlacerUI
+	antTweakBarEventHandler.h
 	volumePlacerUI.cpp 
 	materialLibrary.cpp
 	materialLibrary.h
@@ -18,6 +19,7 @@ ADD_EXECUTABLE(volumePlacerUI
 	objModel.h
 	anttwbargroup.cpp
 	anttwbargroup.h
+	../volumePlacer/volumePlacer.h
 	../calibrateVolumeBB/volumeCalibration.h 
 	../densityPyramid/memoryBlockStorage.h
 	../densityPyramid/findDistances.cpp 
