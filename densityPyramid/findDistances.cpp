@@ -29,8 +29,6 @@ void findNearestPointFromCandidateVoxels( DenseCache &cache, const std::vector<V
 		Vector3i minCube, maxCube;
 		cache.volume.GetCubeForMippedVoxel( level, candidates[i], minCube, maxCube );
 		
-		const Vector3i nearestPointOnCube = ( minCube, maxCube, refPosition );
-		
 		const int distanceSquared = squaredDistanceAABoxPoint( minCube, maxCube, refPosition );
 		if( distanceSquared < minDistanceSquared ) {
 			minDistanceSquared = distanceSquared;

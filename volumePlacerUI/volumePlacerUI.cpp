@@ -108,12 +108,13 @@ private:
 		const Vector3i min(850,120,120);
 		const Vector3i size(280, 280, 280);
 		probes_ = std::unique_ptr<Probes>( new Probes(min, size, 16) );
-		CreateProbeCrosses();
-
+		
 		if( !probes_->readFromFile( "probes.data" ) ) {
 			sampleProbes( *denseCache_, *probes_ );
 			probes_->writeToFile( "probes.data" );
 		}
+
+		CreateProbeVisualization();
 
 		targetCube_ = probes_->getVolumeFromIndexCube( Cubei::fromMinSize( Vector3i::CreateZero(), Vector3i::Constant(4) ) );
 
@@ -126,6 +127,8 @@ private:
 
 			addObjectInstanceToDatabase( *probes_, database, volumeCoords, i );
 		}
+
+		camera_->SetMoveSpeedMultiplier( 0.25 );
 	}
 
 	void ShutdownImpl() {
@@ -142,7 +145,7 @@ private:
 		Draw( targetVolume );
 		
 		Draw( probeVolume );
-		if( showProbePositions ) {
+		if( showProbes ) {
 			Draw( probeCrosses_ );
 		}
 
@@ -190,8 +193,8 @@ private:
 		sizeCallback_.setCallback = [&](const Vector3i &v) { targetCube_ = Cubei::fromMinSize( targetCube_.minCorner, v ); };
 		ui_->addVarCB("Size target", TW_TYPE_VECTOR3I, sizeCallback_ );
 
-		showProbePositions = false;
-		ui_->addVarRW( "Show probe positions", showProbePositions );
+		showProbes = false;
+		ui_->addVarRW( "Show probe positions", showProbes );
 
 		findCandidatesCallback_.callback = std::bind(&SampleApplication::Do_findCandidates, this);
 		ui_->addButton("Find candidates", findCandidatesCallback_ );
@@ -212,10 +215,21 @@ private:
 		layerCalibration_.readFrom( *fbs_, volumeCalibration_, "Density" );
 	}
 
-	void CreateProbeCrosses() {
+	void CreateProbeVisualization() {
 		Render::DebugRenderUtility dru;
+
+		const float visSize = 0.05;
 		for( Iterator3D iter(probes_->probeDims) ; !iter.IsAtEnd() ; ++iter ) {
-			dru.AddCross( layerCalibration_.getPosition( probes_->getPosition( iter ) ), Color3f(0.0, 1.0, 0.0), 0.05 );
+			const Vector3f probePosition = layerCalibration_.getPosition( probes_->getPosition( iter ) );
+			const Probe &probe = probes_->get(iter);
+
+			for( int i = 0 ; i < Probe::numSamples ; ++i ) {
+				const Vector3f &direction = probe.directions[i];
+				const float distance = probe.distances[i];
+
+				const Vector3f &vector = direction * (1.0 - distance / MAX_DISTANCE);
+				dru.AddLine( probePosition, probePosition + vector * visSize, Color3f( 0.0, Length(vector), 0.0 ) );
+			}			
 		}
 		probeCrosses_ = dru.GetLineSegments();
 	}
@@ -265,7 +279,7 @@ private:
 	AntTWBarGroup::VariableCallback<Vector3i> minCallback_, sizeCallback_;
 
 	// ui fields
-	bool showProbePositions;
+	bool showProbes;
 
 private:
 	SampleApplication( const SampleApplication & ) {}

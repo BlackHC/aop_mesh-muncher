@@ -71,6 +71,7 @@ const float MAX_DISTANCE = 128.0f;
 struct UnorderedDistanceContext {
 	static const int numSamples = 27;
 	static Vector3f directions[numSamples];
+	float sortedDistances[numSamples];
 	float distances[numSamples];
 
 	static void setDirections() {
@@ -83,15 +84,15 @@ struct UnorderedDistanceContext {
 		for( int index = 0 ; index < numSamples ; ++index ) {
 			RayQuery query( position.Cast<float>(), directions[index] );
 
-			distances[index] = std::min( MAX_DISTANCE, Math::Sqrt<float>( findSquaredDistanceToNearestConditionedVoxel( cache, position, query ) ) );
+			distances[index] = sortedDistances[index] = std::min( MAX_DISTANCE, Math::Sqrt<float>( findSquaredDistanceToNearestConditionedVoxel( cache, position, query ) ) );
 		}
-		std::sort( distances, distances + numSamples );
+		std::sort( sortedDistances, sortedDistances + numSamples );
 	}
 
 	double calculateAverage() const {
 		double average = 0.;
 		for( int index = 0 ; index < numSamples ; ++index ) {
-			average += distances[index];
+			average += sortedDistances[index];
 		}
 		average /= numSamples;
 		return average;
@@ -100,7 +101,7 @@ struct UnorderedDistanceContext {
 	void normalizeWithAverage() {
 		double average = calculateAverage();
 		for( int index = 0 ; index < numSamples ; ++index ) {
-			distances[index] /= average;
+			sortedDistances[index] /= average;
 		}
 	}
 
@@ -108,7 +109,7 @@ struct UnorderedDistanceContext {
 		// use L2 norm because it accentuates big differences better than L1
 		double norm = 0.;
 		for( int index = 0 ; index < numSamples ; ++index ) {
-			double delta = a.distances[index] - b.distances[index];
+			double delta = a.sortedDistances[index] - b.sortedDistances[index];
 			norm = std::max( norm, Math::Abs(delta) );
 		}
 		return norm;
@@ -163,10 +164,18 @@ struct DataVolume {
 	}
 
 	Data& operator[] (const Iterator3D &it) {
-		return data[ layout( it.ToVector() ) ];
+		return get(it);
 	}
 
 	const Data& operator[] (const Iterator3D &it) const {
+		return get(it);
+	}
+
+	Data& get(const Iterator3D &it) {
+		return data[ layout( it.ToVector() ) ];
+	}
+
+	const Data& get(const Iterator3D &it) const {
 		return data[ layout( it.ToVector() ) ];
 	}
 
