@@ -62,7 +62,7 @@ struct RayQuery {
 	RayQuery( const Vector3f &start, const Vector3f &direction ) : ray( start, direction ) {}
 
 	ConditionedVoxelType operator() (const Vector3i &_min, const Vector3i &_max) {
-		return AxisAlignedBoundingBox3( _min.Cast<float>(), _max.Cast<float>() ).Trace( ray ) ? CVT_PARTIAL : CVT_NO_MATCH;
+		return Intersect( AxisAlignedBoundingBox3( _min.Cast<float>(), _max.Cast<float>() ), ray ) ? CVT_PARTIAL : CVT_NO_MATCH;
 	}
 };
 

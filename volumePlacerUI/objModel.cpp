@@ -49,6 +49,8 @@ void ObjModel::Init( niven::IRenderSystem::Ptr renderSystem, niven::Render::Effe
 		meshes_.push_back (ConvertToSimpleMesh (chunk));
 
 		// load material
+		textures_.push_back( nullptr );
+
 		const String &materialName = chunk->GetMaterial();
 		if( !materialName.IsEmpty() ) {
 			Log::Info( "ObjModel", String::Format( "Chunk {0} uses material {1}" ) % i % materialName );
@@ -74,17 +76,12 @@ void ObjModel::Init( niven::IRenderSystem::Ptr renderSystem, niven::Render::Effe
 						Render::ITexture::Ptr texture = Render::ITexture::Ptr( renderSystem->Wrap( renderSystem->CreateTexture2D( Render::Texture2DDescriptor( *image ) ) ) );
 
 						textureMap[ material.texture ] = texture;
-						textures_.push_back( texture );
+						textures_.back() = texture;
 					}
 					catch(...) {
 						Log::Info( "ObjModel", String::Format( "Could not load texture {0}" ) % imagePath );
-						textureMap[ material.texture ] = nullTexture_;
-						textures_.push_back( nullTexture_ );
 					}
 				}
-			}
-			else {
-				textures_.push_back( Render::ITexture::Ptr() );
 			}
 		}
 	}
@@ -99,9 +96,7 @@ void ObjModel::Init( niven::IRenderSystem::Ptr renderSystem, niven::Render::Effe
 
 		effects_.push_back (effectManager.GetEffect ("VolumePlacerUI", mesh->GetVertexFormat ().GetId ()));
 
-		vertexLayouts_.push_back (renderSystem->Wrap (renderSystem->CreateVertexLayout (mesh->GetVertexFormat ().GetVertexLayoutElementCount (), 
-			mesh->GetVertexFormat ().GetVertexLayout (),
-			effects_ [i]->GetVertexShaderProgram ())));
+		vertexLayouts_.push_back (renderSystem->Wrap (renderSystem->CreateVertexLayout (mesh->GetVertexFormat ().GetVertexLayout(),	effects_ [i]->GetVertexShaderProgram ())));
 
 		vertexBuffers_.push_back(renderSystem->Wrap (renderSystem->CreateVertexBuffer (
 			mesh->GetVertexFormat ().GetSize (), 

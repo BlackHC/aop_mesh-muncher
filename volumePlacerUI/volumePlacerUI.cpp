@@ -18,6 +18,9 @@
 
 #include <niven.Core.Math.VectorToString.h>
 
+#include <niven.Engine.Draw2D.h>
+#include <niven.Engine.Draw2DRectangle.h>
+
 #include "objModel.h"
 #include "anttwbargroup.h"
 #include "antTweakBarEventHandler.h"
@@ -26,6 +29,7 @@
 #include "mipVolume.h"
 #include "cache.h"
 
+#include <vector>
 #include <memory>
 
 #include <iostream>
@@ -73,11 +77,229 @@ DebugRenderObject createCross (const Vector3f &position, const Color3f &color, f
 	return dru.GetLineSegments();
 }
 
-
-
 struct CandidateObject {
 	// centered around 0.0
 	Vector3f bbSize;
+};
+
+struct UIElement {
+	virtual void Draw( Draw2D *draw2D ) {}
+
+	bool MouseMove( const class MouseMoveEvent& event ) {
+		bool inArea = IsInArea( event.GetPosition() );
+		if( inArea || IsActive() ) {
+			return MouseMoveImpl( event, inArea );
+		}
+		else {
+			return false;
+		}		
+	}
+
+	bool MouseClick( const class MouseClickEvent& event ) {
+		if( !IsActive() ) {
+			return false;
+		}
+
+		return MouseClickImpl( event );
+	}
+
+	bool IsActive() const {
+		return active_;
+	}
+
+	void SetActive( bool active ) {
+		if( active_ != active ) {
+			active_ = active;		
+			if( active_ ) {
+				Focus();
+			}
+			else {
+				Unfocus();
+			}
+		}		
+	}
+	
+private:
+	bool active_;
+	
+	virtual bool IsInArea( const Vector2i &position ) = 0;
+
+	virtual void Unfocus() {}
+	virtual void Focus() {}
+
+	virtual bool MouseMoveImpl( const class MouseMoveEvent& event, bool inArea ) {
+		return false;
+	}
+
+	virtual bool MouseClickImpl( const class MouseClickEvent& event ) {
+		return false;
+	}
+};
+
+struct UIButton : public UIElement {
+	enum State {
+		STATE_INACTIVE,
+		STATE_ACTIVE,
+		STATE_MOUSE_OVER,
+		STATE_CLICKED
+	} state;
+
+	Rectangle<int> area;
+	std::function<void ()> onAction;
+	
+	bool IsVisible() const {
+		return visible_;
+	}
+
+	void SetVisible( bool visible ) {
+		if( !visible ) {
+			SetActive( false );
+			state = STATE_INACTIVE;
+		}
+		visible_ = visible;
+	}
+
+protected:
+	bool visible_;
+
+private:
+	bool IsInArea( const Vector2i &position ) {
+		return visible_ && area.Contains( position );
+	}
+
+	bool MouseMoveImpl( const class MouseMoveEvent& event, bool inArea ) {
+		switch( state ) {
+		case STATE_CLICKED:
+			return true;
+		case STATE_INACTIVE:
+		case STATE_ACTIVE:
+		case STATE_MOUSE_OVER:
+			SetActive( true );
+			if( inArea ) {
+				state = STATE_MOUSE_OVER;
+			}
+			else {
+				state = STATE_ACTIVE;
+			}
+			break;
+		}
+
+		return inArea;
+	}
+
+	void Focus() {
+		state = STATE_ACTIVE;
+	}
+
+	void Unfocus() {
+		state = STATE_INACTIVE;
+	}
+
+	bool MouseClickImpl( const class MouseClickEvent& event ) {
+		bool inArea = IsInArea( event.GetPosition() );
+		if( !inArea ) {
+			return false;
+		}
+
+		if( event.GetButton() == MouseButton::Left ) {			
+			if( event.IsPressed() ) { 
+				state = STATE_CLICKED;
+				if( onAction ) {
+					onAction();
+				}
+			}
+			if( event.IsReleased() ) {
+				state = inArea ? STATE_MOUSE_OVER : STATE_ACTIVE;
+			}
+		}
+		return true;
+	}
+
+	void Draw( Draw2D *draw2D ) {
+		if( !visible_ ) {
+			return;
+		}
+
+		Draw2DRectangle *rect = nullptr;
+		
+		switch( state ) {
+		case STATE_ACTIVE:
+			rect = draw2D->CreateRectangle( Color4f::Constant(0), draw2D->AbsoluteToRelative( area.GetLeft(), area.GetTop() ), Draw2DAnchor::Top_Left, area.GetSize(), Color4f( 0.5, 0.5, 0.5, 1.0 ) );
+			break;
+		case STATE_MOUSE_OVER:
+			rect = draw2D->CreateRectangle( Color4f::Constant(0), draw2D->AbsoluteToRelative( area.GetLeft(), area.GetTop() ), Draw2DAnchor::Top_Left, area.GetSize(), Color4f( 1.0, 1.0, 1.0, 1.0 ) );
+			break;
+		case STATE_CLICKED:
+			rect = draw2D->CreateRectangle( Color4f::Constant(0), draw2D->AbsoluteToRelative( area.GetLeft(), area.GetTop() ), Draw2DAnchor::Top_Left, area.GetSize(), Color4f( 1.0, 0.0, 0.0, 1.0 ) );
+			break;
+		}
+
+		if( rect ) {
+			draw2D->Draw( rect );
+			draw2D->Release( rect );
+		}
+	}
+};
+
+struct UIManager : public IEventHandler {
+	std::vector<UIElement*> elements;
+	Draw2D *draw2D;
+	IRenderWindow *renderWindow_;
+	UIElement *active;
+
+	void Init( Render::IRenderSystem *renderSystem, Render::IRenderContext *renderContext, Render::IRenderWindow *renderWindow ) {
+		draw2D = new Draw2D( renderSystem, renderContext );
+		draw2D->SetWindowSize( renderWindow->GetWidth(), renderWindow->GetHeight() );
+		renderWindow_ = renderWindow;
+		active = nullptr;
+	}
+
+	bool OnMouseClickImpl( const class MouseClickEvent& event ) 
+	{
+		if( renderWindow_->IsCursorCaptured() ){
+			return false;
+		}
+
+		for( int i = 0 ; i < elements.size() ; ++i ) {
+			if( elements[i]->MouseClick( event ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	bool OnMouseMoveImpl( const class MouseMoveEvent& event ) 
+	{
+		if( renderWindow_->IsCursorCaptured() ){
+			return false;
+		}
+
+		for( int i = 0 ; i < elements.size() ; ++i ) {
+			if( elements[i]->MouseMove( event ) ) {
+				if( elements[i]->IsActive() ) {
+					if( active != elements[i] && active ) {
+						active->SetActive( false );
+					}
+					active = elements[i];
+				}
+				return true;
+			}
+		}
+		return false;
+	}
+
+	bool OnRenderWindowResizedImpl( const class RenderWindowResizedEvent& event ) 
+	{
+		draw2D->SetWindowSize( event.GetWidth(), event.GetHeight() );
+
+		return false;
+	}
+
+	void Draw() {
+		for( int i = 0 ; i < elements.size() ; ++i ) {
+			elements[i]->Draw( draw2D );
+		}
+	}
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -98,6 +320,15 @@ private:
 		//FixRDPMouseInput();
 		InitAntTweakBar();
 
+		manager.Init( renderSystem_.get(), renderContext_, renderWindow_ );
+
+		for( int i = 0 ; i < 2 ; i++ ) {
+			manager.elements.push_back( &uiButtons[i] );
+			uiButtons[i].SetVisible( false );
+		}
+
+		eventForwarder_.Prepend( &manager );
+		
 		effectManager_.Initialize (renderSystem_.get (), &effectLoader_);	
 		objModel_.Init( renderSystem_, effectManager_, IO::Path( "P:\\BlenderScenes\\two_boxes.obj" ) );
 
@@ -184,7 +415,14 @@ private:
 
 			DebugRenderObject bbox = createCube( -object.bbSize * 0.5, object.bbSize * 0.5, Color3f( 1.0, 1.0, 1.0 ) );
 			renderSystem_->DebugDrawLines( bbox );
-		}	
+
+			UIButton &button = uiButtons[i];
+			button.area = Rectangle<int>(topLeft, size);
+			button.SetVisible( true );
+		}
+
+		
+		renderContext_->SetViewport( Rectangle<int>( Vector2i::CreateZero(), Vector2i( renderWindow_->GetWidth(), renderWindow_->GetHeight() ) ) );
 	}
 
 	void DrawImpl ()
@@ -210,6 +448,8 @@ private:
 		DrawPreview();
 
 		TwDraw();
+
+		manager.Draw();
 	}
 
 private:
@@ -329,6 +569,7 @@ private:
 	DebugRenderObject volume[2];
 
 	DebugRenderObject probeCrosses_;
+	DebugRenderObject matchedProbes_;
 
 	// ui callbacks
 	AntTWBarGroup::ButtonCallback findCandidatesCallback_;
@@ -336,8 +577,12 @@ private:
 
 	// ui fields
 	bool showProbes;
+	bool showMatchedProbes;
 
 	CandidateObject objects[2];
+
+	UIButton uiButtons[2];
+	UIManager manager;
 
 	struct Transformation {
 		Matrix4f world;
