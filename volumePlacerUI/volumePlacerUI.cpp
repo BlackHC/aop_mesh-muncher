@@ -73,6 +73,13 @@ DebugRenderObject createCross (const Vector3f &position, const Color3f &color, f
 	return dru.GetLineSegments();
 }
 
+
+
+struct CandidateObject {
+	// centered around 0.0
+	Vector3f bbSize;
+};
+
 /////////////////////////////////////////////////////////////////////////////
 class SampleApplication : public BaseApplication3D, IEventHandler
 {
@@ -99,6 +106,13 @@ private:
 			renderWindow_->GetAspectRatio (),
 			0.1f, 10000.0f);
 
+		previewTransformation_.projection = CreatePerspectiveProjectionFovRH( 
+			Degree (75.0f),
+			1.0f /*renderWindow_->GetAspectRatio ()*/,
+			0.1f, 10.0f);
+
+		previewTransformation_.view = CreateViewLookAtRH( Vector3f( 0.0, 0.0, -2.0 ), Vector3f::CreateZero(), Vector3f::CreateUnit(1) );
+
 		InitUI();		
 
 		InitVolume();
@@ -121,6 +135,11 @@ private:
 		probeVolume = createCube( layerCalibration_.getPosition( min ), layerCalibration_.getPosition( min + size ), Color3f( 1.0, 0.0, 0.0 ) );
 
 		Cubei cube[2] = { Cubei::fromMinSize( Vector3i(0,0,0), Vector3i(4,1,1) ), Cubei::fromMinSize( Vector3i(5,5,5), Vector3i(4,1,1) ) };
+
+		for( int i = 0 ; i < 2 ; ++i ) {
+			objects[i].bbSize = cube[i].getSize();
+		}
+
 		for( int i = 0 ; i < 2 ; i++ ) {
 			Cubei volumeCoords = probes_->getVolumeFromIndexCube( cube[i] );
 			volume[i] = createCube( layerCalibration_.getPosition( volumeCoords.minCorner ), layerCalibration_.getPosition( volumeCoords.maxCorner ), Color3f( 1.0, 1.0, 1.0 ) );
@@ -128,15 +147,50 @@ private:
 			addObjectInstanceToDatabase( *probes_, database, volumeCoords, i );
 		}
 
-		camera_->SetMoveSpeedMultiplier( 0.25 );
+		camera_->SetMoveSpeedMultiplier( 0.5 );
 	}
 
 	void ShutdownImpl() {
 		effectManager_.Shutdown ();
+
+		Super::ShutdownImpl();
+	}
+
+	void UpdateImpl (const float deltaTime, const double elapsedTime) {
+		Super::UpdateImpl( deltaTime, elapsedTime );
+
+		float angle = elapsedTime * 360.0 / 10.0;
+		previewTransformation_.world = CreateRotationY4( Degree( angle ) );		
+	}
+
+	void DrawPreview() {
+		renderContext_->SetTransformation( Render::RenderTransformation::Projection, previewTransformation_.projection );
+		renderContext_->SetTransformation( Render::RenderTransformation::View, previewTransformation_.view );
+		
+		const int maxPreviewWidth = renderWindow_->GetWidth() / 10;
+		const int maxTotalPreviewHeight = (maxPreviewWidth + 10) * results.size();
+		const int previewSize = (maxTotalPreviewHeight < renderWindow_->GetHeight()) ? maxPreviewWidth : (renderWindow_->GetHeight() - 20) / results.size() - 10;
+				
+		Vector2i topLeft( renderWindow_->GetWidth() - previewSize - 10, 10 );
+		Vector2i size( previewSize, previewSize );
+		
+		for( int i = 0 ; i < results.size() ; ++i, topLeft.Y() += previewSize + 10 ) {
+			CandidateObject &object = objects[ results[i].first ];
+
+			renderContext_->SetViewport( Rectangle<int>( topLeft, size ) );
+			renderContext_->ClearRenderTarget( Render::RenderTargetClearFlags::Depth_Buffer );
+
+			renderContext_->SetTransformation( Render::RenderTransformation::World, previewTransformation_.world * CreateScale4( 2.0 / MaxElement( object.bbSize ) ) );	
+
+			DebugRenderObject bbox = createCube( -object.bbSize * 0.5, object.bbSize * 0.5, Color3f( 1.0, 1.0, 1.0 ) );
+			renderSystem_->DebugDrawLines( bbox );
+		}	
 	}
 
 	void DrawImpl ()
 	{
+		renderContext_->SetTransformation( Render::RenderTransformation::World, Matrix4f::CreateIdentity() );
+
 		objModel_.Draw( renderContext_ );
 
 		Vector3f minCorner = layerCalibration_.getPosition( targetCube_.minCorner );
@@ -152,6 +206,8 @@ private:
 		for( int i = 0 ; i < 2 ; i++ ) {
 			Draw( volume[i] );
 		}
+
+		DrawPreview();
 
 		TwDraw();
 	}
@@ -281,6 +337,13 @@ private:
 	// ui fields
 	bool showProbes;
 
+	CandidateObject objects[2];
+
+	struct Transformation {
+		Matrix4f world;
+		Matrix4f view;
+		Matrix4f projection;
+	} previewTransformation_;
 private:
 	SampleApplication( const SampleApplication & ) {}
 };
