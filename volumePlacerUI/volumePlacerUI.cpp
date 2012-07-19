@@ -325,6 +325,7 @@ private:
 		for( int i = 0 ; i < 2 ; i++ ) {
 			manager.elements.push_back( &uiButtons[i] );
 			uiButtons[i].SetVisible( false );
+			uiButtons[i].onAction = [=] () { CreatedMatchedProbes(i); };
 		}
 
 		eventForwarder_.Prepend( &manager );
@@ -365,7 +366,7 @@ private:
 
 		probeVolume = createCube( layerCalibration_.getPosition( min ), layerCalibration_.getPosition( min + size ), Color3f( 1.0, 0.0, 0.0 ) );
 
-		Cubei cube[2] = { Cubei::fromMinSize( Vector3i(0,0,0), Vector3i(4,1,1) ), Cubei::fromMinSize( Vector3i(5,5,5), Vector3i(4,1,1) ) };
+		Cubei cube[2] = { Cubei::fromMinSize( Vector3i(0,0,0), Vector3i(4,1,1) ), Cubei::fromMinSize( Vector3i(5,5,5), Vector3i(3,1,1) ) };
 
 		for( int i = 0 ; i < 2 ; ++i ) {
 			objects[i].bbSize = cube[i].getSize();
@@ -406,7 +407,7 @@ private:
 		Vector2i size( previewSize, previewSize );
 		
 		for( int i = 0 ; i < results.size() ; ++i, topLeft.Y() += previewSize + 10 ) {
-			CandidateObject &object = objects[ results[i].first ];
+			CandidateObject &object = objects[ results[i].id ];
 
 			renderContext_->SetViewport( Rectangle<int>( topLeft, size ) );
 			renderContext_->ClearRenderTarget( Render::RenderTargetClearFlags::Depth_Buffer );
@@ -443,6 +444,10 @@ private:
 
 		for( int i = 0 ; i < 2 ; i++ ) {
 			Draw( volume[i] );
+		}
+
+		if( showMatchedProbes ) {
+			renderSystem_->DebugDrawLines( matchedProbes_.GetLineSegments() );
 		}
 
 		DrawPreview();
@@ -490,7 +495,8 @@ private:
 		ui_->addVarCB("Size target", TW_TYPE_VECTOR3I, sizeCallback_ );
 
 		showProbes = false;
-		ui_->addVarRW( "Show probe positions", showProbes );
+		ui_->addVarRW( "Show probes ", showProbes );
+		ui_->addVarRW( "Show matched probes ", showMatchedProbes );
 
 		findCandidatesCallback_.callback = std::bind(&SampleApplication::Do_findCandidates, this);
 		ui_->addButton("Find candidates", findCandidatesCallback_ );
@@ -530,12 +536,21 @@ private:
 		probeCrosses_ = dru.GetLineSegments();
 	}
 
+	void CreatedMatchedProbes(int index) {
+		matchedProbes_.Clear();
+
+		for( int i = 0 ; i < results[index].positions.size() ; ++i ) {
+			const Vector3f position = layerCalibration_.getPosition( probes_->getPosition( results[index].positions[i] ) );
+			matchedProbes_.AddSphere( position, 0.05, Color3f( 1.0, 1.0, 0.0 ));
+		}
+	}
+
 	void Do_findCandidates() {
 		results = findCandidates( *probes_, database, targetCube_ );
 
 		candidateResultsUI_->clear();
 		for( auto it = results.cbegin() ; it != results.cend() ; ++it ) {
-			candidateResultsUI_->addVarRO( AntTWBarGroup::format( "Candidate %i", it->first ), it->second );
+			candidateResultsUI_->addVarRO( AntTWBarGroup::format( "Candidate %i", it->id ), it->score );
 		}
 	}
 
@@ -562,14 +577,14 @@ private:
 
 	ProbeDatabase database;
 
-	ProbeDatabase::WeightedCandidateIdVector results;
+	ProbeDatabase::WeightedCandidateInfoVector results;
 
 	// render objects
 	DebugRenderObject probeVolume;
 	DebugRenderObject volume[2];
 
 	DebugRenderObject probeCrosses_;
-	DebugRenderObject matchedProbes_;
+	Render::DebugRenderUtility matchedProbes_;
 
 	// ui callbacks
 	AntTWBarGroup::ButtonCallback findCandidatesCallback_;

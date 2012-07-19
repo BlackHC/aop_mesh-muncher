@@ -19,7 +19,7 @@ ADD_EXECUTABLE(volumePlacerUI
 	objModel.h
 	anttwbargroup.cpp
 	anttwbargroup.h
-	../volumePlacer/volumePlacer.h
+	volumePlacer.h
 	../calibrateVolumeBB/volumeCalibration.h 
 	../densityPyramid/memoryBlockStorage.h
 	../densityPyramid/findDistances.cpp 

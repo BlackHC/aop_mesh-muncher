@@ -150,7 +150,7 @@ namespace AntTWBarGroupTypes {
 		}
 
 		TwType define() {
-			return TwDefineStruct( name, &members.front(), members.size(), sizeof( S ), &SummaryCallback, /*(void*) this*/ nullptr);
+			return TwDefineStruct( name, &members.front(), (uint) members.size(), sizeof( S ), &SummaryCallback, /*(void*) this*/ nullptr);
 		}
 
 		static void TW_CALL SummaryCallback(char *summaryString, size_t summaryMaxLength, const void *value, void *clientData) {
