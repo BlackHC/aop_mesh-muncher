@@ -145,7 +145,7 @@ struct UIButton : public UIElement {
 	} state;
 
 	Rectangle<int> area;
-	std::function<void ()> onAction;
+	std::function<void ()> onAction, onFocus, onUnfocus;	
 	
 	bool IsVisible() const {
 		return visible_;
@@ -179,7 +179,7 @@ private:
 				state = STATE_MOUSE_OVER;
 			}
 			else {
-				state = STATE_ACTIVE;
+				SetActive( false );
 			}
 			break;
 		}
@@ -189,10 +189,14 @@ private:
 
 	void Focus() {
 		state = STATE_ACTIVE;
+		if( onFocus )
+			onFocus();
 	}
 
 	void Unfocus() {
 		state = STATE_INACTIVE;
+		if( onUnfocus )
+			onUnfocus();
 	}
 
 	bool MouseClickImpl( const class MouseClickEvent& event ) {
@@ -325,7 +329,8 @@ private:
 		for( int i = 0 ; i < 2 ; i++ ) {
 			manager.elements.push_back( &uiButtons[i] );
 			uiButtons[i].SetVisible( false );
-			uiButtons[i].onAction = [=] () { CreatedMatchedProbes(i); };
+			uiButtons[i].onFocus = [=] () { activeProbe = i; };
+			uiButtons[i].onUnfocus = [=] () { activeProbe = -1; };
 		}
 
 		eventForwarder_.Prepend( &manager );
@@ -345,7 +350,9 @@ private:
 
 		previewTransformation_.view = CreateViewLookAtRH( Vector3f( 0.0, 0.0, -2.0 ), Vector3f::CreateZero(), Vector3f::CreateUnit(1) );
 
-		InitUI();		
+		InitUI();	
+
+		activeProbe = -1;
 
 		InitVolume();
 
@@ -380,6 +387,8 @@ private:
 		}
 
 		camera_->SetMoveSpeedMultiplier( 0.5 );
+
+		readState();
 	}
 
 	void ShutdownImpl() {
@@ -421,8 +430,7 @@ private:
 			button.area = Rectangle<int>(topLeft, size);
 			button.SetVisible( true );
 		}
-
-		
+				
 		renderContext_->SetViewport( Rectangle<int>( Vector2i::CreateZero(), Vector2i( renderWindow_->GetWidth(), renderWindow_->GetHeight() ) ) );
 	}
 
@@ -446,8 +454,8 @@ private:
 			Draw( volume[i] );
 		}
 
-		if( showMatchedProbes ) {
-			renderSystem_->DebugDrawLines( matchedProbes_.GetLineSegments() );
+		if( showMatchedProbes && activeProbe != -1 ) {
+			renderSystem_->DebugDrawLines( matchedProbes_[activeProbe].GetLineSegments() );
 		}
 
 		DrawPreview();
@@ -501,6 +509,9 @@ private:
 		findCandidatesCallback_.callback = std::bind(&SampleApplication::Do_findCandidates, this);
 		ui_->addButton("Find candidates", findCandidatesCallback_ );
 
+		writeStateCallback_.callback = std::bind(&SampleApplication::writeState, this);
+		ui_->addButton("Write state", writeStateCallback_ );
+
 		candidateResultsUI_ = std::unique_ptr<AntTWBarGroup>( new AntTWBarGroup( "Candidates", ui_.get() ) );
 	}
 
@@ -537,11 +548,11 @@ private:
 	}
 
 	void CreatedMatchedProbes(int index) {
-		matchedProbes_.Clear();
+		matchedProbes_[index].Clear();
 
 		for( int i = 0 ; i < results[index].positions.size() ; ++i ) {
 			const Vector3f position = layerCalibration_.getPosition( probes_->getPosition( results[index].positions[i] ) );
-			matchedProbes_.AddSphere( position, 0.05, Color3f( 1.0, 1.0, 0.0 ));
+			matchedProbes_[index].AddSphere( position, 0.05, Color3f( 1.0, 1.0, 0.0 ));
 		}
 	}
 
@@ -549,9 +560,44 @@ private:
 		results = findCandidates( *probes_, database, targetCube_ );
 
 		candidateResultsUI_->clear();
-		for( auto it = results.cbegin() ; it != results.cend() ; ++it ) {
-			candidateResultsUI_->addVarRO( AntTWBarGroup::format( "Candidate %i", it->id ), it->score );
+		for( int i = 0 ; i < results.size() ; ++i ) {
+			const ProbeDatabase::CandidateInfo &info = results[i];
+			candidateResultsUI_->addVarRO( AntTWBarGroup::format( "Candidate %i", info.id ), info.score );
+
+			CreatedMatchedProbes(i);
 		}
+	}
+
+	void writeState() {
+		using namespace Serialize;
+
+		FILE *file = fopen( "state", "wb" );
+		writeTyped( file, targetCube_ );
+		writeTyped( file, showProbes );
+		writeTyped( file, showMatchedProbes );
+		writeTyped( file, camera_->GetPosition() );
+		writeTyped( file, camera_->GetViewDirection() );
+		fclose( file );
+	}
+
+	void readState() {
+		using namespace Serialize;
+
+		FILE *file = fopen( "state", "rb" );
+
+		if( !file ) {
+			return;
+		}
+
+		readTyped( file, targetCube_ );
+		readTyped( file, showProbes );
+		readTyped( file, showMatchedProbes );
+
+		Vector3f position, viewDirection;
+		readTyped( file, position );
+		readTyped( file, viewDirection );
+
+		camera_->SetViewLookAt( position, position + viewDirection, Vector3f::CreateUnit(1) );
 	}
 
 private:
@@ -584,10 +630,10 @@ private:
 	DebugRenderObject volume[2];
 
 	DebugRenderObject probeCrosses_;
-	Render::DebugRenderUtility matchedProbes_;
+	Render::DebugRenderUtility matchedProbes_[2];
 
 	// ui callbacks
-	AntTWBarGroup::ButtonCallback findCandidatesCallback_;
+	AntTWBarGroup::ButtonCallback findCandidatesCallback_, writeStateCallback_;
 	AntTWBarGroup::VariableCallback<Vector3i> minCallback_, sizeCallback_;
 
 	// ui fields
@@ -596,6 +642,7 @@ private:
 
 	CandidateObject objects[2];
 
+	int activeProbe;
 	UIButton uiButtons[2];
 	UIManager manager;
 

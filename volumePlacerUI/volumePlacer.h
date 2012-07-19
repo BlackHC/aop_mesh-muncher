@@ -127,6 +127,18 @@ Vector3f UnorderedDistanceContext::directions[UnorderedDistanceContext::numSampl
 typedef UnorderedDistanceContext Probe;
 typedef std::vector<Probe> ProbeVector;
 
+namespace Serialize {
+	template<typename T>
+	void writeTyped( FILE *fileHandle, const T &d ) {
+		fwrite( &d, sizeof(T), 1, fileHandle );
+	}
+
+	template<typename T>
+	void readTyped( FILE *fileHandle, T &d ) {
+		fread( &d, sizeof(T), 1, fileHandle );
+	}
+}
+
 template< typename Data >
 struct DataVolume {
 	typedef Cubei VolumeCube;
@@ -215,6 +227,8 @@ struct DataVolume {
 	}
 
 	void writeToFile( const char *file ) {
+		using namespace Serialize;
+
 		FILE *fileHandle = fopen( file, "wb" );
 		writeTyped( fileHandle, min );
 		writeTyped( fileHandle, size );
@@ -226,6 +240,8 @@ struct DataVolume {
 	}
 
 	bool readFromFile( const char *file ) {
+		using namespace Serialize;
+
 		FILE *fileHandle = fopen( file, "rb" );
 		if( !fileHandle ) {
 			std::cerr << "'" << file << "' could not be opened!\n";
@@ -251,17 +267,6 @@ struct DataVolume {
 
 		fclose( fileHandle );
 		return true;
-	}
-
-private:
-	template<typename T>
-	static void writeTyped( FILE *fileHandle, const T &d ) {
-		fwrite( &d, sizeof(T), 1, fileHandle );
-	}
-
-	template<typename T>
-	static void readTyped( FILE *fileHandle, T &d ) {
-		fread( &d, sizeof(T), 1, fileHandle );
 	}
 };
 
