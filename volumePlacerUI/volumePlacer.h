@@ -287,72 +287,82 @@ struct ProbeDatabase {
 		probeIdMap.push_back( std::make_pair( probe, id ) );
 	}
 
-	typedef std::vector<std::vector<Probes::IndexVector>> CandidateProbes;
+	struct CandidateData {
+		// for the score
+		int totalMatchCount;
+		int maxSingleMatchCount;
 
-	void initCandidateProbes( CandidateProbes &candidateProbes ) const {
-		candidateProbes.resize( maxId + 1 );
-	}
+		std::vector< std::pair<Probes::IndexVector, int> > matches;
 
-	void processProbe( const Probes::IndexVector &position, const Probe &probe, CandidateProbes &candidateProbes ) const {
-		for( auto it = probeIdMap.cbegin() ; it != probeIdMap.cend() ; ++it ) {
-			if( Probe::compare( it->first, probe ) <= PROBE_MAX_DELTA ) {
-				candidateProbes[it->second].push_back( position );
+		CandidateData() : totalMatchCount(0), maxSingleMatchCount(0) {}
+	};
+
+	typedef std::vector<CandidateData> Candidates;
+
+	struct CandidateInfo {
+		int id;
+		float score;
+		int maxSingleMatchCount;
+		std::vector< std::pair<Probes::IndexVector, int> > matches;
+	};
+
+	typedef std::vector<CandidateInfo> WeightedCandidateInfoVector;
+
+	WeightedCandidateInfoVector findCandidates( const Probes &probes, const Probes::VolumeCube &targetVolume ) {
+		Candidates candidates;
+		candidates.resize( maxId + 1 );
+
+		for( Iterator3D targetIterator = probes.getIteratorFromVolume( targetVolume ) ; !targetIterator.IsAtEnd() ; ++targetIterator ) {
+			if( probes.validIndex( targetIterator ) ) {
+				const Probe &probe = probes[ targetIterator ];
+				std::vector<int> matchCounts( maxId + 1 );
+
+				for( auto refIterator = probeIdMap.cbegin() ; refIterator != probeIdMap.cend() ; ++refIterator ) {
+					if( Probe::compare( refIterator->first, probe ) <= PROBE_MAX_DELTA ) {
+						++matchCounts[refIterator->second];
+					}
+				}				
+
+				for( int i = 0 ; i < maxId + 1 ; ++i ) {
+					if( matchCounts[i] == 0 ) {
+						continue;
+					}
+					
+					candidates[i].totalMatchCount += matchCounts[i];
+					candidates[i].matches.push_back( std::make_pair( targetIterator.ToVector(), matchCounts[i] ) );
+					candidates[i].maxSingleMatchCount = std::max( candidates[i].maxSingleMatchCount, matchCounts[i] );
+				}
 			}
 		}
+
+		WeightedCandidateInfoVector weightedCandidateInfos;
+		for( int id = 0 ; id < maxId + 1 ; ++id ) {
+			size_t matchCount = candidates[id].totalMatchCount;
+			if( matchCount > 0 ) {
+				float score = float(matchCount) / getProbeCountPerInstanceForId(id);
+
+				CandidateInfo info;
+				info.id = id;
+				info.score = score;
+				info.matches.swap( candidates[id].matches );
+				info.maxSingleMatchCount = candidates[id].maxSingleMatchCount;
+				weightedCandidateInfos.push_back( info );
+			}
+		}
+
+		std::sort( weightedCandidateInfos.begin(), weightedCandidateInfos.end(), []( const ProbeDatabase::CandidateInfo &a, const ProbeDatabase::CandidateInfo &b ) { return a.score > b.score; } );
+
+		return weightedCandidateInfos;
 	}
 
 	int getProbeCountPerInstanceForId( int id ) const {
 		return probeCountPerIdInstance[id];
 	}
 
-	struct CandidateInfo {
-		int id;
-		float score;
-		std::vector< Probes::IndexVector > positions;
-	};
-
-	typedef std::vector<CandidateInfo> WeightedCandidateInfoVector;
-
-	// destroys candidateProbes in the process!
-	WeightedCandidateInfoVector condenseCandidateProbes( CandidateProbes &candidateProbes ) const {
-		WeightedCandidateInfoVector candidates;
-
-		for( int id = 0 ; id <= maxId ; ++id ) {
-			size_t matchCount = candidateProbes[id].size();
-			if( matchCount > 0 ) {
-				float score = float(matchCount) / getProbeCountPerInstanceForId(id);
-				
-				CandidateInfo info;
-				info.id = id;
-				info.score = score;
-				info.positions.swap( candidateProbes[id] );
-				candidates.push_back( info );
-			}
-		}
-
-		return candidates;
-	}
-
+	// probe->id
 	std::vector<std::pair<Probe, int>> probeIdMap;
 	std::vector<int> probeCountPerIdInstance;
 };
-
-ProbeDatabase::WeightedCandidateInfoVector findCandidates( const Probes &probes, const ProbeDatabase &probeDatabase, const Probes::VolumeCube &targetVolume ) {
-	ProbeDatabase::CandidateProbes candidateProbes;
-	probeDatabase.initCandidateProbes( candidateProbes );
-
-	for( Iterator3D it = probes.getIteratorFromVolume( targetVolume ) ; !it.IsAtEnd() ; ++it ) {
-		if( probes.validIndex( it ) ) {
-			probeDatabase.processProbe( it.ToVector(), probes[ it ], candidateProbes );
-		}
-	}
-
-	ProbeDatabase::WeightedCandidateInfoVector weightedCandidateInfos = probeDatabase.condenseCandidateProbes( candidateProbes );
-	
-	std::sort( weightedCandidateInfos.begin(), weightedCandidateInfos.end(), []( const ProbeDatabase::CandidateInfo &a, const ProbeDatabase::CandidateInfo &b ) { return a.score > b.score; } );
-
-	return weightedCandidateInfos;
-}
 
 void sampleProbes( DenseCache &cache, Probes &probes ) {
 	for( Iterator3D it = probes.getIterator() ; !it.IsAtEnd() ; ++it ) {

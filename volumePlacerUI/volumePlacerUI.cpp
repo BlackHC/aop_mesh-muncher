@@ -330,7 +330,7 @@ private:
 			manager.elements.push_back( &uiButtons[i] );
 			uiButtons[i].SetVisible( false );
 			uiButtons[i].onFocus = [=] () { activeProbe = i; };
-			uiButtons[i].onUnfocus = [=] () { activeProbe = -1; };
+			uiButtons[i].onUnfocus = [=] () { if( !dontUnfocus ) activeProbe = -1; };
 		}
 
 		eventForwarder_.Prepend( &manager );
@@ -431,7 +431,7 @@ private:
 			button.SetVisible( true );
 		}
 				
-		renderContext_->SetViewport( Rectangle<int>( Vector2i::CreateZero(), Vector2i( renderWindow_->GetWidth(), renderWindow_->GetHeight() ) ) );
+		renderContext_->SetViewport( renderWindow_->GetViewport() );
 	}
 
 	void DrawImpl ()
@@ -505,6 +505,7 @@ private:
 		showProbes = false;
 		ui_->addVarRW( "Show probes ", showProbes );
 		ui_->addVarRW( "Show matched probes ", showMatchedProbes );
+		ui_->addVarRW( "Fix selection", dontUnfocus );
 
 		findCandidatesCallback_.callback = std::bind(&SampleApplication::Do_findCandidates, this);
 		ui_->addButton("Find candidates", findCandidatesCallback_ );
@@ -541,7 +542,7 @@ private:
 				const float distance = probe.distances[i];
 
 				const Vector3f &vector = direction * (1.0 - distance / MAX_DISTANCE);
-				dru.AddLine( probePosition, probePosition + vector * visSize, Color3f( 0.0, Length(vector), 0.0 ) );
+				dru.AddLine( probePosition, probePosition + vector * visSize, Color3f( 0.0, 0.0, Length(vector) ) );
 			}			
 		}
 		probeCrosses_ = dru.GetLineSegments();
@@ -550,14 +551,14 @@ private:
 	void CreatedMatchedProbes(int index) {
 		matchedProbes_[index].Clear();
 
-		for( int i = 0 ; i < results[index].positions.size() ; ++i ) {
-			const Vector3f position = layerCalibration_.getPosition( probes_->getPosition( results[index].positions[i] ) );
-			matchedProbes_[index].AddSphere( position, 0.05, Color3f( 1.0, 1.0, 0.0 ));
+		for( int i = 0 ; i < results[index].matches.size() ; ++i ) {
+			const Vector3f position = layerCalibration_.getPosition( probes_->getPosition( results[index].matches[i].first ) );
+			matchedProbes_[index].AddSphere( position, 0.05, Color3f( 1.0 - float(results[index].matches[i].second) / results[index].maxSingleMatchCount, 1.0, 0.0 ));
 		}
 	}
 
 	void Do_findCandidates() {
-		results = findCandidates( *probes_, database, targetCube_ );
+		results = database.findCandidates( *probes_, targetCube_ );
 
 		candidateResultsUI_->clear();
 		for( int i = 0 ; i < results.size() ; ++i ) {
@@ -575,6 +576,8 @@ private:
 		writeTyped( file, targetCube_ );
 		writeTyped( file, showProbes );
 		writeTyped( file, showMatchedProbes );
+		writeTyped( file, dontUnfocus );
+
 		writeTyped( file, camera_->GetPosition() );
 		writeTyped( file, camera_->GetViewDirection() );
 		fclose( file );
@@ -590,8 +593,9 @@ private:
 		}
 
 		readTyped( file, targetCube_ );
-		readTyped( file, showProbes );
+		readTyped( file, showProbes );		
 		readTyped( file, showMatchedProbes );
+		readTyped( file, dontUnfocus );
 
 		Vector3f position, viewDirection;
 		readTyped( file, position );
@@ -639,6 +643,7 @@ private:
 	// ui fields
 	bool showProbes;
 	bool showMatchedProbes;
+	bool dontUnfocus;
 
 	CandidateObject objects[2];
 
