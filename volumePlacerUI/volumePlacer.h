@@ -16,6 +16,7 @@
 #include "niven.Core.Geometry.Ray.h"
 
 #include <iostream>
+#include <utility>
 
 #include "findDistances.h"
 
@@ -67,10 +68,25 @@ struct RayQuery {
 };
 
 // TODO: refactor from DataVolume
-/*
-struct UniformGridCoordinates {
-	
-};*/
+struct GridCoordinateMap {
+	typedef Vector3i Vector;
+	typedef Vector3i GridVector;
+
+	int step;
+	Vector min;
+		
+	Vector getPosition( const GridVector &index ) const {
+		return index * step + min;
+	}
+
+	GridVector getFloorIndex( const Vector &position ) const {
+		return (position - min) / step;
+	}
+
+	GridVector getCeilIndex( const Vector &position ) const {
+		return (position + Vector3i::Constant( step - 1 ) - min) / step;
+	}
+};
 
 const float MAX_DISTANCE = 128.0f;
 
@@ -90,7 +106,7 @@ struct UnorderedDistanceContext {
 		for( int index = 0 ; index < numSamples ; ++index ) {
 			RayQuery query( volumePosition.Cast<float>(), directions[index] );
 
-			distances[index] = sortedDistances[index] = std::min( MAX_DISTANCE, Math::Sqrt<float>( findSquaredDistanceToNearestConditionedVoxel( cache, volumePosition, query ) ) );
+			distances[index] = sortedDistances[index] = Math::Sqrt<float>( findSquaredDistanceToNearestConditionedVoxel( cache, volumePosition, query ) );
 		}
 		std::sort( sortedDistances, sortedDistances + numSamples );
 	}
@@ -111,11 +127,11 @@ struct UnorderedDistanceContext {
 		}
 	}
 
-	static double compare( const UnorderedDistanceContext &a, const UnorderedDistanceContext &b ) {
+	static double compare( const UnorderedDistanceContext &a, const UnorderedDistanceContext &b, const float maxDistance ) {
 		// use L2 norm because it accentuates big differences better than L1
 		double norm = 0.;
 		for( int index = 0 ; index < numSamples ; ++index ) {
-			double delta = a.sortedDistances[index] - b.sortedDistances[index];
+			double delta = std::min( maxDistance, a.sortedDistances[index] ) - std::min( b.sortedDistances[index], maxDistance );
 			norm = std::max( norm, Math::Abs(delta) );
 		}
 		return norm;
@@ -276,83 +292,78 @@ const float PROBE_MAX_DELTA = 16;
 
 // TODO: add weighted probes (probe weighted by inverse instance volume to be scale-invariant (more or less))
 struct ProbeDatabase {
-	int maxId;
+	int numIds;
 
-	ProbeDatabase() : maxId( 0 ) {}
+	ProbeDatabase() : numIds( 0 ) {}
 
 	void addProbe( const Probe &probe, int id ) {
-		maxId = std::max( id, maxId );
-		probeCountPerIdInstance.resize( maxId + 1 );
+		numIds = std::max( id + 1, numIds );
+		probeCountPerIdInstance.resize( numIds );
 
 		probeIdMap.push_back( std::make_pair( probe, id ) );
 	}
 
-	struct CandidateData {
+	struct CandidateInfo {
+		float score;
+
 		// for the score
 		int totalMatchCount;
 		int maxSingleMatchCount;
 
 		std::vector< std::pair<Probes::IndexVector, int> > matches;
 
-		CandidateData() : totalMatchCount(0), maxSingleMatchCount(0) {}
+		CandidateInfo() : totalMatchCount(0), maxSingleMatchCount(0), score(0) {}
 	};
 
-	typedef std::vector<CandidateData> Candidates;
+	typedef std::vector<CandidateInfo> CandidateInfos;
+	typedef std::vector< std::pair<int, CandidateInfo > > SparseCandidateInfos;
 
-	struct CandidateInfo {
-		int id;
-		float score;
-		int maxSingleMatchCount;
-		std::vector< std::pair<Probes::IndexVector, int> > matches;
-	};
-
-	typedef std::vector<CandidateInfo> WeightedCandidateInfoVector;
-
-	WeightedCandidateInfoVector findCandidates( const Probes &probes, const Probes::VolumeCube &targetVolume ) {
-		Candidates candidates;
-		candidates.resize( maxId + 1 );
+	SparseCandidateInfos findCandidates( const Probes &probes, const Probes::VolumeCube &targetVolume, float maxDistance ) {
+		CandidateInfos candidateInfos( numIds );
 
 		for( Iterator3D targetIterator = probes.getIteratorFromVolume( targetVolume ) ; !targetIterator.IsAtEnd() ; ++targetIterator ) {
 			if( probes.validIndex( targetIterator ) ) {
 				const Probe &probe = probes[ targetIterator ];
-				std::vector<int> matchCounts( maxId + 1 );
+				std::vector<int> matchCounts( numIds );
 
 				for( auto refIterator = probeIdMap.cbegin() ; refIterator != probeIdMap.cend() ; ++refIterator ) {
-					if( Probe::compare( refIterator->first, probe ) <= PROBE_MAX_DELTA ) {
+					if( Probe::compare( refIterator->first, probe, maxDistance ) <= PROBE_MAX_DELTA ) {
 						++matchCounts[refIterator->second];
 					}
 				}				
 
-				for( int i = 0 ; i < maxId + 1 ; ++i ) {
-					if( matchCounts[i] == 0 ) {
+				for( int id = 0 ; id < numIds ; ++id ) {
+					const int matchCount = matchCounts[id];
+					if( matchCount == 0 ) {
 						continue;
 					}
 					
-					candidates[i].totalMatchCount += matchCounts[i];
-					candidates[i].matches.push_back( std::make_pair( targetIterator.ToVector(), matchCounts[i] ) );
-					candidates[i].maxSingleMatchCount = std::max( candidates[i].maxSingleMatchCount, matchCounts[i] );
+					CandidateInfo &candidateInfo = candidateInfos[id];
+					candidateInfo.totalMatchCount += matchCount;
+					candidateInfo.matches.push_back( std::make_pair( targetIterator.ToVector(), matchCount ) );
+					candidateInfo.maxSingleMatchCount = std::max( candidateInfo.maxSingleMatchCount, matchCount );
 				}
 			}
 		}
 
-		WeightedCandidateInfoVector weightedCandidateInfos;
-		for( int id = 0 ; id < maxId + 1 ; ++id ) {
-			size_t matchCount = candidates[id].totalMatchCount;
-			if( matchCount > 0 ) {
-				float score = float(matchCount) / getProbeCountPerInstanceForId(id);
+		SparseCandidateInfos results;
+		for( int id = 0 ; id < numIds ; ++id ) {
+			CandidateInfo &candidateInfo = candidateInfos[id];
 
-				CandidateInfo info;
-				info.id = id;
-				info.score = score;
-				info.matches.swap( candidates[id].matches );
-				info.maxSingleMatchCount = candidates[id].maxSingleMatchCount;
-				weightedCandidateInfos.push_back( info );
+			size_t matchCount = candidateInfo.totalMatchCount;
+			if( matchCount > 0 ) {
+				candidateInfo.score = float(matchCount) / getProbeCountPerInstanceForId(id);
+
+				typedef decltype(candidateInfo.matches[0]) value_type;
+				std::sort( candidateInfo.matches.begin(), candidateInfo.matches.end(), [](const value_type &a, const value_type b) { return a.second > b.second; } );
+
+				results.push_back( std::make_pair( id, std::move( candidateInfo ) ) );
 			}
 		}
 
-		std::sort( weightedCandidateInfos.begin(), weightedCandidateInfos.end(), []( const ProbeDatabase::CandidateInfo &a, const ProbeDatabase::CandidateInfo &b ) { return a.score > b.score; } );
+		std::sort( results.begin(), results.end(), []( const ProbeDatabase::SparseCandidateInfos::value_type &a, const ProbeDatabase::SparseCandidateInfos::value_type &b ) { return a.second.score > b.second.score; } );
 
-		return weightedCandidateInfos;
+		return results;
 	}
 
 	int getProbeCountPerInstanceForId( int id ) const {
@@ -389,9 +400,9 @@ void addObjectInstanceToDatabase( Probes &probes, ProbeDatabase &database, const
 	database.probeCountPerIdInstance[id] = count;
 }
 
-void printCandidates( std::ostream &out, const ProbeDatabase::WeightedCandidateInfoVector &candidates ) {
+void printCandidates( std::ostream &out, const ProbeDatabase::SparseCandidateInfos &candidates ) {
 	out << candidates.size() << " candidates\n";
 	for( int i = 0 ; i < candidates.size() ; ++i ) {
-		out << "Weight: " << candidates[i].score << "\t\tId: " << candidates[i].id << "\n";
+		out << "Weight: " << candidates[i].second.score << "\t\tId: " << candidates[i].first << "\n";
 	}
 }

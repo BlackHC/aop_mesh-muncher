@@ -10,7 +10,6 @@
 #include <niven.Volume.Volume.h>
 
 #include <niven.Engine.BaseApplication3D.h>
-#include <niven.Engine.Event.KeyboardEvent.h>
 #include <niven.Engine.DebugRenderUtility.h>
 
 #include <niven.Render.EffectLoader.h>
@@ -35,6 +34,8 @@
 #include <iostream>
 
 #include "volumePlacer.h"
+
+#include "ui.h"
 
 #if defined(NIV_DEBUG) && defined(NIV_OS_WINDOWS)
 #define StartMemoryDebugging() \
@@ -82,229 +83,7 @@ struct CandidateObject {
 	Vector3f bbSize;
 };
 
-struct UIElement {
-	virtual void Draw( Draw2D *draw2D ) {}
 
-	bool MouseMove( const class MouseMoveEvent& event ) {
-		bool inArea = IsInArea( event.GetPosition() );
-		if( inArea || IsActive() ) {
-			return MouseMoveImpl( event, inArea );
-		}
-		else {
-			return false;
-		}		
-	}
-
-	bool MouseClick( const class MouseClickEvent& event ) {
-		if( !IsActive() ) {
-			return false;
-		}
-
-		return MouseClickImpl( event );
-	}
-
-	bool IsActive() const {
-		return active_;
-	}
-
-	void SetActive( bool active ) {
-		if( active_ != active ) {
-			active_ = active;		
-			if( active_ ) {
-				Focus();
-			}
-			else {
-				Unfocus();
-			}
-		}		
-	}
-	
-private:
-	bool active_;
-	
-	virtual bool IsInArea( const Vector2i &position ) = 0;
-
-	virtual void Unfocus() {}
-	virtual void Focus() {}
-
-	virtual bool MouseMoveImpl( const class MouseMoveEvent& event, bool inArea ) {
-		return false;
-	}
-
-	virtual bool MouseClickImpl( const class MouseClickEvent& event ) {
-		return false;
-	}
-};
-
-struct UIButton : public UIElement {
-	enum State {
-		STATE_INACTIVE,
-		STATE_ACTIVE,
-		STATE_MOUSE_OVER,
-		STATE_CLICKED
-	} state;
-
-	Rectangle<int> area;
-	std::function<void ()> onAction, onFocus, onUnfocus;	
-	
-	bool IsVisible() const {
-		return visible_;
-	}
-
-	void SetVisible( bool visible ) {
-		if( !visible ) {
-			SetActive( false );
-			state = STATE_INACTIVE;
-		}
-		visible_ = visible;
-	}
-
-protected:
-	bool visible_;
-
-private:
-	bool IsInArea( const Vector2i &position ) {
-		return visible_ && area.Contains( position );
-	}
-
-	bool MouseMoveImpl( const class MouseMoveEvent& event, bool inArea ) {
-		switch( state ) {
-		case STATE_CLICKED:
-			return true;
-		case STATE_INACTIVE:
-		case STATE_ACTIVE:
-		case STATE_MOUSE_OVER:
-			SetActive( true );
-			if( inArea ) {
-				state = STATE_MOUSE_OVER;
-			}
-			else {
-				SetActive( false );
-			}
-			break;
-		}
-
-		return inArea;
-	}
-
-	void Focus() {
-		state = STATE_ACTIVE;
-		if( onFocus )
-			onFocus();
-	}
-
-	void Unfocus() {
-		state = STATE_INACTIVE;
-		if( onUnfocus )
-			onUnfocus();
-	}
-
-	bool MouseClickImpl( const class MouseClickEvent& event ) {
-		bool inArea = IsInArea( event.GetPosition() );
-		if( !inArea ) {
-			return false;
-		}
-
-		if( event.GetButton() == MouseButton::Left ) {			
-			if( event.IsPressed() ) { 
-				state = STATE_CLICKED;
-				if( onAction ) {
-					onAction();
-				}
-			}
-			if( event.IsReleased() ) {
-				state = inArea ? STATE_MOUSE_OVER : STATE_ACTIVE;
-			}
-		}
-		return true;
-	}
-
-	void Draw( Draw2D *draw2D ) {
-		if( !visible_ ) {
-			return;
-		}
-
-		Draw2DRectangle *rect = nullptr;
-		
-		switch( state ) {
-		case STATE_ACTIVE:
-			rect = draw2D->CreateRectangle( Color4f::Constant(0), draw2D->AbsoluteToRelative( area.GetLeft(), area.GetTop() ), Draw2DAnchor::Top_Left, area.GetSize(), Color4f( 0.5, 0.5, 0.5, 1.0 ) );
-			break;
-		case STATE_MOUSE_OVER:
-			rect = draw2D->CreateRectangle( Color4f::Constant(0), draw2D->AbsoluteToRelative( area.GetLeft(), area.GetTop() ), Draw2DAnchor::Top_Left, area.GetSize(), Color4f( 1.0, 1.0, 1.0, 1.0 ) );
-			break;
-		case STATE_CLICKED:
-			rect = draw2D->CreateRectangle( Color4f::Constant(0), draw2D->AbsoluteToRelative( area.GetLeft(), area.GetTop() ), Draw2DAnchor::Top_Left, area.GetSize(), Color4f( 1.0, 0.0, 0.0, 1.0 ) );
-			break;
-		}
-
-		if( rect ) {
-			draw2D->Draw( rect );
-			draw2D->Release( rect );
-		}
-	}
-};
-
-struct UIManager : public IEventHandler {
-	std::vector<UIElement*> elements;
-	Draw2D *draw2D;
-	IRenderWindow *renderWindow_;
-	UIElement *active;
-
-	void Init( Render::IRenderSystem *renderSystem, Render::IRenderContext *renderContext, Render::IRenderWindow *renderWindow ) {
-		draw2D = new Draw2D( renderSystem, renderContext );
-		draw2D->SetWindowSize( renderWindow->GetWidth(), renderWindow->GetHeight() );
-		renderWindow_ = renderWindow;
-		active = nullptr;
-	}
-
-	bool OnMouseClickImpl( const class MouseClickEvent& event ) 
-	{
-		if( renderWindow_->IsCursorCaptured() ){
-			return false;
-		}
-
-		for( int i = 0 ; i < elements.size() ; ++i ) {
-			if( elements[i]->MouseClick( event ) ) {
-				return true;
-			}
-		}
-		return false;
-	}
-
-	bool OnMouseMoveImpl( const class MouseMoveEvent& event ) 
-	{
-		if( renderWindow_->IsCursorCaptured() ){
-			return false;
-		}
-
-		for( int i = 0 ; i < elements.size() ; ++i ) {
-			if( elements[i]->MouseMove( event ) ) {
-				if( elements[i]->IsActive() ) {
-					if( active != elements[i] && active ) {
-						active->SetActive( false );
-					}
-					active = elements[i];
-				}
-				return true;
-			}
-		}
-		return false;
-	}
-
-	bool OnRenderWindowResizedImpl( const class RenderWindowResizedEvent& event ) 
-	{
-		draw2D->SetWindowSize( event.GetWidth(), event.GetHeight() );
-
-		return false;
-	}
-
-	void Draw() {
-		for( int i = 0 ; i < elements.size() ; ++i ) {
-			elements[i]->Draw( draw2D );
-		}
-	}
-};
 
 /////////////////////////////////////////////////////////////////////////////
 class SampleApplication : public BaseApplication3D, IEventHandler
@@ -320,6 +99,8 @@ private:
 	void InitImpl ()
 	{
 		Super::InitImpl ();
+
+		maxDistance = 128.0;
 
 		//FixRDPMouseInput();
 		InitAntTweakBar();
@@ -416,7 +197,7 @@ private:
 		Vector2i size( previewSize, previewSize );
 		
 		for( int i = 0 ; i < results.size() ; ++i, topLeft.Y() += previewSize + 10 ) {
-			CandidateObject &object = objects[ results[i].id ];
+			CandidateObject &object = objects[ results[i].first ];
 
 			renderContext_->SetViewport( Rectangle<int>( topLeft, size ) );
 			renderContext_->ClearRenderTarget( Render::RenderTargetClearFlags::Depth_Buffer );
@@ -502,6 +283,8 @@ private:
 		sizeCallback_.setCallback = [&](const Vector3i &v) { targetCube_ = Cubei::fromMinSize( targetCube_.minCorner, v ); };
 		ui_->addVarCB("Size target", TW_TYPE_VECTOR3I, sizeCallback_ );
 
+		ui_->addVarRW( "Max probe distance", maxDistance, "min=0" );
+
 		showProbes = false;
 		ui_->addVarRW( "Show probes ", showProbes );
 		ui_->addVarRW( "Show matched probes ", showMatchedProbes );
@@ -551,19 +334,20 @@ private:
 	void CreatedMatchedProbes(int index) {
 		matchedProbes_[index].Clear();
 
-		for( int i = 0 ; i < results[index].matches.size() ; ++i ) {
-			const Vector3f position = layerCalibration_.getPosition( probes_->getPosition( results[index].matches[i].first ) );
-			matchedProbes_[index].AddSphere( position, 0.05, Color3f( 1.0 - float(results[index].matches[i].second) / results[index].maxSingleMatchCount, 1.0, 0.0 ));
+		const ProbeDatabase::CandidateInfo &info = results[index].second;
+		for( int i = 0 ; i < info.matches.size() ; ++i ) {
+			const Vector3f position = layerCalibration_.getPosition( probes_->getPosition( info.matches[i].first ) );
+			matchedProbes_[index].AddSphere( position, 0.05, Color3f( 1.0 - float(info.matches[i].second) / info.maxSingleMatchCount, 1.0, 0.0 ));
 		}
 	}
 
 	void Do_findCandidates() {
-		results = database.findCandidates( *probes_, targetCube_ );
+		results = database.findCandidates( *probes_, targetCube_, maxDistance );
 
 		candidateResultsUI_->clear();
 		for( int i = 0 ; i < results.size() ; ++i ) {
-			const ProbeDatabase::CandidateInfo &info = results[i];
-			candidateResultsUI_->addVarRO( AntTWBarGroup::format( "Candidate %i", info.id ), info.score );
+			const ProbeDatabase::CandidateInfo &info = results[i].second;
+			candidateResultsUI_->addVarRO( AntTWBarGroup::format( "Candidate %i", results[i].first ), info.score );
 
 			CreatedMatchedProbes(i);
 		}
@@ -627,7 +411,7 @@ private:
 
 	ProbeDatabase database;
 
-	ProbeDatabase::WeightedCandidateInfoVector results;
+	ProbeDatabase::SparseCandidateInfos results;
 
 	// render objects
 	DebugRenderObject probeVolume;
@@ -644,6 +428,8 @@ private:
 	bool showProbes;
 	bool showMatchedProbes;
 	bool dontUnfocus;
+
+	float maxDistance;
 
 	CandidateObject objects[2];
 
