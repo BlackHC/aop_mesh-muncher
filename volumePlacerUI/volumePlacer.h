@@ -66,6 +66,12 @@ struct RayQuery {
 	}
 };
 
+// TODO: refactor from DataVolume
+/*
+struct UniformGridCoordinates {
+	
+};*/
+
 const float MAX_DISTANCE = 128.0f;
 
 struct UnorderedDistanceContext {
@@ -80,11 +86,11 @@ struct UnorderedDistanceContext {
 		}
 	}
 
-	void fill( DenseCache &cache, const Vector3i &position ) {
+	void fill( DenseCache &cache, const Vector3i &volumePosition ) {
 		for( int index = 0 ; index < numSamples ; ++index ) {
-			RayQuery query( position.Cast<float>(), directions[index] );
+			RayQuery query( volumePosition.Cast<float>(), directions[index] );
 
-			distances[index] = sortedDistances[index] = std::min( MAX_DISTANCE, Math::Sqrt<float>( findSquaredDistanceToNearestConditionedVoxel( cache, position, query ) ) );
+			distances[index] = sortedDistances[index] = std::min( MAX_DISTANCE, Math::Sqrt<float>( findSquaredDistanceToNearestConditionedVoxel( cache, volumePosition, query ) ) );
 		}
 		std::sort( sortedDistances, sortedDistances + numSamples );
 	}
@@ -121,19 +127,23 @@ Vector3f UnorderedDistanceContext::directions[UnorderedDistanceContext::numSampl
 typedef UnorderedDistanceContext Probe;
 typedef std::vector<Probe> ProbeVector;
 
-
 template< typename Data >
 struct DataVolume {
-	Vector3i min, size;
+	typedef Cubei VolumeCube;
+	typedef Cubei IndexCube;
+	typedef Vector3i VolumeVector;
+	typedef Vector3i IndexVector;
+
+	VolumeVector min, size;
 	int step;
-	Vector3i probeDims;
+	IndexVector probeDims;
 	int probeCount;
 
 	MemoryLayout3D layout;
 
 	Data *data;
 
-	DataVolume( Vector3i min, Vector3i size, int step ) : min( min ), size( size ), step( step ), probeDims( (size + Vector3i::Constant(step-1)) / step ), probeCount( probeDims.X() * probeDims.Y() * probeDims.Z() ), layout( probeDims ) {
+	DataVolume( VolumeVector min, VolumeVector size, int step ) : min( min ), size( size ), step( step ), probeDims( (size + Vector3i::Constant(step)) / step ), probeCount( probeDims.X() * probeDims.Y() * probeDims.Z() ), layout( probeDims ) {
 		data = new Data[probeCount];
 	}
 
@@ -141,31 +151,36 @@ struct DataVolume {
 		delete[] data;
 	}
 	
-	Iterator3D getIterator() const { return Iterator3D(layout); }
-
-	Iterator3D getIteratorFromVolume( const Cubei &volume ) const {
-		const Vector3i minVolumeIndex = getCeilIndex( volume.minCorner );
-		const Vector3i maxVolumeIndex = getFloorIndex( volume.maxCorner );
-		return Iterator3D( minVolumeIndex, maxVolumeIndex - minVolumeIndex + Vector3i::Constant(1) );
+	IndexCube getIndexFromVolumeCube( const VolumeCube &volumeCube ) const {
+		const Vector3i minVolumeIndex = getCeilIndex( volumeCube.minCorner );
+		const Vector3i maxVolumeIndex = getFloorIndex( volumeCube.maxCorner );
+		return IndexCube( minVolumeIndex, maxVolumeIndex );
 	}
 
-	Cubei getVolumeFromIndexCube( const Cubei &indexCube ) const {
-		return Cubei( getPosition( indexCube.minCorner ), getPosition( indexCube.maxCorner ) );
+	VolumeCube getVolumeFromIndexCube( const IndexCube &indexCube ) const {
+		return VolumeCube( getPosition( indexCube.minCorner ), getPosition( indexCube.maxCorner ) );
 	} 
 
-	Vector3i getPosition( const Vector3i &index ) const {
+	Iterator3D getIterator() const { return Iterator3D(layout); }
+
+	Iterator3D getIteratorFromVolume( const VolumeCube &volume ) const {
+		const IndexCube	indexCube = getIndexFromVolumeCube( volume );
+		return Iterator3D( indexCube.minCorner, indexCube.getSize() + Vector3i::Constant(1) );
+	}
+	
+	VolumeVector getPosition( const IndexVector &index ) const {
 		return index * step + min;
 	}
 
-	Vector3i getPosition( const Iterator3D &it ) const {
+	VolumeVector getPosition( const Iterator3D &it ) const {
 		return getPosition( it.ToVector() );
 	}
 
-	Vector3i getFloorIndex( const Vector3i &position ) const {
+	IndexVector getFloorIndex( const VolumeVector &position ) const {
 		return (position - min) / step;
 	}
 
-	Vector3i getCeilIndex( const Vector3i &position ) const {
+	IndexVector getCeilIndex( const VolumeVector &position ) const {
 		return (position + Vector3i::Constant( step - 1 ) - min) / step;
 	}
 
@@ -204,6 +219,7 @@ struct DataVolume {
 		writeTyped( fileHandle, min );
 		writeTyped( fileHandle, size );
 		writeTyped( fileHandle, step );
+		writeTyped( fileHandle, probeCount );
 
 		fwrite( data, sizeof(Data), probeCount, fileHandle );
 		fclose( fileHandle );
@@ -217,12 +233,13 @@ struct DataVolume {
 		}
 
 		Vector3i headerMin, headerSize;
-		int headerStep;
+		int headerStep, headerProbeCount;
 		readTyped( fileHandle, headerMin );
 		readTyped( fileHandle, headerSize );
 		readTyped( fileHandle, headerStep );
+		readTyped( fileHandle, headerProbeCount );
 
-		if( headerMin != min || headerSize != size || headerStep != step ) {
+		if( headerMin != min || headerSize != size || headerStep != step || headerProbeCount != probeCount ) {
 			fclose( fileHandle );
 			return false;
 		}
@@ -265,13 +282,13 @@ struct ProbeDatabase {
 		probeIdMap.push_back( std::make_pair( probe, id ) );
 	}
 
-	typedef std::vector<std::vector<Vector3i>> CandidateProbes;
+	typedef std::vector<std::vector<Probes::IndexVector>> CandidateProbes;
 
 	void initCandidateProbes( CandidateProbes &candidateProbes ) const {
 		candidateProbes.resize( maxId + 1 );
 	}
 
-	void processProbe( const Vector3i &position, const Probe &probe, CandidateProbes &candidateProbes ) const {
+	void processProbe( const Probes::IndexVector &position, const Probe &probe, CandidateProbes &candidateProbes ) const {
 		for( auto it = probeIdMap.cbegin() ; it != probeIdMap.cend() ; ++it ) {
 			if( Probe::compare( it->first, probe ) <= PROBE_MAX_DELTA ) {
 				candidateProbes[it->second].push_back( position );
@@ -286,7 +303,7 @@ struct ProbeDatabase {
 	struct CandidateInfo {
 		int id;
 		float score;
-		std::vector< Vector3i > positions;
+		std::vector< Probes::IndexVector > positions;
 	};
 
 	typedef std::vector<CandidateInfo> WeightedCandidateInfoVector;
@@ -315,7 +332,7 @@ struct ProbeDatabase {
 	std::vector<int> probeCountPerIdInstance;
 };
 
-ProbeDatabase::WeightedCandidateInfoVector findCandidates( const Probes &probes, const ProbeDatabase &probeDatabase, const Cubei &targetVolume ) {
+ProbeDatabase::WeightedCandidateInfoVector findCandidates( const Probes &probes, const ProbeDatabase &probeDatabase, const Probes::VolumeCube &targetVolume ) {
 	ProbeDatabase::CandidateProbes candidateProbes;
 	probeDatabase.initCandidateProbes( candidateProbes );
 
@@ -346,14 +363,15 @@ void sampleProbes( DenseCache &cache, Probes &probes ) {
 	}
 }
 
-void addObjectInstanceToDatabase( Probes &probes, ProbeDatabase &database, const Cubei &instanceVolume, int id ) {
-	for( Iterator3D it = probes.getIteratorFromVolume( instanceVolume ) ; !it.IsAtEnd() ; ++it ) {
+void addObjectInstanceToDatabase( Probes &probes, ProbeDatabase &database, const Probes::VolumeCube &instanceVolume, int id ) {
+	int count = 0;
+	for( Iterator3D it = probes.getIteratorFromVolume( instanceVolume ) ; !it.IsAtEnd() ; ++it, ++count ) {
 		if( probes.validIndex( it ) ) {
 			database.addProbe( probes[it], id );
 		}
 	}
 
-	database.probeCountPerIdInstance[id] = getVolume( instanceVolume.getSize() );
+	database.probeCountPerIdInstance[id] = count;
 }
 
 void printCandidates( std::ostream &out, const ProbeDatabase::WeightedCandidateInfoVector &candidates ) {
