@@ -78,11 +78,43 @@ DebugRenderObject createCross (const Vector3f &position, const Color3f &color, f
 	return dru.GetLineSegments();
 }
 
-struct CandidateObject {
+struct ObjectTemplate {
 	// centered around 0.0
 	Vector3f bbSize;
+	Color3f color;
+
+	void Draw( Render::IRenderSystem *renderSystem, Render::IRenderContext *renderContext ) {
+		DebugRenderObject bbox = createCube( -bbSize * 0.5, bbSize * 0.5, color );
+		renderSystem->DebugDrawLines( bbox );
+	}
 };
 
+struct ObjectInstance {
+	ObjectTemplate *objectTemplate;
+
+	Vector3f position;
+
+	static ObjectInstance FromFrontTopLeft( const Vector3f &anchor, ObjectTemplate *objectTemplate ) {
+		ObjectInstance instance;
+
+		instance.objectTemplate = objectTemplate;
+		instance.position = anchor + 0.5 * objectTemplate->bbSize;
+
+		return instance;
+	}
+
+	Cubef GetBBox() const {
+		return Cubef::fromMinSize( position - objectTemplate->bbSize * 0.5, objectTemplate->bbSize );
+	}
+
+	virtual void Draw( Render::IRenderSystem *renderSystem, Render::IRenderContext *renderContext ) {
+		Matrix4f worldBase = renderContext->GetTransformation( Render::RenderTransformation::World );
+
+		renderContext->SetTransformation( Render::RenderTransformation::World, CreateTranslation4( position ) * worldBase );
+		objectTemplate->Draw( renderSystem, renderContext );
+		renderContext->SetTransformation( Render::RenderTransformation::World, worldBase );
+	}
+};
 
 
 /////////////////////////////////////////////////////////////////////////////
@@ -100,22 +132,11 @@ private:
 	{
 		Super::InitImpl ();
 
-		maxDistance = 128.0;
+		maxDistance_ = 128.0;
 
 		//FixRDPMouseInput();
 		InitAntTweakBar();
 
-		manager.Init( renderSystem_.get(), renderContext_, renderWindow_ );
-
-		for( int i = 0 ; i < 2 ; i++ ) {
-			manager.elements.push_back( &uiButtons[i] );
-			uiButtons[i].SetVisible( false );
-			uiButtons[i].onFocus = [=] () { activeProbe = i; };
-			uiButtons[i].onUnfocus = [=] () { if( !dontUnfocus ) activeProbe = -1; };
-		}
-
-		eventForwarder_.Prepend( &manager );
-		
 		effectManager_.Initialize (renderSystem_.get (), &effectLoader_);	
 		objModel_.Init( renderSystem_, effectManager_, IO::Path( "P:\\BlenderScenes\\two_boxes.obj" ) );
 
@@ -124,17 +145,16 @@ private:
 			renderWindow_->GetAspectRatio (),
 			0.1f, 10000.0f);
 
+		camera_->SetMoveSpeedMultiplier( 0.5 );
+
+		// init preview transformation
 		previewTransformation_.projection = CreatePerspectiveProjectionFovRH( 
 			Degree (75.0f),
 			1.0f /*renderWindow_->GetAspectRatio ()*/,
 			0.1f, 10.0f);
-
 		previewTransformation_.view = CreateViewLookAtRH( Vector3f( 0.0, 0.0, -2.0 ), Vector3f::CreateZero(), Vector3f::CreateUnit(1) );
 
 		InitUI();	
-
-		activeProbe = -1;
-
 		InitVolume();
 
 		UnorderedDistanceContext::setDirections();
@@ -149,27 +169,57 @@ private:
 		}
 
 		CreateProbeVisualization();
+		probeVolume_ = createCube( layerCalibration_.getPosition( min ), layerCalibration_.getPosition( min + size ), Color3f( 1.0, 0.0, 0.0 ) );
 
 		targetCube_ = probes_->getVolumeFromIndexCube( Cubei::fromMinSize( Vector3i::CreateZero(), Vector3i::Constant(4) ) );
 
-		probeVolume = createCube( layerCalibration_.getPosition( min ), layerCalibration_.getPosition( min + size ), Color3f( 1.0, 0.0, 0.0 ) );
+		// init object templates
+		{
+			ObjectTemplate t;
+			t.bbSize = layerCalibration_.getSize( probes_->getSize( Vector3i( 4, 1, 1) ) );
+			t.color = Color3f( 1.0, 1.0, 1.0 );
+			objectTemplates_.push_back( t );
 
-		Cubei cube[2] = { Cubei::fromMinSize( Vector3i(0,0,0), Vector3i(4,1,1) ), Cubei::fromMinSize( Vector3i(5,5,5), Vector3i(3,1,1) ) };
-
-		for( int i = 0 ; i < 2 ; ++i ) {
-			objects[i].bbSize = cube[i].getSize();
+			t.bbSize = layerCalibration_.getSize( probes_->getSize( Vector3i( 3, 1, 1 ) ) );
+			objectTemplates_.push_back( t );
 		}
 
-		for( int i = 0 ; i < 2 ; i++ ) {
-			Cubei volumeCoords = probes_->getVolumeFromIndexCube( cube[i] );
-			volume[i] = createCube( layerCalibration_.getPosition( volumeCoords.minCorner ), layerCalibration_.getPosition( volumeCoords.maxCorner ), Color3f( 1.0, 1.0, 1.0 ) );
-
-			addObjectInstanceToDatabase( *probes_, database, volumeCoords, i );
+		// create object instances
+		{
+			objectInstances_.push_back( ObjectInstance::FromFrontTopLeft( layerCalibration_.getPosition( probes_->getPosition( Vector3i( 0, 0, 0 ) ) ) , &objectTemplates_[0] ) );
+			objectInstances_.push_back( ObjectInstance::FromFrontTopLeft( layerCalibration_.getPosition( probes_->getPosition( Vector3i( 5, 5, 5 ) ) ) , &objectTemplates_[1] ) );
 		}
 
-		camera_->SetMoveSpeedMultiplier( 0.5 );
+		// fill probe database
+		for( int i = 0 ; i < objectInstances_.size() ; i++ ) {
+			const Cubef bbox = objectInstances_[i].GetBBox();
+			const Cubei volumeCoords( layerCalibration_.getGlobalCeilIndex( bbox.minCorner ), layerCalibration_.getGlobalFloorIndex( bbox.maxCorner ) );
+
+			probeDatabase_.addObjectInstanceToDatabase( *probes_, volumeCoords, objectInstances_[i].objectTemplate - &objectTemplates_.front() );
+		}		
+
+		InitPreviewUI();
 
 		readState();
+	}
+
+	void InitPreviewUI() 
+	{
+		uiManager_.Init( renderSystem_.get(), renderContext_, renderWindow_ );
+
+		uiButtons_.resize( objectTemplates_.size() );
+		matchedProbes_.resize( objectTemplates_.size() );
+
+		for( int i = 0 ; i < uiButtons_.size() ; i++ ) {
+			uiManager_.elements.push_back( &uiButtons_[i] );
+			uiButtons_[i].SetVisible( false );
+			uiButtons_[i].onFocus = [=] () { activeProbe_ = i; };
+			uiButtons_[i].onUnfocus = [=] () { if( !dontUnfocus ) activeProbe_ = -1; };
+		}
+
+		eventForwarder_.Prepend( &uiManager_ );
+
+		activeProbe_ = -1;
 	}
 
 	void ShutdownImpl() {
@@ -190,24 +240,23 @@ private:
 		renderContext_->SetTransformation( Render::RenderTransformation::View, previewTransformation_.view );
 		
 		const int maxPreviewWidth = renderWindow_->GetWidth() / 10;
-		const int maxTotalPreviewHeight = (maxPreviewWidth + 10) * results.size();
-		const int previewSize = (maxTotalPreviewHeight < renderWindow_->GetHeight()) ? maxPreviewWidth : (renderWindow_->GetHeight() - 20) / results.size() - 10;
+		const int maxTotalPreviewHeight = (maxPreviewWidth + 10) * results_.size();
+		const int previewSize = (maxTotalPreviewHeight < renderWindow_->GetHeight()) ? maxPreviewWidth : (renderWindow_->GetHeight() - 20) / results_.size() - 10;
 				
 		Vector2i topLeft( renderWindow_->GetWidth() - previewSize - 10, 10 );
 		Vector2i size( previewSize, previewSize );
 		
-		for( int i = 0 ; i < results.size() ; ++i, topLeft.Y() += previewSize + 10 ) {
-			CandidateObject &object = objects[ results[i].first ];
+		for( int i = 0 ; i < results_.size() ; ++i, topLeft.Y() += previewSize + 10 ) {
+			ObjectTemplate &objectTemplate = objectTemplates_[ results_[i].first ];
 
 			renderContext_->SetViewport( Rectangle<int>( topLeft, size ) );
 			renderContext_->ClearRenderTarget( Render::RenderTargetClearFlags::Depth_Buffer );
 
-			renderContext_->SetTransformation( Render::RenderTransformation::World, previewTransformation_.world * CreateScale4( 2.0 / MaxElement( object.bbSize ) ) );	
+			renderContext_->SetTransformation( Render::RenderTransformation::World, previewTransformation_.world * CreateScale4( 2.0 / MaxElement( objectTemplate.bbSize ) ) );	
 
-			DebugRenderObject bbox = createCube( -object.bbSize * 0.5, object.bbSize * 0.5, Color3f( 1.0, 1.0, 1.0 ) );
-			renderSystem_->DebugDrawLines( bbox );
+			objectTemplate.Draw( renderSystem_.get(), renderContext_ );
 
-			UIButton &button = uiButtons[i];
+			UIButton &button = uiButtons_[i];
 			button.area = Rectangle<int>(topLeft, size);
 			button.SetVisible( true );
 		}
@@ -226,24 +275,24 @@ private:
 		DebugRenderObject targetVolume = createCube( minCorner, maxCorner, Color3f( 0.0, 1.0, 0.0 ) );
 		Draw( targetVolume );
 		
-		Draw( probeVolume );
+		Draw( probeVolume_ );
 		if( showProbes ) {
 			Draw( probeCrosses_ );
 		}
 
-		for( int i = 0 ; i < 2 ; i++ ) {
-			Draw( volume[i] );
+		for( int i = 0 ; i < objectInstances_.size() ; i++ ) {
+			objectInstances_[i].Draw( renderSystem_.get(), renderContext_ );
 		}
 
-		if( showMatchedProbes && activeProbe != -1 ) {
-			renderSystem_->DebugDrawLines( matchedProbes_[activeProbe].GetLineSegments() );
+		if( showMatchedProbes && activeProbe_ != -1 ) {
+			renderSystem_->DebugDrawLines( matchedProbes_[activeProbe_].GetLineSegments() );
 		}
 
 		DrawPreview();
 
 		TwDraw();
 
-		manager.Draw();
+		uiManager_.Draw();
 	}
 
 private:
@@ -283,11 +332,15 @@ private:
 		sizeCallback_.setCallback = [&](const Vector3i &v) { targetCube_ = Cubei::fromMinSize( targetCube_.minCorner, v ); };
 		ui_->addVarCB("Size target", TW_TYPE_VECTOR3I, sizeCallback_ );
 
-		ui_->addVarRW( "Max probe distance", maxDistance, "min=0" );
+		ui_->addVarRW( "Max probe distance", maxDistance_, "min=0" );
 
 		showProbes = false;
-		ui_->addVarRW( "Show probes ", showProbes );
-		ui_->addVarRW( "Show matched probes ", showMatchedProbes );
+		ui_->addVarRW( "Show probes", showProbes );
+
+		showMatchedProbes = true;
+		ui_->addVarRW( "Show matched probes", showMatchedProbes );
+
+		dontUnfocus = true;
 		ui_->addVarRW( "Fix selection", dontUnfocus );
 
 		findCandidatesCallback_.callback = std::bind(&SampleApplication::Do_findCandidates, this);
@@ -324,7 +377,7 @@ private:
 				const Vector3f &direction = probe.directions[i];
 				const float distance = probe.distances[i];
 
-				const Vector3f &vector = direction * (1.0 - distance / MAX_DISTANCE);
+				const Vector3f &vector = direction * (1.0 - distance / maxDistance_);
 				dru.AddLine( probePosition, probePosition + vector * visSize, Color3f( 0.0, 0.0, Length(vector) ) );
 			}			
 		}
@@ -334,7 +387,7 @@ private:
 	void CreatedMatchedProbes(int index) {
 		matchedProbes_[index].Clear();
 
-		const ProbeDatabase::CandidateInfo &info = results[index].second;
+		const ProbeDatabase::CandidateInfo &info = results_[index].second;
 		for( int i = 0 ; i < info.matches.size() ; ++i ) {
 			const Vector3f position = layerCalibration_.getPosition( probes_->getPosition( info.matches[i].first ) );
 			matchedProbes_[index].AddSphere( position, 0.05, Color3f( 1.0 - float(info.matches[i].second) / info.maxSingleMatchCount, 1.0, 0.0 ));
@@ -342,12 +395,12 @@ private:
 	}
 
 	void Do_findCandidates() {
-		results = database.findCandidates( *probes_, targetCube_, maxDistance );
+		results_ = probeDatabase_.findCandidates( *probes_, targetCube_, maxDistance_ );
 
 		candidateResultsUI_->clear();
-		for( int i = 0 ; i < results.size() ; ++i ) {
-			const ProbeDatabase::CandidateInfo &info = results[i].second;
-			candidateResultsUI_->addVarRO( AntTWBarGroup::format( "Candidate %i", results[i].first ), info.score );
+		for( int i = 0 ; i < results_.size() ; ++i ) {
+			const ProbeDatabase::CandidateInfo &info = results_[i].second;
+			candidateResultsUI_->addVarRO( AntTWBarGroup::format( "Candidate %i", results_[i].first ), info.score );
 
 			CreatedMatchedProbes(i);
 		}
@@ -409,16 +462,18 @@ private:
 	LayerCalibration layerCalibration_;
 	std::unique_ptr<Probes> probes_;
 
-	ProbeDatabase database;
+	ProbeDatabase probeDatabase_;
 
-	ProbeDatabase::SparseCandidateInfos results;
+	ProbeDatabase::SparseCandidateInfos results_;
 
 	// render objects
-	DebugRenderObject probeVolume;
-	DebugRenderObject volume[2];
-
+	DebugRenderObject probeVolume_;
 	DebugRenderObject probeCrosses_;
-	Render::DebugRenderUtility matchedProbes_[2];
+
+	std::vector<Render::DebugRenderUtility> matchedProbes_;
+
+	std::vector<ObjectTemplate> objectTemplates_;
+	std::vector<ObjectInstance> objectInstances_;
 
 	// ui callbacks
 	AntTWBarGroup::ButtonCallback findCandidatesCallback_, writeStateCallback_;
@@ -429,19 +484,18 @@ private:
 	bool showMatchedProbes;
 	bool dontUnfocus;
 
-	float maxDistance;
-
-	CandidateObject objects[2];
-
-	int activeProbe;
-	UIButton uiButtons[2];
-	UIManager manager;
+	float maxDistance_;
+	
+	int activeProbe_;
+	std::vector<UIButton> uiButtons_;
+	UIManager uiManager_;
 
 	struct Transformation {
 		Matrix4f world;
 		Matrix4f view;
 		Matrix4f projection;
 	} previewTransformation_;
+
 private:
 	SampleApplication( const SampleApplication & ) {}
 };

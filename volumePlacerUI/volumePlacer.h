@@ -23,20 +23,24 @@
 // TODO: whatever...
 using namespace niven;
 
-struct Cubei {
-	Vector3i minCorner, maxCorner;
+template<typename V>
+struct Cube {
+	V minCorner, maxCorner;
 
-	Cubei() {}
-	Cubei( const Vector3i &minCorner, const Vector3i &maxCorner ) : minCorner( minCorner ), maxCorner( maxCorner ) {}
+	Cube() {}
+	Cube( const V &minCorner, const V &maxCorner ) : minCorner( minCorner ), maxCorner( maxCorner ) {}
 
-	static Cubei fromMinSize( const Vector3i &minCorner, const Vector3i &size ) {
-		return Cubei( minCorner, minCorner + size );
+	static Cube fromMinSize( const V &minCorner, const V &size ) {
+		return Cube( minCorner, minCorner + size );
 	}
 
-	Vector3i getSize() const {
+	V getSize() const {
 		return maxCorner - minCorner;
 	}
 };
+
+typedef Cube<Vector3i> Cubei;
+typedef Cube<Vector3f> Cubef;
 
 int getVolume( const Vector3i &size ) {
 	return size.X() * size.Y() * size.Z();
@@ -87,8 +91,6 @@ struct GridCoordinateMap {
 		return (position + Vector3i::Constant( step - 1 ) - min) / step;
 	}
 };
-
-const float MAX_DISTANCE = 128.0f;
 
 struct UnorderedDistanceContext {
 	static const int numSamples = 27;
@@ -204,6 +206,10 @@ struct DataVolume {
 		return getPosition( it.ToVector() );
 	}
 
+	VolumeVector getSize( const IndexVector &size ) const {
+		return size * step;
+	}
+
 	IndexVector getFloorIndex( const VolumeVector &position ) const {
 		return (position - min) / step;
 	}
@@ -296,11 +302,18 @@ struct ProbeDatabase {
 
 	ProbeDatabase() : numIds( 0 ) {}
 
-	void addProbe( const Probe &probe, int id ) {
+	void addObjectInstanceToDatabase( Probes &probes, const Probes::VolumeCube &instanceVolume, int id ) {
 		numIds = std::max( id + 1, numIds );
 		probeCountPerIdInstance.resize( numIds );
 
-		probeIdMap.push_back( std::make_pair( probe, id ) );
+		int count = 0;
+		for( Iterator3D it = probes.getIteratorFromVolume( instanceVolume ) ; !it.IsAtEnd() ; ++it, ++count ) {
+			if( probes.validIndex( it ) ) {
+				probeIdMap.push_back( std::make_pair( probes[ it ], id ) );
+			}
+		}
+
+		probeCountPerIdInstance[id] = count;
 	}
 
 	struct CandidateInfo {
@@ -387,17 +400,6 @@ void sampleProbes( DenseCache &cache, Probes &probes ) {
 		}
 		std::cout << "\n";*/
 	}
-}
-
-void addObjectInstanceToDatabase( Probes &probes, ProbeDatabase &database, const Probes::VolumeCube &instanceVolume, int id ) {
-	int count = 0;
-	for( Iterator3D it = probes.getIteratorFromVolume( instanceVolume ) ; !it.IsAtEnd() ; ++it, ++count ) {
-		if( probes.validIndex( it ) ) {
-			database.addProbe( probes[it], id );
-		}
-	}
-
-	database.probeCountPerIdInstance[id] = count;
 }
 
 void printCandidates( std::ostream &out, const ProbeDatabase::SparseCandidateInfos &candidates ) {
