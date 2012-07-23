@@ -147,55 +147,70 @@ struct ObjectInstance {
 	}
 };
 
-template< typename Template >
-struct AntTWBarCollection : public Template {
-	std::vector<typename Template::Value> collection;
+template< typename Value, int LABEL_MAX_LENGTH = 64 >
+struct AntTWBarCollection {
+	std::vector<Value> collection;
+
+	struct Label {
+		char value[LABEL_MAX_LENGTH];
+
+		Label() {
+			value[0] = 0;
+		}
+	};
+	std::vector<Label> collectionLabels;
 
 	std::unique_ptr<AntTWBarGroup> ui;
 	std::vector<AntTWBarGroup::ButtonCallback> buttonCallbacks;
 
-	AntTWBarCollection( const char *title, AntTWBarGroup *parent ) : ui( new AntTWBarGroup( title, parent ) ) {}
+	std::function<void (const Value &)> onAction;
+	std::function<std::string (const Value &, int)> getSummary;
+	std::function<Value()> getNewItem;
+	
+	AntTWBarCollection() {
+		getSummary = [] (const Value &, int i) { return AntTWBarGroup::format( "%i", i ); };
+	}
+
+	void init( const char *title, AntTWBarGroup *parent ) {
+		ui = std::unique_ptr<AntTWBarGroup>( new AntTWBarGroup( title, parent ) );
+
+		refresh();
+	}
 
 	void refresh() {
 		ui->clear();
 
+		collectionLabels.resize( collection.size() );
+
 		buttonCallbacks.clear();
 		buttonCallbacks.resize( collection.size() * 2 + 1 );
 
-		buttonCallbacks.back().callback = [=] () {
-			collection.push_back( SampleApplication::CameraPosition( camera_->GetPosition(), camera_->GetViewDirection() ) );
-			refresh();
-		};
+		if( getNewItem ) {
+			buttonCallbacks.back().callback = [=] () {
+				collection.push_back( getNewItem() );
+				collectionLabels.push_back( AntTWBarCollection<Value>::Label() );
+				refresh();
+			};
+			ui->addButton( "Add", buttonCallbacks.back() );
+		}
 
 		for( int i = 0 ; i < collection.size() ; ++i ) {
 			buttonCallbacks[2*i].callback = [=] () {
-				onItemAction( collection[i] ); 
+				if( onAction ) {
+					onAction( collection[i] ); 
+				}
 			};
 			buttonCallbacks[2*i+1].callback = [=] () {
 				collection.erase( collection.begin() + i );
+				collectionLabels.erase( collectionLabels.begin() + i );
 				refresh();
 			};
 
 			ui->addSeparator();
-			ui->addButton( getSummary( collection[i] ), buttonCallbacks[2*i] );
+			ui->addButton( getSummary( collection[i], i ), buttonCallbacks[2*i] );
+			ui->_addVarRW( "Label", TW_TYPE_CSSTRING(LABEL_MAX_LENGTH), &collectionLabels[i] );
 			ui->addButton( "Remove", buttonCallbacks[2*i+1] );
-		}
-
-		cameraPositionsUI_->addButton( "Add", buttonCallbacks.back() );
-	}
-};
-
-template< typename _Value >
-struct AntTWBarCollectionTemplate {
-	std::function<void(const _Value &)> onAction;
-
-protected:
-	typedef _Value Value;
-
-	void onItemAction( const Value &value ) {
-		if( onAction ) {
-			onAction( value );
-		}
+		}		
 	}
 };
 
@@ -210,13 +225,6 @@ class SampleApplication : public BaseApplication3D, IEventHandler
 
 		CameraPosition( const Vector3f &position, const Vector3f &direction ) : position( position ), direction( direction ) {}
 		CameraPosition() {}
-	};
-
-	struct CameraPositionCollectionTemplate : AntTWBarCollectionTemplate<CameraPosition> {		
-	protected:
-		std::string getSummary( CameraPosition &camPos ) {
-			return AntTWBarGroup::format( "View %f %f %f", camPos.position[0], camPos.position[1], camPos.position[2] );
-		}
 	};
 
 public:
@@ -454,10 +462,28 @@ private:
 
 		candidateResultsUI_ = std::unique_ptr<AntTWBarGroup>( new AntTWBarGroup( "Candidates", ui_.get() ) );
 
-		cameraPositions_ = std::unique_ptr<AntTWBarCollection<CameraPositionCollectionTemplate>>( "Camera views", ui_.get() );
-		cameraPositions_->onAction = [=] ( const CameraPosition &camPos ) {
+		cameraPositions_.onAction = [=] ( const CameraPosition &camPos ) {
 			camera_->SetViewLookAt( camPos.position, camPos.position + camPos.direction, Vector3f::CreateUnit(1) );
 		};
+		cameraPositions_.getSummary = [=] ( const CameraPosition &camPos, int ) {
+			return AntTWBarGroup::format( "View %f %f %f", camPos.position[0], camPos.position[1], camPos.position[2] );
+		};
+		cameraPositions_.getNewItem = [=] () {
+			return SampleApplication::CameraPosition( camera_->GetPosition(), camera_->GetViewDirection() );
+		};
+		cameraPositions_.init( "Camera views", nullptr );
+
+		targetVolumes_.onAction = [=] ( const Cubei &tV ) {
+			targetCube_ = tV;
+		};
+		targetVolumes_.getSummary = [=] ( const Cubei &tV, int ) -> std::string {
+			Vector3i size = tV.getSize();
+			return AntTWBarGroup::format( "(%i,%i,%i) %ix%ix%i", tV.minCorner[0], tV.minCorner[1], tV.minCorner[2], size[0], size[1], size[2] );
+		};
+		targetVolumes_.getNewItem = [=] () {
+			return targetCube_;
+		};
+		targetVolumes_.init( "Target cubes", nullptr );
 	}
 			
 	void InitVolume() {
@@ -526,8 +552,11 @@ private:
 		writeTyped( file, camera_->GetPosition() );
 		writeTyped( file, camera_->GetViewDirection() );
 
-		writeTyped( file, cameraPositions_ );
-		writeTyped( file, targetVolumes_ );
+		writeTyped( file, cameraPositions_.collection );
+		writeTyped( file, cameraPositions_.collectionLabels );
+
+		writeTyped( file, targetVolumes_.collection );
+		writeTyped( file, targetVolumes_.collectionLabels );
 
 		fclose( file );
 	}
@@ -550,8 +579,11 @@ private:
 		readTyped( file, position );
 		readTyped( file, viewDirection );
 
-		readTyped( file, cameraPositions_ );
-		readTyped( file, targetVolumes_ );
+		readTyped( file, cameraPositions_.collection );
+		readTyped( file, cameraPositions_.collectionLabels );
+
+		readTyped( file, targetVolumes_.collection );
+		readTyped( file, targetVolumes_.collectionLabels );
 				
 		camera_->SetViewLookAt( position, position + viewDirection, Vector3f::CreateUnit(1) );
 	}
@@ -611,8 +643,8 @@ private:
 		Matrix4f projection;
 	} previewTransformation_;
 
-	std::unique_ptr<AntTWBarCollection<CameraPositionCollectionTemplate>> cameraPositions_;
-	std::vector<Cubei> targetVolumes_;
+	AntTWBarCollection<CameraPosition> cameraPositions_;
+	AntTWBarCollection<Cubei> targetVolumes_;
 
 private:
 	SampleApplication( const SampleApplication & ) {}

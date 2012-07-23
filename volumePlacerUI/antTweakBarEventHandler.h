@@ -84,11 +84,12 @@ private:
 			case KeyCodes::Key_F12:          key = TW_KEY_F12; break;
 			case KeyCodes::Key_F13:          key = TW_KEY_F13; break;
 			case KeyCodes::Key_F14:          key = TW_KEY_F14; break;
-			case KeyCodes::Key_F15:          key = TW_KEY_F15; break;
-			default: return false;
+			case KeyCodes::Key_F15:          key = TW_KEY_F15; break;			
 			}
 
-			TwKeyPressed(key, keyModifiers_);
+			if( key != -1 ) {
+				TwKeyPressed(key, keyModifiers_);
+			}
 		}
 
 		return uiActive_;
