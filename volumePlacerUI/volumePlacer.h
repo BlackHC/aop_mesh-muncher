@@ -1,7 +1,6 @@
 #pragma once
 
 #include <niven.Core.Math.Vector.h>
-#include <niven.Core.Math.VectorOperators.h>
 
 #include "niven.Core.Geometry.Plane.h"
 
@@ -155,6 +154,26 @@ namespace Serialize {
 	void readTyped( FILE *fileHandle, T &d ) {
 		fread( &d, sizeof(T), 1, fileHandle );
 	}
+
+	template<typename V>
+	void writeTyped( FILE *fileHandle, const std::vector<V> &d ) {
+		int num = d.size();
+		writeTyped( fileHandle, num );
+		for( int i = 0 ; i < num ; ++i ) {
+			writeTyped( fileHandle, d[i] );
+		}
+	}
+
+	template<typename V>
+	void readTyped( FILE *fileHandle, std::vector<V> &d ) {
+		int num;
+		readTyped( fileHandle, num );
+		d.resize( num );
+
+		for( int i = 0 ; i < num ; ++i ) {
+			readTyped( fileHandle, d[i] );
+		}
+	}
 }
 
 template< typename Data >
@@ -294,8 +313,6 @@ struct DataVolume {
 
 typedef DataVolume<Probe> Probes;
 
-const float PROBE_MAX_DELTA = 16;
-
 // TODO: add weighted probes (probe weighted by inverse instance volume to be scale-invariant (more or less))
 struct ProbeDatabase {
 	int numIds;
@@ -304,8 +321,8 @@ struct ProbeDatabase {
 
 	void addObjectInstanceToDatabase( Probes &probes, const Probes::VolumeCube &instanceVolume, int id ) {
 		numIds = std::max( id + 1, numIds );
-		probeCountPerIdInstance.resize( numIds );
-
+		idInfos.resize( numIds );
+		
 		int count = 0;
 		for( Iterator3D it = probes.getIteratorFromVolume( instanceVolume ) ; !it.IsAtEnd() ; ++it, ++count ) {
 			if( probes.validIndex( it ) ) {
@@ -313,7 +330,8 @@ struct ProbeDatabase {
 			}
 		}
 
-		probeCountPerIdInstance[id] = count;
+		idInfos[id].numObjects++;
+		idInfos[id].totalProbeCount += count;
 	}
 
 	struct CandidateInfo {
@@ -331,7 +349,7 @@ struct ProbeDatabase {
 	typedef std::vector<CandidateInfo> CandidateInfos;
 	typedef std::vector< std::pair<int, CandidateInfo > > SparseCandidateInfos;
 
-	SparseCandidateInfos findCandidates( const Probes &probes, const Probes::VolumeCube &targetVolume, float maxDistance ) {
+	SparseCandidateInfos findCandidates( const Probes &probes, const Probes::VolumeCube &targetVolume, float maxDistance, float maxDelta  ) {
 		CandidateInfos candidateInfos( numIds );
 
 		for( Iterator3D targetIterator = probes.getIteratorFromVolume( targetVolume ) ; !targetIterator.IsAtEnd() ; ++targetIterator ) {
@@ -340,7 +358,7 @@ struct ProbeDatabase {
 				std::vector<int> matchCounts( numIds );
 
 				for( auto refIterator = probeIdMap.cbegin() ; refIterator != probeIdMap.cend() ; ++refIterator ) {
-					if( Probe::compare( refIterator->first, probe, maxDistance ) <= PROBE_MAX_DELTA ) {
+					if( Probe::compare( refIterator->first, probe, maxDistance ) <= maxDelta ) {
 						++matchCounts[refIterator->second];
 					}
 				}				
@@ -379,13 +397,26 @@ struct ProbeDatabase {
 		return results;
 	}
 
-	int getProbeCountPerInstanceForId( int id ) const {
-		return probeCountPerIdInstance[id];
+	float getProbeCountPerInstanceForId( int id ) const {
+		return idInfos[id].getAverageProbeCount();
 	}
 
 	// probe->id
 	std::vector<std::pair<Probe, int>> probeIdMap;
-	std::vector<int> probeCountPerIdInstance;
+
+	struct IdInfo {
+		int numObjects;
+		int totalProbeCount;
+
+		IdInfo() : numObjects( 0 ), totalProbeCount( 0 ) {}
+
+		float getAverageProbeCount() const {
+			return float( totalProbeCount ) / numObjects;
+		}
+	};
+
+	std::vector<IdInfo> idInfos;
+	std::vector<int> instanceProbeCountForId;
 };
 
 void sampleProbes( DenseCache &cache, Probes &probes ) {

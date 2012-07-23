@@ -14,6 +14,7 @@
 #include "niven.Core.Math.3dUtility.h"
 #include "niven.Engine.Spatial.AxisAlignedBoundingBox.h"
 #include "niven.Core.Geometry.Ray.h"
+#include <niven.Core.Math.ArrayFunctions.h>
 
 #include <iostream>
 
@@ -152,7 +153,7 @@ struct DataVolume {
 	} 
 
 	Vector3i getPosition( const Vector3i &index ) const {
-		return VecCompMult( index, probeDims ) + min;
+		return PerComponentMultiply( index, probeDims ) + min;
 	}
 
 	Vector3i getPosition( const Iterator3D &it ) const {

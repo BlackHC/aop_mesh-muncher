@@ -236,7 +236,7 @@ struct DataVolume {
 	Iterator3D getIterator() const { return Iterator3D(layout); }
 
 	Vector3i getPosition( const Iterator3D &it ) const {
-		return VecCompMult( it.ToVector(), probeDims ) + min;
+		return PerComponentMultiply( it.ToVector(), probeDims ) + min;
 	}
 
 	Data& operator[] (const Iterator3D &it) {

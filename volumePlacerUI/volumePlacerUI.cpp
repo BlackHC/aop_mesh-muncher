@@ -37,6 +37,8 @@
 
 #include "ui.h"
 
+//#include <boost/property_tree/ptree.hpp>
+
 #if defined(NIV_DEBUG) && defined(NIV_OS_WINDOWS)
 #define StartMemoryDebugging() \
 	_CrtMemState __initialState; \
@@ -53,7 +55,34 @@
 
 using namespace niven;
 
-int TW_TYPE_VECTOR3I = 0;
+template<typename Context>
+struct AsExecutionContext {
+	static Context *current;
+	Context *previous;
+
+	AsExecutionContext() {
+		(Context*) this = (Context*) current;
+
+		previous = current;
+		current = this;
+	}
+
+	~AsExecutionContext() {
+		current = previous;
+	}
+};
+
+template<typename Context>
+Context *AsExecutionContext<Context>::current = nullptr;
+
+namespace AntTWBarGroupTypes {
+	template<>
+	struct TypeMapping< niven::Vector3i > {
+		static int Type;
+	};
+
+	int TypeMapping< niven::Vector3i >::Type;
+}
 
 template<typename S>
 struct NivenSummarizer {
@@ -79,6 +108,8 @@ DebugRenderObject createCross (const Vector3f &position, const Color3f &color, f
 }
 
 struct ObjectTemplate {
+	int id;
+
 	// centered around 0.0
 	Vector3f bbSize;
 	Color3f color;
@@ -116,11 +147,77 @@ struct ObjectInstance {
 	}
 };
 
+template< typename Template >
+struct AntTWBarCollection : public Template {
+	std::vector<typename Template::Value> collection;
+
+	std::unique_ptr<AntTWBarGroup> ui;
+	std::vector<AntTWBarGroup::ButtonCallback> buttonCallbacks;
+
+	AntTWBarCollection( const char *title, AntTWBarGroup *parent ) : ui( new AntTWBarGroup( title, parent ) ) {}
+
+	void refresh() {
+		ui->clear();
+
+		buttonCallbacks.clear();
+		buttonCallbacks.resize( collection.size() * 2 + 1 );
+
+		buttonCallbacks.back().callback = [=] () {
+			collection.push_back( SampleApplication::CameraPosition( camera_->GetPosition(), camera_->GetViewDirection() ) );
+			refresh();
+		};
+
+		for( int i = 0 ; i < collection.size() ; ++i ) {
+			buttonCallbacks[2*i].callback = [=] () {
+				onItemAction( collection[i] ); 
+			};
+			buttonCallbacks[2*i+1].callback = [=] () {
+				collection.erase( collection.begin() + i );
+				refresh();
+			};
+
+			ui->addSeparator();
+			ui->addButton( getSummary( collection[i] ), buttonCallbacks[2*i] );
+			ui->addButton( "Remove", buttonCallbacks[2*i+1] );
+		}
+
+		cameraPositionsUI_->addButton( "Add", buttonCallbacks.back() );
+	}
+};
+
+template< typename _Value >
+struct AntTWBarCollectionTemplate {
+	std::function<void(const _Value &)> onAction;
+
+protected:
+	typedef _Value Value;
+
+	void onItemAction( const Value &value ) {
+		if( onAction ) {
+			onAction( value );
+		}
+	}
+};
 
 /////////////////////////////////////////////////////////////////////////////
 class SampleApplication : public BaseApplication3D, IEventHandler
 {
 	NIV_DEFINE_CLASS(SampleApplication, BaseApplication3D)
+
+	struct CameraPosition {
+		Vector3f position;
+		Vector3f direction;
+
+		CameraPosition( const Vector3f &position, const Vector3f &direction ) : position( position ), direction( direction ) {}
+		CameraPosition() {}
+	};
+
+	struct CameraPositionCollectionTemplate : AntTWBarCollectionTemplate<CameraPosition> {		
+	protected:
+		std::string getSummary( CameraPosition &camPos ) {
+			return AntTWBarGroup::format( "View %f %f %f", camPos.position[0], camPos.position[1], camPos.position[2] );
+		}
+	};
 
 public:
 	SampleApplication ()
@@ -154,7 +251,6 @@ private:
 			0.1f, 10.0f);
 		previewTransformation_.view = CreateViewLookAtRH( Vector3f( 0.0, 0.0, -2.0 ), Vector3f::CreateZero(), Vector3f::CreateUnit(1) );
 
-		InitUI();	
 		InitVolume();
 
 		UnorderedDistanceContext::setDirections();
@@ -178,16 +274,22 @@ private:
 			ObjectTemplate t;
 			t.bbSize = layerCalibration_.getSize( probes_->getSize( Vector3i( 4, 1, 1) ) );
 			t.color = Color3f( 1.0, 1.0, 1.0 );
+			t.id = 0;
 			objectTemplates_.push_back( t );
 
 			t.bbSize = layerCalibration_.getSize( probes_->getSize( Vector3i( 3, 1, 1 ) ) );
+			t.color = Color3f( 0.0, 1.0, 1.0 );
+			t.id++;
 			objectTemplates_.push_back( t );
 		}
 
 		// create object instances
 		{
-			objectInstances_.push_back( ObjectInstance::FromFrontTopLeft( layerCalibration_.getPosition( probes_->getPosition( Vector3i( 0, 0, 0 ) ) ) , &objectTemplates_[0] ) );
-			objectInstances_.push_back( ObjectInstance::FromFrontTopLeft( layerCalibration_.getPosition( probes_->getPosition( Vector3i( 5, 5, 5 ) ) ) , &objectTemplates_[1] ) );
+			objectInstances_.push_back( ObjectInstance::FromFrontTopLeft( layerCalibration_.getPosition( probes_->getPosition( Vector3i( 0, 0, 0 ) ) ), &objectTemplates_[0] ) );
+			objectInstances_.push_back( ObjectInstance::FromFrontTopLeft( layerCalibration_.getPosition( probes_->getPosition( Vector3i( 13, 0, 0 ) ) ), &objectTemplates_[0] ) );
+
+			objectInstances_.push_back( ObjectInstance::FromFrontTopLeft( layerCalibration_.getPosition( probes_->getPosition( Vector3i( 5, 5, 5 ) ) ), &objectTemplates_[1] ) );
+			objectInstances_.push_back( ObjectInstance::FromFrontTopLeft( layerCalibration_.getPosition( probes_->getPosition( Vector3i( 8, 8, 8 ) ) ), &objectTemplates_[1] ) );
 		}
 
 		// fill probe database
@@ -195,12 +297,13 @@ private:
 			const Cubef bbox = objectInstances_[i].GetBBox();
 			const Cubei volumeCoords( layerCalibration_.getGlobalCeilIndex( bbox.minCorner ), layerCalibration_.getGlobalFloorIndex( bbox.maxCorner ) );
 
-			probeDatabase_.addObjectInstanceToDatabase( *probes_, volumeCoords, objectInstances_[i].objectTemplate - &objectTemplates_.front() );
-		}		
-
-		InitPreviewUI();
+			probeDatabase_.addObjectInstanceToDatabase( *probes_, volumeCoords, objectInstances_[i].objectTemplate->id );
+		}
 
 		readState();
+
+		InitUI();
+		InitPreviewUI();
 	}
 
 	void InitPreviewUI() 
@@ -311,7 +414,7 @@ private:
 		TwInit(  TW_DIRECT3D11, device );
 		TwWindowSize( renderWindow_->GetWidth(), renderWindow_->GetHeight() );
 
-		TW_TYPE_VECTOR3I = AntTWBarGroupTypes::Struct<Vector3i,AntTWBarGroupTypes::Vector3i, NivenSummarizer<Vector3i> >( "Vector3i" ).
+		AntTWBarGroupTypes::TypeMapping<Vector3i>::Type = AntTWBarGroupTypes::Struct<Vector3i,AntTWBarGroupTypes::Vector3i, NivenSummarizer<Vector3i> >( "Vector3i" ).
 			add( "x", &AntTWBarGroupTypes::Vector3i::x ).
 			add( "y", &AntTWBarGroupTypes::Vector3i::y ).
 			add( "z", &AntTWBarGroupTypes::Vector3i::z ).
@@ -326,11 +429,11 @@ private:
 
 		minCallback_.getCallback = [&](Vector3i &v) { v = targetCube_.minCorner; };
 		minCallback_.setCallback = [&](const Vector3i &v) { targetCube_ = Cubei::fromMinSize( v, targetCube_.getSize() ); };
-		ui_->addVarCB("Min target", TW_TYPE_VECTOR3I, minCallback_ );
+		ui_->addVarCB("Min target", minCallback_ );
 
 		sizeCallback_.getCallback = [&](Vector3i &v) { v = targetCube_.getSize(); };
 		sizeCallback_.setCallback = [&](const Vector3i &v) { targetCube_ = Cubei::fromMinSize( targetCube_.minCorner, v ); };
-		ui_->addVarCB("Size target", TW_TYPE_VECTOR3I, sizeCallback_ );
+		ui_->addVarCB("Size target", sizeCallback_ );
 
 		ui_->addVarRW( "Max probe distance", maxDistance_, "min=0" );
 
@@ -350,8 +453,13 @@ private:
 		ui_->addButton("Write state", writeStateCallback_ );
 
 		candidateResultsUI_ = std::unique_ptr<AntTWBarGroup>( new AntTWBarGroup( "Candidates", ui_.get() ) );
-	}
 
+		cameraPositions_ = std::unique_ptr<AntTWBarCollection<CameraPositionCollectionTemplate>>( "Camera views", ui_.get() );
+		cameraPositions_->onAction = [=] ( const CameraPosition &camPos ) {
+			camera_->SetViewLookAt( camPos.position, camPos.position + camPos.direction, Vector3f::CreateUnit(1) );
+		};
+	}
+			
 	void InitVolume() {
 		fbs_ = std::unique_ptr<Volume::FileBlockStorage>( new Volume::FileBlockStorage );
 		if( !fbs_->Open( "P:\\BlenderScenes\\two_boxes_4.nvf", true ) ) {
@@ -395,7 +503,7 @@ private:
 	}
 
 	void Do_findCandidates() {
-		results_ = probeDatabase_.findCandidates( *probes_, targetCube_, maxDistance_ );
+		results_ = probeDatabase_.findCandidates( *probes_, targetCube_, maxDistance_, probes_->step );
 
 		candidateResultsUI_->clear();
 		for( int i = 0 ; i < results_.size() ; ++i ) {
@@ -417,6 +525,10 @@ private:
 
 		writeTyped( file, camera_->GetPosition() );
 		writeTyped( file, camera_->GetViewDirection() );
+
+		writeTyped( file, cameraPositions_ );
+		writeTyped( file, targetVolumes_ );
+
 		fclose( file );
 	}
 
@@ -438,6 +550,9 @@ private:
 		readTyped( file, position );
 		readTyped( file, viewDirection );
 
+		readTyped( file, cameraPositions_ );
+		readTyped( file, targetVolumes_ );
+				
 		camera_->SetViewLookAt( position, position + viewDirection, Vector3f::CreateUnit(1) );
 	}
 
@@ -495,6 +610,9 @@ private:
 		Matrix4f view;
 		Matrix4f projection;
 	} previewTransformation_;
+
+	std::unique_ptr<AntTWBarCollection<CameraPositionCollectionTemplate>> cameraPositions_;
+	std::vector<Cubei> targetVolumes_;
 
 private:
 	SampleApplication( const SampleApplication & ) {}

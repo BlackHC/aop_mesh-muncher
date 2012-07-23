@@ -28,10 +28,11 @@ namespace AntTWBarGroupTypes {
 
 	template< typename T >
 	struct TypeMapper {
-		enum {
-			Type = TypeMapping< std::remove_cv< T >::type >::Type
-		};
+		static const int &Type;
 	};
+
+	template< typename T >
+	const int &TypeMapper<T>::Type = TypeMapping< std::remove_cv< T >::type >::Type;
 
 	template<>
 	struct TypeMapping< bool > {
@@ -238,7 +239,7 @@ public:
 
 	template< typename V >
 	void addVarCB(const std::string &name, VariableCallback< V > &callbacks, const std::string &def = "", const std::string &internalName = "") {
-		_addVarCB( name, (TwType) AntTWBarGroupTypes::TypeMapper< V >::Type, (TwSetVarCallback) &VariableCallback<V>::ExecuteSet, (TwGetVarCallback) &VariableCallback<V>::ExecuteGet, clientData, def, internalName );
+		_addVarCB( name, (TwType) AntTWBarGroupTypes::TypeMapper< V >::Type, (TwSetVarCallback) &VariableCallback<V>::ExecuteSet, (TwGetVarCallback) &VariableCallback<V>::ExecuteGet, &callbacks, def, internalName );
 	}
 
 	template< typename V >
