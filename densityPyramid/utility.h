@@ -90,13 +90,4 @@ namespace niven {
 		}
 		return LengthSquared( distance );
 	}
-
-	template<typename Type, int Size>
-	Vector<Type, Size> VecCompMult( const Vector<Type, Size> &a, const Vector<Type, Size> &b ) {
-		Vector<Type, Size> result;
-		for( int i = 0 ; i < Size ; i++ ) {
-			result[i] = a[i] * b[i];
-		}
-		return result;
-	}
 }
