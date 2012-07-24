@@ -33,6 +33,73 @@
 
 #include <iostream>
 
+#include <boost/property_tree/ptree.hpp>
+
+/*
+struct ptree_serializer {
+	template<typename T>
+	void exchange( const char *key, T &data, const T &defaultValue = T());
+};
+*/
+
+
+template<typename T>
+void ptree_serializer_read( const boost::property_tree::ptree &tree, const char *key, T &data, const T &defaultValue = T() ) {
+	data = tree.get( key, defaultValue );
+}
+
+template<typename T>
+void ptree_serializer_write( boost::property_tree::ptree &tree, const char *key, const T &data ) {
+	tree.add( key, data );
+}
+
+struct ptree_input_serializer {
+	const boost::property_tree::ptree &tree;
+
+	ptree_input_serializer( const boost::property_tree::ptree &tree ) : tree( tree ) {}
+
+	template<typename T>
+	void exchange( const char *key, T &data, const T &defaultValue = T()) {
+		ptree_serializer_read( tree, key, data, defaultValue );
+	}
+};
+
+struct ptree_output_serializer {
+	boost::property_tree::ptree &tree;
+
+	ptree_output_serializer( boost::property_tree::ptree &tree ) : tree( tree ) {}
+
+	template<typename T>
+	void exchange( const char *key, T &data, const T & ) {
+		ptree_serializer_write( tree, key, data );
+	}
+};
+
+// special functions
+template<typename T>
+void ptree_serializer_read( const boost::property_tree::ptree &tree, const char *key, std::vector<T> &data, const T &defaultValue = std::vector<T>() ) {
+	auto childTree  = tree.find( key );
+	if( childTree == tree.not_found() ) {
+		data = defaultValue;
+	}
+	else {
+		data.reserve( childTree.size() );
+
+		for( auto it = childTree.cbegin() ; it != childTree.cend() ; ++it ) {
+			data.push_back( it->get_value<T>() );			
+		}
+	}
+}
+
+template<typename T>
+void ptree_serializer_write( boost::property_tree::ptree &tree, const char *key, const std::vector<T> &data ) {
+	boost::property_tree::ptree &childTree = tree.put_child( key, boost::property_tree::ptree() );
+
+	for( auto it = data.begin() ; it != data.end() ; ++data ) {
+		ptree_serializer_write( childTree, "", *it );
+	}
+}
+
 #include "volumePlacer.h"
 
 #include "ui.h"
