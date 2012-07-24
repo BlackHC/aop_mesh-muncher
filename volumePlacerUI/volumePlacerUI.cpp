@@ -34,7 +34,8 @@
 #include <iostream>
 
 #include <boost/property_tree/ptree.hpp>
-
+#include <boost/property_tree/info_parser.hpp>
+#include <boost/lexical_cast.hpp>
 /*
 struct ptree_serializer {
 	template<typename T>
@@ -42,63 +43,101 @@ struct ptree_serializer {
 };
 */
 
-
 template<typename T>
-void ptree_serializer_read( const boost::property_tree::ptree &tree, const char *key, T &data, const T &defaultValue = T() ) {
-	data = tree.get( key, defaultValue );
+void ptree_serializer_read( boost::property_tree::ptree &tree, T &data ) {
+	data = tree.get_value<T>();
 }
 
 template<typename T>
-void ptree_serializer_write( boost::property_tree::ptree &tree, const char *key, const T &data ) {
-	tree.add( key, data );
+void ptree_serializer_write( boost::property_tree::ptree &tree, const T &data ) {
+	tree.put_value( data );
 }
 
-struct ptree_input_serializer {
-	const boost::property_tree::ptree &tree;
-
-	ptree_input_serializer( const boost::property_tree::ptree &tree ) : tree( tree ) {}
-
-	template<typename T>
-	void exchange( const char *key, T &data, const T &defaultValue = T()) {
-		ptree_serializer_read( tree, key, data, defaultValue );
-	}
+enum ptree_serializer_mode {
+	PSM_READING,
+	PSM_WRITING
 };
 
-struct ptree_output_serializer {
-	boost::property_tree::ptree &tree;
-
-	ptree_output_serializer( boost::property_tree::ptree &tree ) : tree( tree ) {}
-
-	template<typename T>
-	void exchange( const char *key, T &data, const T & ) {
-		ptree_serializer_write( tree, key, data );
+template<ptree_serializer_mode mode, typename T>
+void ptree_serializer_exchange( boost::property_tree::ptree &tree, T &data ) {
+	switch( mode ) {
+	case PSM_READING:
+		ptree_serializer_read( tree, data );
+		break;
+	case PSM_WRITING:
+		ptree_serializer_write( tree, data );
+		break;
 	}
-};
+}
+
+template<typename T>
+void ptree_serializer_get( boost::property_tree::ptree &tree, const char *key, T &data, const T& defaultValue ) {
+	auto it = tree.find( key );
+	if( it != tree.not_found() ) {
+		ptree_serializer_exchange<PSM_READING>( *it, data );
+	}
+	else {
+		data = defaultValue;
+	}
+}
+
+template<typename T>
+void ptree_serializer_get( boost::property_tree::ptree &tree, const char *key, T &data ) {
+	ptree_serializer_exchange<PSM_READING>( tree.get_child( key ), data );
+}
+
+template<typename T>
+void ptree_serializer_put( boost::property_tree::ptree &tree, const char *key, T &data ) {
+	boost::property_tree::ptree &subTree = tree.add_child( key, boost::property_tree::ptree() );
+	ptree_serializer_exchange<PSM_WRITING>( subTree, data );
+}
+
+template<ptree_serializer_mode mode, typename T>
+void ptree_serialize( boost::property_tree::ptree &tree, const char *key, T &data ) {
+	switch( mode ) {
+	case PSM_READING:
+		ptree_serializer_get( tree, key, data );
+		break;
+	case PSM_WRITING:
+		ptree_serializer_put( tree, key, data );
+		break;
+	}
+}
 
 // special functions
 template<typename T>
-void ptree_serializer_read( const boost::property_tree::ptree &tree, const char *key, std::vector<T> &data, const T &defaultValue = std::vector<T>() ) {
-	auto childTree  = tree.find( key );
-	if( childTree == tree.not_found() ) {
-		data = defaultValue;
-	}
-	else {
-		data.reserve( childTree.size() );
+void ptree_serializer_read( boost::property_tree::ptree &tree, std::vector<T> &data ) {
+	data.reserve( tree.size() );
 
-		for( auto it = childTree.cbegin() ; it != childTree.cend() ; ++it ) {
-			data.push_back( it->get_value<T>() );			
-		}
+	for( auto it = tree.begin() ; it != tree.end() ; ++it ) {
+		T value;
+		ptree_serializer_exchange<PSM_READING>( it->second, value );
+		data.push_back( std::move( value ) );			
 	}
 }
 
 template<typename T>
-void ptree_serializer_write( boost::property_tree::ptree &tree, const char *key, const std::vector<T> &data ) {
-	boost::property_tree::ptree &childTree = tree.put_child( key, boost::property_tree::ptree() );
-
-	for( auto it = data.begin() ; it != data.end() ; ++data ) {
-		ptree_serializer_write( childTree, "", *it );
+void ptree_serializer_write( boost::property_tree::ptree &tree, std::vector<T> &data ) {
+	for( auto it = data.begin() ; it != data.end() ; ++it ) {
+		ptree_serialize<PSM_WRITING>( tree, "item", *it );
 	}
 }
+
+// static dispatch
+/*
+template< typename Target >
+struct ptree_static_dispatch {
+	struct StaticTag {};
+
+	template< typename Vistor, typename Param, typename Result >
+	static void static_visit( const Param &p ) {
+		Vistor::static_visit( p, StaticTag );
+	}
+};
+
+struct ptree_static_construction {
+
+};*/
 
 #include "volumePlacer.h"
 
@@ -167,6 +206,35 @@ struct ObjectTemplate {
 	}
 };
 
+template<ptree_serializer_mode mode, typename S, int N>
+void ptree_serializer_exchange( boost::property_tree::ptree &tree, niven::Vector<S, N> &data ) {
+	ptree_serialize<mode>( tree, "x", data[0] );
+	if( N >= 2 )
+		ptree_serialize<mode>( tree, "y", data[1] );
+	if( N >= 3 )
+		ptree_serialize<mode>( tree, "z", data[2] );
+	if( N >= 4 )
+		ptree_serialize<mode>( tree, "w", data[2] );
+}
+
+template<ptree_serializer_mode mode, typename S, int N>
+void ptree_serializer_exchange( boost::property_tree::ptree &tree, niven::Color<S, N> &data ) {
+	ptree_serialize<mode>( tree, "r", data[0] );
+	if( N >= 2 )
+		ptree_serialize<mode>( tree, "g", data[1] );
+	if( N >= 3 )
+		ptree_serialize<mode>( tree, "b", data[2] );
+	if( N >= 4 )
+		ptree_serialize<mode>( tree, "a", data[2] );
+}
+
+template<ptree_serializer_mode mode>
+void ptree_serializer_exchange( boost::property_tree::ptree &tree, ObjectTemplate &data ) {
+	ptree_serialize<mode>( tree, "id", data.id );
+	ptree_serialize<mode>( tree, "bbSize", data.bbSize );
+	ptree_serialize<mode>( tree, "color", data.color );
+}
+
 struct ObjectInstance {
 	ObjectTemplate *objectTemplate;
 
@@ -193,6 +261,23 @@ struct ObjectInstance {
 		renderContext->SetTransformation( Render::RenderTransformation::World, worldBase );
 	}
 };
+
+// TODO: blub
+ObjectTemplate *base = nullptr;
+
+template<ptree_serializer_mode mode>
+void ptree_serializer_exchange( boost::property_tree::ptree &tree, ObjectInstance &data ) {
+	if( mode == PSM_WRITING ) {
+		ptree_serializer_put( tree, "templateId", data.objectTemplate->id );
+	}
+	else if( mode == PSM_READING ) {
+		int id;
+		ptree_serializer_get( tree, "templateId", id );
+		data.objectTemplate = base + id;
+	}
+
+	ptree_serialize<mode>( tree, "position", data.position );
+}
 
 template< typename Value, int LABEL_MAX_LENGTH = 64 >
 struct AntTWBarCollection {
@@ -324,6 +409,7 @@ private:
 
 		targetCube_ = probes_->getVolumeFromIndexCube( Cubei::fromMinSize( Vector3i::CreateZero(), Vector3i::Constant(4) ) );
 
+#if 0
 		// init object templates
 		{
 			ObjectTemplate t;
@@ -347,6 +433,17 @@ private:
 			objectInstances_.push_back( ObjectInstance::FromFrontTopLeft( layerCalibration_.getPosition( probes_->getPosition( Vector3i( 8, 8, 8 ) ) ), &objectTemplates_[1] ) );
 		}
 
+		boost::property_tree::ptree tree;
+		ptree_serialize<PSM_WRITING>( tree, "objectTemplates", objectTemplates_);
+		ptree_serialize<PSM_WRITING>( tree, "objectInstances", objectInstances_ );
+		boost::property_tree::info_parser::write_info( "scenario.info", tree );
+#else	
+		boost::property_tree::ptree tree;
+		boost::property_tree::info_parser::read_info( "scenario.info", tree );
+		ptree_serialize<PSM_READING>( tree, "objectTemplates", objectTemplates_ );
+		base = &objectTemplates_.front();
+		ptree_serialize<PSM_READING>( tree, "objectInstances", objectInstances_ );
+#endif
 		// fill probe database
 		for( int i = 0 ; i < objectInstances_.size() ; i++ ) {
 			const Cubef bbox = objectInstances_[i].GetBBox();
