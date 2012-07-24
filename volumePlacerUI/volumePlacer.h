@@ -183,7 +183,7 @@ namespace Serialize {
 
 	template<typename V>
 	void writeTyped( FILE *fileHandle, const std::vector<V> &d ) {
-		int num = d.size();
+		int num = (int) d.size();
 		writeTyped( fileHandle, num );
 		for( int i = 0 ; i < num ; ++i ) {
 			writeTyped( fileHandle, d[i] );
@@ -417,7 +417,7 @@ struct ProbeDatabase {
 					candidateInfo.totalMatchCount += matchCount;
 					candidateInfo.maxSingleMatchCount = std::max( candidateInfo.maxSingleMatchCount, matchCount );
 
-					candidateInfo.matchesPositionEndOffsets.push_back( std::make_pair( targetIterator.ToVector(), candidateInfo.matches.size() ) );
+					candidateInfo.matchesPositionEndOffsets.push_back( std::make_pair( targetIterator.ToVector(), (int) candidateInfo.matches.size() ) );
 				}
 			}
 		}
