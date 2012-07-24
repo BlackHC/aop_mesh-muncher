@@ -16,8 +16,11 @@
 
 #include <iostream>
 #include <utility>
+#include <vector>
 
 #include "findDistances.h"
+
+#include "contextHelper.h"
 
 // TODO: whatever...
 using namespace niven;
@@ -35,6 +38,10 @@ struct Cube {
 
 	V getSize() const {
 		return maxCorner - minCorner;
+	}
+
+	Vector3f getCenter() const {
+		return (minCorner + maxCorner).Cast<float>() / 2;
 	}
 };
 
@@ -141,7 +148,26 @@ struct UnorderedDistanceContext {
 
 Vector3f UnorderedDistanceContext::directions[UnorderedDistanceContext::numSamples];
 
-typedef UnorderedDistanceContext Probe;
+struct ProbeMatchSettings : AsExecutionContext<ProbeMatchSettings> {
+	float maxDistance;
+	float maxDelta;
+
+	void setDefault() {
+		maxDistance = 128.0;
+		maxDelta = 1.0;
+	}
+};
+
+// TODO: rename to InstanceProbe or InstanceSample
+struct Probe {
+	typedef UnorderedDistanceContext DistanceContext;
+	DistanceContext distanceContext;
+
+	static bool match( const Probe &a, const Probe &b ) {
+		return DistanceContext::compare( a.distanceContext, b.distanceContext, ProbeMatchSettings::context->maxDistance ) <= ProbeMatchSettings::context->maxDelta;
+	}
+};
+
 typedef std::vector<Probe> ProbeVector;
 
 namespace Serialize {
@@ -313,6 +339,14 @@ struct DataVolume {
 
 typedef DataVolume<Probe> Probes;
 
+struct InstanceProbe {
+	Probe probe;
+	int id;
+	Vector3f delta;
+
+	InstanceProbe( const Probe &probe, int id, const Vector3f &delta ) : probe( probe ), id( id ), delta( delta ) {}
+};
+
 // TODO: add weighted probes (probe weighted by inverse instance volume to be scale-invariant (more or less))
 struct ProbeDatabase {
 	int numIds;
@@ -320,13 +354,15 @@ struct ProbeDatabase {
 	ProbeDatabase() : numIds( 0 ) {}
 
 	void addObjectInstanceToDatabase( Probes &probes, const Probes::VolumeCube &instanceVolume, int id ) {
+		Vector3f instanceCenter = instanceVolume.getCenter();
+
 		numIds = std::max( id + 1, numIds );
 		idInfos.resize( numIds );
 		
 		int count = 0;
 		for( Iterator3D it = probes.getIteratorFromVolume( instanceVolume ) ; !it.IsAtEnd() ; ++it, ++count ) {
 			if( probes.validIndex( it ) ) {
-				probeIdMap.push_back( std::make_pair( probes[ it ], id ) );
+				probeIdMap.push_back( InstanceProbe( probes[ it ], id, instanceCenter - it.ToVector().Cast<float>() ) );
 			}
 		}
 
@@ -341,25 +377,32 @@ struct ProbeDatabase {
 		int totalMatchCount;
 		int maxSingleMatchCount;
 
-		std::vector< std::pair<Probes::IndexVector, int> > matches;
+		std::vector< const InstanceProbe * > matches;
+		std::vector< std::pair<Probes::IndexVector, int> > matchesPositionEndOffsets;
 
 		CandidateInfo() : totalMatchCount(0), maxSingleMatchCount(0), score(0) {}
+
+		CandidateInfo( CandidateInfo &&o ) : score( o.score ), totalMatchCount( o.totalMatchCount ), maxSingleMatchCount( o.maxSingleMatchCount ), matches( std::move( o.matches ) ), matchesPositionEndOffsets( std::move( o.matchesPositionEndOffsets ) ) {}
 	};
 
 	typedef std::vector<CandidateInfo> CandidateInfos;
 	typedef std::vector< std::pair<int, CandidateInfo > > SparseCandidateInfos;
 
-	SparseCandidateInfos findCandidates( const Probes &probes, const Probes::VolumeCube &targetVolume, float maxDistance, float maxDelta  ) {
+	SparseCandidateInfos findCandidates( const Probes &probes, const Probes::VolumeCube &targetVolume ) {
 		CandidateInfos candidateInfos( numIds );
 
+		std::vector<int> matchCounts(numIds);
 		for( Iterator3D targetIterator = probes.getIteratorFromVolume( targetVolume ) ; !targetIterator.IsAtEnd() ; ++targetIterator ) {
 			if( probes.validIndex( targetIterator ) ) {
 				const Probe &probe = probes[ targetIterator ];
-				std::vector<int> matchCounts( numIds );
+
+				std::fill( matchCounts.begin(), matchCounts.end(), 0 );
 
 				for( auto refIterator = probeIdMap.cbegin() ; refIterator != probeIdMap.cend() ; ++refIterator ) {
-					if( Probe::compare( refIterator->first, probe, maxDistance ) <= maxDelta ) {
-						++matchCounts[refIterator->second];
+					if( Probe::match( refIterator->probe, probe ) ) {
+						const int id = refIterator->id;
+						candidateInfos[id].matches.push_back( &*refIterator );
+						matchCounts[id]++;
 					}
 				}				
 
@@ -370,9 +413,11 @@ struct ProbeDatabase {
 					}
 					
 					CandidateInfo &candidateInfo = candidateInfos[id];
+					
 					candidateInfo.totalMatchCount += matchCount;
-					candidateInfo.matches.push_back( std::make_pair( targetIterator.ToVector(), matchCount ) );
 					candidateInfo.maxSingleMatchCount = std::max( candidateInfo.maxSingleMatchCount, matchCount );
+
+					candidateInfo.matchesPositionEndOffsets.push_back( std::make_pair( targetIterator.ToVector(), candidateInfo.matches.size() ) );
 				}
 			}
 		}
@@ -385,8 +430,8 @@ struct ProbeDatabase {
 			if( matchCount > 0 ) {
 				candidateInfo.score = float(matchCount) / getProbeCountPerInstanceForId(id);
 
-				typedef decltype(candidateInfo.matches[0]) value_type;
-				std::sort( candidateInfo.matches.begin(), candidateInfo.matches.end(), [](const value_type &a, const value_type b) { return a.second > b.second; } );
+				//typedef decltype(candidateInfo.matches[0]) value_type;
+				//std::sort( candidateInfo.matches.begin(), candidateInfo.matches.end(), [](const value_type &a, const value_type b) { return a.second > b.second; } );
 
 				results.push_back( std::make_pair( id, std::move( candidateInfo ) ) );
 			}
@@ -402,7 +447,7 @@ struct ProbeDatabase {
 	}
 
 	// probe->id
-	std::vector<std::pair<Probe, int>> probeIdMap;
+	std::vector<InstanceProbe> probeIdMap;
 
 	struct IdInfo {
 		int numObjects;
@@ -422,7 +467,7 @@ struct ProbeDatabase {
 void sampleProbes( DenseCache &cache, Probes &probes ) {
 	for( Iterator3D it = probes.getIterator() ; !it.IsAtEnd() ; ++it ) {
 		Probe &probe = probes[it];
-		probe.fill( cache, probes.getPosition( it ) );
+		probe.distanceContext.fill( cache, probes.getPosition( it ) );
 		//probes[ it ].normalizeWithAverage();
 
 		/*std::cout << StringConverter::ToString(it.ToVector()) << " " << StringConverter::ToString( probes.getPosition( it ) );

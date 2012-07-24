@@ -55,26 +55,6 @@
 
 using namespace niven;
 
-template<typename Context>
-struct AsExecutionContext {
-	static Context *current;
-	Context *previous;
-
-	AsExecutionContext() {
-		(Context*) this = (Context*) current;
-
-		previous = current;
-		current = this;
-	}
-
-	~AsExecutionContext() {
-		current = previous;
-	}
-};
-
-template<typename Context>
-Context *AsExecutionContext<Context>::current = nullptr;
-
 namespace AntTWBarGroupTypes {
 	template<>
 	struct TypeMapping< niven::Vector3i > {
@@ -507,9 +487,9 @@ private:
 			const Vector3f probePosition = layerCalibration_.getPosition( probes_->getPosition( iter ) );
 			const Probe &probe = probes_->get(iter);
 
-			for( int i = 0 ; i < Probe::numSamples ; ++i ) {
-				const Vector3f &direction = probe.directions[i];
-				const float distance = probe.distances[i];
+			for( int i = 0 ; i < Probe::DistanceContext::numSamples ; ++i ) {
+				const Vector3f &direction = probe.distanceContext.directions[i];
+				const float distance = probe.distanceContext.distances[i];
 
 				const Vector3f &vector = direction * (1.0 - distance / maxDistance_);
 				dru.AddLine( probePosition, probePosition + vector * visSize, Color3f( 0.0, 0.0, Length(vector) ) );
@@ -522,14 +502,25 @@ private:
 		matchedProbes_[index].Clear();
 
 		const ProbeDatabase::CandidateInfo &info = results_[index].second;
-		for( int i = 0 ; i < info.matches.size() ; ++i ) {
-			const Vector3f position = layerCalibration_.getPosition( probes_->getPosition( info.matches[i].first ) );
-			matchedProbes_[index].AddSphere( position, 0.05, Color3f( 1.0 - float(info.matches[i].second) / info.maxSingleMatchCount, 1.0, 0.0 ));
+
+		int begin = 0;
+		for( int i = 0 ; i < info.matchesPositionEndOffsets.size() ; ++i ) {
+			const Vector3f position = layerCalibration_.getPosition( probes_->getPosition( info.matchesPositionEndOffsets[i].first ) );
+
+			const int end = info.matchesPositionEndOffsets[i].second;
+			const int count = end - begin;
+			matchedProbes_[index].AddSphere( position, 0.05, Color3f( 1.0 - float(count) / info.maxSingleMatchCount, 1.0, 0.0 ));
+
+			begin = end;
 		}
 	}
 
 	void Do_findCandidates() {
-		results_ = probeDatabase_.findCandidates( *probes_, targetCube_, maxDistance_, probes_->step );
+		ProbeMatchSettings settings;
+		settings.maxDelta = probes_->step;
+		settings.maxDistance = maxDistance_;
+
+		results_ = probeDatabase_.findCandidates( *probes_, targetCube_ );
 
 		candidateResultsUI_->clear();
 		for( int i = 0 ; i < results_.size() ; ++i ) {
