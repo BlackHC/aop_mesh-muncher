@@ -342,9 +342,10 @@ typedef DataVolume<Probe> Probes;
 struct InstanceProbe {
 	Probe probe;
 	int id;
-	Vector3f delta;
+	//Vector3f delta;
+	float distance;
 
-	InstanceProbe( const Probe &probe, int id, const Vector3f &delta ) : probe( probe ), id( id ), delta( delta ) {}
+	InstanceProbe( const Probe &probe, int id, float distance ) : probe( probe ), id( id ), distance( distance ) {}
 };
 
 // TODO: add weighted probes (probe weighted by inverse instance volume to be scale-invariant (more or less))
@@ -362,7 +363,9 @@ struct ProbeDatabase {
 		int count = 0;
 		for( Iterator3D it = probes.getIteratorFromVolume( instanceVolume ) ; !it.IsAtEnd() ; ++it, ++count ) {
 			if( probes.validIndex( it ) ) {
-				probeIdMap.push_back( InstanceProbe( probes[ it ], id, instanceCenter - it.ToVector().Cast<float>() ) );
+				const Vector3f delta = instanceCenter - it.ToVector().Cast<float>();
+
+				probeIdMap.push_back( InstanceProbe( probes[ it ], id, Length( delta ) ) );
 			}
 		}
 
