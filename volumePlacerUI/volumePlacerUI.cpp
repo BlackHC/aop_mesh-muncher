@@ -35,7 +35,6 @@
 
 #include "ptree_serializer.h"
 #include "anttwbarcollection.h"
-
 #include "volumePlacer.h"
 
 #include "ui.h"

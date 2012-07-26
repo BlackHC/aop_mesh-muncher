@@ -11,6 +11,7 @@
 #include <niven.Render.IndexBuffer.h>
 
 #include <niven.Engine.Geometry.SimpleMesh.h>
+#include <set>
 
 #include "materialLibrary.h"
 
@@ -18,12 +19,25 @@ struct ObjModel {
 	void Init( niven::IRenderSystem::Ptr renderSystem, niven::Render::EffectManager &effectManager, niven::IO::Path &objPath );
 	void Draw( niven::Render::IRenderContext *renderContext );
 
-	std::vector<niven::SimpleMesh::Ptr> meshes_;
-	std::vector<niven::Render::ITexture::Ptr> textures_;
-	niven::Render::ITexture::Ptr nullTexture_;
+	void SetObjectVisibility( const niven::String &objectName, bool visible );
+	void SetGroupVisibilty( const niven::String &groupName, bool visible );
 
-	std::vector<niven::Render::Effect*> effects_;
-	std::vector<niven::IVertexLayout::Ptr> vertexLayouts_;
-	std::vector<niven::IIndexBuffer::Ptr> indexBuffers_;
-	std::vector<niven::IVertexBuffer::Ptr> vertexBuffers_;
+	struct SubModel {
+		niven::SimpleMesh::Ptr mesh;
+		niven::Render::ITexture::Ptr texture;
+		niven::Render::Effect* effect;
+		niven::IVertexLayout::Ptr vertexLayout;
+		niven::IIndexBuffer::Ptr indexBuffer;
+		niven::IVertexBuffer::Ptr vertexBuffer;
+
+		niven::String objectName;
+		std::set<niven::String> groupNames;
+		bool visible;
+	};
+
+	std::vector<SubModel> subModels;
+	std::set<niven::String> groupNames;
+	std::set<niven::String> objectNames;
+
+	niven::Render::ITexture::Ptr nullTexture_;
 };

@@ -46,11 +46,23 @@ void ObjModel::Init( niven::IRenderSystem::Ptr renderSystem, niven::Render::Effe
 	for (int i = 0; i < reader.GetChunkCount (); ++i)
 	{
 		const Interop::Obj::Chunk *chunk = reader.GetChunk(i);
-		meshes_.push_back (ConvertToSimpleMesh (chunk));
+		{
+			SubModel subModel;
+			subModel.mesh = ConvertToSimpleMesh (chunk);
+			subModel.texture = nullptr;
+
+			subModel.objectName = chunk->GetObjectName();
+			subModel.groupNames = chunk->GetGroups();
+
+			subModel.visible = true;
+
+			subModels.push_back( std::move( subModel ) );
+
+			objectNames.insert( subModel.objectName );
+			groupNames.insert( subModel.groupNames.cbegin(), subModel.groupNames.cend() );
+		}
 
 		// load material
-		textures_.push_back( nullptr );
-
 		const String &materialName = chunk->GetMaterial();
 		if( !materialName.IsEmpty() ) {
 			Log::Info( "ObjModel", String::Format( "Chunk {0} uses material {1}" ) % i % materialName );
@@ -61,7 +73,7 @@ void ObjModel::Init( niven::IRenderSystem::Ptr renderSystem, niven::Render::Effe
 				auto &texture = textureMap[material.texture];
 				if( texture ) {
 					// okay, reuse it
-					textures_.push_back( texture );
+					subModels.back().texture = texture;
 				}
 				else {
 					// try to load it
@@ -76,7 +88,7 @@ void ObjModel::Init( niven::IRenderSystem::Ptr renderSystem, niven::Render::Effe
 						Render::ITexture::Ptr texture = Render::ITexture::Ptr( renderSystem->Wrap( renderSystem->CreateTexture2D( Render::Texture2DDescriptor( *image ) ) ) );
 
 						textureMap[ material.texture ] = texture;
-						textures_.back() = texture;
+						subModels.back().texture = texture;
 					}
 					catch(...) {
 						Log::Info( "ObjModel", String::Format( "Could not load texture {0}" ) % imagePath );
@@ -86,56 +98,80 @@ void ObjModel::Init( niven::IRenderSystem::Ptr renderSystem, niven::Render::Effe
 		}
 	}
 
-	const int meshCount = static_cast<int>(meshes_.size ());
+	const int meshCount = static_cast<int>(subModels.size ());
 	for (int i = 0; i < meshCount; ++i)
 	{
-		SimpleMesh *mesh = meshes_[i].get();
+		SubModel &subModel = subModels[i];
 
 		Log::Info ("ObjModel", 
-			String::Format ("Uploading mesh {0}/{1} with vertex format {2}") % (i+1) % meshCount % mesh->GetVertexFormat ().GetId () );
+			String::Format ("Uploading mesh {0}/{1} with vertex format {2}") % (i+1) % meshCount % subModel.mesh->GetVertexFormat ().GetId () );
 
-		effects_.push_back (effectManager.GetEffect ("VolumePlacerUI", mesh->GetVertexFormat ().GetId ()));
+		subModel.effect = effectManager.GetEffect ("VolumePlacerUI", subModel.mesh->GetVertexFormat ().GetId ());
 
-		vertexLayouts_.push_back (renderSystem->Wrap (renderSystem->CreateVertexLayout (mesh->GetVertexFormat ().GetVertexLayout(),	effects_ [i]->GetVertexShaderProgram ())));
+		subModel.vertexLayout = renderSystem->Wrap (renderSystem->CreateVertexLayout (subModel.mesh->GetVertexFormat ().GetVertexLayout(),	subModel.effect->GetVertexShaderProgram ()));
 
-		vertexBuffers_.push_back(renderSystem->Wrap (renderSystem->CreateVertexBuffer (
-			mesh->GetVertexFormat ().GetSize (), 
-			mesh->GetVertexCount (),
+		subModel.vertexBuffer = renderSystem->Wrap (renderSystem->CreateVertexBuffer (
+			subModel.mesh->GetVertexFormat ().GetSize (), 
+			subModel.mesh->GetVertexCount (),
 			Render::ResourceUsage::Static,
-			mesh->GetVertexDataPointer ())));
+			subModel.mesh->GetVertexDataPointer ()));
 
-		indexBuffers_.push_back (renderSystem->Wrap (renderSystem->CreateIndexBuffer (
+		subModel.indexBuffer = renderSystem->Wrap (renderSystem->CreateIndexBuffer (
 			IndexBufferFormat::UInt_32, 
-			mesh->GetIndexCount (),
+			subModel.mesh->GetIndexCount (),
 			Render::ResourceUsage::Static,
-			mesh->GetIndexDataPointer ())));
+			subModel.mesh->GetIndexDataPointer ()));
 	}
 }
 
 void ObjModel::Draw( niven::Render::IRenderContext *renderContext ) {
 	Matrix4f worldView = renderContext->GetWorld() * renderContext->GetView();
 
-	for (int i = 0; i < static_cast<int> (indexBuffers_.size ()); ++i)
+	for (int i = 0; i < static_cast<int> (subModels.size ()); ++i)
 	{
-		DrawIndexedCommand dic;
-		dic.SetIndexBuffer (indexBuffers_ [i]);
-		dic.SetVertexBuffers (1, &vertexBuffers_ [i]);
-		dic.SetVertexLayout (vertexLayouts_ [i]);
-		dic.type			= meshes_[i]->GetPrimitiveType ();
-		dic.indexCount		= meshes_[i]->GetIndexCount ();
-		dic.vertexCount		= meshes_[i]->GetVertexCount ();
+		SubModel &subModel = subModels[i];
 
-		if( textures_[ i ] ) {
-			effects_[i]->SetTexture( "Diffuse_Texture", textures_[i] );
+		if( !subModel.visible ) {
+			continue;
+		}
+
+		DrawIndexedCommand dic;
+		dic.SetIndexBuffer (subModel.indexBuffer);
+		dic.SetVertexBuffers (1, &subModel.vertexBuffer);
+		dic.SetVertexLayout (subModel.vertexLayout);
+		dic.type			= subModel.mesh->GetPrimitiveType ();
+		dic.indexCount		= subModel.mesh->GetIndexCount ();
+		dic.vertexCount		= subModel.mesh->GetVertexCount ();
+
+		if( subModel.texture ) {
+			subModel.effect->SetTexture( "Diffuse_Texture", subModel.texture );
 		}
 		else {
-			effects_[i]->SetTexture( "Diffuse_Texture", nullTexture_ );
+			subModel.effect->SetTexture( "Diffuse_Texture", nullTexture_ );
 		}
 
-		effects_[i]->SetMatrix( "WorldView", worldView );
+		subModel.effect->SetMatrix( "WorldView", worldView );
 
-		effects_ [i]->Bind (renderContext);
+		subModel.effect->Bind (renderContext);
 		renderContext->Draw (dic);
-		effects_ [i]->Unbind (renderContext);
+		subModel.effect->Unbind (renderContext);
+	}
+}
+
+void ObjModel::SetObjectVisibility( const niven::String &objectName, bool visible )
+{
+	for( auto subModel = subModels.begin() ; subModel != subModels.end() ; ++subModel ) {
+		if( subModel->objectName == objectName ) {
+			subModel->visible = visible;
+		}
+	}
+}
+
+void ObjModel::SetGroupVisibilty( const niven::String &groupName, bool visible )
+{
+	for( auto subModel = subModels.begin() ; subModel != subModels.end() ; ++subModel ) {
+		if( subModel->groupNames.count( groupName ) ) {
+			subModel->visible = visible;
+		}
 	}
 }
