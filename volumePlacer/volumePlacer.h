@@ -1,7 +1,6 @@
 #pragma once
 
 #include <niven.Core.Math.Vector.h>
-#include <niven.Core.Math.VectorOperators.h>
 
 #include "niven.Core.Geometry.Plane.h"
 
