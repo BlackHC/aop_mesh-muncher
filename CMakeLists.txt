@@ -1,0 +1,20 @@
+CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
+
+SET(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR})
+FIND_PACKAGE(Niven REQUIRED COMPONENTS Core)
+
+#ADD_SUBDIRECTORY(shard1)
+#ADD_SUBDIRECTORY(shard2)
+ADD_SUBDIRECTORY(densityPyramid)
+#ADD_SUBDIRECTORY(blockMipmaps)
+#ADD_SUBDIRECTORY(simpleBoxScenario)
+#ADD_SUBDIRECTORY(sampleBoxSphere)
+#ADD_SUBDIRECTORY(volumePlacer)
+ADD_SUBDIRECTORY(volumePlacerUI)
+ADD_SUBDIRECTORY(calibrateVolumeBB)
+ADD_SUBDIRECTORY(positionSolver)
+ADD_SUBDIRECTORY(minimumDensityClustering)
+
+# Adds a new build target which copies the niven binaries to
+# the output folder
+NIVEN_COPY_BINARIES(${CMAKE_BINARY_DIR})
