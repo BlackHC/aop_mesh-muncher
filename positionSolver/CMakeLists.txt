@@ -5,7 +5,7 @@ PROJECT(positionSolver)
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /GR- /D_UNICODE")
 
 # Must link both against niven and Boost
-INCLUDE_DIRECTORIES(${ANTTWEAKBAR_INCLUDE_DIR} ${NIVEN_INCLUDE_DIR} ${Boost_INCLUDE_DIR} ../gtest/)
+INCLUDE_DIRECTORIES(${ANTTWEAKBAR_INCLUDE_DIR} ${NIVEN_INCLUDE_DIR} ${EIGEN3_INCLUDE_DIR} ${Boost_INCLUDE_DIR} ../gtest/)
 
 # ../gtest/gtest_main.cc
 ADD_EXECUTABLE(positionSolver

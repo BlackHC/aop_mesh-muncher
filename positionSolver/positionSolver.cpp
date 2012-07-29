@@ -100,7 +100,7 @@ std::vector<SparseCellInfo> solveIntersections( const std::vector<Point> &points
 
 	Vector3i size = ((maxGridCorner - minGridCorner) / resolution + Vector3f::Constant(1)).cast<int>();
 	Grid grid( size, minGridCorner, resolution );
-	
+
 	int bestFullCount = 0;
 	int bestTotalCount = 0;
 
@@ -116,7 +116,7 @@ std::vector<SparseCellInfo> solveIntersections( const std::vector<Point> &points
 			const Point &point = points[pointIndex];
 			float minSquaredDistance = squaredMinDistanceAABoxPoint( minCorner, maxCorner, point.center );
 			float maxSquaredDistance = squaredMaxDistanceAABoxPoint( minCorner, maxCorner, point.center );
-			
+
 			float minSphereSquaredDistance = (point.distance - halfThickness) * (point.distance - halfThickness);
 			float maxSphereSquaredDistance = (point.distance + halfThickness) * (point.distance + halfThickness);
 			if( maxSquaredDistance < minSphereSquaredDistance || maxSphereSquaredDistance < minSquaredDistance ) {
@@ -145,11 +145,11 @@ std::vector<SparseCellInfo> solveIntersections( const std::vector<Point> &points
 			bestTotalCount = std::max( bestTotalCount, cellInfo.totalCount );
 			bestFullCount = std::max( bestFullCount, cellInfo.fullCount );
 
-			sparseCellInfos.push_back( std::move( cellInfo ) );				
+			sparseCellInfos.push_back( std::move( cellInfo ) );
 		}
 	}
 
-	// filter 
+	// filter
 	if( bestFullCount > 0 ) {
 		std::vector<SparseCellInfo> filteredSparseCellInfos;
 		std::remove_copy_if( sparseCellInfos.begin(), sparseCellInfos.end(), std::back_inserter( filteredSparseCellInfos ), [bestFullCount](SparseCellInfo &info) { return info.totalCount < bestFullCount; } );
@@ -211,7 +211,7 @@ std::vector<SparseCellInfo> solveIntersections( const std::vector<Point> &points
 
 					// full?
 					if( minSphereSquaredDistance <= minSquaredDistance && maxSquaredDistance <= maxSphereSquaredDistance ) {
-						cellInfo.fullCount++;				
+						cellInfo.fullCount++;
 						cellInfo.fullPointIndices.push_back( pointIndex );
 					}
 					else {
@@ -219,7 +219,6 @@ std::vector<SparseCellInfo> solveIntersections( const std::vector<Point> &points
 						cellInfo.partialPointIndices.push_back( pointIndex );
 					}
 				}
-
 
 				// only keep potential solutions
 				if( cellInfo.totalCount >= bestFullCount && cellInfo.totalCount > 0 ) {
@@ -229,14 +228,14 @@ std::vector<SparseCellInfo> solveIntersections( const std::vector<Point> &points
 					bestTotalCount = std::max( bestTotalCount, cellInfo.totalCount );
 					bestFullCount = std::max( bestFullCount, cellInfo.fullCount );
 
-					refinedSparseCellInfos.push_back( std::move( cellInfo ) );				
+					refinedSparseCellInfos.push_back( std::move( cellInfo ) );
 				}
 			}
 		}
 
 		std::swap( sparseCellInfos, refinedSparseCellInfos );
 
-		// filter 
+		// filter
 		if( bestFullCount > 0 ) {
 			std::vector<SparseCellInfo> filteredSparseCellInfos;
 			std::remove_copy_if( sparseCellInfos.begin(), sparseCellInfos.end(), std::back_inserter( filteredSparseCellInfos ), [bestFullCount](SparseCellInfo &info) { return info.totalCount < bestFullCount; } );
