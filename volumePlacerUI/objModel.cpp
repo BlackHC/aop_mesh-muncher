@@ -19,7 +19,7 @@
 
 using namespace niven;
 
-void ObjModel::Init( niven::IRenderSystem::Ptr renderSystem, niven::Render::EffectManager &effectManager, niven::IO::Path &objPath ) {
+void ObjScene::Init( niven::IRenderSystem::Ptr renderSystem, niven::Render::EffectManager &effectManager, niven::IO::Path &objPath ) {
 	// create null texture
 	nullTexture_ = renderSystem->Wrap( renderSystem->CreateTexture2D( 1, 1, 1, PixelFormat::R8G8B8A8 ) );
 
@@ -122,9 +122,40 @@ void ObjModel::Init( niven::IRenderSystem::Ptr renderSystem, niven::Render::Effe
 			Render::ResourceUsage::Static,
 			subModel.mesh->GetIndexDataPointer ()));
 	}
+
+	// fill the models vector
+	models.reserve( objectNames.size() );
+	
+	for( auto it = objectNames.begin() ; it != objectNames.end() ; ++it ) {
+		models.push_back( Model() );
+		models.back().name = *it;
+
+		nameModelMap.insert( std::make_pair( *it, &models.back() ) );
+	}
+
+	for( int i = 0 ; i < subModels.size() ; ++i ) {
+		Model *model = nameModelMap[ subModels[i].objectName ];
+		model->subModels.push_back( &subModels[i] );
+
+		const niven::AxisAlignedBoundingBox3 &subBB = subModels[i].mesh->GetBoundingBox();
+		// TODO: is this really necessary or would it work automatically?
+		if( !model->boundingBox.IsEmpty() ) {
+			model->boundingBox.Merge( subBB );
+		}
+		else {
+			model->boundingBox = subBB;
+		}
+
+		if( !boundingBox.IsEmpty() ) {
+			boundingBox.Merge( subBB );
+		} 
+		else {
+			boundingBox = subBB;
+		}
+	}
 }
 
-void ObjModel::Draw( niven::Render::IRenderContext *renderContext ) {
+void ObjScene::Draw( niven::Render::IRenderContext *renderContext ) {
 	Matrix4f worldView = renderContext->GetWorld() * renderContext->GetView();
 
 	for (int i = 0; i < static_cast<int> (subModels.size ()); ++i)
@@ -158,7 +189,7 @@ void ObjModel::Draw( niven::Render::IRenderContext *renderContext ) {
 	}
 }
 
-void ObjModel::SetObjectVisibility( const niven::String &objectName, bool visible )
+void ObjScene::SetObjectVisibility( const niven::String &objectName, bool visible )
 {
 	for( auto subModel = subModels.begin() ; subModel != subModels.end() ; ++subModel ) {
 		if( subModel->objectName == objectName ) {
@@ -167,7 +198,7 @@ void ObjModel::SetObjectVisibility( const niven::String &objectName, bool visibl
 	}
 }
 
-void ObjModel::SetGroupVisibilty( const niven::String &groupName, bool visible )
+void ObjScene::SetGroupVisibilty( const niven::String &groupName, bool visible )
 {
 	for( auto subModel = subModels.begin() ; subModel != subModels.end() ; ++subModel ) {
 		if( subModel->groupNames.count( groupName ) ) {

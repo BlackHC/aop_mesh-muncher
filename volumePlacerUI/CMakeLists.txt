@@ -12,6 +12,8 @@ INCLUDE_DIRECTORIES(${ANTTWEAKBAR_INCLUDE_DIR} ${NIVEN_INCLUDE_DIR} ${Boost_INCL
 # ../gtest/gtest_main.cc
 ADD_EXECUTABLE(volumePlacerUI
 	antTweakBarEventHandler.h
+	ptree_serializer.h
+	anttwbarcollection.h
 	contextHelper.h
 	volumePlacerUI.cpp 
 	materialLibrary.cpp

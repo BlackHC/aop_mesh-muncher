@@ -26,13 +26,15 @@ struct ptree_serializer {
 // FIXME: const-correctness does not work with exchange :(
 // solution: use specialized classes instead of specialized functions.. :)
 
+typedef boost::property_tree::ptree ptree_serializer;
+
 template<typename T>
-void ptree_serializer_read( boost::property_tree::ptree &tree, T &data ) {
+void ptree_serializer_read( ptree_serializer &tree, T &data ) {
 	data = tree.get_value<T>();
 }
 
 template<typename T>
-void ptree_serializer_write( boost::property_tree::ptree &tree, const T &data ) {
+void ptree_serializer_write( ptree_serializer &tree, const T &data ) {
 	tree.put_value( data );
 }
 
@@ -42,7 +44,7 @@ enum ptree_serializer_mode {
 };
 
 template<ptree_serializer_mode mode, typename T>
-void ptree_serializer_exchange( boost::property_tree::ptree &tree, T &data ) {
+void ptree_serializer_exchange( ptree_serializer &tree, T &data ) {
 	switch( mode ) {
 	case PSM_READING:
 		ptree_serializer_read( tree, data );
@@ -54,7 +56,7 @@ void ptree_serializer_exchange( boost::property_tree::ptree &tree, T &data ) {
 }
 
 template<typename T>
-void ptree_serializer_get( boost::property_tree::ptree &tree, const char *key, T &data, const T& defaultValue ) {
+void ptree_serializer_get( ptree_serializer &tree, const char *key, T &data, const T& defaultValue ) {
 	auto it = tree.find( key );
 	if( it != tree.not_found() ) {
 		ptree_serializer_exchange<PSM_READING>( *it, data );
@@ -65,18 +67,18 @@ void ptree_serializer_get( boost::property_tree::ptree &tree, const char *key, T
 }
 
 template<typename T>
-void ptree_serializer_get( boost::property_tree::ptree &tree, const char *key, T &data ) {
+void ptree_serializer_get( ptree_serializer &tree, const char *key, T &data ) {
 	ptree_serializer_exchange<PSM_READING>( tree.get_child( key ), data );
 }
 
 template<typename T>
-void ptree_serializer_put( boost::property_tree::ptree &tree, const char *key, T &data ) {
-	boost::property_tree::ptree &subTree = tree.add_child( key, boost::property_tree::ptree() );
+void ptree_serializer_put( ptree_serializer &tree, const char *key, T &data ) {
+	ptree_serializer &subTree = tree.add_child( key, ptree_serializer() );
 	ptree_serializer_exchange<PSM_WRITING>( subTree, data );
 }
 
 template<ptree_serializer_mode mode, typename T>
-void ptree_serialize( boost::property_tree::ptree &tree, const char *key, T &data ) {
+void ptree_serialize( ptree_serializer &tree, const char *key, T &data ) {
 	switch( mode ) {
 	case PSM_READING:
 		ptree_serializer_get( tree, key, data );
@@ -89,7 +91,7 @@ void ptree_serialize( boost::property_tree::ptree &tree, const char *key, T &dat
 
 // special functions
 template<typename T>
-void ptree_serializer_read( boost::property_tree::ptree &tree, std::vector<T> &data ) {
+void ptree_serializer_read( ptree_serializer &tree, std::vector<T> &data ) {
 	data.reserve( tree.size() );
 
 	for( auto it = tree.begin() ; it != tree.end() ; ++it ) {
@@ -100,7 +102,7 @@ void ptree_serializer_read( boost::property_tree::ptree &tree, std::vector<T> &d
 }
 
 template<typename T>
-void ptree_serializer_write( boost::property_tree::ptree &tree, std::vector<T> &data ) {
+void ptree_serializer_write( ptree_serializer &tree, std::vector<T> &data ) {
 	for( auto it = data.begin() ; it != data.end() ; ++it ) {
 		ptree_serialize<PSM_WRITING>( tree, "item", *it );
 	}
