@@ -103,7 +103,7 @@ struct ObjectTemplate {
 };
 
 template<ptree_serializer_mode mode, typename S, int N>
-void ptree_serializer_exchange( boost::property_tree::ptree &tree, niven::Vector<S, N> &data ) {
+void ptree_serializer_exchange( ptree_serializer &tree, niven::Vector<S, N> &data ) {
 	ptree_serialize<mode>( tree, "x", data[0] );
 	if( N >= 2 )
 		ptree_serialize<mode>( tree, "y", data[1] );
@@ -114,7 +114,7 @@ void ptree_serializer_exchange( boost::property_tree::ptree &tree, niven::Vector
 }
 
 template<ptree_serializer_mode mode, typename S, int N>
-void ptree_serializer_exchange( boost::property_tree::ptree &tree, niven::Color<S, N> &data ) {
+void ptree_serializer_exchange( ptree_serializer &tree, niven::Color<S, N> &data ) {
 	ptree_serialize<mode>( tree, "r", data[0] );
 	if( N >= 2 )
 		ptree_serialize<mode>( tree, "g", data[1] );
@@ -125,7 +125,7 @@ void ptree_serializer_exchange( boost::property_tree::ptree &tree, niven::Color<
 }
 
 template<ptree_serializer_mode mode>
-void ptree_serializer_exchange( boost::property_tree::ptree &tree, ObjectTemplate &data ) {
+void ptree_serializer_exchange( ptree_serializer &tree, ObjectTemplate &data ) {
 	ptree_serialize<mode>( tree, "id", data.id );
 	ptree_serialize<mode>( tree, "bbSize", data.bbSize );
 	ptree_serialize<mode>( tree, "color", data.color );
@@ -162,7 +162,7 @@ struct ObjectInstance {
 ObjectTemplate *base = nullptr;
 
 template<ptree_serializer_mode mode>
-void ptree_serializer_exchange( boost::property_tree::ptree &tree, ObjectInstance &data ) {
+void ptree_serializer_exchange( ptree_serializer &tree, ObjectInstance &data ) {
 	if( mode == PSM_WRITING ) {
 		ptree_serializer_put( tree, "templateId", data.objectTemplate->id );
 	}
@@ -204,7 +204,7 @@ private:
 		InitAntTweakBar();
 
 		effectManager_.Initialize (renderSystem_.get (), &effectLoader_);	
-		objModel_.Init( renderSystem_, effectManager_, IO::Path( "P:\\BlenderScenes\\two_boxes.obj" ) );
+		objScene_.Init( renderSystem_, effectManager_, IO::Path( "P:\\BlenderScenes\\two_boxes.obj" ) );
 
 		camera_->GetFrustum ().SetPerspectiveProjection (
 			Degree (75.0f),
@@ -224,9 +224,10 @@ private:
 
 		UnorderedDistanceContext::setDirections();
 
-		const Vector3i min(850,120,120);
-		const Vector3i size(280, 280, 280);
-		probes_ = std::unique_ptr<Probes>( new Probes(min, size, 16) );
+		const Vector3i min = layerCalibration_.getGlobalFloorIndex( objScene_.boundingBox.GetMinimum() );
+		const Vector3i size = layerCalibration_.getGlobalCeilIndex( objScene_.boundingBox.GetMaximum() ) - min;
+
+		probes_ = std::unique_ptr<Probes>( new Probes( min, size, 16) );
 		
 		if( !probes_->readFromFile( "probes.data" ) ) {
 			sampleProbes( *denseCache_, *probes_ );
@@ -262,12 +263,12 @@ private:
 			objectInstances_.push_back( ObjectInstance::FromFrontTopLeft( layerCalibration_.getPosition( probes_->getPosition( Vector3i( 8, 8, 8 ) ) ), &objectTemplates_[1] ) );
 		}
 
-		boost::property_tree::ptree tree;
+		ptree_serializer tree;
 		ptree_serialize<PSM_WRITING>( tree, "objectTemplates", objectTemplates_);
 		ptree_serialize<PSM_WRITING>( tree, "objectInstances", objectInstances_ );
 		boost::property_tree::info_parser::write_info( "scenario.info", tree );
 #else	
-		boost::property_tree::ptree tree;
+		ptree_serializer tree;
 		boost::property_tree::info_parser::read_info( "scenario.info", tree );
 		ptree_serialize<PSM_READING>( tree, "objectTemplates", objectTemplates_ );
 		base = &objectTemplates_.front();
@@ -352,7 +353,7 @@ private:
 	{
 		renderContext_->SetTransformation( Render::RenderTransformation::World, Matrix4f::CreateIdentity() );
 
-		objModel_.Draw( renderContext_ );
+		objScene_.Draw( renderContext_ );
 
 		Vector3f minCorner = layerCalibration_.getPosition( targetCube_.minCorner );
 		Vector3f maxCorner = layerCalibration_.getPosition( targetCube_.maxCorner );
@@ -581,7 +582,7 @@ private:
 	AntTweakBarEventHandler antTweakBarEventHandler_;
 	std::unique_ptr<AntTWBarGroup> ui_, candidateResultsUI_;
 	
-	ObjModel objModel_;
+	ObjScene objScene_;
 	
 	Cubei targetCube_;
 

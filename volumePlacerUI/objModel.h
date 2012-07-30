@@ -11,11 +11,16 @@
 #include <niven.Render.IndexBuffer.h>
 
 #include <niven.Engine.Geometry.SimpleMesh.h>
+#include <niven.Engine.Spatial.AxisAlignedBoundingBox.h>
+
 #include <set>
+#include <boost/container/flat_map.hpp>
+
+#include <memory>
 
 #include "materialLibrary.h"
 
-struct ObjModel {
+struct ObjScene {
 	void Init( niven::IRenderSystem::Ptr renderSystem, niven::Render::EffectManager &effectManager, niven::IO::Path &objPath );
 	void Draw( niven::Render::IRenderContext *renderContext );
 
@@ -35,9 +40,21 @@ struct ObjModel {
 		bool visible;
 	};
 
+	struct Model {
+		std::vector<SubModel*> subModels;
+		niven::String name;
+
+		niven::AxisAlignedBoundingBox3 boundingBox;
+	};
+
 	std::vector<SubModel> subModels;
 	std::set<niven::String> groupNames;
 	std::set<niven::String> objectNames;
+
+	boost::container::flat_map< niven::String, Model* > nameModelMap;
+	std::vector<Model> models;
+
+	niven::AxisAlignedBoundingBox3 boundingBox;
 
 	niven::Render::ITexture::Ptr nullTexture_;
 };
