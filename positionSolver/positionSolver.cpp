@@ -1,3 +1,6 @@
+#define _USE_MATH_DEFINES
+#include <cmath>
+
 #include <iostream>
 #include <numeric>
 #include <algorithm>
@@ -5,7 +8,56 @@
 #include <iterator>
 
 #include <gtest.h>
-#include "Eigen/Eigen"
+#include <Eigen/Eigen>
+
+#include <SFML/Window.hpp>
+
+#include <memory>
+
+namespace Math {
+	inline float cotf( float radians ) {
+		return std::tanf( M_PI_2 - radians );
+	}
+}
+
+namespace Eigen {
+// like glFrustum
+Matrix4f createFrustumMatrix( const float left, const float right, const float bottom, const float top, const float near, const float far ) {
+	const float width = right - left;
+	const float height = top - bottom;
+	const float depth = far - near;
+
+	return (Matrix4f() <<
+		2 * near / width,	0,					(right + left) / width,		0,
+		0,					2 * near / height,	(top + bottom) / height,	0,
+		0,					0,					-(far + near) / depth,		- 2 * far * near / depth,
+		0,					0,					-1.0,						0).finished();
+}
+
+// like glOrtho
+Matrix4f createOrthoMatrix( const float left, const float right, const float bottom, const float top, const float near, const float far ) {
+	const float width = right - left;
+	const float height = top - bottom;
+	const float depth = far - near;
+
+	return (Matrix4f() <<
+		2 / width,		0,					0,				(right + left) / width,
+		0,				2 / height,			0,				(top + bottom) / height,
+		0,				0,					-2 / depth,		-(far + near) / depth,
+		0,				0,					0,				-1.0).finished();
+}
+
+Matrix4f createPerspectiveMatrix( const float FoV_y, const float aspectRatio, const float zNear, const float zFar ) {
+	const float f = Math::cotf( FoV_y / 2 );
+	const float depth = zFar - zNear;
+
+	return (Matrix4f() <<
+		f / aspectRatio,	0, 0,						0,
+		0,					f, 0,						0,
+		0,					0, (zFar + zNear) / depth,	2 * zFar * zNear / depth,
+		0,					0, -1.0,					0).finished();
+}
+}
 
 using namespace Eigen;
 
@@ -252,6 +304,144 @@ std::vector<SparseCellInfo> solveIntersections( const std::vector<Point> &points
 	return sparseCellInfos;
 }
 
+struct Camera {
+	const Eigen::Vector3f &getPosition() const { return position; }
+	void setPosition(const Eigen::Vector3f &val) { position = val; }
+
+	const Eigen::Quaternionf &getOrientation() const { return orientation; }
+	void setOrientation(const Eigen::Quaternionf &val) { orientation = val; }
+
+	Eigen::Matrix4f getViewMatrix() const {
+		Eigen::Isometry3f viewTransformation = orientation * Eigen::Translation3f( -position );
+		return viewTransformation.matrix();	
+	}
+
+	Eigen::Isometry3f getViewTransformation() const {
+		Eigen::Isometry3f viewTransformation = orientation * Eigen::Translation3f( -position );
+		return viewTransformation;
+	}
+
+	const Eigen::Matrix4f &getProjectionMatrix() const { return projectionMatrix; }
+	void setProjectionMatrix(const Eigen::Matrix4f &val) { projectionMatrix = val; }
+	
+private:
+	Eigen::Vector3f position;
+	Eigen::Quaternionf orientation;
+
+	Eigen::Matrix4f projectionMatrix;
+};
+
+struct EventHandler {
+	// returns true if the event has been processed
+	virtual bool handleEvent( const sf::Event &event ) { return false; }
+	virtual bool update( const float elapsedTime, bool inputProcessed ) { return inputProcessed; }
+};
+
+struct EventDispatcher : public EventHandler {
+	std::vector<std::shared_ptr<EventHandler>> eventHandlers;
+
+	bool handleEvent( const sf::Event &event ) {
+		for( auto eventHandler = eventHandlers.rbegin() ; eventHandler != eventHandlers.rend() ; ++eventHandler ) {
+			if( eventHandler->get()->handleEvent( event ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	bool update( const float elapsedTime, bool inputProcessed = false ) {
+		for( auto eventHandler = eventHandlers.rbegin() ; eventHandler != eventHandlers.rend() ; ++eventHandler ) {
+			inputProcessed |= eventHandler->get()->update( elapsedTime, inputProcessed );
+		}
+		return inputProcessed;
+	}
+};
+
+struct null_deleter {
+	template<typename T>
+	void operator() (T*) {}
+};
+
+template<typename T>
+std::shared_ptr<T> shared_from_stack(T &object) {
+	return std::shared_ptr<T>( &object, null_deleter() );
+}
+
+struct CameraInputControl : public EventHandler {
+	std::shared_ptr<Camera> camera;
+	std::shared_ptr<sf::Window> window;
+	sf::Vector2i lastMousePosition;
+	bool active;
+	
+	void init( const std::shared_ptr<Camera> &camera, const std::shared_ptr<sf::Window> &window ) {
+		this->camera = camera;
+		this->window = window;
+		lastMousePosition = sf::Mouse::getPosition();
+		active = false;
+	}
+
+	bool handleEvent( const sf::Event &event ) {
+		switch( event.type ) {
+		case sf::Event::LostFocus:
+			active = false;
+			window->setMouseCursorVisible( true );
+			break;
+		case sf::Event::KeyPressed:
+			if( event.key.code == sf::Keyboard::Escape ) {
+				active = false;
+				window->setMouseCursorVisible( true );
+			}
+			return true;
+		case sf::Event::MouseButtonReleased:
+			if( event.mouseButton.button == sf::Mouse::Button::Left ) {
+				active = true;
+				window->setMouseCursorVisible( false );
+			}
+			return true;
+		}
+		return false;
+	}
+	
+	bool update( const float elapsedTime, bool inputProcessed ) {
+		sf::Vector2i mousePosition = sf::Mouse::getPosition();
+
+		if( !inputProcessed && active ) {
+			Eigen::Vector3f relativeMovement = Vector3f::Zero();
+			if( sf::Keyboard::isKeyPressed( sf::Keyboard::W ) ) {
+				relativeMovement.z() -= 1;
+			}
+			if( sf::Keyboard::isKeyPressed( sf::Keyboard::S ) ) {
+				relativeMovement.z() += 1;
+			}
+			if( sf::Keyboard::isKeyPressed( sf::Keyboard::A ) ) {
+				relativeMovement.x() -= 1;
+			}
+			if( sf::Keyboard::isKeyPressed( sf::Keyboard::D ) ) {
+				relativeMovement.x() += 1;
+			}
+			if( sf::Keyboard::isKeyPressed( sf::Keyboard::Space ) ) {
+				relativeMovement.y() += 1;
+			}
+			if( sf::Keyboard::isKeyPressed( sf::Keyboard::LControl ) ) {
+				relativeMovement.y() -= 1;
+			}
+					
+			relativeMovement *= elapsedTime;
+
+			sf::Vector2i mouseMovement = mousePosition - lastMousePosition;
+			camera->setPosition( camera->getPosition() + camera->getViewTransformation().linear() * relativeMovement );
+			camera->setOrientation( Eigen::AngleAxisf( mouseMovement.x / M_PI, Eigen::Vector3f::Unit(1) ) *
+				Eigen::AngleAxisf( mouseMovement.y / M_PI, Eigen::Vector3f::Unit(0) ) *
+				camera->getOrientation() );
+
+			sf::Mouse::setPosition( sf::Vector2i( window->getSize() / 2u ), *window );	
+		}
+		lastMousePosition = sf::Mouse::getPosition();
+
+		return true;
+	}
+};
+
 void main() {
 	std::vector<Point> points;
 
@@ -259,4 +449,37 @@ void main() {
 	points.push_back( Point( Vector3f(10,0,0), 5 ) );
 
 	auto result = solveIntersections( points, 1 );
+
+	sf::Window window( sf::VideoMode( 640, 480 ), "Position Solver" );
+
+	Camera camera;
+	CameraInputControl cameraInputControl;
+	cameraInputControl.init( shared_from_stack(camera), shared_from_stack(window) );
+
+	// The main loop - ends as soon as the window is closed
+	sf::Clock frameClock;
+	while (window.isOpen())
+	{
+		// Event processing
+		sf::Event event;
+		while (window.pollEvent(event))
+		{
+			// Request for closing the window
+			if (event.type == sf::Event::Closed)
+				window.close();
+
+			cameraInputControl.handleEvent( event );
+		}
+
+		cameraInputControl.update( frameClock.restart().asSeconds(), false );
+
+		// Activate the window for OpenGL rendering
+		window.setActive();
+
+		// OpenGL drawing commands go here...
+
+		// End the current frame and display its contents on screen
+		window.display();
+	}
+
 };

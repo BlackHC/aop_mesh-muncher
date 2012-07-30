@@ -55,6 +55,8 @@ if(SFML_STATIC_LIBRARIES)
     add_definitions(-DSFML_STATIC)
 endif()
 
+set(SFMLDIR "" CACHE FILEPATH "Path to SFML")
+
 # deduce the libraries suffix from the options
 set(FIND_SFML_LIB_SUFFIX "")
 if(SFML_STATIC_LIBRARIES)
