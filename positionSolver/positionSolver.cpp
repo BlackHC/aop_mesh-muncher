@@ -10,7 +10,18 @@
 #include <gtest.h>
 #include <Eigen/Eigen>
 
+#include <Windows.h>
+#include <gl/GL.h>
+#include <gl/GLU.h>
+#include <unsupported/Eigen/OpenGLSupport>
+
 #include <SFML/Window.hpp>
+
+#undef far
+#undef near
+#undef min
+#undef max
+
 
 #include <memory>
 
@@ -30,7 +41,7 @@ Matrix4f createFrustumMatrix( const float left, const float right, const float b
 	return (Matrix4f() <<
 		2 * near / width,	0,					(right + left) / width,		0,
 		0,					2 * near / height,	(top + bottom) / height,	0,
-		0,					0,					-(far + near) / depth,		- 2 * far * near / depth,
+		0,					0,					-(far + near) / depth,		-2 * far * near / depth,
 		0,					0,					-1.0,						0).finished();
 }
 
@@ -48,13 +59,13 @@ Matrix4f createOrthoMatrix( const float left, const float right, const float bot
 }
 
 Matrix4f createPerspectiveMatrix( const float FoV_y, const float aspectRatio, const float zNear, const float zFar ) {
-	const float f = Math::cotf( FoV_y / 2 );
+	const float f = Math::cotf( FoV_y * M_PI / 180 / 2 );
 	const float depth = zFar - zNear;
 
 	return (Matrix4f() <<
 		f / aspectRatio,	0, 0,						0,
 		0,					f, 0,						0,
-		0,					0, (zFar + zNear) / depth,	2 * zFar * zNear / depth,
+		0,					0, -(zFar + zNear) / depth,	-2 * zFar * zNear / depth,
 		0,					0, -1.0,					0).finished();
 }
 }
@@ -321,14 +332,28 @@ struct Camera {
 		return viewTransformation;
 	}
 
-	const Eigen::Matrix4f &getProjectionMatrix() const { return projectionMatrix; }
-	void setProjectionMatrix(const Eigen::Matrix4f &val) { projectionMatrix = val; }
+	struct PerspectiveProjectionParameters {
+		float FoV_y;
+		float aspect;
+		float zNear, zFar;
+	};
+	PerspectiveProjectionParameters perspectiveProjectionParameters;
+
+	Eigen::Matrix4f getProjectionMatrix() const {
+		return createPerspectiveMatrix( 
+			perspectiveProjectionParameters.FoV_y,
+			perspectiveProjectionParameters.aspect,
+			perspectiveProjectionParameters.zNear,
+			perspectiveProjectionParameters.zFar
+		);
+	}
 	
-private:
+	Camera() : position( Eigen::Vector3f::Zero() ), orientation( Eigen::Quaternionf::Identity() ) {}
+	
 	Eigen::Vector3f position;
 	Eigen::Quaternionf orientation;
-
-	Eigen::Matrix4f projectionMatrix;
+private:
+		
 };
 
 struct EventHandler {
@@ -393,7 +418,7 @@ struct CameraInputControl : public EventHandler {
 			}
 			return true;
 		case sf::Event::MouseButtonReleased:
-			if( event.mouseButton.button == sf::Mouse::Button::Left ) {
+			if( event.mouseButton.button == sf::Mouse::Left ) {
 				active = true;
 				window->setMouseCursorVisible( false );
 			}
@@ -426,13 +451,19 @@ struct CameraInputControl : public EventHandler {
 				relativeMovement.y() -= 1;
 			}
 					
-			relativeMovement *= elapsedTime;
+			relativeMovement *= elapsedTime * 10;
 
 			sf::Vector2i mouseMovement = mousePosition - lastMousePosition;
-			camera->setPosition( camera->getPosition() + camera->getViewTransformation().linear() * relativeMovement );
-			camera->setOrientation( Eigen::AngleAxisf( mouseMovement.x / M_PI, Eigen::Vector3f::Unit(1) ) *
-				Eigen::AngleAxisf( mouseMovement.y / M_PI, Eigen::Vector3f::Unit(0) ) *
-				camera->getOrientation() );
+			
+			Eigen::Vector3f newPosition = camera->getPosition() + camera->getViewTransformation().linear().transpose() * relativeMovement;
+			camera->setPosition( newPosition );
+
+			camera->setOrientation( 
+				Eigen::AngleAxisf( mouseMovement.x * M_PI / 180.0, Eigen::Vector3f::Unit(1) ) *
+				Eigen::AngleAxisf( mouseMovement.y * M_PI / 180.0, Eigen::Vector3f::Unit(0) ) *
+				camera->getOrientation()
+			);
+			camera->setOrientation( camera->getOrientation().normalized() );
 
 			sf::Mouse::setPosition( sf::Vector2i( window->getSize() / 2u ), *window );	
 		}
@@ -442,6 +473,61 @@ struct CameraInputControl : public EventHandler {
 	}
 };
 
+// from glut 3.7
+static void drawBox(GLfloat size, GLenum type)
+{
+	static GLfloat n[6][3] =
+	{
+		{-1.0, 0.0, 0.0},
+		{0.0, 1.0, 0.0},
+		{1.0, 0.0, 0.0},
+		{0.0, -1.0, 0.0},
+		{0.0, 0.0, 1.0},
+		{0.0, 0.0, -1.0}
+	};
+	static GLint faces[6][4] =
+	{
+		{0, 1, 2, 3},
+		{3, 2, 6, 7},
+		{7, 6, 5, 4},
+		{4, 5, 1, 0},
+		{5, 6, 2, 1},
+		{7, 4, 0, 3}
+	};
+	GLfloat v[8][3];
+	GLint i;
+
+	v[0][0] = v[1][0] = v[2][0] = v[3][0] = -size / 2;
+	v[4][0] = v[5][0] = v[6][0] = v[7][0] = size / 2;
+	v[0][1] = v[1][1] = v[4][1] = v[5][1] = -size / 2;
+	v[2][1] = v[3][1] = v[6][1] = v[7][1] = size / 2;
+	v[0][2] = v[3][2] = v[4][2] = v[7][2] = -size / 2;
+	v[1][2] = v[2][2] = v[5][2] = v[6][2] = size / 2;
+
+	glBegin(type);
+	for (i = 5; i >= 0; i--) {
+		//glNormal3fv(&n[i][0]);
+		glVertex3fv(&v[faces[i][0]][0]);
+		glVertex3fv(&v[faces[i][1]][0]);
+		glVertex3fv(&v[faces[i][2]][0]);
+		glVertex3fv(&v[faces[i][3]][0]);
+	}
+	glEnd();
+}
+
+/* CENTRY */
+void APIENTRY
+	glutWireCube(GLdouble size)
+{
+	drawBox(size, GL_LINE_LOOP);
+}
+
+void APIENTRY
+	glutSolidCube(GLdouble size)
+{
+	drawBox(size, GL_QUADS);
+}
+
 void main() {
 	std::vector<Point> points;
 
@@ -450,14 +536,24 @@ void main() {
 
 	auto result = solveIntersections( points, 1 );
 
-	sf::Window window( sf::VideoMode( 640, 480 ), "Position Solver" );
+	sf::Window window( sf::VideoMode( 640, 480 ), "Position Solver", sf::Style::Default, sf::ContextSettings(32) );
 
 	Camera camera;
+	camera.perspectiveProjectionParameters.aspect = 640.0 / 480.0;
+	camera.perspectiveProjectionParameters.FoV_y = 75.0;
+	camera.perspectiveProjectionParameters.zNear = 1.0;
+	camera.perspectiveProjectionParameters.zFar = 500.0;
+	//camera.position.z() = 5;
+
 	CameraInputControl cameraInputControl;
 	cameraInputControl.init( shared_from_stack(camera), shared_from_stack(window) );
 
+	glEnable(GL_DEPTH_TEST);
+	glDepthMask(GL_TRUE);
+	glClearDepth(1.f);
+
 	// The main loop - ends as soon as the window is closed
-	sf::Clock frameClock;
+	sf::Clock frameClock, clock;
 	while (window.isOpen())
 	{
 		// Event processing
@@ -468,6 +564,10 @@ void main() {
 			if (event.type == sf::Event::Closed)
 				window.close();
 
+			if( event.type == sf::Event::Resized ) {
+				camera.perspectiveProjectionParameters.aspect = float( event.size.width ) / event.size.height;
+			}
+
 			cameraInputControl.handleEvent( event );
 		}
 
@@ -476,7 +576,76 @@ void main() {
 		// Activate the window for OpenGL rendering
 		window.setActive();
 
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
 		// OpenGL drawing commands go here...
+		glMatrixMode( GL_PROJECTION );
+		glLoadMatrix( camera.getProjectionMatrix() );
+		/*glLoadIdentity();
+		gluPerspective( 
+			camera.perspectiveProjectionParameters.FoV_y,
+			camera.perspectiveProjectionParameters.aspect,
+			camera.perspectiveProjectionParameters.zNear,
+			camera.perspectiveProjectionParameters.zFar
+			);
+			*/
+		glMatrixMode( GL_MODELVIEW );
+		glLoadMatrix( camera.getViewMatrix() );
+
+		glColor3f( 1.0, 0.0, 0.0 );
+		glutSolidCube(2.0);
+
+		/*// Clear color and depth buffer
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		// Apply some transformations
+		glMatrixMode(GL_MODELVIEW);
+		glLoadIdentity();
+		glTranslatef(0.f, 0.f, -200.f);
+		glRotatef(clock.getElapsedTime().asSeconds() * 50, 1.f, 0.f, 0.f);
+		glRotatef(clock.getElapsedTime().asSeconds() * 30, 0.f, 1.f, 0.f);
+		glRotatef(clock.getElapsedTime().asSeconds() * 90, 0.f, 0.f, 1.f);
+
+		// Draw a cube
+		glBegin(GL_QUADS);
+
+		glColor3f(1.f, 0.f, 0.f);
+		glVertex3f(-50.f, -50.f, -50.f);
+		glVertex3f(-50.f,  50.f, -50.f);
+		glVertex3f( 50.f,  50.f, -50.f);
+		glVertex3f( 50.f, -50.f, -50.f);
+
+		glColor3f(1.f, 0.f, 0.f);
+		glVertex3f(-50.f, -50.f, 50.f);
+		glVertex3f(-50.f,  50.f, 50.f);
+		glVertex3f( 50.f,  50.f, 50.f);
+		glVertex3f( 50.f, -50.f, 50.f);
+
+		glColor3f(0.f, 1.f, 0.f);
+		glVertex3f(-50.f, -50.f, -50.f);
+		glVertex3f(-50.f,  50.f, -50.f);
+		glVertex3f(-50.f,  50.f,  50.f);
+		glVertex3f(-50.f, -50.f,  50.f);
+
+		glColor3f(0.f, 1.f, 0.f);
+		glVertex3f(50.f, -50.f, -50.f);
+		glVertex3f(50.f,  50.f, -50.f);
+		glVertex3f(50.f,  50.f,  50.f);
+		glVertex3f(50.f, -50.f,  50.f);
+
+		glColor3f(0.f, 0.f, 1.f);
+		glVertex3f(-50.f, -50.f,  50.f);
+		glVertex3f(-50.f, -50.f, -50.f);
+		glVertex3f( 50.f, -50.f, -50.f);
+		glVertex3f( 50.f, -50.f,  50.f);
+
+		glColor3f(0.f, 0.f, 1.f);
+		glVertex3f(-50.f, 50.f,  50.f);
+		glVertex3f(-50.f, 50.f, -50.f);
+		glVertex3f( 50.f, 50.f, -50.f);
+		glVertex3f( 50.f, 50.f,  50.f);
+
+		glEnd();*/
 
 		// End the current frame and display its contents on screen
 		window.display();
