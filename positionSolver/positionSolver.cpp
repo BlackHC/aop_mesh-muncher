@@ -97,7 +97,9 @@ struct SparseCellInfo {
 		fullCount( c.fullCount ), fullPointIndices( std::move( c.fullPointIndices ) ), partialPointIndices( std::move( c.partialPointIndices ) ) {}
 };
 
-std::vector<SparseCellInfo> solveIntersections( const std::vector<Point> &points, float halfThickness ) {
+std::vector<std::vector<SparseCellInfo>> solveIntersections( const std::vector<Point> &points, float halfThickness ) {
+	std::vector<std::vector<SparseCellInfo>> results;
+
 	// start with a resolution that guarantees that there will be full matches
 	float resolution = halfThickness * 0.707106; // rounded down
 
@@ -167,7 +169,8 @@ std::vector<SparseCellInfo> solveIntersections( const std::vector<Point> &points
 	// done?
 	if( bestFullCount == bestTotalCount ) {
 		// solution found
-		return sparseCellInfos;
+		results.push_back( std::move( sparseCellInfos ) );
+		return results;
 	}
 
 	// refine
@@ -245,6 +248,8 @@ std::vector<SparseCellInfo> solveIntersections( const std::vector<Point> &points
 
 		std::swap( sparseCellInfos, refinedSparseCellInfos );
 
+		results.push_back( std::move( refinedSparseCellInfos ) );
+
 		// filter
 		if( bestFullCount > 0 ) {
 			std::vector<SparseCellInfo> filteredSparseCellInfos;
@@ -257,11 +262,13 @@ std::vector<SparseCellInfo> solveIntersections( const std::vector<Point> &points
 		// done?
 		if( bestFullCount == bestTotalCount ) {
 			// solution found
-			return sparseCellInfos;
+			results.push_back( std::move( sparseCellInfos ) );
+			return results;
 		}
 	}
 
-	return sparseCellInfos;
+	results.push_back( std::move( sparseCellInfos ) );
+	return results;
 }
 
 #include "camera.h"
@@ -413,10 +420,10 @@ void main() {
 	points.push_back( Point( Vector3f(5,0,5), 5 ) );*/
 
 	points.push_back( Point( Vector3f(0,0,0), 5 ) );
-	points.push_back( Point( Vector3f(11.9,0,0), 5 ) );
+	points.push_back( Point( Vector3f(11.8,0,0), 5 ) );
 
 	const float halfThickness = 1;
-	auto result = solveIntersections( points, halfThickness );
+	auto results = solveIntersections( points, halfThickness );
 
 	sf::Window window( sf::VideoMode( 640, 480 ), "Position Solver", sf::Style::Default, sf::ContextSettings(32) );
 
@@ -448,13 +455,19 @@ void main() {
 	}
 	debugSourcePoints.end();
 
-	DebugRender::CombinedCalls debugResults;
-	debugResults.begin();
-	for( auto sparseCellInfo = result.begin() ; sparseCellInfo != result.end() ; ++sparseCellInfo ) {
-		debugResults.setColor( Eigen::Vector3f( 1.0, 0.0, 0.0 ) * ( float(sparseCellInfo->fullCount) / sparseCellInfo->totalCount * 0.75 + 0.25 ) );
-		debugResults.drawAABB( sparseCellInfo->minCorner, sparseCellInfo->maxCorner );
+	std::vector<DebugRender::CombinedCalls> debugResults;
+	debugResults.resize( results.size() );
+	int i = 0;
+	for( auto sparseCellsLevel = results.begin() ; sparseCellsLevel != results.end() ; ++sparseCellsLevel, ++i ) {
+		debugResults[i].begin();
+		for( auto sparseCellInfo = sparseCellsLevel->begin() ; sparseCellInfo != sparseCellsLevel->end() ; ++sparseCellInfo ) {
+			debugResults[i].setColor( Eigen::Vector3f( 1.0, 0.0, 0.0 ) * ( float(sparseCellInfo->fullCount) / sparseCellInfo->totalCount * 0.75 + 0.25 ) );
+			debugResults[i].drawAABB( sparseCellInfo->minCorner, sparseCellInfo->maxCorner );
+		}
+		debugResults[i].end();
 	}
-	debugResults.end();
+
+	int level = results.size() - 1;
 
 	// The main loop - ends as soon as the window is closed
 	sf::Clock frameClock, clock;
@@ -474,6 +487,15 @@ void main() {
 			}
 
 			cameraInputControl.handleEvent( event );
+
+			if( event.type == sf::Event::KeyPressed ) {
+				if( event.key.code == sf::Keyboard::Up ) {
+					level = (level + 1) % results.size();
+				}
+				if( event.key.code == sf::Keyboard::Down ) {
+					level = (level - 1 + results.size()) % results.size();
+				}
+			}
 		}
 
 		cameraInputControl.update( frameClock.restart().asSeconds(), false );
@@ -491,7 +513,7 @@ void main() {
 		glLoadMatrix( camera.getViewTransformation().matrix() );
 
 		debugSourcePoints.render();
-		debugResults.render();
+		debugResults[level].render();
 
 		// End the current frame and display its contents on screen
 		window.display();
