@@ -1,0 +1,124 @@
+#pragma once
+
+#include <gl/glew.h>
+#include <Eigen/Eigen>
+#include <unsupported/Eigen/OpenGLSupport>
+
+namespace DebugRender {
+	struct CombinedCalls {
+		GLuint list;
+
+		CombinedCalls() : list( 0 ) {}
+
+		void begin() {
+			list = glGenLists( 1 );
+
+			glNewList( list, GL_COMPILE );
+			glMatrixMode( GL_MODELVIEW );
+			glPushMatrix();
+		}
+
+		void setPosition( const Eigen::Vector3f &position ) {
+			glPopMatrix();
+			glPushMatrix();
+			Eigen::glTranslate( position );
+		}
+
+		void setColor( const Eigen::Vector3f &color ) {
+			Eigen::glColor( color );
+		}
+
+		void end() {
+			glPopMatrix();
+			glEndList();
+		}
+
+		void render() {
+			glCallList( list );
+		}
+
+		// from glut 3.7 and SFML's SimpleGLScene
+		void drawBox(GLfloat size, bool wireframe = true, bool gay = false)
+		{
+			static GLfloat n[6][3] =
+			{
+				{-1.0, 0.0, 0.0},
+				{0.0, 1.0, 0.0},
+				{1.0, 0.0, 0.0},
+				{0.0, -1.0, 0.0},
+				{0.0, 0.0, 1.0},
+				{0.0, 0.0, -1.0}
+			};
+			static GLint faces[6][4] =
+			{
+				{0, 1, 2, 3},
+				{3, 2, 6, 7},
+				{7, 6, 5, 4},
+				{4, 5, 1, 0},
+				{5, 6, 2, 1},
+				{7, 4, 0, 3}
+			};
+			static GLfloat gayColors[6][3] = {
+				{0.f, 1.f, 1.f},
+				{0.f, 1.f, 0.f},
+				{1.f, 0.f, 0.f},
+				{1.f, 0.f, 1.f},
+				{0.f, 0.f, 1.f},
+				{1.f, 1.f, 0.f}
+			};
+			GLfloat v[8][3];
+			GLint i;
+
+			v[0][0] = v[1][0] = v[2][0] = v[3][0] = -size / 2;
+			v[4][0] = v[5][0] = v[6][0] = v[7][0] = size / 2;
+			v[0][1] = v[1][1] = v[4][1] = v[5][1] = -size / 2;
+			v[2][1] = v[3][1] = v[6][1] = v[7][1] = size / 2;
+			v[0][2] = v[3][2] = v[4][2] = v[7][2] = -size / 2;
+			v[1][2] = v[2][2] = v[5][2] = v[6][2] = size / 2;
+
+			glBegin(wireframe ? GL_LINE_LOOP : GL_QUADS);
+			for (i = 5; i >= 0; i--) {
+				if( gay ) {
+					glColor3fv(&gayColors[i][0]);
+				}
+				glNormal3fv(&n[i][0]);
+				glVertex3fv(&v[faces[i][0]][0]);
+				glVertex3fv(&v[faces[i][1]][0]);
+				glVertex3fv(&v[faces[i][2]][0]);
+				glVertex3fv(&v[faces[i][3]][0]);
+			}
+			glEnd();
+		}
+
+		void drawCordinateSystem(GLdouble size) {
+			glBegin(GL_LINES);
+			glColor3f( 1.0, 0.0, 0.0 );
+			glVertex3f( 0.0, 0.0, 0.0 );
+			glVertex3f( size, 0.0, 0.0 );
+
+			glColor3f( 0.0, 1.0, 0.0 );
+			glVertex3f( 0.0, 0.0, 0.0 );
+			glVertex3f( 0.0, size, 0.0 );
+
+			glColor3f( 0.0, 0.0, 1.0 );
+			glVertex3f( 0.0, 0.0, 0.0 );
+			glVertex3f( 0.0, 0.0, size );
+			glEnd();
+		}
+
+		void drawEllipse( float radius, bool wireframe = true, int n = 20, const Eigen::Vector3f &axis1 = Eigen::Vector3f::UnitX(), const Eigen::Vector3f &axis2 = Eigen::Vector3f::UnitY() ) {
+			const float step = 2 * M_PI / n;
+			glBegin( wireframe ? GL_LINE_LOOP : GL_TRIANGLE_FAN );
+			for( int i = 0 ; i < n ; i++ ) {
+				Eigen::glVertex( radius * (axis1 * cos(step * i) + axis2 * sin(step * i)) );
+			}
+			glEnd();
+		}
+
+		void drawAbstractSphere( float radius, bool wireframe = true, int n = 20 ) {
+			drawEllipse( radius, wireframe, n, Eigen::Vector3f::UnitX(), Eigen::Vector3f::UnitY() );
+			drawEllipse( radius, wireframe, n, Eigen::Vector3f::UnitY(), Eigen::Vector3f::UnitZ() );
+			drawEllipse( radius, wireframe, n, Eigen::Vector3f::UnitX(), Eigen::Vector3f::UnitZ() );
+		}
+	};
+}

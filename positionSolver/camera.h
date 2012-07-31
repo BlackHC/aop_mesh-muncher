@@ -52,7 +52,7 @@ namespace Eigen {
 		const float depth = zFar - zNear;
 
 		return (Matrix4f() <<
-			f * aspectRatio,	0, 0,						0,
+			f / aspectRatio,	0, 0,						0,
 			0,					f, 0,						0,
 			0,					0, -(zFar + zNear) / depth,	-2 * zFar * zNear / depth,
 			0,					0, -1.0,					0).finished();

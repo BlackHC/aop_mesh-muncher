@@ -7,17 +7,9 @@
 #include <gtest.h>
 #include <Eigen/Eigen>
 
-#include <Windows.h>
-#include <gl/GL.h>
-#include <gl/GLU.h>
-#include <unsupported/Eigen/OpenGLSupport>
+#include "debugRender.h"
 
 #include <SFML/Window.hpp>
-
-#undef far
-#undef near
-#undef min
-#undef max
 
 #include <memory>
 
@@ -291,31 +283,36 @@ struct CameraInputControl : public EventHandler {
 		this->camera = camera;
 		this->window = window;
 		lastMousePosition = sf::Mouse::getPosition();
-		active = true;
+		active = false;
 	}
 
 	bool handleEvent( const sf::Event &event ) {
 		switch( event.type ) {
 		case sf::Event::LostFocus:
 			active = false;
-			//window->setMouseCursorVisible( true );
+			window->setMouseCursorVisible( true );
 			break;
 		case sf::Event::KeyPressed:
 			if( event.key.code == sf::Keyboard::Escape ) {
 				active = false;
-				//window->setMouseCursorVisible( true );
+				window->setMouseCursorVisible( true );
 			}
 			return true;
 		case sf::Event::MouseButtonReleased:
 			if( event.mouseButton.button == sf::Mouse::Left ) {
 				active = true;
-				//window->setMouseCursorVisible( false );
+				window->setMouseCursorVisible( false );
+			}
+			return true;
+		case sf::Event::MouseLeft:
+			if( active ) {
+				sf::Mouse::setPosition( sf::Vector2i( window->getSize() / 2u ), *window );	
+				lastMousePosition = sf::Mouse::getPosition();
 			}
 			return true;
 		case sf::Event::MouseMoved:
 			if( active ) {
 				mouseDelta += sf::Mouse::getPosition() - lastMousePosition;
-				//sf::Mouse::setPosition( sf::Vector2i( window->getSize() / 2u ), *window );	
 			}
 			lastMousePosition = sf::Mouse::getPosition();
 			return true;
@@ -350,7 +347,7 @@ struct CameraInputControl : public EventHandler {
 			Eigen::Vector3f newPosition = camera->getPosition() + camera->getViewTransformation().linear().transpose() * relativeMovement;
 			camera->setPosition( newPosition );
 
-			sf::Vector2f angleDelta = sf::Vector2f( mouseDelta ) * float(Math::PI / 180.0);
+			sf::Vector2f angleDelta = sf::Vector2f( mouseDelta ) * float(Math::PI / 180.0) * 0.5f;
 			mouseDelta = sf::Vector2i();
 
 			camera->setOrientation( 
@@ -365,61 +362,6 @@ struct CameraInputControl : public EventHandler {
 	}
 };
 
-// from glut 3.7
-static void drawBox(GLfloat size, GLenum type)
-{
-	static GLfloat n[6][3] =
-	{
-		{-1.0, 0.0, 0.0},
-		{0.0, 1.0, 0.0},
-		{1.0, 0.0, 0.0},
-		{0.0, -1.0, 0.0},
-		{0.0, 0.0, 1.0},
-		{0.0, 0.0, -1.0}
-	};
-	static GLint faces[6][4] =
-	{
-		{0, 1, 2, 3},
-		{3, 2, 6, 7},
-		{7, 6, 5, 4},
-		{4, 5, 1, 0},
-		{5, 6, 2, 1},
-		{7, 4, 0, 3}
-	};
-	GLfloat v[8][3];
-	GLint i;
-
-	v[0][0] = v[1][0] = v[2][0] = v[3][0] = -size / 2;
-	v[4][0] = v[5][0] = v[6][0] = v[7][0] = size / 2;
-	v[0][1] = v[1][1] = v[4][1] = v[5][1] = -size / 2;
-	v[2][1] = v[3][1] = v[6][1] = v[7][1] = size / 2;
-	v[0][2] = v[3][2] = v[4][2] = v[7][2] = -size / 2;
-	v[1][2] = v[2][2] = v[5][2] = v[6][2] = size / 2;
-
-	glBegin(type);
-	for (i = 5; i >= 0; i--) {
-		//glNormal3fv(&n[i][0]);
-		glVertex3fv(&v[faces[i][0]][0]);
-		glVertex3fv(&v[faces[i][1]][0]);
-		glVertex3fv(&v[faces[i][2]][0]);
-		glVertex3fv(&v[faces[i][3]][0]);
-	}
-	glEnd();
-}
-
-/* CENTRY */
-void APIENTRY
-	glutWireCube(GLdouble size)
-{
-	drawBox(size, GL_LINE_LOOP);
-}
-
-void APIENTRY
-	glutSolidCube(GLdouble size)
-{
-	drawBox(size, GL_QUADS);
-}
-
 void main() {
 	std::vector<Point> points;
 
@@ -429,7 +371,6 @@ void main() {
 	auto result = solveIntersections( points, 1 );
 
 	sf::Window window( sf::VideoMode( 640, 480 ), "Position Solver", sf::Style::Default, sf::ContextSettings(32) );
-	SetCapture( window.getSystemHandle() );
 
 	Camera camera;
 	camera.perspectiveProjectionParameters.aspect = 640.0 / 480.0;
@@ -445,6 +386,13 @@ void main() {
 	glDepthMask(GL_TRUE);
 	glClearDepth(1.f);
 
+	DebugRender::CombinedCalls debugScene;
+	debugScene.begin();
+	debugScene.setPosition( Vector3f( 0,0,-5) );
+	debugScene.setColor( Vector3f( 1.0, 0.0, 0.0 ) );
+	debugScene.drawAbstractSphere( 3.0 );
+	debugScene.end();
+
 	// The main loop - ends as soon as the window is closed
 	sf::Clock frameClock, clock;
 	while (window.isOpen())
@@ -459,6 +407,7 @@ void main() {
 
 			if( event.type == sf::Event::Resized ) {
 				camera.perspectiveProjectionParameters.aspect = float( event.size.width ) / event.size.height;
+				glViewport( 0, 0, event.size.width, event.size.height );
 			}
 
 			cameraInputControl.handleEvent( event );
@@ -485,8 +434,7 @@ void main() {
 		glMatrixMode( GL_MODELVIEW );
 		glLoadMatrix( camera.getViewMatrix() );
 
-		glColor3f( 1.0, 0.0, 0.0 );
-		glutSolidCube(2.0);
+		debugScene.render();
 
 		/*// Clear color and depth buffer
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
