@@ -9,6 +9,8 @@ INCLUDE_DIRECTORIES(${ANTTWEAKBAR_INCLUDE_DIR} ${NIVEN_INCLUDE_DIR} ${SFML_INCLU
 
 # ../gtest/gtest_main.cc
 ADD_EXECUTABLE(positionSolver
+	camera.h
+	eventHandling.h
 	positionSolver.cpp 
 	../gtest/gtest-all.cc
 	)
