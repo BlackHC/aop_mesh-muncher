@@ -63,16 +63,13 @@ struct Camera {
 	const Eigen::Vector3f &getPosition() const { return position; }
 	void setPosition(const Eigen::Vector3f &val) { position = val; }
 
-	const Eigen::Quaternionf &getOrientation() const { return orientation; }
-	void setOrientation(const Eigen::Quaternionf &val) { orientation = val; }
-
-	Eigen::Matrix4f getViewMatrix() const {
-		Eigen::Isometry3f viewTransformation = orientation * Eigen::Translation3f( -position );
-		return viewTransformation.matrix();	
+	Eigen::Matrix3f getWorldToViewMatrix() const {
+		return (Eigen::Matrix3f() << right, right.cross(forward), -forward).finished().transpose();
 	}
 
 	Eigen::Isometry3f getViewTransformation() const {
-		Eigen::Isometry3f viewTransformation = orientation * Eigen::Translation3f( -position );
+		Eigen::Isometry3f viewTransformation(getWorldToViewMatrix());
+		viewTransformation.translate( -position );
 		return viewTransformation;
 	}
 
@@ -92,9 +89,26 @@ struct Camera {
 			);
 	}
 
-	Camera() : position( Eigen::Vector3f::Zero() ), orientation( Eigen::Quaternionf::Identity() ) {}
+	Camera() : position( Eigen::Vector3f::Zero() ), forward( -Eigen::Vector3f::UnitZ() ), right( Eigen::Vector3f::UnitX() ) {}
 
-	Eigen::Vector3f position;
-	Eigen::Quaternionf orientation;
+	void yaw( float degrees ) {
+		auto rotation = Eigen::AngleAxisf( -degrees * Math::PI / 180.0, Eigen::Vector3f::UnitY() );
+		forward = rotation._transformVector( forward );
+		right = rotation._transformVector( right );
+
+		forward.normalize();
+		right.normalize();	
+	}
+
+	void pitch( float degrees ) {
+		auto rotation = Eigen::AngleAxisf( -degrees * Math::PI / 180.0, right );
+		forward = rotation._transformVector( forward );
+		forward.normalize();
+	}
+
 private:
+	Eigen::Vector3f position;
+
+	// camera orientation
+	Eigen::Vector3f forward, right;	
 };

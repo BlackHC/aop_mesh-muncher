@@ -38,7 +38,7 @@ namespace DebugRender {
 		}
 
 		// from glut 3.7 and SFML's SimpleGLScene
-		void drawBox(GLfloat size, bool wireframe = true, bool gay = false)
+		void drawBox(const Eigen::Vector3f &size, bool wireframe = true, bool gay = false)
 		{
 			static GLfloat n[6][3] =
 			{
@@ -69,12 +69,12 @@ namespace DebugRender {
 			GLfloat v[8][3];
 			GLint i;
 
-			v[0][0] = v[1][0] = v[2][0] = v[3][0] = -size / 2;
-			v[4][0] = v[5][0] = v[6][0] = v[7][0] = size / 2;
-			v[0][1] = v[1][1] = v[4][1] = v[5][1] = -size / 2;
-			v[2][1] = v[3][1] = v[6][1] = v[7][1] = size / 2;
-			v[0][2] = v[3][2] = v[4][2] = v[7][2] = -size / 2;
-			v[1][2] = v[2][2] = v[5][2] = v[6][2] = size / 2;
+			v[0][0] = v[1][0] = v[2][0] = v[3][0] = -size.x() / 2;
+			v[4][0] = v[5][0] = v[6][0] = v[7][0] = size.x() / 2;
+			v[0][1] = v[1][1] = v[4][1] = v[5][1] = -size.y() / 2;
+			v[2][1] = v[3][1] = v[6][1] = v[7][1] = size.y() / 2;
+			v[0][2] = v[3][2] = v[4][2] = v[7][2] = -size.z() / 2;
+			v[1][2] = v[2][2] = v[5][2] = v[6][2] = size.z() / 2;
 
 			glBegin(wireframe ? GL_LINE_LOOP : GL_QUADS);
 			for (i = 5; i >= 0; i--) {
@@ -88,6 +88,13 @@ namespace DebugRender {
 				glVertex3fv(&v[faces[i][3]][0]);
 			}
 			glEnd();
+		}
+
+		void drawAABB( const Eigen::Vector3f &minCorner, const Eigen::Vector3f &maxCorner, bool wireframe = true, bool gay = false ) {
+			glPushMatrix();
+			setPosition( (minCorner + maxCorner) / 2 );
+			drawBox( (maxCorner - minCorner).cwiseAbs(), wireframe, gay );
+			glPopMatrix();
 		}
 
 		void drawCordinateSystem(GLdouble size) {
@@ -119,6 +126,22 @@ namespace DebugRender {
 			drawEllipse( radius, wireframe, n, Eigen::Vector3f::UnitX(), Eigen::Vector3f::UnitY() );
 			drawEllipse( radius, wireframe, n, Eigen::Vector3f::UnitY(), Eigen::Vector3f::UnitZ() );
 			drawEllipse( radius, wireframe, n, Eigen::Vector3f::UnitX(), Eigen::Vector3f::UnitZ() );
+		}
+
+		void drawWireframeSphere( float radius, int n = 20, int slices = 5 ) {
+			const float step = 2 * radius / (slices + 2);
+
+			glPushMatrix();
+			for( int axis = 0 ; axis < 3 ; ++axis ) {								
+				for( int i = 0 ; i < slices ; ++i ) {
+					const float z = step * (i+1) - radius;
+					const float subRadius = sqrt( radius * radius - z*z );
+
+					setPosition( Eigen::Vector3f::Unit(axis) * z );
+					drawEllipse( subRadius, true, n, Eigen::Vector3f::Unit( (axis + 1) % 3 ), Eigen::Vector3f::Unit( (axis + 2) % 3 ) );
+				}
+			}
+			glPopMatrix();
 		}
 	};
 }

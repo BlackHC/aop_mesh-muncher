@@ -158,6 +158,8 @@ std::vector<SparseCellInfo> solveIntersections( const std::vector<Point> &points
 	// filter
 	if( bestFullCount > 0 ) {
 		std::vector<SparseCellInfo> filteredSparseCellInfos;
+		filteredSparseCellInfos.reserve( sparseCellInfos.size() );
+
 		std::remove_copy_if( sparseCellInfos.begin(), sparseCellInfos.end(), std::back_inserter( filteredSparseCellInfos ), [bestFullCount](SparseCellInfo &info) { return info.totalCount < bestFullCount; } );
 		std::swap( filteredSparseCellInfos, sparseCellInfos );
 	}
@@ -173,6 +175,8 @@ std::vector<SparseCellInfo> solveIntersections( const std::vector<Point> &points
 		resolution /= 2;
 
 		std::vector<SparseCellInfo> refinedSparseCellInfos;
+		refinedSparseCellInfos.reserve( sparseCellInfos.size() * 8 );
+
 		// reset total count to lowest possible value (ie bestFullCount)
 		bestTotalCount = bestFullCount;
 
@@ -244,6 +248,8 @@ std::vector<SparseCellInfo> solveIntersections( const std::vector<Point> &points
 		// filter
 		if( bestFullCount > 0 ) {
 			std::vector<SparseCellInfo> filteredSparseCellInfos;
+			filteredSparseCellInfos.reserve( sparseCellInfos.size() );
+
 			std::remove_copy_if( sparseCellInfos.begin(), sparseCellInfos.end(), std::back_inserter( filteredSparseCellInfos ), [bestFullCount](SparseCellInfo &info) { return info.totalCount < bestFullCount; } );
 			std::swap( filteredSparseCellInfos, sparseCellInfos );
 		}
@@ -389,14 +395,10 @@ struct CameraInputControl : public MouseCapture {
 			Eigen::Vector3f newPosition = camera->getPosition() + camera->getViewTransformation().linear().transpose() * relativeMovement;
 			camera->setPosition( newPosition );
 
-			sf::Vector2f angleDelta = sf::Vector2f( getMouseDelta() ) * float(Math::PI / 180.0) * 0.5f;
+			sf::Vector2f angleDelta = sf::Vector2f( getMouseDelta() ) * 0.5f;
 
-			camera->setOrientation( 
-				Eigen::AngleAxisf( angleDelta.x, Eigen::Vector3f::Unit(1) ) *
-				Eigen::AngleAxisf( angleDelta.y, Eigen::Vector3f::Unit(0) ) *
-				camera->getOrientation()
-			);
-			camera->setOrientation( camera->getOrientation().normalized() );
+			camera->yaw( angleDelta.x );
+			camera->pitch( angleDelta.y );
 		}
 
 		return true;
@@ -406,10 +408,15 @@ struct CameraInputControl : public MouseCapture {
 void main() {
 	std::vector<Point> points;
 
-	points.push_back( Point( Vector3f(0,0,0), 5 ) );
+	/*points.push_back( Point( Vector3f(0,0,0), 5 ) );
 	points.push_back( Point( Vector3f(10,0,0), 5 ) );
+	points.push_back( Point( Vector3f(5,0,5), 5 ) );*/
 
-	auto result = solveIntersections( points, 1 );
+	points.push_back( Point( Vector3f(0,0,0), 5 ) );
+	points.push_back( Point( Vector3f(11.9,0,0), 5 ) );
+
+	const float halfThickness = 1;
+	auto result = solveIntersections( points, halfThickness );
 
 	sf::Window window( sf::VideoMode( 640, 480 ), "Position Solver", sf::Style::Default, sf::ContextSettings(32) );
 
@@ -427,12 +434,27 @@ void main() {
 	glDepthMask(GL_TRUE);
 	glClearDepth(1.f);
 
-	DebugRender::CombinedCalls debugScene;
-	debugScene.begin();
-	debugScene.setPosition( Vector3f( 0,0,-5) );
-	debugScene.setColor( Vector3f( 1.0, 0.0, 0.0 ) );
-	debugScene.drawAbstractSphere( 3.0 );
-	debugScene.end();
+	DebugRender::CombinedCalls debugSourcePoints;
+	debugSourcePoints.begin();
+	// add source points
+	for( auto point = points.begin() ; point != points.end() ; ++point ) {
+		debugSourcePoints.setPosition( point->center );
+
+		debugSourcePoints.setColor( Eigen::Vector3f( 0.0, 0.0, 1.0 ) );
+		debugSourcePoints.drawWireframeSphere( point->distance + halfThickness );
+
+		debugSourcePoints.setColor( Eigen::Vector3f( 0.0, 0.0, 0.5 ) );
+		debugSourcePoints.drawWireframeSphere( point->distance - halfThickness );
+	}
+	debugSourcePoints.end();
+
+	DebugRender::CombinedCalls debugResults;
+	debugResults.begin();
+	for( auto sparseCellInfo = result.begin() ; sparseCellInfo != result.end() ; ++sparseCellInfo ) {
+		debugResults.setColor( Eigen::Vector3f( 1.0, 0.0, 0.0 ) * ( float(sparseCellInfo->fullCount) / sparseCellInfo->totalCount * 0.75 + 0.25 ) );
+		debugResults.drawAABB( sparseCellInfo->minCorner, sparseCellInfo->maxCorner );
+	}
+	debugResults.end();
 
 	// The main loop - ends as soon as the window is closed
 	sf::Clock frameClock, clock;
@@ -464,70 +486,12 @@ void main() {
 		// OpenGL drawing commands go here...
 		glMatrixMode( GL_PROJECTION );
 		glLoadMatrix( camera.getProjectionMatrix() );
-		/*glLoadIdentity();
-		gluPerspective( 
-			camera.perspectiveProjectionParameters.FoV_y,
-			camera.perspectiveProjectionParameters.aspect,
-			camera.perspectiveProjectionParameters.zNear,
-			camera.perspectiveProjectionParameters.zFar
-			);
-			*/
+
 		glMatrixMode( GL_MODELVIEW );
-		glLoadMatrix( camera.getViewMatrix() );
+		glLoadMatrix( camera.getViewTransformation().matrix() );
 
-		debugScene.render();
-
-		/*// Clear color and depth buffer
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-		// Apply some transformations
-		glMatrixMode(GL_MODELVIEW);
-		glLoadIdentity();
-		glTranslatef(0.f, 0.f, -200.f);
-		glRotatef(clock.getElapsedTime().asSeconds() * 50, 1.f, 0.f, 0.f);
-		glRotatef(clock.getElapsedTime().asSeconds() * 30, 0.f, 1.f, 0.f);
-		glRotatef(clock.getElapsedTime().asSeconds() * 90, 0.f, 0.f, 1.f);
-
-		// Draw a cube
-		glBegin(GL_QUADS);
-
-		glColor3f(1.f, 0.f, 0.f);
-		glVertex3f(-50.f, -50.f, -50.f);
-		glVertex3f(-50.f,  50.f, -50.f);
-		glVertex3f( 50.f,  50.f, -50.f);
-		glVertex3f( 50.f, -50.f, -50.f);
-
-		glColor3f(1.f, 0.f, 0.f);
-		glVertex3f(-50.f, -50.f, 50.f);
-		glVertex3f(-50.f,  50.f, 50.f);
-		glVertex3f( 50.f,  50.f, 50.f);
-		glVertex3f( 50.f, -50.f, 50.f);
-
-		glColor3f(0.f, 1.f, 0.f);
-		glVertex3f(-50.f, -50.f, -50.f);
-		glVertex3f(-50.f,  50.f, -50.f);
-		glVertex3f(-50.f,  50.f,  50.f);
-		glVertex3f(-50.f, -50.f,  50.f);
-
-		glColor3f(0.f, 1.f, 0.f);
-		glVertex3f(50.f, -50.f, -50.f);
-		glVertex3f(50.f,  50.f, -50.f);
-		glVertex3f(50.f,  50.f,  50.f);
-		glVertex3f(50.f, -50.f,  50.f);
-
-		glColor3f(0.f, 0.f, 1.f);
-		glVertex3f(-50.f, -50.f,  50.f);
-		glVertex3f(-50.f, -50.f, -50.f);
-		glVertex3f( 50.f, -50.f, -50.f);
-		glVertex3f( 50.f, -50.f,  50.f);
-
-		glColor3f(0.f, 0.f, 1.f);
-		glVertex3f(-50.f, 50.f,  50.f);
-		glVertex3f(-50.f, 50.f, -50.f);
-		glVertex3f( 50.f, 50.f, -50.f);
-		glVertex3f( 50.f, 50.f,  50.f);
-
-		glEnd();*/
+		debugSourcePoints.render();
+		debugResults.render();
 
 		// End the current frame and display its contents on screen
 		window.display();
