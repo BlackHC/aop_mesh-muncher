@@ -19,6 +19,8 @@ ADD_SUBDIRECTORY(volumePlacerUI)
 ADD_SUBDIRECTORY(calibrateVolumeBB)
 ADD_SUBDIRECTORY(positionSolver)
 ADD_SUBDIRECTORY(minimumDensityClustering)
+ADD_SUBDIRECTORY(modelSampler)
+ADD_SUBDIRECTORY(modelExport)
 
 # Adds a new build target which copies the niven binaries to
 # the output folder

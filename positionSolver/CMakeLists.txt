@@ -12,6 +12,7 @@ INCLUDE_DIRECTORIES(${ANTTWEAKBAR_INCLUDE_DIR} ${NIVEN_INCLUDE_DIR} ${SFML_INCLU
 # ../gtest/gtest_main.cc
 ADD_EXECUTABLE(positionSolver
 	${GLEW_SOURCE_FILE}
+	cameraInputControl.h
 	debugRender.h
 	camera.h
 	eventHandling.h
