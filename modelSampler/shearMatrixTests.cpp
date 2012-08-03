@@ -29,12 +29,12 @@ TEST( ShearMatrixTests, xShear) {
 	Matrix4f shearMatrix = createShearProjectionMatrix( Vector2f::Constant(-1.0), Vector2f::Constant(1.0), -1.0, 1.0, Vector2f( 1.0, 0.0 ) );
 	
 	EXPECT_EQ( Vector4f(shearMatrix * Vector4f::UnitW()), Vector4f::UnitW() );
-	EXPECT_EQ( Vector4f(shearMatrix * Vector4f( 0.0, 0.0, -1.0, 1.0 )), Vector4f( 1.0, 0.0, 1.0, 1.0 ) );
+	EXPECT_EQ( Vector4f(shearMatrix * Vector4f( 1.0, 0.0, -1.0, 1.0 )), Vector4f( 0.0, 0.0, 1.0, 1.0 ) );
 }
 
 TEST( ShearMatrixTests, yShear) {
 	Matrix4f shearMatrix = createShearProjectionMatrix( Vector2f::Constant(-1.0), Vector2f::Constant(1.0), -1.0, 1.0, Vector2f( 0.0, 1.0 ) );
 
 	EXPECT_EQ( Vector4f(shearMatrix * Vector4f::UnitW()), Vector4f::UnitW() );
-	EXPECT_EQ( Vector4f(shearMatrix * Vector4f( 0.0, 0.0, -1.0, 1.0 )), Vector4f( 0.0, 1.0, 1.0, 1.0 ) );
+	EXPECT_EQ( Vector4f(shearMatrix * Vector4f( 0.0, 1.0, -1.0, 1.0 )), Vector4f( 0.0, 0.0, 1.0, 1.0 ) );
 }

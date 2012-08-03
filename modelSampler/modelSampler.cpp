@@ -2,6 +2,7 @@
 #include <numeric>
 #include <algorithm>
 #include <functional>
+#include <boost/algorithm/cxx11/all_of.hpp>
 #include <iterator>
 
 #include <gtest.h>
@@ -140,71 +141,101 @@ struct DepthProbleSampler {
 
 	Grid *grid;
 	
-	Vector3f direction;
+	float maxDepth;	
 
-	// used to convert the depth buffer values into a real depth value (according to near/far plane and the shear matrix)
-	float depthScale;
+	int numDirections;
+	std::vector<Vector3f> directions;
 
-	// size: grid.count
-	GLuint* depthSamples;
+	// size: grid.count * numDirections
+
+	typedef GLfloat DepthSample;
+	DepthSample* depthSamples;
+
 	int layerSize;
+	int volumeSize;
+
+	/*
+	float getDepthSample( const Vector3i &index3 ) {
+		return depthSamples[ grid->getIndex( index3 ) ] / double( ~0u ) * maxDepth;
+	}*/
+
+	GLuint getDepthSample( int directionIndex, const Vector3i &index3 ) {
+		return depthSamples[ grid->getIndex( index3 ) + grid->size.prod() * directionIndex ];
+	}
 
 	void init() {
+		numDirections = directions.size();
+
 		glGenBuffers( 1, &pbo );
 		glPixelStorei( GL_PACK_ALIGNMENT, 1 );
 
-		layerSize = sizeof( GLuint ) * grid->size.head<2>().prod();
-		glNamedBufferDataEXT( pbo, layerSize * grid->size.z(), nullptr, GL_DYNAMIC_READ );
+		layerSize = sizeof( DepthSample ) * grid->size.head<2>().prod();
+		volumeSize = layerSize * grid->size.z();
+		glNamedBufferDataEXT( pbo, volumeSize * numDirections, nullptr, GL_DYNAMIC_READ );
 
-		depthSamples = (GLuint*) glMapNamedBufferEXT( pbo, GL_READ_ONLY );
+		depthSamples = (DepthSample*) glMapNamedBufferEXT( pbo, GL_READ_ONLY );
+	}
+
+	static Matrix4f createUniformShearMatrix( const Vector2f &size, const float maxZ, const Vector2f &zStep ) {
+		const Vector2f halfSize = size / 2;
+		return createShearProjectionMatrix( -halfSize, halfSize, 0.0, maxZ, zStep );
 	}
 
 	void sample() {
 		glUnmapNamedBufferEXT( pbo );
 
 		int maxTextureSize = 4096;
-		BOOST_ASSERT( grid->size.maxCoeff() <= maxTextureSize );
+		BOOST_VERIFY( grid->size.maxCoeff() <= maxTextureSize );
 
-		// create depth textures for each axis
-		std::unique_ptr<GLuint[]> renderBuffers( new GLuint[grid->size.z()] );
-		std::unique_ptr<GLuint[]> fbos( new GLuint[grid->size.z()] );
+		// create depth renderbuffers and framebuffer objects for each layer
+		int numBuffers = grid->size.z() * numDirections;
 
-		glGenFramebuffers( grid->size.z(), fbos.get() );
-		glGenRenderbuffers( grid->size.z(), renderBuffers.get() );
+		std::unique_ptr<GLuint[]> renderBuffers( new GLuint[numBuffers] );
+		std::unique_ptr<GLuint[]> fbos( new GLuint[numBuffers] );
+				
+		glGenFramebuffers( numBuffers, fbos.get() );
+		glGenRenderbuffers( numBuffers, renderBuffers.get() );
 		
 		glDrawBuffer( GL_NONE );
 
-		BOOST_ASSERT( abs( direction.z() ) > 0.1 );
+		BOOST_VERIFY( boost::algorithm::all_of( directions, []( const Vector3f &v ) { return abs( v.z() ) > 0.1; } ) );
 
-		glMatrixMode( GL_PROJECTION );
 		const Vector3f minCorner = grid->getPosition( Vector3i( 0,0,0 ) );
 		const Vector3f maxCorner = grid->getPosition( grid->size );
-		const Vector3f center = (minCorner + maxCorner) / 2;
-		const Vector2f halfSize = (maxCorner - minCorner).head<2>() / 2;
-		glLoadMatrix( createShearProjectionMatrix( -halfSize, halfSize, 0.0, 500.0, direction.head<2>() ) );
-
-		glMatrixMode( GL_MODELVIEW );
 
 		glBindBuffer( GL_PIXEL_PACK_BUFFER, pbo );
-
+		
 		glPushAttrib(GL_VIEWPORT_BIT);
 		glViewport(0, 0, grid->size.x(), grid->size.y()); 
-
-		for( int i = 0 ; i < grid->size[2] ; ++i ) {
-			glBindFramebuffer( GL_FRAMEBUFFER, fbos[i] );
-			glBindRenderbuffer( GL_RENDERBUFFER, renderBuffers[i] );
-			glRenderbufferStorage( GL_RENDERBUFFER, GL_DEPTH_COMPONENT32, grid->size.x(), grid->size.y() );
-			glFramebufferRenderbuffer( GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, renderBuffers[i] );
+		
+		for( int directionIndex = 0 ; directionIndex < numDirections ; ++directionIndex ) {
+			const Vector3f &direction = directions[directionIndex] / directions[directionIndex].z();
 			
-			glClear( GL_DEPTH_BUFFER_BIT );	
+			const float depthScale = direction.norm();
+			
+			// set the projection matrix
+			glMatrixMode( GL_PROJECTION );
+			const float shearedMaxDepth = maxDepth / depthScale;
+			glLoadMatrix( createShearProjectionMatrix( minCorner.head<2>(), maxCorner.head<2>(), 0, shearedMaxDepth, direction.head<2>() ) );
+			
+			glMatrixMode( GL_MODELVIEW );
 
-			glLoadIdentity();
-			glScalef( 1.0, 1.0, direction.z() > 0 ? -1.0 : 1.0 );
-			glTranslatef( -center.x(), -center.y(), -grid->getPosition( Vector3i( 0, 0, i ) ).z() );
+			for( int i = 0 ; i < grid->size[2] ; ++i ) {
+				glBindFramebuffer( GL_FRAMEBUFFER, fbos[i] );
+				glBindRenderbuffer( GL_RENDERBUFFER, renderBuffers[i] );
+				glRenderbufferStorage( GL_RENDERBUFFER, GL_DEPTH_COMPONENT32F, grid->size.x(), grid->size.y() );
+				glFramebufferRenderbuffer( GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, renderBuffers[i] );
 
-			debugScene.render();
+				glClear( GL_DEPTH_BUFFER_BIT );	
 
-			glReadPixels( 0, 0, grid->size.x(), grid->size.y(), GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, (GLvoid*) (i * layerSize) );
+				glLoadIdentity();
+				glScalef( 1.0, 1.0, direction.z() > 0 ? -1.0 : 1.0 );
+				glTranslatef( 0.0, 0.0, -(grid->resolution * i + grid->offset.z()) );
+
+				debugScene.render();
+
+				glReadPixels( 0, 0, grid->size.x(), grid->size.y(), GL_DEPTH_COMPONENT, GL_FLOAT, (GLvoid*) (i * layerSize + directionIndex * volumeSize) );
+			}
 		}
 
 		glBindFramebuffer( GL_FRAMEBUFFER, 0 );
@@ -215,7 +246,7 @@ struct DepthProbleSampler {
 		glDeleteFramebuffers( grid->size.z(), fbos.get() );
 		glDeleteRenderbuffers( grid->size.z(), renderBuffers.get() );
 
-		depthSamples = (GLuint*) glMapNamedBufferEXT( pbo, GL_READ_ONLY );
+		depthSamples = (DepthSample*) glMapNamedBufferEXT( pbo, GL_READ_ONLY );
 	}
 };
 
@@ -252,9 +283,30 @@ void main() {
 
 	DepthProbleSampler sampler;
 	sampler.grid = &grid;
-	sampler.direction = Vector3f::UnitZ();
+	sampler.directions.push_back( Vector3f::UnitZ() );
+	sampler.directions.push_back( Vector3f( 1.0, 0.0, 1.0 ) );
+	sampler.directions.push_back( Vector3f( -1.0, 0.0, 1.0 ) );
+	sampler.directions.push_back( Vector3f( 0.0, 1.0, 1.0 ) );
+	sampler.directions.push_back( Vector3f( 0.0, -1.0, 1.0 ) );
+	sampler.directions.push_back( Vector3f( 1.0, 1.0, 1.0 ) );
+	sampler.directions.push_back( Vector3f( 1.0, -1.0, 1.0 ) );
+	sampler.maxDepth = 256.0;
 
 	sampler.init();
+	sampler.sample();
+
+	DebugRender::CombinedCalls depthInfo;
+	depthInfo.begin();
+	depthInfo.setColor( Vector3f( 1.0, 1.0, 1.0 ) );
+	for( int directionIndex = 0 ; directionIndex < sampler.numDirections ; ++directionIndex ) {
+		const Vector3f &direction = sampler.directions[directionIndex].normalized();
+
+		for( int i = 0 ; i < grid.count ; i++ ) {
+			depthInfo.setPosition( grid.getPosition( grid.getIndex3(i) ) );
+			depthInfo.drawVector( sampler.depthSamples[i + directionIndex * grid.count ] * sampler.maxDepth * direction );
+		}
+	}
+	depthInfo.end();
 
 	// The main loop - ends as soon as the window is closed
 	sf::Clock frameClock, clock;
@@ -291,8 +343,8 @@ void main() {
 		glLoadMatrix( camera.getViewTransformation().matrix() );
 
 		debugScene.render();
-		sampler.sample();
-		
+		depthInfo.render();
+
 		// End the current frame and display its contents on screen
 		window.display();
 	}

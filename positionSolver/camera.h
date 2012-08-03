@@ -77,8 +77,8 @@ namespace Eigen {
 		const float depth = zFar - zNear;
 
 		return (Matrix4f() <<
-			1.0 / halfSize.x(),		0,					-zStep.x() / halfSize.x(),	-center.x() / halfSize.x(),
-			0,						1.0 / halfSize.y(),	-zStep.y() / halfSize.y(),	-center.y() / halfSize.y(),
+			1.0 / halfSize.x(),		0,					zStep.x() / halfSize.x(),	-center.x() / halfSize.x(),
+			0,						1.0 / halfSize.y(),	zStep.y() / halfSize.y(),	-center.y() / halfSize.y(),
 			0,						0,					-2.0 / depth,				-(zFar + zNear) / depth,
 			0,						0,					0,							1.0).finished();
 	}
