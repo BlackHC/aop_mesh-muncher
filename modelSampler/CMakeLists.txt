@@ -24,6 +24,12 @@ ADD_EXECUTABLE(modelSampler
 	../gtest/gtest-all.cc
 	)
 
+ADD_EXECUTABLE(modelSamplerTests
+	shearMatrixTests.cpp
+	../gtest/gtest_main.cc
+	../gtest/gtest-all.cc
+	)
+
 # The test application uses niven core, so link against it
 TARGET_LINK_LIBRARIES(modelSampler ${NIVEN_CORE_LIBRARY})
 TARGET_LINK_LIBRARIES(modelSampler ${NIVEN_ENGINE_LIBRARY})

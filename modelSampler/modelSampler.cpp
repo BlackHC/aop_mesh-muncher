@@ -15,184 +15,9 @@
 
 #include <memory>
 
+#include <boost/assert.hpp>
+
 using namespace Eigen;
-
-// common chunk struct
-namespace Serialize {
-	template<typename T>
-	void writeTyped( FILE *fileHandle, const T &d ) {
-		fwrite( &d, sizeof(T), 1, fileHandle );
-	}
-
-	template<typename T>
-	void readTyped( FILE *fileHandle, T &d ) {
-		fread( &d, sizeof(T), 1, fileHandle );
-	}
-
-	template<typename V>
-	void writeTyped( FILE *fileHandle, const std::vector<V> &d ) {
-		int num = (int) d.size();
-		writeTyped( fileHandle, num );
-		for( int i = 0 ; i < num ; ++i ) {
-			writeTyped( fileHandle, d[i] );
-		}
-	}
-
-	template<typename V>
-	void readTyped( FILE *fileHandle, std::vector<V> &d ) {
-		int num;
-		readTyped( fileHandle, num );
-		d.resize( num );
-
-		for( int i = 0 ; i < num ; ++i ) {
-			readTyped( fileHandle, d[i] );
-		}
-	}
-}
-
-namespace Storage {
-struct RawChunk {
-	char name[16];
-	size_t headerSize;
-	size_t rawDataSize;
-};
-
-struct RawFile {
-	char magic[6]; // CHUNKS
-	char intSize;
-	int numChunks;
-};
-
-namespace Input {
-template<typename HeaderStruct, typename DataType>
-struct Chunk {
-	const HeaderStruct *header;
-	const DataType *data;
-
-	bool load( const RawChunk *chunk ) {
-		if( chunk->headerSize != sizeof(HeaderStruct) || chunk->rawDataSize % sizeof(DataType) != 0 ) {
-			return false;
-		}
-
-		header = (const HeaderStruct *) (((const char*) chunk) + sizeof( RawChunk ));
-		data = (const DataType *) (((const char*) header) + chunk->headerSize);
-
-		return true;
-	}
-};
-
-struct File {
-	const RawFile *rawFile;
-	const RawChunk *first;
-
-	bool load( const RawFile *file ) {
-		if( memcmp( file->magic, "CHUNKS", 6 ) != 0 || file->intSize != sizeof( int ) ) {
-			return false;
-		}
-
-		rawFile = file;
-		first = reinterpret_cast<const RawChunk*>( reinterpret_cast<const char*>( file ) + sizeof( RawFile ) );		
-	}
-
-	class Iterator {
-		int numChunks;
-		const RawChunk *current;
-		int currentIndex;
-
-		Iterator( const RawChunk *first, int numChunks ) : numChunks( numChunks ), current( first ), currentIndex( 0 ) {}
-
-		friend class File;
-	public:
-		operator bool() {
-			return currentIndex < numChunks;
-		}
-
-		const RawChunk * operator ->() {
-			return current;
-		}
-
-		const RawChunk & operator *() {
-			return *current;
-		} 
-
-		Iterator & operator ++() {
-			if( ++currentIndex >= numChunks ) {
-				current = nullptr;
-				return *this;
-			}
-			current = reinterpret_cast<const RawChunk *>( reinterpret_cast<const char*>( current ) + current->headerSize + current->rawDataSize );
-		}
-	};
-
-	Iterator getIterator() const {
-		return Iterator( first, rawFile->numChunks );
-	}
-};
-
-RawFile *readFile( const char *filename ) {
-	FILE *handle = fopen( filename, "rb" );
-	if( !handle ) {
-		return nullptr;
-	}
-
-	fseek( handle, 0, SEEK_END );
-	size_t size = ftell( handle );
-	fseek( handle, 0, SEEK_SET );
-
-	char *data = new char[size];
-	if( fread( data, size, 1, handle ) != 1 ) {
-		delete[] data;
-		return nullptr;
-	}
-
-	return reinterpret_cast<RawFile*>( data );
-}
-}
-
-namespace Output {
-	struct File {
-		FILE *handle;
-
-		File() : handle( nullptr ) {}
-		~File() {
-			if( handle ) {
-				fclose( handle );
-			}
-		}
-
-		bool open( const char *filename, int numChunks ) {
-			handle = fopen( filename, "wb" );
-			if( !handle ) {
-				return false;
-			}
-
-			RawFile rawFile;
-			memcpy( rawFile.magic, "CHUNKS", 6 );
-			rawFile.intSize = sizeof( int );
-			rawFile.numChunks = numChunks;
-
-			Serialize::writeTyped( handle, rawFile );
-		}
-
-		template<typename HeaderStruct, typename DataType>
-		void pushChunk( const char *name, const HeaderStruct &headerStruct, int dataCount, const DataType *data ) {
-			RawChunk rawChunk;
-			strncpy( rawChunk.name, name );
-			rawChunk.headerSize = sizeof( HeaderStruct);
-			rawChunk.rawDataSize = dataCount * sizeof( data );
-
-			Serialize::writeTyped(rawChunk);
-			Serialize::writeTyped(headerStruct);
-			fwrite( data, sizeof( DataType ), dataCount, handle );
-		}
-
-		void close() {
-			fclose( handle );
-			handle = nullptr;
-		}
-	};
-}
-}
 
 struct Grid {
 	Vector3i size;
@@ -267,8 +92,140 @@ std::shared_ptr<T> shared_from_stack(T &object) {
 	return std::shared_ptr<T>( &object, null_deleter() );
 }
 
+/*
+struct DepthProbleSampler {
+	GLuint fbo;
+
+	Grid *grid;
+	
+	int numDirections;
+
+	GLuint depthTextures[3];
+
+	std::vector<Vector3f> directions;
+	// sorted by main axis
+	std::vector<Vector3f> separatedDirections[3];
+	// used to convert the depth buffer values into a real depth value (according to near/far plane and the shear matrix)
+	std::vector<float> depthScale;
+
+	// size: numDirections * grid.count
+	std::vector<float> orderedSamples;
+
+	void sample( const std::vector<Vector3f> &directions ) {
+		numDirections = directions.size();
+		this->directions = directions;
+		
+		// fill separatedDirections
+		
+
+		int maxTextureSize = 4096;
+		BOOST_ASSERT( grid->size.maxCoeff() <= maxTextureSize );
+
+		// create depth textures for each axis
+		Vector3i sizes[3];
+		for( int axis = 0 ; axis < 3 ; ++axis ) {
+			sizes[axis] = Vector3i( grid->size[ (axis + 1) % 3 ], grid->size[ (axis + 2) % 3 ], grid->size[ axis ] );
+			glTexStorage3D( GL_TEXTURE_2D_ARRAY, 1, GL_DEPTH_COMPONENT32F, sizes[axis][0], sizes[axis][1], sizes[axis][2] );
+		}
+
+		
+	}
+};*/
+
+DebugRender::CombinedCalls debugScene;
+// TODO: add unit tests for the shear matrix function
+
+struct DepthProbleSampler {
+	GLuint pbo;
+
+	Grid *grid;
+	
+	Vector3f direction;
+
+	// used to convert the depth buffer values into a real depth value (according to near/far plane and the shear matrix)
+	float depthScale;
+
+	// size: grid.count
+	GLuint* depthSamples;
+	int layerSize;
+
+	void init() {
+		glGenBuffers( 1, &pbo );
+		glPixelStorei( GL_PACK_ALIGNMENT, 1 );
+
+		layerSize = sizeof( GLuint ) * grid->size.head<2>().prod();
+		glNamedBufferDataEXT( pbo, layerSize * grid->size.z(), nullptr, GL_DYNAMIC_READ );
+
+		depthSamples = (GLuint*) glMapNamedBufferEXT( pbo, GL_READ_ONLY );
+	}
+
+	void sample() {
+		glUnmapNamedBufferEXT( pbo );
+
+		int maxTextureSize = 4096;
+		BOOST_ASSERT( grid->size.maxCoeff() <= maxTextureSize );
+
+		// create depth textures for each axis
+		std::unique_ptr<GLuint[]> renderBuffers( new GLuint[grid->size.z()] );
+		std::unique_ptr<GLuint[]> fbos( new GLuint[grid->size.z()] );
+
+		glGenFramebuffers( grid->size.z(), fbos.get() );
+		glGenRenderbuffers( grid->size.z(), renderBuffers.get() );
+		
+		glDrawBuffer( GL_NONE );
+
+		BOOST_ASSERT( abs( direction.z() ) > 0.1 );
+
+		glMatrixMode( GL_PROJECTION );
+		const Vector3f minCorner = grid->getPosition( Vector3i( 0,0,0 ) );
+		const Vector3f maxCorner = grid->getPosition( grid->size );
+		const Vector3f center = (minCorner + maxCorner) / 2;
+		const Vector2f halfSize = (maxCorner - minCorner).head<2>() / 2;
+		glLoadMatrix( createShearProjectionMatrix( -halfSize, halfSize, 0.0, 500.0, direction.head<2>() ) );
+
+		glMatrixMode( GL_MODELVIEW );
+
+		glBindBuffer( GL_PIXEL_PACK_BUFFER, pbo );
+
+		glPushAttrib(GL_VIEWPORT_BIT);
+		glViewport(0, 0, grid->size.x(), grid->size.y()); 
+
+		for( int i = 0 ; i < grid->size[2] ; ++i ) {
+			glBindFramebuffer( GL_FRAMEBUFFER, fbos[i] );
+			glBindRenderbuffer( GL_RENDERBUFFER, renderBuffers[i] );
+			glRenderbufferStorage( GL_RENDERBUFFER, GL_DEPTH_COMPONENT32, grid->size.x(), grid->size.y() );
+			glFramebufferRenderbuffer( GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, renderBuffers[i] );
+			
+			glClear( GL_DEPTH_BUFFER_BIT );	
+
+			glLoadIdentity();
+			glScalef( 1.0, 1.0, direction.z() > 0 ? -1.0 : 1.0 );
+			glTranslatef( -center.x(), -center.y(), -grid->getPosition( Vector3i( 0, 0, i ) ).z() );
+
+			debugScene.render();
+
+			glReadPixels( 0, 0, grid->size.x(), grid->size.y(), GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, (GLvoid*) (i * layerSize) );
+		}
+
+		glBindFramebuffer( GL_FRAMEBUFFER, 0 );
+		glPopAttrib();
+
+		glDrawBuffer( GL_BACK );
+
+		glDeleteFramebuffers( grid->size.z(), fbos.get() );
+		glDeleteRenderbuffers( grid->size.z(), renderBuffers.get() );
+
+		depthSamples = (GLuint*) glMapNamedBufferEXT( pbo, GL_READ_ONLY );
+	}
+};
+
+#include "niven.Core.Core.h"
+
 void main() {
+	Core::Initialize ();
+
 	sf::Window window( sf::VideoMode( 640, 480 ), "Position Solver", sf::Style::Default, sf::ContextSettings(32) );
+	glewInit();
 
 	Camera camera;
 	camera.perspectiveProjectionParameters.aspect = 640.0 / 480.0;
@@ -280,13 +237,24 @@ void main() {
 	CameraInputControl cameraInputControl;
 	cameraInputControl.init( shared_from_stack(camera), shared_from_stack(window) );
 
+	// Activate the window for OpenGL rendering
+	window.setActive();
+
 	glEnable(GL_DEPTH_TEST);
 	glDepthMask(GL_TRUE);
 	glClearDepth(1.f);
 
-	ObjSceneGL objScene;
-	//objScene.Init( IO::Path( "P:\\BlenderScenes\\two_boxes.obj" ) );
-	objScene.Init( IO::Path( "P:\\BlenderScenes\\lawn_garage_house.obj" ) );
+	debugScene.begin();
+	debugScene.drawBox( Vector3f::Constant(8), false, true );
+	debugScene.end();
+
+	Grid grid( Vector3i( 4, 4, 4 ), Vector3f( 0.0, 0.0, 0.0 ), 1.0 );
+
+	DepthProbleSampler sampler;
+	sampler.grid = &grid;
+	sampler.direction = Vector3f::UnitZ();
+
+	sampler.init();
 
 	// The main loop - ends as soon as the window is closed
 	sf::Clock frameClock, clock;
@@ -322,8 +290,9 @@ void main() {
 		glMatrixMode( GL_MODELVIEW );
 		glLoadMatrix( camera.getViewTransformation().matrix() );
 
-		objScene.Draw();
-
+		debugScene.render();
+		sampler.sample();
+		
 		// End the current frame and display its contents on screen
 		window.display();
 	}

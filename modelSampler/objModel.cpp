@@ -1,6 +1,19 @@
+#include "objModel.h"
+
 #include <niven.Core.Core.h>
 
-#include "objModel.h"
+#include <niven.Core.IO.Path.h>
+
+#include <niven.Render.Effect.h>
+#include <niven.Engine.Render.EffectManager.h>
+#include <niven.Render.RenderContext.h>
+#include <niven.Render.Texture.h>
+#include <niven.Render.VertexLayout.h>
+#include <niven.Render.VertexBuffer.h>
+#include <niven.Render.IndexBuffer.h>
+
+#include <niven.Engine.Geometry.SimpleMesh.h>
+#include <niven.Engine.Spatial.AxisAlignedBoundingBox.h>
 
 #include <niven.Core.IO.FileSystem.h>
 #include <niven.Core.Log.h>
@@ -19,7 +32,8 @@
 
 using namespace niven;
 
-void ObjSceneGL::Init( niven::IO::Path &objPath ) {
+void ObjSceneGL::Init( const char *objFile ) {
+	niven::IO::Path objPath( objFile );
 	IO::Path baseDirectory = objPath.GetParentDirectory();
 
 	Log::Info ("ObjModel", String::Format ("Loading obj file '{0}'") % objPath );
@@ -39,17 +53,18 @@ void ObjSceneGL::Init( niven::IO::Path &objPath ) {
 		MaterialLibrary::LoadMTL( *FileSystem::OpenFile( mtlPath ), materialLibrary );
 	}
 
+	std::vector<SimpleMesh::Ptr> simpleMeshes;
 	std::map<String, GLuint> textureMap;
 	for (int i = 0; i < reader.GetChunkCount (); ++i)
 	{
 		const Interop::Obj::Chunk *chunk = reader.GetChunk(i);
 		{
 			SubModel subModel;
-			subModel.mesh = ConvertToSimpleMesh (chunk);
+			simpleMeshes.push_back( ConvertToSimpleMesh (chunk) );
 			subModel.texture = 0;
 
-			subModel.objectName = chunk->GetObjectName();
-			subModel.groupNames = chunk->GetGroups();
+			subModel.objectName = chunk->GetObjectName().ToStdString();
+			std::transform( chunk->GetGroups().cbegin(), chunk->GetGroups().cend(), std::inserter( subModel.groupNames, subModel.groupNames.begin() ), [] (const niven::String &str) { return str.ToStdString(); } );
 
 			subModel.visible = true;
 
@@ -83,11 +98,12 @@ void ObjSceneGL::Init( niven::IO::Path &objPath ) {
 					}
 
 					try {
-						Image::Image2D::Ptr image = Image::LoadImage<Image2D_4b>( imagePath, LoadImageFlags::AutoConvert );		
+						Image::Image2D::Ptr image = Image::LoadImage<Image2D_4b>( imagePath, LoadImageFlags::AutoConvert );								
 						GLuint texture;
 						glGenTextures( 1, &texture );
 						glBindTexture( GL_TEXTURE_2D, texture );
 						glTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA8, image->GetWidth(), image->GetHeight(), 0, GL_RGBA, GL_UNSIGNED_BYTE, image->GetData() );
+						glGenerateMipmap( GL_TEXTURE_2D );
 						glBindTexture( GL_TEXTURE_2D, 0 );
 
 						textureMap[ material.texture ] = texture;
@@ -104,16 +120,21 @@ void ObjSceneGL::Init( niven::IO::Path &objPath ) {
 	const int meshCount = static_cast<int>(subModels.size ());
 	for (int i = 0; i < meshCount; ++i)
 	{
+		SimpleMesh *simpleMesh = simpleMeshes[i].get();
 		SubModel &subModel = subModels[i];
 
+
 		Log::Info ("ObjModel", 
-			String::Format ("Uploading mesh {0}/{1} with vertex format {2}") % (i+1) % meshCount % subModel.mesh->GetVertexFormat ().GetId () );
+			String::Format ("Uploading mesh {0}/{1} with vertex format {2}") % (i+1) % meshCount % simpleMesh->GetVertexFormat ().GetId () );
 
 		subModel.displayList = glGenLists( 1 );
 		glNewList( subModel.displayList, GL_COMPILE );
 
-		size_t vertexSize = subModel.mesh->GetVertexFormat().GetSize();
-		auto vertexComponents = subModel.mesh->GetVertexFormat().GetVertexLayout();
+		size_t vertexSize = simpleMesh->GetVertexFormat().GetSize();
+		auto vertexComponents = simpleMesh->GetVertexFormat().GetVertexLayout();
+
+		glEnableClientState( GL_VERTEX_ARRAY );
+		glDisableClientState( GL_TEXTURE_COORD_ARRAY );
 
 		for( auto vertexComponent = vertexComponents.begin() ; vertexComponent != vertexComponents.end() ; ++vertexComponent ) {
 			GLuint componentType, componentSize;
@@ -122,21 +143,27 @@ void ObjSceneGL::Init( niven::IO::Path &objPath ) {
 				componentType = GL_FLOAT;
 				componentSize = 3;
 				break;
+			case VertexElementType::Float_2:
+				componentType = GL_FLOAT;
+				componentSize = 2;
+				break;
 			default:
 				// error
 				__debugbreak();
 			}
 			switch( vertexComponent->GetSemantic() ) {
 			case VertexElementSemantic::Position:
-				glVertexPointer( componentSize, componentType, vertexSize, (const char*) subModel.mesh->GetVertexDataPointer() + vertexComponent->GetOffset() );
+				glVertexPointer( componentSize, componentType, vertexSize, (const char*) simpleMesh->GetVertexDataPointer() + vertexComponent->GetOffset() );
+				break;
+			case VertexElementSemantic::UV:
+				glTexCoordPointer( componentSize, componentType, vertexSize, (const char*) simpleMesh->GetVertexDataPointer() + vertexComponent->GetOffset() );
+				glEnableClientState( GL_TEXTURE_COORD_ARRAY );
 				break;
 			default:
 				// error
 				__debugbreak();
 			}
 		}
-
-		glEnableClientState( GL_VERTEX_ARRAY );
 
 		glBindTexture( GL_TEXTURE_2D, subModel.texture );
 		if( subModel.texture ) {
@@ -147,7 +174,7 @@ void ObjSceneGL::Init( niven::IO::Path &objPath ) {
 		}
 
 		GLuint primitiveType;
-		switch( subModel.mesh->GetPrimitiveType() ) {
+		switch( simpleMesh->GetPrimitiveType() ) {
 		case PrimitiveType::Triangle_List:
 			primitiveType = GL_TRIANGLES;
 			break;
@@ -155,7 +182,7 @@ void ObjSceneGL::Init( niven::IO::Path &objPath ) {
 
 		glColor3fv( subModel.diffuseColor );
 
-		glDrawElements( primitiveType, subModel.mesh->GetIndexCount(), GL_UNSIGNED_INT,subModel.mesh->GetIndexDataPointer() );
+		glDrawElements( primitiveType, simpleMesh->GetIndexCount(), GL_UNSIGNED_INT, simpleMesh->GetIndexDataPointer() );
 
 		glEndList();
 	}
@@ -174,21 +201,12 @@ void ObjSceneGL::Init( niven::IO::Path &objPath ) {
 		Model *model = nameModelMap[ subModels[i].objectName ];
 		model->subModels.push_back( &subModels[i] );
 
-		const niven::AxisAlignedBoundingBox3 &subBB = subModels[i].mesh->GetBoundingBox();
-		// TODO: is this really necessary or would it work automatically?
-		if( !model->boundingBox.IsEmpty() ) {
-			model->boundingBox.Merge( subBB );
-		}
-		else {
-			model->boundingBox = subBB;
-		}
+		Eigen::AlignedBox3f subBB;
+		subBB.min() = Eigen::Map<Eigen::Vector3f>( &simpleMeshes[i]->GetBoundingBox().GetMinimum().X() );
+		subBB.max() = Eigen::Map<Eigen::Vector3f>( &simpleMeshes[i]->GetBoundingBox().GetMaximum().X() );
 
-		if( !boundingBox.IsEmpty() ) {
-			boundingBox.Merge( subBB );
-		} 
-		else {
-			boundingBox = subBB;
-		}
+		model->boundingBox.extend( subBB );	
+		boundingBox.extend( subBB );
 	}
 }
 
@@ -205,7 +223,7 @@ void ObjSceneGL::Draw() {
 	}
 }
 
-void ObjSceneGL::SetObjectVisibility( const niven::String &objectName, bool visible )
+void ObjSceneGL::SetObjectVisibility( const std::string &objectName, bool visible )
 {
 	for( auto subModel = subModels.begin() ; subModel != subModels.end() ; ++subModel ) {
 		if( subModel->objectName == objectName ) {
@@ -214,7 +232,7 @@ void ObjSceneGL::SetObjectVisibility( const niven::String &objectName, bool visi
 	}
 }
 
-void ObjSceneGL::SetGroupVisibilty( const niven::String &groupName, bool visible )
+void ObjSceneGL::SetGroupVisibilty( const std::string &groupName, bool visible )
 {
 	for( auto subModel = subModels.begin() ; subModel != subModels.end() ; ++subModel ) {
 		if( subModel->groupNames.count( groupName ) ) {

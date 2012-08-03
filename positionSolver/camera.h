@@ -35,19 +35,31 @@ namespace Eigen {
 	}
 
 	// like glOrtho
-	Matrix4f createOrthoMatrix( const float left, const float right, const float bottom, const float top, const float near, const float far ) {
+	Matrix4f createOrthoProjectionMatrix( const float left, const float right, const float bottom, const float top, const float near, const float far ) {
 		const float width = right - left;
 		const float height = top - bottom;
 		const float depth = far - near;
 
 		return (Matrix4f() <<
-			2 / width,		0,					0,				(right + left) / width,
-			0,				2 / height,			0,				(top + bottom) / height,
+			2 / width,		0,					0,				-(right + left) / width,
+			0,				2 / height,			0,				-(top + bottom) / height,
 			0,				0,					-2 / depth,		-(far + near) / depth,
-			0,				0,					0,				-1.0).finished();
+			0,				0,					0,				1.0).finished();
 	}
 
-	Matrix4f createPerspectiveMatrix( const float FoV_y, const float aspectRatio, const float zNear, const float zFar ) {
+	// min_z = zNear, max_z = zFar
+	Matrix4f createOrthoProjectionMatrix( const Vector3f &min, const Vector3f &max ) {
+		const Vector3f center = (min + max) / 2.0;
+		const Vector3f halfSize = (max - min) / 2.0;
+
+		return (Matrix4f() <<
+			1.0 / halfSize.x(),		0,					0,						-center.x() / halfSize.x(),
+			0,						1.0 / halfSize.y(),	0,						-center.y() / halfSize.y(),
+			0,						0,					-1.0 / halfSize.z(),	-center.z() / halfSize.z(),
+			0,						0,					0,						1.0).finished();
+	}
+
+	Matrix4f createPerspectiveProjectionMatrix( const float FoV_y, const float aspectRatio, const float zNear, const float zFar ) {
 		const float f = Math::cotf( FoV_y * M_PI / 180 / 2 );
 		const float depth = zFar - zNear;
 
@@ -56,6 +68,19 @@ namespace Eigen {
 			0,					f, 0,						0,
 			0,					0, -(zFar + zNear) / depth,	-2 * zFar * zNear / depth,
 			0,					0, -1.0,					0).finished();
+	}
+
+	// also looks down the negative Z axis!
+	Matrix4f createShearProjectionMatrix( const Vector2f &min, const Vector2f &max, const float zNear, const float zFar, const Vector2f &zStep ) {
+		const Vector2f center = (min + max) / 2.0;
+		const Vector2f halfSize = (max - min) / 2.0;
+		const float depth = zFar - zNear;
+
+		return (Matrix4f() <<
+			1.0 / halfSize.x(),		0,					-zStep.x() / halfSize.x(),	-center.x() / halfSize.x(),
+			0,						1.0 / halfSize.y(),	-zStep.y() / halfSize.y(),	-center.y() / halfSize.y(),
+			0,						0,					-2.0 / depth,				-(zFar + zNear) / depth,
+			0,						0,					0,							1.0).finished();
 	}
 }
 
@@ -81,7 +106,7 @@ struct Camera {
 	PerspectiveProjectionParameters perspectiveProjectionParameters;
 
 	Eigen::Matrix4f getProjectionMatrix() const {
-		return createPerspectiveMatrix( 
+		return Eigen::createPerspectiveProjectionMatrix( 
 			perspectiveProjectionParameters.FoV_y,
 			perspectiveProjectionParameters.aspect,
 			perspectiveProjectionParameters.zNear,

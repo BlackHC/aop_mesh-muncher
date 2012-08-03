@@ -128,6 +128,20 @@ namespace DebugRender {
 			drawEllipse( radius, wireframe, n, Eigen::Vector3f::UnitX(), Eigen::Vector3f::UnitZ() );
 		}
 
+		void drawVector( const Eigen::Vector3f &direction ) {
+			glBegin( GL_LINES );
+			glVertex3f( 0.0, 0.0, 0.0 );
+			Eigen::glVertex( direction );
+			glEnd();
+		}
+
+		void drawLine( const Eigen::Vector3f &start, const Eigen::Vector3f &end ) {
+			glBegin( GL_LINES );
+			Eigen::glVertex( start );
+			Eigen::glVertex( end );
+			glEnd();
+		}
+
 		void drawWireframeSphere( float radius, int n = 20, int slices = 5 ) {
 			const float step = 2 * radius / (slices + 2);
 
