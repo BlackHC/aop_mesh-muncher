@@ -5,15 +5,8 @@
 #include <unsupported/Eigen/OpenGLSupport>
 
 namespace DebugRender {
-	struct CombinedCalls {
-		GLuint list;
-
-		CombinedCalls() : list( 0 ) {}
-
+	struct ImmediateCalls {
 		void begin() {
-			list = glGenLists( 1 );
-
-			glNewList( list, GL_COMPILE );
 			glMatrixMode( GL_MODELVIEW );
 			glPushMatrix();
 		}
@@ -30,11 +23,6 @@ namespace DebugRender {
 
 		void end() {
 			glPopMatrix();
-			glEndList();
-		}
-
-		void render() {
-			glCallList( list );
 		}
 
 		// from glut 3.7 and SFML's SimpleGLScene
@@ -156,6 +144,30 @@ namespace DebugRender {
 				}
 			}
 			glPopMatrix();
+		}
+	};
+
+	struct CombinedCalls : ImmediateCalls {
+		GLuint list;
+
+		CombinedCalls() : list( 0 ) {}
+
+		void begin() {
+			list = glGenLists( 1 );
+
+			glNewList( list, GL_COMPILE );
+			
+			ImmediateCalls::begin();
+		}
+
+		void end() {
+			ImmediateCalls::end();
+
+			glEndList();
+		}
+
+		void render() {
+			glCallList( list );
 		}
 	};
 }

@@ -78,8 +78,8 @@ struct CameraInputControl : public MouseCapture {
 
 		switch( event.type ) {
 		case sf::Event::LostFocus:
-			setCapture( true );
-			break;
+			setCapture( false );
+			return false;
 		case sf::Event::KeyPressed:
 			if( event.key.code == sf::Keyboard::Escape ) {
 				setCapture( false );
