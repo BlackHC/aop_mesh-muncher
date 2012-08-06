@@ -19,6 +19,7 @@
 #include <boost/assert.hpp>
 
 #include "grid.h"
+#include "eigenProjectionMatrices.h"
 
 using namespace Eigen;
 
@@ -264,7 +265,8 @@ void main() {
 	glClearDepth(1.f);
 
 	debugScene.begin();
-	debugScene.drawBox( Vector3f::Constant(8), false, true );
+	//debugScene.drawBox( Vector3f::Constant(8), false, true );
+	debugScene.drawSolidSphere( 8.0 );
 	debugScene.end();
 
 	Grid grid( Vector3i( 4, 8, 16 ), Vector3f( 0.0, 0.0, 0.0 ), 0.25 );

@@ -145,6 +145,28 @@ namespace DebugRender {
 			}
 			glPopMatrix();
 		}
+
+		void drawSolidSphere( float radius, int u = 10, int v = 20 ) {
+			glBegin( GL_QUADS );
+			for( int i = 0 ; i < u ; i++ ) {
+				for( int j = 0 ; j < v ; j++ ) {
+					glColor3f( float(i) / (u-1), float(j) / (v-1), 0.0 );
+					// cos | sin | cos
+					// cos | 1   | sin
+#define U(x) ((x)*M_PI/u - M_PI / 2)
+#define V(x) ((x)*2*M_PI/v)
+#define P(u_r,v_r) (Eigen::Vector3f( cos(U(u_r)) * cos(V(v_r)), sin(U(u_r)), cos(U(u_r)) * sin(V(v_r)) ) * radius)
+					Eigen::glVertex( P(i,j) );
+					Eigen::glVertex( P(i+1,j) );
+					Eigen::glVertex( P(i+1,j+1) );
+					Eigen::glVertex( P(i,j+1) );
+#undef U
+#undef V
+#undef P
+				}
+			}
+			glEnd();
+		}
 	};
 
 	struct CombinedCalls : ImmediateCalls {
