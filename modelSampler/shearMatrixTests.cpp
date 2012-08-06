@@ -5,11 +5,11 @@
 
 using namespace Eigen;
 
-std::ostream & operator << (std::ostream & s, const Matrix4f & m) {
+static std::ostream & operator << (std::ostream & s, const Matrix4f & m) {
 	return Eigen::operator<<( s, m );
 }
 
-std::ostream & operator << (std::ostream & s, const Vector4f & m) {
+static std::ostream & operator << (std::ostream & s, const Vector4f & m) {
 	return Eigen::operator<<( s, m );
 }
 

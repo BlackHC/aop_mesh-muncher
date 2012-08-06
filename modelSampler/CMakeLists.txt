@@ -21,10 +21,12 @@ ADD_EXECUTABLE(modelSampler
 	materialLibrary.h
 	objModel.cpp
 	objModel.h
+	grid.h
 	../gtest/gtest-all.cc
 	)
 
 ADD_EXECUTABLE(modelSamplerTests
+	gridTests.cpp
 	shearMatrixTests.cpp
 	../gtest/gtest_main.cc
 	../gtest/gtest-all.cc

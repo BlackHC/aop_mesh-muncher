@@ -18,66 +18,9 @@
 
 #include <boost/assert.hpp>
 
+#include "grid.h"
+
 using namespace Eigen;
-
-struct Grid {
-	Vector3i size;
-	int count;
-
-	Vector3f offset;
-	float resolution;
-
-	Grid( const Vector3i &size, const Vector3f &offset, float resolution ) : size( size ), offset( offset ), resolution( resolution ) {
-		count = size.prod();
-	}
-
-	// x, y, z -> |z|y|x|  
-	int getIndex( const Vector3i &index3 ) {
-		return index3[0] + size[0] * (index3[1] + size[1] * index3[2]);
-	}
-
-	Vector3i getIndex3( int index ) {
-		int x = index % size[0];
-		index /= size[0];
-		int y = index % size[1];
-		index /= size[1];
-		int z = index;
-		return Vector3i( x,y,z );
-	}
-
-	Vector3f getPosition( const Vector3i &index3 ) {
-		return offset + index3.cast<float>() * resolution;
-	}
-};
-
-const Vector3i indexToCubeCorner[] = {
-	Vector3i( 0,0,0 ), Vector3i( 1,0,0 ), Vector3i( 0,1,0 ), Vector3i( 0,0,1 ),
-	Vector3i( 1,1,0 ), Vector3i( 0,1,1 ), Vector3i( 1,0,1 ), Vector3i( 1,1,1 )
-};
-
-inline float squaredMinDistanceAABoxPoint( const Vector3f &min, const Vector3f &max, const Vector3f &point ) {
-	Vector3f distance;
-	for( int i = 0 ; i < 3 ; i++ ) {
-		if( point[i] > max[i] ) {
-			distance[i] = point[i] - max[i];
-		}
-		else if( point[i] > min[i] ) {
-			distance[i] = 0.f;
-		}
-		else {
-			distance[i] = min[i] - point[i];
-		}
-	}
-	return distance.squaredNorm();
-}
-
-inline float squaredMaxDistanceAABoxPoint( const Vector3f &min, const Vector3f &max, const Vector3f &point ) {
-	Vector3f distanceA = (point - min).cwiseAbs();
-	Vector3f distanceB = (point - max).cwiseAbs();
-	Vector3f distance = distanceA.cwiseMax( distanceB );
-
-	return distance.squaredNorm();
-}
 
 #include "camera.h"
 #include "cameraInputControl.h"
@@ -94,58 +37,8 @@ std::shared_ptr<T> shared_from_stack(T &object) {
 	return std::shared_ptr<T>( &object, null_deleter() );
 }
 
-/*
-struct DepthProbleSampler {
-	GLuint fbo;
-
-	Grid *grid;
-	
-	int numDirections;
-
-	GLuint depthTextures[3];
-
-	std::vector<Vector3f> directions;
-	// sorted by main axis
-	std::vector<Vector3f> separatedDirections[3];
-	// used to convert the depth buffer values into a real depth value (according to near/far plane and the shear matrix)
-	std::vector<float> depthScale;
-
-	// size: numDirections * grid.count
-	std::vector<float> orderedSamples;
-
-	void sample( const std::vector<Vector3f> &directions ) {
-		numDirections = directions.size();
-		this->directions = directions;
-		
-		// fill separatedDirections
-		
-
-		int maxTextureSize = 4096;
-		BOOST_ASSERT( grid->size.maxCoeff() <= maxTextureSize );
-
-		// create depth textures for each axis
-		Vector3i sizes[3];
-		for( int axis = 0 ; axis < 3 ; ++axis ) {
-			sizes[axis] = Vector3i( grid->size[ (axis + 1) % 3 ], grid->size[ (axis + 2) % 3 ], grid->size[ axis ] );
-			glTexStorage3D( GL_TEXTURE_2D_ARRAY, 1, GL_DEPTH_COMPONENT32F, sizes[axis][0], sizes[axis][1], sizes[axis][2] );
-		}
-
-		
-	}
-};*/
-
 DebugRender::CombinedCalls debugScene;
 // TODO: add unit tests for the shear matrix function
-
-// TODO: make this a template function
-// xyz 120 ->yzx
-Vector3i permute( const Vector3i &v, int *indirection ) {
-	return Vector3i( v[indirection[0]], v[indirection[1]], v[indirection[2]] );
-}
-
-Vector3f permute( const Vector3f &v, int *indirection ) {
-	return Vector3f( v[indirection[0]], v[indirection[1]], v[indirection[2]] );
-}
 
 class DepthProbeSamples {
 	const Grid *grid;
@@ -211,15 +104,16 @@ struct DepthProbleSampler {
 	void rearrangeMappedDepthSamples() {
 		int directionIndex = 0;
 		for( int mainAxis = 0 ; mainAxis < 3 ; ++mainAxis ) {
-			int indirection[3] = { mainAxis, (mainAxis + 1) % 3, (mainAxis + 2) % 3 };
+			int permutation[3] = { mainAxis, (mainAxis + 1) % 3, (mainAxis + 2) % 3 };
 			
 			for( int i = 0 ; i < directions[mainAxis].size() ; ++i, ++directionIndex ) {
 				for( int sample = 0 ; sample < grid->count ; ++sample ) {
 					const Vector3i index3 = grid->getIndex3( sample );
-					const Vector3i targetIndex3 = permute( index3, indirection );
-					const Vector3i pSize = permute( grid->size, indirection );
+					const Vector3i targetIndex3 = permute( index3, permutation );
+					
+					Indexer permutedIndexer = Indexer::fromPermuted( *grid, permutation );
+					const int targetIndex = permutedIndexer.getIndex( targetIndex3 );
 
-					const int targetIndex = targetIndex3[0] + pSize[0] * (targetIndex3[1] + pSize[1] * targetIndex3[2]);
 					depthSamples.sample( sample, directionIndex ) = getMappedDepthSample( targetIndex, directionIndex ) * maxDepth;
 				}
 			}
@@ -246,57 +140,58 @@ struct DepthProbleSampler {
 		
 		glDrawBuffer( GL_NONE );
 
+		OrientedGrid orientedGrid = OrientedGrid::from( *grid );
+
 		int directionIndex = 0;
 		DepthSample *offset = nullptr;
 		for( int mainAxis = 0 ; mainAxis < 3 ; ++mainAxis ) {
 			const std::vector<Vector3f> &subDirections = directions[mainAxis];
 
-			int indirection[3] = { mainAxis, (mainAxis + 1) % 3, (mainAxis + 2) % 3 };
+			int permutation[3] = { mainAxis, (mainAxis + 1) % 3, (mainAxis + 2) % 3 };
 
-			BOOST_VERIFY( boost::algorithm::all_of( subDirections, [&indirection]( const Vector3f &v ) { return abs( v[indirection[2]] ) > 0.1; } ) );
+			BOOST_VERIFY( boost::algorithm::all_of( subDirections, [&permutation]( const Vector3f &v ) { return abs( v[permutation[2]] ) > 0.1; } ) );
 
-			const Vector3f minCorner = permute( grid->getPosition( Vector3i( 0,0,0 ) ), indirection );
-			const Vector3f maxCorner = permute( grid->getPosition( grid->size ), indirection );
-			const Vector3i pSize = permute( grid->size, indirection );
+			OrientedGrid permutedGrid = OrientedGrid::from( orientedGrid, permutation );
+			auto invTransformation = permutedGrid.transformation.inverse();
 
 			glBindBuffer( GL_PIXEL_PACK_BUFFER, pbo );
 		
 			glPushAttrib(GL_VIEWPORT_BIT);
-			glViewport(0, 0, pSize.x(), pSize.y()); 
+			glViewport(0, 0, permutedGrid.size[0], permutedGrid.size[1]); 
 		
 			for( int subDirectionIndex = 0 ; subDirectionIndex < directions[mainAxis].size() ; ++subDirectionIndex, ++directionIndex ) {
 				const Vector3f direction = subDirections[subDirectionIndex];
-				const Vector3f pDirection = permute( direction, indirection ) / direction[indirection[2]];
-			
-				const float depthScale = pDirection.norm();
+				const Vector3f permutedDirection = invTransformation.linear() * direction.normalized() * maxDepth;
 			
 				// set the projection matrix
 				glMatrixMode( GL_PROJECTION );
-				const float shearedMaxDepth = maxDepth / depthScale;
-				const Vector2f pixelOffset = Vector2f::Constant( grid->resolution / 2 );
-				glLoadMatrix( createShearProjectionMatrix( minCorner.head<2>() - pixelOffset, maxCorner.head<2>() - pixelOffset, 0, shearedMaxDepth, pDirection.head<2>() ) );
+				const float shearedMaxDepth = permutedDirection[2];
+				glLoadMatrix( createShearProjectionMatrix( Vector2f::Zero(), permutedGrid.size.head<2>().cast<float>(), 0, shearedMaxDepth, permutedDirection.head<2>() / shearedMaxDepth ) );
 			
 				glMatrixMode( GL_MODELVIEW );
 
-				for( int i = 0 ; i < pSize[2] ; ++i ) {
+				for( int i = 0 ; i < permutedGrid.size[2] ; ++i ) {
 					glBindFramebuffer( GL_FRAMEBUFFER, fbos[i] );
 					glBindRenderbuffer( GL_RENDERBUFFER, renderBuffers[i] );
-					glRenderbufferStorage( GL_RENDERBUFFER, GL_DEPTH_COMPONENT32F, pSize.x(), pSize.y() );
+					glRenderbufferStorage( GL_RENDERBUFFER, GL_DEPTH_COMPONENT32F, permutedGrid.size[0], permutedGrid.size[1] );
 					glFramebufferRenderbuffer( GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, renderBuffers[i] );
 
 					glClear( GL_DEPTH_BUFFER_BIT );	
 
 					glLoadIdentity();
 					// looking down the negative z axis by default --- so flip if necessary (this changes winding though!!!)
-					glScalef( 1.0, 1.0, pDirection.z() > 0 ? -1.0 : 1.0 );
-					glTranslatef( 0.0, 0.0, -(grid->resolution * i + grid->offset[ indirection[2] ]) );
-					glMultMatrix( (Eigen::Matrix4f() << Vector3f::Unit( indirection[0] ), Vector3f::Unit( indirection[1] ), Vector3f::Unit( indirection[2] ), Vector3f::Zero(), 0,0,0,1.0 ).finished() );
+					glScalef( 1.0, 1.0, permutedDirection.z() > 0 ? -1.0 : 1.0 );
+
+					// pixel alignment and "layer selection"
+					glTranslatef( 0.5, 0.5, -i );
+					
+					glMultMatrix( invTransformation );
 
 					debugScene.render();
 
-					glReadPixels( 0, 0, pSize.x(), pSize.y(), GL_DEPTH_COMPONENT, GL_FLOAT, (GLvoid*) offset );
+					glReadPixels( 0, 0, permutedGrid.size[0], permutedGrid.size[1], GL_DEPTH_COMPONENT, GL_FLOAT, (GLvoid*) offset );
 
-					offset += pSize.head<2>().prod();
+					offset += permutedGrid.size.head<2>().prod();
 				}
 			}
 			glPopAttrib();
@@ -372,17 +267,10 @@ void main() {
 	debugScene.drawBox( Vector3f::Constant(8), false, true );
 	debugScene.end();
 
-	Grid grid( Vector3i( 4, 4, 4 ), Vector3f( 0.0, 0.0, 0.0 ), 1.0 );
+	Grid grid( Vector3i( 4, 8, 16 ), Vector3f( 0.0, 0.0, 0.0 ), 0.25 );
 
 	DepthProbleSampler sampler;
 	sampler.grid = &grid;
-	/*sampler.directions[0].push_back( Vector3f::UnitZ() );
-	sampler.directions.push_back( Vector3f( 1.0, 0.0, 1.0 ) );
-	sampler.directions.push_back( Vector3f( -1.0, 0.0, 1.0 ) );
-	sampler.directions.push_back( Vector3f( 0.0, 1.0, 1.0 ) );
-	sampler.directions.push_back( Vector3f( 0.0, -1.0, 1.0 ) );
-	sampler.directions.push_back( Vector3f( 1.0, 1.0, 1.0 ) );
-	sampler.directions.push_back( Vector3f( 1.0, -1.0, 1.0 ) );*/
 	sampler.directions[0].push_back( Vector3f( 0.3, 0.0, 1.0 ) );
 	sampler.directions[0].push_back( Vector3f( -0.3, 0.0, 1.0 ) );
 	sampler.directions[1].push_back( Vector3f( 1.0, 0.0, -0.3 ) );
@@ -390,7 +278,7 @@ void main() {
 	sampler.directions[2].push_back( Vector3f( 0.0, 1.0, -0.3 ) );
 	sampler.directions[2].push_back( Vector3f( 0.0, 1.0, 0.3 ) );
 
-	sampler.maxDepth = 256.0;
+	sampler.maxDepth = 20;
 
 	sampler.init();
 	sampler.sample();
@@ -399,7 +287,7 @@ void main() {
 	sf::Clock frameClock, clock;
 
 	int z = 0;
-	IntVariableControl zControl( &z, 0, 3, sf::Keyboard::Numpad7, sf::Keyboard::Numpad1 );
+	IntVariableControl zControl( &z, 0, grid.size[2] - 1, sf::Keyboard::Numpad7, sf::Keyboard::Numpad1 );
 
 	EventDispatcher eventDispatcher;
 	eventDispatcher.eventHandlers.push_back( shared_from_stack( cameraInputControl ) );
@@ -446,10 +334,6 @@ void main() {
 			for( int subDirectionIndex = 0 ; subDirectionIndex < sampler.directions[mainAxis].size() ; ++subDirectionIndex, ++directionIndex ) {
 				const Vector3f &direction = sampler.directions[mainAxis][subDirectionIndex].normalized();
 
-				/*for( int i = 0 ; i < grid.count ; i++ ) {
-					depthInfo.setPosition( grid.getPosition( grid.getIndex3(i) ) );
-					depthInfo.drawVector( sampler.getDepthSample( directionIndex, grid.getIndex3(i) ) * direction );
-				}*/
 				for( int x = 0 ; x < grid.size[0] ; x++ ) {
 					for( int y = 0 ; y < grid.size[1] ; y++ ) {
 						const Vector3i index3 = Vector3i( x, y, z );
