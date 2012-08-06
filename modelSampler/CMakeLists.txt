@@ -18,10 +18,6 @@ ADD_EXECUTABLE(modelSampler
 	../positionSolver/eventHandling.h
 	depthSampler.h
 	modelSampler.cpp 
-	materialLibrary.cpp
-	materialLibrary.h
-	objModel.cpp
-	objModel.h
 	grid.h
 	eigenProjectionMatrices.h
 	../gtest/gtest-all.cc

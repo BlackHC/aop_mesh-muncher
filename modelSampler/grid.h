@@ -8,11 +8,11 @@ Vector permute( const Vector &v, const int *permutation ) {
 	return Vector( v[permutation[0]], v[permutation[1]], v[permutation[2]] );
 }
 
-struct Indexer {
+struct Indexer3 {
 	Eigen::Vector3i size;
 	int count;
 
-	Indexer( const Eigen::Vector3i &size ) : size( size ), count( size.prod() ) {
+	Indexer3( const Eigen::Vector3i &size ) : size( size ), count( size.prod() ) {
 	}
 
 	// x, y, z -> |z|y|x|  
@@ -29,27 +29,106 @@ struct Indexer {
 		return Eigen::Vector3i( x,y,z );
 	}
 
-	static Indexer fromPermuted( const Indexer &indexer, const int permutation[3] ) {
-		return Indexer( permute( indexer.size , permutation ) );
+	static Indexer3 fromPermuted( const Indexer3 &indexer, const int permutation[3] ) {
+		return Indexer3( permute( indexer.size , permutation ) );
 	}
 };
 
-struct Grid : Indexer {
+class Index3Value {
+protected:
+	Eigen::Vector3i index3;
+
+public:
+	Index3Value( const Eigen::Vector3i &index3 ) : index3( index3 ) {
+	}
+
+	const Eigen::Vector3i &getIndex3() const {
+		return index3;
+	}
+};
+
+// main use: iterating over an indexer. Overloading the * operator to return index3 is the logical shorthand operation. What about getIndex()?
+class Iterator3 : public Index3Value {
+	const Indexer3 &indexer;
+	int index;
+
+public:
+	Iterator3( const Indexer3 &indexer ) : indexer( indexer ), index( 0 ), Index3Value( Eigen::Vector3i::Zero() ) {
+	}
+
+	int getIndex() const {
+		return index;
+	}
+
+	operator bool() const {
+		return index < indexer.count;
+	}
+
+	const Eigen::Vector3i & operator* () const {
+		return index3;
+	}
+
+	Iterator3 &operator++() {
+		++index;
+		if( ++index3[0] >= indexer.size[0] ) {
+			index3[0] = 0;
+			if( ++index3[1] >= indexer.size[1] ) {
+				index3[1] = 0;
+				++index3[2];
+			}
+		}
+		return *this;
+	}
+};
+
+// main usage: iterating over a volume. Overloading the * operator to return index3 is the logical shorthand operation.
+class RangedIterator3 : public Index3Value {
+	Eigen::Vector3i beginCorner, endCorner;
+
+public:
+	RangedIterator3( const Eigen::Vector3i &beginCorner, const Eigen::Vector3i &endCorner ) : Index3Value( beginCorner ), beginCorner( beginCorner ), endCorner( endCorner ) {
+	}
+
+	operator bool() const {
+		return index3[2] >= endCorner[2];
+	}
+
+	const Eigen::Vector3i & operator* () const {
+		return index3;
+	}
+
+	RangedIterator3 &operator++() {
+		if( ++index3[0] >= endCorner[0] ) {
+			index3[0] = beginCorner[0];
+			if( ++index3[1] >= endCorner[1] ) {
+				index3[1] = beginCorner[1];
+				++index3[2];
+			}
+		}
+		return *this;
+	}
+};
+
+struct Grid : Indexer3 {
 	Eigen::Vector3f offset;
 	float resolution;
 
-	Grid( const Eigen::Vector3i &size, const Eigen::Vector3f &offset, float resolution ) : Indexer( size ), offset( offset ), resolution( resolution ) {
+	Grid( const Eigen::Vector3i &size, const Eigen::Vector3f &offset, float resolution ) : Indexer3( size ), offset( offset ), resolution( resolution ) {
 	}
 
 	Eigen::Vector3f getPosition( const Eigen::Vector3i &index3 ) const {
 		return offset + index3.cast<float>() * resolution;
 	}
+
+	Eigen::Vector3f getIndex3( const Eigen::Vector3f &position ) const {
+		return (position - offset) / resolution;
+	}
 };
 
-struct OrientedGrid : Indexer {
+struct OrientedGrid : Indexer3 {
 	Eigen::Affine3f transformation;
 
-	OrientedGrid( const Eigen::Vector3i &size, const Eigen::Affine3f &transformation ) : Indexer( size ), transformation( transformation ) {
+	OrientedGrid( const Eigen::Vector3i &size, const Eigen::Affine3f &transformation ) : Indexer3( size ), transformation( transformation ) {
 	}
 
 	static OrientedGrid from( const Eigen::Vector3i &size, const Eigen::Vector3f &offset, const float resolution ) {

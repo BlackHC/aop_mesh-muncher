@@ -84,7 +84,7 @@ struct DepthSampler {
 					const Eigen::Vector3i index3 = grid->getIndex3( sample );
 					const Eigen::Vector3i targetIndex3 = permute( index3, permutation );
 
-					Indexer permutedIndexer = Indexer::fromPermuted( *grid, permutation );
+					Indexer3 permutedIndexer = Indexer3::fromPermuted( *grid, permutation );
 					const int targetIndex = permutedIndexer.getIndex( targetIndex3 );
 
 					depthSamples.sample( sample, directionIndex ) = getMappedDepthSample( mappedDepthSamples, targetIndex, directionIndex ) * maxDepth;

@@ -1,4 +1,4 @@
-#include "objModel.h"
+#include "objSceneGL.h"
 
 #include <niven.Core.Core.h>
 

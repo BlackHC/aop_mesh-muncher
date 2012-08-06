@@ -5,14 +5,11 @@
 #include <boost/algorithm/cxx11/all_of.hpp>
 #include <iterator>
 
-#include <gtest.h>
 #include <Eigen/Eigen>
 
 #include "debugRender.h"
 
 #include <SFML/Window.hpp>
-
-#include "objModel.h"
 
 #include <memory>
 
@@ -22,8 +19,6 @@ using namespace Eigen;
 
 #include "camera.h"
 #include "cameraInputControl.h"
-
-using namespace niven;
 
 struct null_deleter {
 	template<typename T>
@@ -38,8 +33,6 @@ std::shared_ptr<T> shared_from_stack(T &object) {
 DebugRender::CombinedCalls debugScene;
 // TODO: add unit tests for the shear matrix function
 
-
-#include "niven.Core.Core.h"
 
 struct IntVariableControl : EventHandler {
 	sf::Keyboard::Key upKey, downKey;
@@ -69,8 +62,6 @@ struct IntVariableControl : EventHandler {
 };
 
 void main() {
-	Core::Initialize ();
-
 	sf::Window window( sf::VideoMode( 640, 480 ), "Position Solver", sf::Style::Default, sf::ContextSettings(32) );
 	glewInit();
 

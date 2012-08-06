@@ -96,7 +96,7 @@ struct CameraInputControl : public MouseCapture {
 
 	bool update( const float elapsedTime, bool inputProcessed ) {
 		if( !inputProcessed && getCapture() ) {
-			Eigen::Vector3f relativeMovement = Vector3f::Zero();
+			Eigen::Vector3f relativeMovement = Eigen::Vector3f::Zero();
 			if( sf::Keyboard::isKeyPressed( sf::Keyboard::W ) ) {
 				relativeMovement.z() -= 1;
 			}

@@ -85,7 +85,7 @@ namespace DebugRender {
 			glPopMatrix();
 		}
 
-		void drawCordinateSystem(GLdouble size) {
+		void drawCordinateSystem( float size ) {
 			glBegin(GL_LINES);
 			glColor3f( 1.0, 0.0, 0.0 );
 			glVertex3f( 0.0, 0.0, 0.0 );
@@ -153,8 +153,8 @@ namespace DebugRender {
 					glColor3f( float(i) / (u-1), float(j) / (v-1), 0.0 );
 					// cos | sin | cos
 					// cos | 1   | sin
-#define U(x) ((x)*M_PI/u - M_PI / 2)
-#define V(x) ((x)*2*M_PI/v)
+#define U(x) float((x)*M_PI/u - M_PI / 2)
+#define V(x) float((x)*2*M_PI/v)
 #define P(u_r,v_r) (Eigen::Vector3f( cos(U(u_r)) * cos(V(v_r)), sin(U(u_r)), cos(U(u_r)) * sin(V(v_r)) ) * radius)
 					Eigen::glVertex( P(i,j) );
 					Eigen::glVertex( P(i+1,j) );
