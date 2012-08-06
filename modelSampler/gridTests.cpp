@@ -14,29 +14,29 @@ static std::ostream & operator << (std::ostream & s, const Vector4f & m) {
 
 TEST( OrientedGrid, fromIdentity) {
 	OrientedGrid grid = OrientedGrid::from( Vector3i::Constant(4), Vector3f::Zero(), 1.0 );
-	ASSERT_EQ( grid.transformation.matrix(), Matrix4f::Identity() );
-	ASSERT_EQ( grid.getPosition( Vector3i::Zero() ), Vector3f::Zero() );
-	ASSERT_EQ( grid.getPosition( Vector3i::UnitX() ), Vector3f::UnitX() );
-	ASSERT_EQ( grid.getPosition( Vector3i::UnitY() ), Vector3f::UnitY() );
-	ASSERT_EQ( grid.getPosition( Vector3i::UnitZ() ), Vector3f::UnitZ() );
+	EXPECT_EQ( grid.transformation.matrix(), Matrix4f::Identity() );
+	EXPECT_EQ( grid.getPosition( Vector3i::Zero() ), Vector3f::Zero() );
+	EXPECT_EQ( grid.getPosition( Vector3i::UnitX() ), Vector3f::UnitX() );
+	EXPECT_EQ( grid.getPosition( Vector3i::UnitY() ), Vector3f::UnitY() );
+	EXPECT_EQ( grid.getPosition( Vector3i::UnitZ() ), Vector3f::UnitZ() );
 }
 
 TEST( OrientedGrid, fromIdentityWithOffset) {
 	const Vector3f offset = Vector3f::Constant(1.0);
 	const OrientedGrid grid = OrientedGrid::from( Vector3i::Constant(4), offset, 1.0 );
-	ASSERT_EQ( grid.getPosition( Vector3i::Zero() ), offset );
-	ASSERT_EQ( grid.getPosition( Vector3i::UnitX() ), offset + Vector3f::UnitX() );
-	ASSERT_EQ( grid.getPosition( Vector3i::UnitY() ), offset + Vector3f::UnitY() );
-	ASSERT_EQ( grid.getPosition( Vector3i::UnitZ() ), offset + Vector3f::UnitZ() );
+	EXPECT_EQ( grid.getPosition( Vector3i::Zero() ), offset );
+	EXPECT_EQ( grid.getPosition( Vector3i::UnitX() ), offset + Vector3f::UnitX() );
+	EXPECT_EQ( grid.getPosition( Vector3i::UnitY() ), offset + Vector3f::UnitY() );
+	EXPECT_EQ( grid.getPosition( Vector3i::UnitZ() ), offset + Vector3f::UnitZ() );
 }
 
 TEST( OrientedGrid, fromOffsetAndResolution) {
 	const Vector3f offset = Vector3f::Constant(1.0);
 	const OrientedGrid grid = OrientedGrid::from( Vector3i::Constant(4), offset, 2.0 );
-	ASSERT_EQ( grid.getPosition( Vector3i::Zero() ), offset );
-	ASSERT_EQ( grid.getPosition( Vector3i::UnitX() ), offset + Vector3f::UnitX() * 2 );
-	ASSERT_EQ( grid.getPosition( Vector3i::UnitY() ), offset + Vector3f::UnitY() * 2 );
-	ASSERT_EQ( grid.getPosition( Vector3i::UnitZ() ), offset + Vector3f::UnitZ() * 2 );
+	EXPECT_EQ( grid.getPosition( Vector3i::Zero() ), offset );
+	EXPECT_EQ( grid.getPosition( Vector3i::UnitX() ), offset + Vector3f::UnitX() * 2 );
+	EXPECT_EQ( grid.getPosition( Vector3i::UnitY() ), offset + Vector3f::UnitY() * 2 );
+	EXPECT_EQ( grid.getPosition( Vector3i::UnitZ() ), offset + Vector3f::UnitZ() * 2 );
 }
 
 TEST( OrientedGrid, permuted ) {
@@ -45,10 +45,10 @@ TEST( OrientedGrid, permuted ) {
 	const OrientedGrid grid = OrientedGrid::from( Vector3i::Constant(4), offset, 2.0 );
 	const OrientedGrid permutedGrid = OrientedGrid::from( grid, permutation );
 
-	ASSERT_EQ( permutedGrid.getPosition( Vector3i::Zero() ), offset );
-	ASSERT_EQ( permutedGrid.getPosition( Vector3i::UnitZ() ), offset + Vector3f::UnitX() * 2 );
-	ASSERT_EQ( permutedGrid.getPosition( Vector3i::UnitX() ), offset + Vector3f::UnitY() * 2 );
-	ASSERT_EQ( permutedGrid.getPosition( Vector3i::UnitY() ), offset + Vector3f::UnitZ() * 2 );
+	EXPECT_EQ( permutedGrid.getPosition( Vector3i::Zero() ), offset );
+	EXPECT_EQ( permutedGrid.getPosition( Vector3i::UnitZ() ), offset + Vector3f::UnitX() * 2 );
+	EXPECT_EQ( permutedGrid.getPosition( Vector3i::UnitX() ), offset + Vector3f::UnitY() * 2 );
+	EXPECT_EQ( permutedGrid.getPosition( Vector3i::UnitY() ), offset + Vector3f::UnitZ() * 2 );
 }
 
 static Vector4f h( const Vector3f &v ) {
@@ -62,8 +62,8 @@ TEST( OrientedGrid, permuted_inverse ) {
 	const OrientedGrid permutedGrid = OrientedGrid::from( grid, permutation );
 
 	const Matrix4f inv = permutedGrid.transformation.inverse().matrix();
-	ASSERT_EQ( h( Vector3f::Zero() ), inv * h(offset) );
-	ASSERT_EQ( h( Vector3f::UnitZ() ), inv * h(offset + Vector3f::UnitX() * 2) );
-	ASSERT_EQ( h( Vector3f::UnitX() ), inv * h(offset + Vector3f::UnitY() * 2) );
-	ASSERT_EQ( h( Vector3f::UnitY() ), inv * h(offset + Vector3f::UnitZ() * 2) );
+	EXPECT_EQ( h( Vector3f::Zero() ), inv * h(offset) );
+	EXPECT_EQ( h( Vector3f::UnitZ() ), inv * h(offset + Vector3f::UnitX() * 2) );
+	EXPECT_EQ( h( Vector3f::UnitX() ), inv * h(offset + Vector3f::UnitY() * 2) );
+	EXPECT_EQ( h( Vector3f::UnitY() ), inv * h(offset + Vector3f::UnitZ() * 2) );
 }

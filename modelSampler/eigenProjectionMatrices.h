@@ -23,7 +23,7 @@ namespace Math {
 
 namespace Eigen {
 	// like glFrustum
-	Matrix4f createFrustumMatrix( const float left, const float right, const float bottom, const float top, const float near, const float far ) {
+	static Matrix4f createFrustumMatrix( const float left, const float right, const float bottom, const float top, const float near, const float far ) {
 		const float width = right - left;
 		const float height = top - bottom;
 		const float depth = far - near;
@@ -36,7 +36,7 @@ namespace Eigen {
 	}
 
 	// like glOrtho
-	Matrix4f createOrthoProjectionMatrix( const float left, const float right, const float bottom, const float top, const float near, const float far ) {
+	static Matrix4f createOrthoProjectionMatrix( const float left, const float right, const float bottom, const float top, const float near, const float far ) {
 		const float width = right - left;
 		const float height = top - bottom;
 		const float depth = far - near;
@@ -49,7 +49,7 @@ namespace Eigen {
 	}
 
 	// min_z = zNear, max_z = zFar
-	Matrix4f createOrthoProjectionMatrix( const Vector3f &min, const Vector3f &max ) {
+	static Matrix4f createOrthoProjectionMatrix( const Vector3f &min, const Vector3f &max ) {
 		const Vector3f center = (min + max) / 2.0;
 		const Vector3f halfSize = (max - min) / 2.0;
 
@@ -60,7 +60,7 @@ namespace Eigen {
 			0,						0,					0,						1.0).finished();
 	}
 
-	Matrix4f createPerspectiveProjectionMatrix( const float FoV_y, const float aspectRatio, const float zNear, const float zFar ) {
+	static Matrix4f createPerspectiveProjectionMatrix( const float FoV_y, const float aspectRatio, const float zNear, const float zFar ) {
 		const float f = Math::cotf( FoV_y * Math::PI / 180 / 2 );
 		const float depth = zFar - zNear;
 
@@ -72,7 +72,7 @@ namespace Eigen {
 	}
 
 	// also looks down the negative Z axis!
-	Matrix4f createShearProjectionMatrix( const Vector2f &min, const Vector2f &max, const float zNear, const float zFar, const Vector2f &zStep ) {
+	static Matrix4f createShearProjectionMatrix( const Vector2f &min, const Vector2f &max, const float zNear, const float zFar, const Vector2f &zStep ) {
 		const Vector2f center = (min + max) / 2.0;
 		const Vector2f halfSize = (max - min) / 2.0;
 		const float depth = zFar - zNear;

@@ -16,16 +16,20 @@ ADD_EXECUTABLE(modelSampler
 	../positionSolver/cameraInputControl.h
 	../positionSolver/camera.h
 	../positionSolver/eventHandling.h
+	depthSampler.h
 	modelSampler.cpp 
 	materialLibrary.cpp
 	materialLibrary.h
 	objModel.cpp
 	objModel.h
 	grid.h
+	eigenProjectionMatrices.h
 	../gtest/gtest-all.cc
 	)
 
 ADD_EXECUTABLE(modelSamplerTests
+	${GLEW_SOURCE_FILE}
+	depthSamplerTests.cpp
 	gridTests.cpp
 	shearMatrixTests.cpp
 	../gtest/gtest_main.cc
@@ -43,3 +47,6 @@ TARGET_LINK_LIBRARIES(modelSampler ${NIVEN_VOLUME_LIBRARY})
 TARGET_LINK_LIBRARIES(modelSampler ${ANTTWEAKBAR_LIBRARY})
 TARGET_LINK_LIBRARIES(modelSampler ${SFML_LIBRARIES})
 TARGET_LINK_LIBRARIES(modelSampler ${OPENGL_LIBRARIES})
+
+TARGET_LINK_LIBRARIES(modelSamplerTests ${SFML_LIBRARIES})
+TARGET_LINK_LIBRARIES(modelSamplerTests ${OPENGL_LIBRARIES})

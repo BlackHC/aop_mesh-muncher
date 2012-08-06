@@ -16,13 +16,13 @@ static std::ostream & operator << (std::ostream & s, const Vector4f & m) {
 TEST( ShearMatrixTests, noShearUniform) {
 	Matrix4f result = createShearProjectionMatrix( Vector2f::Constant(-1.0), Vector2f::Constant(1.0), -1.0, 1.0, Vector2f::Zero() );
 	Matrix4f expected = Eigen::createOrthoProjectionMatrix(  Vector3f::Constant(-1.0), Vector3f::Constant(1.0) );
-	ASSERT_EQ( result, expected );
+	EXPECT_EQ( result, expected );
 }
 
 TEST( ShearMatrixTests, noShear) {
 	Matrix4f result = createShearProjectionMatrix( Vector2f::Constant(-5.0), Vector2f::Constant(1.0), -5.0, 1.0, Vector2f::Zero() );
 	Matrix4f expected = Eigen::createOrthoProjectionMatrix( Vector3f::Constant(-5.0), Vector3f::Constant(1.0) );
-	ASSERT_EQ( result, expected );
+	EXPECT_EQ( result, expected );
 }
 
 TEST( ShearMatrixTests, xShear) {

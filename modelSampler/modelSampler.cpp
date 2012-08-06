@@ -16,10 +16,7 @@
 
 #include <memory>
 
-#include <boost/assert.hpp>
-
-#include "grid.h"
-#include "eigenProjectionMatrices.h"
+#include "depthSampler.h"
 
 using namespace Eigen;
 
@@ -41,176 +38,6 @@ std::shared_ptr<T> shared_from_stack(T &object) {
 DebugRender::CombinedCalls debugScene;
 // TODO: add unit tests for the shear matrix function
 
-class DepthProbeSamples {
-	const Grid *grid;
-
-	// xyz
-	std::unique_ptr<float[]> depthSamples;
-	int numDirections;
-
-public:
-	void init( const Grid *grid, int numDirections ) {
-		this->grid = grid;
-		this->numDirections = numDirections;
-
-		depthSamples.reset( new float[ grid->count * numDirections ] );
-	}
-
-	const Grid &getGrid() const {
-		return *grid;
-	}
-
-	float getSample( int index, int directionIndex ) const {
-		return depthSamples[ index * numDirections + directionIndex ];
-	}
-
-	float &sample( int index, int directionIndex ) {
-		return depthSamples[ index * numDirections + directionIndex ];
-	}
-};
-
-struct DepthProbleSampler {
-	GLuint pbo;
-
-	Grid *grid;
-	
-	float maxDepth;	
-
-	int numDirections;
-	// sorted by main axis xyz, yzx, zxy
-	std::vector<Vector3f> directions[3];
-
-	// size: grid.count * numDirections
-
-	typedef GLfloat DepthSample;
-	DepthSample* mappedDepthSamples;
-
-	DepthProbeSamples depthSamples;
-
-	DepthSample getMappedDepthSample( int index, int directionIndex ) {
-		return mappedDepthSamples[ directionIndex * grid->count + index ];
-	}
-
-	void init() {
-		numDirections = directions[0].size() + directions[1].size() + directions[2].size();
-		depthSamples.init( grid, numDirections );
-
-		glGenBuffers( 1, &pbo );
-		glPixelStorei( GL_PACK_ALIGNMENT, 1 );
-
-		size_t volumeSize = sizeof( DepthSample ) * grid->count;
-		glNamedBufferDataEXT( pbo, volumeSize * numDirections, nullptr, GL_DYNAMIC_READ );
-	}
-
-	void rearrangeMappedDepthSamples() {
-		int directionIndex = 0;
-		for( int mainAxis = 0 ; mainAxis < 3 ; ++mainAxis ) {
-			int permutation[3] = { mainAxis, (mainAxis + 1) % 3, (mainAxis + 2) % 3 };
-			
-			for( int i = 0 ; i < directions[mainAxis].size() ; ++i, ++directionIndex ) {
-				for( int sample = 0 ; sample < grid->count ; ++sample ) {
-					const Vector3i index3 = grid->getIndex3( sample );
-					const Vector3i targetIndex3 = permute( index3, permutation );
-					
-					Indexer permutedIndexer = Indexer::fromPermuted( *grid, permutation );
-					const int targetIndex = permutedIndexer.getIndex( targetIndex3 );
-
-					depthSamples.sample( sample, directionIndex ) = getMappedDepthSample( targetIndex, directionIndex ) * maxDepth;
-				}
-			}
-		}		 
-	}
-
-	static Matrix4f createUniformShearMatrix( const Vector2f &size, const float maxZ, const Vector2f &zStep ) {
-		const Vector2f halfSize = size / 2;
-		return createShearProjectionMatrix( -halfSize, halfSize, 0.0, maxZ, zStep );
-	}
-
-	void sample() {
-		int maxTextureSize = 4096;
-		BOOST_VERIFY( grid->size.maxCoeff() <= maxTextureSize );
-
-		// create depth renderbuffers and framebuffer objects for each layer
-		int numBuffers = grid->size.z() * directions[0].size() + grid->size.x() * directions[1].size() + grid->size.y() * directions[2].size();
-
-		std::unique_ptr<GLuint[]> renderBuffers( new GLuint[numBuffers] );
-		std::unique_ptr<GLuint[]> fbos( new GLuint[numBuffers] );
-				
-		glGenFramebuffers( numBuffers, fbos.get() );
-		glGenRenderbuffers( numBuffers, renderBuffers.get() );
-		
-		glDrawBuffer( GL_NONE );
-
-		OrientedGrid orientedGrid = OrientedGrid::from( *grid );
-
-		int directionIndex = 0;
-		DepthSample *offset = nullptr;
-		for( int mainAxis = 0 ; mainAxis < 3 ; ++mainAxis ) {
-			const std::vector<Vector3f> &subDirections = directions[mainAxis];
-
-			int permutation[3] = { mainAxis, (mainAxis + 1) % 3, (mainAxis + 2) % 3 };
-
-			BOOST_VERIFY( boost::algorithm::all_of( subDirections, [&permutation]( const Vector3f &v ) { return abs( v[permutation[2]] ) > 0.1; } ) );
-
-			OrientedGrid permutedGrid = OrientedGrid::from( orientedGrid, permutation );
-			auto invTransformation = permutedGrid.transformation.inverse();
-
-			glBindBuffer( GL_PIXEL_PACK_BUFFER, pbo );
-		
-			glPushAttrib(GL_VIEWPORT_BIT);
-			glViewport(0, 0, permutedGrid.size[0], permutedGrid.size[1]); 
-		
-			for( int subDirectionIndex = 0 ; subDirectionIndex < directions[mainAxis].size() ; ++subDirectionIndex, ++directionIndex ) {
-				const Vector3f direction = subDirections[subDirectionIndex];
-				const Vector3f permutedDirection = invTransformation.linear() * direction.normalized() * maxDepth;
-			
-				// set the projection matrix
-				glMatrixMode( GL_PROJECTION );
-				const float shearedMaxDepth = permutedDirection[2];
-				glLoadMatrix( createShearProjectionMatrix( Vector2f::Zero(), permutedGrid.size.head<2>().cast<float>(), 0, shearedMaxDepth, permutedDirection.head<2>() / shearedMaxDepth ) );
-			
-				glMatrixMode( GL_MODELVIEW );
-
-				for( int i = 0 ; i < permutedGrid.size[2] ; ++i ) {
-					glBindFramebuffer( GL_FRAMEBUFFER, fbos[i] );
-					glBindRenderbuffer( GL_RENDERBUFFER, renderBuffers[i] );
-					glRenderbufferStorage( GL_RENDERBUFFER, GL_DEPTH_COMPONENT32F, permutedGrid.size[0], permutedGrid.size[1] );
-					glFramebufferRenderbuffer( GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, renderBuffers[i] );
-
-					glClear( GL_DEPTH_BUFFER_BIT );	
-
-					glLoadIdentity();
-					// looking down the negative z axis by default --- so flip if necessary (this changes winding though!!!)
-					glScalef( 1.0, 1.0, permutedDirection.z() > 0 ? -1.0 : 1.0 );
-
-					// pixel alignment and "layer selection"
-					glTranslatef( 0.5, 0.5, -i );
-					
-					glMultMatrix( invTransformation );
-
-					debugScene.render();
-
-					glReadPixels( 0, 0, permutedGrid.size[0], permutedGrid.size[1], GL_DEPTH_COMPONENT, GL_FLOAT, (GLvoid*) offset );
-
-					offset += permutedGrid.size.head<2>().prod();
-				}
-			}
-			glPopAttrib();
-		}
-
-		glBindFramebuffer( GL_FRAMEBUFFER, 0 );
-
-
-		glDrawBuffer( GL_BACK );
-
-		glDeleteFramebuffers( numBuffers, fbos.get() );
-		glDeleteRenderbuffers( numBuffers, renderBuffers.get() );
-
-		mappedDepthSamples = (DepthSample*) glMapNamedBufferEXT( pbo, GL_READ_ONLY );
-		rearrangeMappedDepthSamples();
-		glUnmapNamedBufferEXT( pbo );
-	}
-};
 
 #include "niven.Core.Core.h"
 
@@ -265,25 +92,34 @@ void main() {
 	glClearDepth(1.f);
 
 	debugScene.begin();
-	//debugScene.drawBox( Vector3f::Constant(8), false, true );
-	debugScene.drawSolidSphere( 8.0 );
+	glMatrixMode( GL_MODELVIEW );
+	glRotatef( 45.0, 0.0, 1.0, 0.0 );
+	debugScene.drawBox( Vector3f::Constant(8), false, true );
 	debugScene.end();
 
-	Grid grid( Vector3i( 4, 8, 16 ), Vector3f( 0.0, 0.0, 0.0 ), 0.25 );
+	//Grid grid( Vector3i( 4, 8, 16 ), Vector3f( 0.0, 0.0, 0.0 ), 0.25 );
+	OrientedGrid grid = OrientedGrid::from( Vector3i::Constant(7), Vector3f::Constant(-3), 1.0 );
+	grid.transformation = Eigen::AngleAxisf( M_PI / 4, Vector3f::UnitY() ) * grid.transformation;
 
-	DepthProbleSampler sampler;
+	DepthSampler sampler;
 	sampler.grid = &grid;
-	sampler.directions[0].push_back( Vector3f( 0.3, 0.0, 1.0 ) );
-	sampler.directions[0].push_back( Vector3f( -0.3, 0.0, 1.0 ) );
-	sampler.directions[1].push_back( Vector3f( 1.0, 0.0, -0.3 ) );
+	/*sampler.directions[0].push_back( Vector3f( 0.3, 0.0, -1.0 ) )
+	sampler.directions[0].push_back( Vector3f( -0.3, 0.0, -1.0 ) );
+	/*sampler.directions[1].push_back( Vector3f( 1.0, 0.0, -0.3 ) );
 	sampler.directions[1].push_back( Vector3f( 1.0, 0.0, 0.3 ) );
 	sampler.directions[2].push_back( Vector3f( 0.0, 1.0, -0.3 ) );
-	sampler.directions[2].push_back( Vector3f( 0.0, 1.0, 0.3 ) );
+	sampler.directions[2].push_back( Vector3f( 0.0, 1.0, 0.3 ) );*/
+	sampler.directions[0].push_back( Vector3f::UnitX() + Vector3f::UnitZ() );
+	sampler.directions[0].push_back( -Vector3f::UnitX() - Vector3f::UnitZ() );
+	sampler.directions[1].push_back( Vector3f::UnitX() - Vector3f::UnitZ() );
+	sampler.directions[1].push_back( -Vector3f::UnitX() + Vector3f::UnitZ() );
+	sampler.directions[2].push_back( Vector3f::UnitY() );
+	sampler.directions[2].push_back( -Vector3f::UnitY() );
 
 	sampler.maxDepth = 20;
 
 	sampler.init();
-	sampler.sample();
+	sampler.sample( [&]() { debugScene.render(); } );
 
 	// The main loop - ends as soon as the window is closed
 	sf::Clock frameClock, clock;
