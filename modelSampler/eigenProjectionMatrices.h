@@ -60,7 +60,8 @@ namespace Eigen {
 			0,						0,					0,						1.0).finished();
 	}
 
-	static Matrix4f createPerspectiveProjectionMatrix( const float FoV_y, const float aspectRatio, const float zNear, const float zFar ) {
+	typedef float Degrees;
+	static Matrix4f createPerspectiveProjectionMatrix( const Degrees FoV_y, const float aspectRatio, const float zNear, const float zFar ) {
 		const float f = Math::cotf( FoV_y * Math::PI / 180 / 2 );
 		const float depth = zFar - zNear;
 
@@ -82,5 +83,27 @@ namespace Eigen {
 			0,						1.0 / halfSize.y(),	zStep.y() / halfSize.y(),	-center.y() / halfSize.y(),
 			0,						0,					-2.0 / depth,				-(zFar + zNear) / depth,
 			0,						0,					0,							1.0).finished();
+	}
+
+	// TODO: rename header to something more fitting.. eigenMatrixHelpers?
+	static Matrix4f createViewerMatrix( const Vector3f &position, const Vector3f &forward, const Vector3f &up ) {
+		const RowVector3f right = forward.cross( up ).normalized();
+		const RowVector3f realUp = right.cross( forward );
+
+		Matrix3f view;
+		view << right, realUp, -forward.transpose();
+
+		return (view * Translation3f( -position )).matrix();
+	}
+
+	static Matrix4f createLookAtMatrix( const Vector3f &position, const Vector3f &point, const Vector3f &up ) {
+		const RowVector3f forward = (point - position).normalized();
+		const RowVector3f right = forward.cross( up ).normalized();
+		const RowVector3f realUp = right.cross( forward );
+
+		Matrix3f view;
+		view << right, realUp, -forward;
+		
+		return (view * Translation3f( -position )).matrix();
 	}
 }

@@ -237,11 +237,11 @@ struct DataVolume {
 	}
 
 	Data& get( const Eigen::Vector3i &index3 ) {
-		return data[ indexer.getIndex( index ) ];
+		return data[ indexer.getIndex( index3 ) ];
 	}
 
 	const Data& get( const Eigen::Vector3i &index3 ) const {
-		return data[ indexer.getIndex( index ) ];
+		return data[ indexer.getIndex( index3 ) ];
 	}
 
 	bool validIndex( const Vector3i &index ) const {
@@ -321,11 +321,11 @@ struct ProbeDatabase {
 		idInfos.resize( numIds );
 		
 		int count = 0;
-		for( RangedIterator3 it = probes.getIteratorFromVolume( instanceVolume ) ; it ; ++it, ++count ) {
+		for( RangedIterator3 it = probes.getIteratorFromVolume( instanceVolume ) ; it.hasMore() ; ++it, ++count ) {
 			if( probes.validIndex( *it ) ) {
-				const Vector3f delta = instanceCenter - (*it).cast<float>();
+				const Vector3f delta = instanceCenter - it.getIndex3().cast<float>();
 
-				probeIdMap.push_back( InstanceProbe( probes[ it ], id, delta.norm() ) );
+				probeIdMap.push_back( InstanceProbe( probes[ *it ], id, delta.norm() ) );
 			}
 		}
 
@@ -355,9 +355,9 @@ struct ProbeDatabase {
 		CandidateInfos candidateInfos( numIds );
 
 		std::vector<int> matchCounts(numIds);
-		for( RangedIterator3 targetIterator = probes.getIteratorFromVolume( targetVolume ) ; targetIterator ; ++targetIterator ) {
+		for( RangedIterator3 targetIterator = probes.getIteratorFromVolume( targetVolume ) ; targetIterator.hasMore() ; ++targetIterator ) {
 			if( probes.validIndex( *targetIterator ) ) {
-				const Probe &probe = probes[ targetIterator ];
+				const Probe &probe = probes[ *targetIterator ];
 
 				std::fill( matchCounts.begin(), matchCounts.end(), 0 );
 

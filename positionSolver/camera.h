@@ -5,7 +5,6 @@
 
 struct Camera {
 	const Eigen::Vector3f &getPosition() const { return position; }
-	void setPosition(const Eigen::Vector3f &val) { position = val; }
 
 	Eigen::Matrix3f getWorldToViewMatrix() const {
 		return (Eigen::Matrix3f() << right, right.cross(forward), -forward).finished().transpose();
@@ -48,6 +47,19 @@ struct Camera {
 		auto rotation = Eigen::AngleAxisf( -degrees * Math::PI / 180.0, right );
 		forward = rotation._transformVector( forward );
 		forward.normalize();
+	}
+
+	void setPosition( const Eigen::Vector3f &newPosition ) {
+		position = newPosition;
+	}
+
+	void lookAt( const Eigen::Vector3f &newForward, const Eigen::Vector3f &up ) {
+		forward = newForward.normalized();
+		right = forward.cross( up ).normalized();
+	}
+
+	const Eigen::Vector3f &getDirection() const {
+		return forward;
 	}
 
 private:

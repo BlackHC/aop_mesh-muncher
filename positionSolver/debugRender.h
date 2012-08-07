@@ -64,18 +64,34 @@ namespace DebugRender {
 			v[0][2] = v[3][2] = v[4][2] = v[7][2] = -size.z() / 2;
 			v[1][2] = v[2][2] = v[5][2] = v[6][2] = size.z() / 2;
 
-			glBegin(wireframe ? GL_LINE_LOOP : GL_QUADS);
-			for (i = 5; i >= 0; i--) {
-				if( gay ) {
-					glColor3fv(&gayColors[i][0]);
+			if( !wireframe ) {
+				glBegin(GL_QUADS);
+				for (i = 5; i >= 0; i--) {
+					if( gay ) {
+						glColor3fv(&gayColors[i][0]);
+					}
+					glNormal3fv(&n[i][0]);
+					glVertex3fv(&v[faces[i][0]][0]);
+					glVertex3fv(&v[faces[i][1]][0]);
+					glVertex3fv(&v[faces[i][2]][0]);
+					glVertex3fv(&v[faces[i][3]][0]);
 				}
-				glNormal3fv(&n[i][0]);
-				glVertex3fv(&v[faces[i][0]][0]);
-				glVertex3fv(&v[faces[i][1]][0]);
-				glVertex3fv(&v[faces[i][2]][0]);
-				glVertex3fv(&v[faces[i][3]][0]);
+				glEnd();
 			}
-			glEnd();
+			else {
+				for (i = 5; i >= 0; i--) {
+					glBegin(GL_LINE_LOOP);
+					if( gay ) {
+						glColor3fv(&gayColors[i][0]);
+					}
+					glNormal3fv(&n[i][0]);
+					glVertex3fv(&v[faces[i][0]][0]);
+					glVertex3fv(&v[faces[i][1]][0]);
+					glVertex3fv(&v[faces[i][2]][0]);
+					glVertex3fv(&v[faces[i][3]][0]);
+					glEnd();
+				}				
+			}
 		}
 
 		void drawAABB( const Eigen::Vector3f &minCorner, const Eigen::Vector3f &maxCorner, bool wireframe = true, bool gay = false ) {

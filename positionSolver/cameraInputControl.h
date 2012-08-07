@@ -85,7 +85,7 @@ struct CameraInputControl : public MouseCapture {
 				setCapture( false );
 			}
 			return true;
-		case sf::Event::MouseButtonReleased:
+		case sf::Event::MouseButtonPressed:
 			if( event.mouseButton.button == sf::Mouse::Left ) {
 				setCapture( true );
 			}

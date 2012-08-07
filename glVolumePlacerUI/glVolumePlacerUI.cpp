@@ -15,6 +15,8 @@
 
 #include "objSceneGL.h"
 
+#include "grid.h"
+
 #include "debugRender.h"
 #include "camera.h"
 #include "cameraInputControl.h"
@@ -27,6 +29,15 @@
 
 #include <Eigen/Eigen>
 using namespace Eigen;
+
+
+Vector3i ceil( const Vector3f &v ) {
+	return Vector3i( ceil( v[0] ), ceil( v[1] ), ceil( v[2] ) );
+}
+
+Vector3i floor( const Vector3f &v ) {
+	return Vector3i( floor( v[0] ), floor( v[1] ), floor( v[2] ) );
+}
 
 static int TW_CALL TwEventSFML20(const sf::Event *event)
 {
@@ -174,64 +185,51 @@ struct AntTweakBarEventHandler : EventHandler {
 	}
 };
 
-/*
+
 #include "ptree_serializer.h"
 #include "anttwbarcollection.h"
-#include "volumePlacer.h"
 
 #include "ui.h"
 
 //#include <boost/property_tree/ptree.hpp>
 
-using namespace niven;
-
 namespace AntTWBarGroupTypes {
 	template<>
-	struct TypeMapping< niven::Vector3i > {
+	struct TypeMapping< Eigen::Vector3i > {
 		static int Type;
 	};
 
-	int TypeMapping< niven::Vector3i >::Type;
+	int TypeMapping< Eigen::Vector3i >::Type;
 }
 
 template<typename S>
-struct NivenSummarizer {
+struct EigenSummarizer {
 	static void summarize( char *summary, size_t maxLength, const S* object) {
 		std::ostringstream out;
-		out << niven::StringConverter::ToString<S>( *object ) << '\0';
+		out << *object << '\0';
 		out.str().copy( summary, maxLength );
 	}
 };
-
-typedef std::vector<Render::DebugVertex> DebugRenderObject;
-
-DebugRenderObject createCube (const Vector3f &minCorner, const Vector3f &maxCorner, const Color3f &color) {
-	Render::DebugRenderUtility dru;
-	dru.AddAABB (minCorner, maxCorner, color);
-	return dru.GetLineSegments();
-}
-
-DebugRenderObject createCross (const Vector3f &position, const Color3f &color, float size = 1.0) {
-	Render::DebugRenderUtility dru;
-	dru.AddCross (position, color, size);
-	return dru.GetLineSegments();
-}
 
 struct ObjectTemplate {
 	int id;
 
 	// centered around 0.0
 	Vector3f bbSize;
-	Color3f color;
+	Vector3f color;
 
-	void Draw( Render::IRenderSystem *renderSystem, Render::IRenderContext *renderContext ) {
-		DebugRenderObject bbox = createCube( -bbSize * 0.5, bbSize * 0.5, color );
-		renderSystem->DebugDrawLines( bbox );
+	void Draw() {
+		DebugRender::ImmediateCalls bbox;
+		bbox.begin();
+		bbox.setColor( color );
+		bbox.drawAABB( -bbSize * 0.5, bbSize * 0.5 );
+		bbox.end();
 	}
 };
 
+/*
 template<ptree_serializer_mode mode, typename S, int N>
-void ptree_serializer_exchange( ptree_serializer &tree, niven::Vector<S, N> &data ) {
+void ptree_serializer_exchange( ptree_serializer &tree, Eigen::Matrix<S, N, 1> &data ) {
 	ptree_serialize<mode>( tree, "x", data[0] );
 	if( N >= 2 )
 		ptree_serialize<mode>( tree, "y", data[1] );
@@ -240,16 +238,13 @@ void ptree_serializer_exchange( ptree_serializer &tree, niven::Vector<S, N> &dat
 	if( N >= 4 )
 		ptree_serialize<mode>( tree, "w", data[2] );
 }
+*/
 
-template<ptree_serializer_mode mode, typename S, int N>
-void ptree_serializer_exchange( ptree_serializer &tree, niven::Color<S, N> &data ) {
-	ptree_serialize<mode>( tree, "r", data[0] );
-	if( N >= 2 )
-		ptree_serialize<mode>( tree, "g", data[1] );
-	if( N >= 3 )
-		ptree_serialize<mode>( tree, "b", data[2] );
-	if( N >= 4 )
-		ptree_serialize<mode>( tree, "a", data[2] );
+template<ptree_serializer_mode mode>
+void ptree_serializer_exchange( ptree_serializer &tree, Eigen::Vector3f &data ) {
+	ptree_serialize<mode>( tree, "x", data[0] );
+	ptree_serialize<mode>( tree, "y", data[1] );
+	ptree_serialize<mode>( tree, "z", data[2] );
 }
 
 template<ptree_serializer_mode mode>
@@ -277,12 +272,11 @@ struct ObjectInstance {
 		return Cubef::fromMinSize( position - objectTemplate->bbSize * 0.5, objectTemplate->bbSize );
 	}
 
-	virtual void Draw( Render::IRenderSystem *renderSystem, Render::IRenderContext *renderContext ) {
-		Matrix4f worldBase = renderContext->GetTransformation( Render::RenderTransformation::World );
-
-		renderContext->SetTransformation( Render::RenderTransformation::World, CreateTranslation4( position ) * worldBase );
-		objectTemplate->Draw( renderSystem, renderContext );
-		renderContext->SetTransformation( Render::RenderTransformation::World, worldBase );
+	virtual void Draw() {
+		glPushMatrix();
+		glTranslate( position );
+		objectTemplate->Draw();
+		glPopMatrix();
 	}
 };
 
@@ -302,73 +296,150 @@ void ptree_serializer_exchange( ptree_serializer &tree, ObjectInstance &data ) {
 
 	ptree_serialize<mode>( tree, "position", data.position );
 }
-*/
 
-#if 0
-/////////////////////////////////////////////////////////////////////////////
-class SampleApplication : public BaseApplication3D, IEventHandler
-{
-	NIV_DEFINE_CLASS(SampleApplication, BaseApplication3D)
+struct null_deleter {
+	template<typename T>
+	void operator() (T*) {}
+};
 
-	struct CameraPosition {
-		Vector3f position;
-		Vector3f direction;
+template<typename T>
+std::shared_ptr<T> make_persistent_shared(T &object) {
+	return std::shared_ptr<T>( &object, null_deleter() );
+}
 
-		CameraPosition( const Vector3f &position, const Vector3f &direction ) : position( position ), direction( direction ) {}
-		CameraPosition() {}
-	};
+struct CameraPosition {
+	Vector3f position;
+	Vector3f direction;
 
-public:
-	SampleApplication ()
-	{
+	CameraPosition( const Vector3f &position, const Vector3f &direction ) : position( position ), direction( direction ) {}
+	CameraPosition() {}
+};
+
+struct Application {
+	ObjSceneGL objScene;
+	Camera camera;
+	CameraInputControl cameraInputControl;
+	sf::Window window;
+
+	EventDispatcher eventDispatcher;
+
+	// probes
+	Grid voxelGrid;
+	std::unique_ptr<Probes> probes_;
+
+	ProbeDatabase probeDatabase_;
+
+	ProbeDatabase::SparseCandidateInfos results_;
+
+	// anttweakbar 
+	AntTweakBarEventHandler antTweakBarEventHandler;
+	std::unique_ptr<AntTWBarGroup> ui_, candidateResultsUI_;
+
+	// anttweakbar fields
+	bool showProbes;
+	bool showMatchedProbes;
+	bool dontUnfocus;
+
+	float maxDistance_;
+
+	Cubei targetCube_;
+
+	AntTWBarCollection<CameraPosition> cameraPositions_;
+	AntTWBarCollection<Cubei> targetVolumes_;
+
+	// anttweakbar callbacks
+	AntTWBarGroup::VariableCallback<Vector3i> minCallback_, sizeCallback_;
+	AntTWBarGroup::ButtonCallback writeStateCallback_;
+	AntTWBarGroup::ButtonCallback findCandidatesCallback_;
+
+	// debug visualizations
+	DebugRender::CombinedCalls probeVisualization;
+	DebugRender::CombinedCalls probeVolume;
+
+	std::vector<DebugRender::CombinedCalls> matchedProbes_;
+
+	// object data
+	std::vector<ObjectTemplate> objectTemplates_;
+	std::vector<ObjectInstance> objectInstances_;
+
+	// preview
+	struct Transformation {
+		Matrix4f world;
+		Matrix4f view;
+		Matrix4f projection;
+	} previewTransformation_;
+
+	int activeProbe_;
+	std::vector<UIButton> uiButtons_;
+	UIManager uiManager_;
+	
+	void loadScene() {
+		objScene.Init( "P:\\BlenderScenes\\two_boxes.obj" );
 	}
 
-private:
-	void InitImpl ()
-	{
-		Super::InitImpl ();
+	void initCamera() {
+		camera.perspectiveProjectionParameters.aspect = 640.0 / 480.0;
+		camera.perspectiveProjectionParameters.FoV_y = 75.0;
+		camera.perspectiveProjectionParameters.zNear = 1.0;
+		camera.perspectiveProjectionParameters.zFar = 500.0;
+	}
 
+	void initEverything() {
+		window.create( sf::VideoMode( 640, 480 ), "Position Solver", sf::Style::Default, sf::ContextSettings(32) );
+		window.setActive( true );
+		glewInit();
+
+		initCamera();
+
+		// input camera input control
+		cameraInputControl.init( make_persistent_shared(camera), make_persistent_shared(window) );
+
+		// TODO: move
 		maxDistance_ = 128.0;
-
-		//FixRDPMouseInput();
-		InitAntTweakBar();
-
-		effectManager_.Initialize (renderSystem_.get (), &effectLoader_);	
-		objScene_.Init( renderSystem_, effectManager_, IO::Path( "P:\\BlenderScenes\\two_boxes.obj" ) );
-
-		camera_->GetFrustum ().SetPerspectiveProjection (
-			Degree (75.0f),
-			renderWindow_->GetAspectRatio (),
-			0.1f, 10000.0f);
-
-		camera_->SetMoveSpeedMultiplier( 0.5 );
-
-		// init preview transformation
-		previewTransformation_.projection = CreatePerspectiveProjectionFovRH( 
-			Degree (75.0f),
-			1.0f /*renderWindow_->GetAspectRatio ()*/,
-			0.1f, 10.0f);
-		previewTransformation_.view = CreateViewLookAtRH( Vector3f( 0.0, 0.0, -2.0 ), Vector3f::CreateZero(), Vector3f::CreateUnit(1) );
-
-		InitVolume();
 
 		UnorderedDistanceContext::setDirections();
 
-		const Vector3i min = layerCalibration_.getGlobalFloorIndex( objScene_.boundingBox.GetMinimum() );
-		const Vector3i size = layerCalibration_.getGlobalCeilIndex( objScene_.boundingBox.GetMaximum() ) - min;
+		initProbes();
 
-		probes_ = std::unique_ptr<Probes>( new Probes( min, size, 16) );
-		
-		if( !probes_->readFromFile( "probes.data" ) ) {
-			sampleProbes( *denseCache_, *probes_ );
-			probes_->writeToFile( "probes.data" );
+		readState();
+
+		initObjectData();
+
+		initPreviewTransformation();
+		initPreviewUI();
+	}
+
+	void initPreviewTransformation() {
+		// init preview transformation
+		previewTransformation_.projection = Eigen::createPerspectiveProjectionMatrix( 
+			75.0f,
+			1.0f,
+			0.1f, 10.0f);
+		previewTransformation_.view = Eigen::createViewerMatrix( Vector3f( 0.0, 0.0, 2.0 ), -Vector3f::UnitZ(), Vector3f::UnitY() );
+	}
+
+	void initPreviewUI() 
+	{
+		initPreviewTransformation();
+
+		uiManager_.Init();
+
+		uiButtons_.resize( objectTemplates_.size() );
+		matchedProbes_.resize( objectTemplates_.size() );
+
+		for( int i = 0 ; i < uiButtons_.size() ; i++ ) {
+			uiManager_.elements.push_back( &uiButtons_[i] );
+			uiButtons_[i].SetVisible( false );
+			uiButtons_[i].onFocus = [=] () { activeProbe_ = i; };
+			uiButtons_[i].onUnfocus = [=] () { if( !dontUnfocus ) activeProbe_ = -1; };
 		}
 
-		CreateProbeVisualization();
-		probeVolume_ = createCube( layerCalibration_.getPosition( min ), layerCalibration_.getPosition( min + size ), Color3f( 1.0, 0.0, 0.0 ) );
+		eventDispatcher.eventHandlers.push_back( make_persistent_shared( uiManager_ ) );
 
-		targetCube_ = probes_->getVolumeFromIndexCube( Cubei::fromMinSize( Vector3i::CreateZero(), Vector3i::Constant(4) ) );
+		activeProbe_ = -1;
+	}
 
+	void initObjectData() {
 #if 0
 		// init object templates
 		{
@@ -404,139 +475,72 @@ private:
 		base = &objectTemplates_.front();
 		ptree_serialize<PSM_READING>( tree, "objectInstances", objectInstances_ );
 #endif
+
 		// fill probe database
 		for( int i = 0 ; i < objectInstances_.size() ; i++ ) {
 			const Cubef bbox = objectInstances_[i].GetBBox();
-			const Cubei volumeCoords( layerCalibration_.getGlobalCeilIndex( bbox.minCorner ), layerCalibration_.getGlobalFloorIndex( bbox.maxCorner ) );
+			const Cubei volumeCoords( floor( voxelGrid.getIndex3( bbox.minCorner ) ), ceil( voxelGrid.getIndex3( bbox.maxCorner ) ) );
 
 			probeDatabase_.addObjectInstanceToDatabase( *probes_, volumeCoords, objectInstances_[i].objectTemplate->id );
 		}
-
-		readState();
-
-		InitUI();
-		InitPreviewUI();
 	}
 
-	void InitPreviewUI() 
-	{
-		uiManager_.Init( renderSystem_.get(), renderContext_, renderWindow_ );
+	void drawEverything() {
+		//objScene.Draw();
 
-		uiButtons_.resize( objectTemplates_.size() );
-		matchedProbes_.resize( objectTemplates_.size() );
+		Vector3f minCorner = voxelGrid.getPosition( targetCube_.minCorner );
+		Vector3f maxCorner = voxelGrid.getPosition( targetCube_.maxCorner );
+		DebugRender::ImmediateCalls targetVolume;
+		targetVolume.begin();
+		targetVolume.setColor( Vector3f::Unit(1) );
+		targetVolume.drawAABB( minCorner, maxCorner );
+		targetVolume.end();
 
-		for( int i = 0 ; i < uiButtons_.size() ; i++ ) {
-			uiManager_.elements.push_back( &uiButtons_[i] );
-			uiButtons_[i].SetVisible( false );
-			uiButtons_[i].onFocus = [=] () { activeProbe_ = i; };
-			uiButtons_[i].onUnfocus = [=] () { if( !dontUnfocus ) activeProbe_ = -1; };
-		}
-
-		eventForwarder_.Prepend( &uiManager_ );
-
-		activeProbe_ = -1;
-	}
-
-	void ShutdownImpl() {
-		effectManager_.Shutdown ();
-
-		Super::ShutdownImpl();
-	}
-
-	void UpdateImpl (const float deltaTime, const double elapsedTime) {
-		Super::UpdateImpl( deltaTime, elapsedTime );
-
-		float angle = elapsedTime * 360.0 / 10.0;
-		previewTransformation_.world = CreateRotationY4( Degree( angle ) );		
-	}
-
-	void DrawPreview() {
-		renderContext_->SetTransformation( Render::RenderTransformation::Projection, previewTransformation_.projection );
-		renderContext_->SetTransformation( Render::RenderTransformation::View, previewTransformation_.view );
-		
-		const int maxPreviewWidth = renderWindow_->GetWidth() / 10;
-		const int maxTotalPreviewHeight = (maxPreviewWidth + 10) * results_.size();
-		const int previewSize = (maxTotalPreviewHeight < renderWindow_->GetHeight()) ? maxPreviewWidth : (renderWindow_->GetHeight() - 20) / results_.size() - 10;
-				
-		Vector2i topLeft( renderWindow_->GetWidth() - previewSize - 10, 10 );
-		Vector2i size( previewSize, previewSize );
-		
-		for( int i = 0 ; i < results_.size() ; ++i, topLeft.Y() += previewSize + 10 ) {
-			ObjectTemplate &objectTemplate = objectTemplates_[ results_[i].first ];
-
-			renderContext_->SetViewport( Rectangle<int>( topLeft, size ) );
-			renderContext_->ClearRenderTarget( Render::RenderTargetClearFlags::Depth_Buffer );
-
-			renderContext_->SetTransformation( Render::RenderTransformation::World, previewTransformation_.world * CreateScale4( 2.0 / MaxElement( objectTemplate.bbSize ) ) );	
-
-			objectTemplate.Draw( renderSystem_.get(), renderContext_ );
-
-			UIButton &button = uiButtons_[i];
-			button.area = Rectangle<int>(topLeft, size);
-			button.SetVisible( true );
-		}
-				
-		renderContext_->SetViewport( renderWindow_->GetViewport() );
-	}
-
-	void DrawImpl ()
-	{
-		renderContext_->SetTransformation( Render::RenderTransformation::World, Matrix4f::CreateIdentity() );
-
-		objScene_.Draw( renderContext_ );
-
-		Vector3f minCorner = layerCalibration_.getPosition( targetCube_.minCorner );
-		Vector3f maxCorner = layerCalibration_.getPosition( targetCube_.maxCorner );
-		DebugRenderObject targetVolume = createCube( minCorner, maxCorner, Color3f( 0.0, 1.0, 0.0 ) );
-		Draw( targetVolume );
-		
-		Draw( probeVolume_ );
+		probeVolume.render();
 		if( showProbes ) {
-			Draw( probeCrosses_ );
+			probeVisualization.render();
 		}
 
 		for( int i = 0 ; i < objectInstances_.size() ; i++ ) {
-			objectInstances_[i].Draw( renderSystem_.get(), renderContext_ );
+			objectInstances_[i].Draw();
 		}
 
 		if( showMatchedProbes && activeProbe_ != -1 ) {
-			renderSystem_->DebugDrawLines( matchedProbes_[activeProbe_].GetLineSegments() );
+			matchedProbes_[activeProbe_].render();
 		}
 
-		DrawPreview();
+		drawPreview();
 
 		TwDraw();
 
-		uiManager_.Draw();
+		uiManager_.Draw();		
 	}
 
-private:
-	void Draw( const DebugRenderObject &object ) {
-		renderSystem_->DebugDrawLines( object );
-	}
+	void initAntTweakBar() {
+		TwInit(  TW_OPENGL, NULL );
+		TwWindowSize( window.getSize().x, window.getSize().y );
 
-	void FixRDPMouseInput() {
-		eventListener_.UnregisterWindow( renderWindow_ );
-		eventListener_.RegisterWindow( renderWindow_, WindowEventHandlingFlags::ProcessSystemEvents | WindowEventHandlingFlags::ProcessInputEvents );
-	}
-
-	void InitAntTweakBar() {
-		void *device;
-		renderSystem_->GenericQuery( niven::Render::GenericQueryIds::DX11_GetDevice, &device );
-		TwInit(  TW_DIRECT3D11, device );
-		TwWindowSize( renderWindow_->GetWidth(), renderWindow_->GetHeight() );
-
-		AntTWBarGroupTypes::TypeMapping<Vector3i>::Type = AntTWBarGroupTypes::Struct<Vector3i,AntTWBarGroupTypes::Vector3i, NivenSummarizer<Vector3i> >( "Vector3i" ).
+		AntTWBarGroupTypes::TypeMapping<Vector3i>::Type = AntTWBarGroupTypes::Struct<Eigen::Vector3i,AntTWBarGroupTypes::Vector3i, EigenSummarizer<Eigen::Vector3i> >( "Vector3i" ).
 			add( "x", &AntTWBarGroupTypes::Vector3i::x ).
 			add( "y", &AntTWBarGroupTypes::Vector3i::y ).
 			add( "z", &AntTWBarGroupTypes::Vector3i::z ).
 			define();
 
-		antTweakBarEventHandler_.Init( renderWindow_ );
-		eventForwarder_.Prepend( &antTweakBarEventHandler_ );
+		eventDispatcher.eventHandlers.push_back( make_persistent_shared( antTweakBarEventHandler ) );
 	}
 
-	void InitUI() {
+	void initProbes() {
+		voxelGrid.init( Vector3i( 1024, 1024, 1024 ), Vector3f( -18.4209571, -7.4209571, -7.4209571 ), 7.4209571 / 256.0 );
+		probes_ = std::unique_ptr<Probes>( new Probes( Vector3i( 127, 83, 83 ), Vector3i( 1025, 346, 346 ), 16) );
+
+		if( !probes_->readFromFile( "probes.data" ) ) {
+			__debugbreak();
+		}
+
+		visualizeProbes();
+	}
+
+	void initAntTweakBarUI() {
 		ui_ = std::unique_ptr<AntTWBarGroup>( new AntTWBarGroup("UI") );
 
 		minCallback_.getCallback = [&](Vector3i &v) { v = targetCube_.minCorner; };
@@ -558,22 +562,23 @@ private:
 		dontUnfocus = true;
 		ui_->addVarRW( "Fix selection", dontUnfocus );
 
-		findCandidatesCallback_.callback = std::bind(&SampleApplication::Do_findCandidates, this);
-		ui_->addButton("Find candidates", findCandidatesCallback_ );
-
-		writeStateCallback_.callback = std::bind(&SampleApplication::writeState, this);
+		writeStateCallback_.callback = std::bind(&Application::writeState, this);
 		ui_->addButton("Write state", writeStateCallback_ );
 
+		findCandidatesCallback_.callback = std::bind(&Application::Do_findCandidates, this);
+		ui_->addButton("Find candidates", findCandidatesCallback_ );
+				
 		candidateResultsUI_ = std::unique_ptr<AntTWBarGroup>( new AntTWBarGroup( "Candidates", ui_.get() ) );
 
 		cameraPositions_.onAction = [=] ( const CameraPosition &camPos ) {
-			camera_->SetViewLookAt( camPos.position, camPos.position + camPos.direction, Vector3f::CreateUnit(1) );
+			camera.setPosition( camPos.position );
+			camera.lookAt( camPos.direction, Vector3f::UnitY() );
 		};
 		cameraPositions_.getSummary = [=] ( const CameraPosition &camPos, int ) {
 			return AntTWBarGroup::format( "View %f %f %f", camPos.position[0], camPos.position[1], camPos.position[2] );
 		};
 		cameraPositions_.getNewItem = [=] () {
-			return SampleApplication::CameraPosition( camera_->GetPosition(), camera_->GetViewDirection() );
+			return CameraPosition( camera.getPosition(), camera.getDirection() );
 		};
 		cameraPositions_.init( "Camera views", nullptr );
 
@@ -589,91 +594,52 @@ private:
 		};
 		targetVolumes_.init( "Target cubes", nullptr );
 	}
-			
-	void InitVolume() {
-		fbs_ = std::unique_ptr<Volume::FileBlockStorage>( new Volume::FileBlockStorage );
-		if( !fbs_->Open( "P:\\BlenderScenes\\two_boxes_4.nvf", true ) ) {
-			Log::Error( "VolumePlacerUI", "couldn't open the volume file!" );
-		}
 
-		mipVolume_ = std::unique_ptr<MipVolume>( new MipVolume(*fbs_) );
-		denseCache_ = std::unique_ptr<DenseCache>( new DenseCache(*mipVolume_) );
-
-		volumeCalibration_.readFrom( *fbs_ );
-		layerCalibration_.readFrom( *fbs_, volumeCalibration_, "Density" );
-	}
-
-	void CreateProbeVisualization() {
-		Render::DebugRenderUtility dru;
+	void visualizeProbes() {
+		probeVisualization.begin();
 
 		const float visSize = 0.05;
-		for( Iterator3D iter(probes_->probeDims) ; !iter.IsAtEnd() ; ++iter ) {
-			const Vector3f probePosition = layerCalibration_.getPosition( probes_->getPosition( iter ) );
-			const Probe &probe = probes_->get(iter);
+		for( RangedIterator3 iter(Vector3i::Zero(), probes_->probeDims) ; iter.hasMore() ; ++iter ) {
+			const Vector3f probePosition = voxelGrid.getPosition( probes_->getPosition( *iter ) );
+			const Probe &probe = probes_->get(*iter);
+
+			probeVisualization.setPosition( probePosition );
 
 			for( int i = 0 ; i < Probe::DistanceContext::numSamples ; ++i ) {
 				const Vector3f &direction = probe.distanceContext.directions[i];
 				const float distance = probe.distanceContext.distances[i];
 
 				const Vector3f &vector = direction * (1.0 - distance / maxDistance_);
-				dru.AddLine( probePosition, probePosition + vector * visSize, Color3f( 0.0, 0.0, Length(vector) ) );
+				
+				probeVisualization.setColor( Vector3f::Unit(2) * vector.norm() );
+				probeVisualization.drawVector( vector * visSize );				
 			}			
 		}
-		probeCrosses_ = dru.GetLineSegments();
+		probeVisualization.end();
+
+		probeVolume.begin();
+		probeVolume.setColor( Vector3f::Unit(0) );
+		probeVolume.drawAABB( voxelGrid.getPosition( probes_->min ), voxelGrid.getPosition( probes_->min + probes_->size ) );
+		probeVolume.end();
 	}
 
-	void CreatedMatchedProbes(int index) {
-		matchedProbes_[index].Clear();
-
+	void visualizeMatchedProbes(int index) {
 		const ProbeDatabase::CandidateInfo &info = results_[index].second;
 
+		matchedProbes_[index].begin();
 		int begin = 0;
 		for( int i = 0 ; i < info.matchesPositionEndOffsets.size() ; ++i ) {
-			const Vector3f position = layerCalibration_.getPosition( probes_->getPosition( info.matchesPositionEndOffsets[i].first ) );
+			const Vector3f position = voxelGrid.getPosition( probes_->getPosition( info.matchesPositionEndOffsets[i].first ) );
 
 			const int end = info.matchesPositionEndOffsets[i].second;
 			const int count = end - begin;
-			matchedProbes_[index].AddSphere( position, 0.05, Color3f( 1.0 - float(count) / info.maxSingleMatchCount, 1.0, 0.0 ));
+			matchedProbes_[index].setPosition( position );
+			matchedProbes_[index].setColor( Vector3f( 1.0 - float(count) / info.maxSingleMatchCount, 1.0, 0.0 ) );
+			matchedProbes_[index].drawAbstractSphere( 0.05 );
 
 			begin = end;
 		}
-	}
-
-	void Do_findCandidates() {
-		ProbeMatchSettings settings;
-		settings.maxDelta = probes_->step;
-		settings.maxDistance = maxDistance_;
-
-		results_ = probeDatabase_.findCandidates( *probes_, targetCube_ );
-
-		candidateResultsUI_->clear();
-		for( int i = 0 ; i < results_.size() ; ++i ) {
-			const ProbeDatabase::CandidateInfo &info = results_[i].second;
-			candidateResultsUI_->addVarRO( AntTWBarGroup::format( "Candidate %i", results_[i].first ), info.score );
-
-			CreatedMatchedProbes(i);
-		}
-	}
-
-	void writeState() {
-		using namespace Serialize;
-
-		FILE *file = fopen( "state", "wb" );
-		writeTyped( file, targetCube_ );
-		writeTyped( file, showProbes );
-		writeTyped( file, showMatchedProbes );
-		writeTyped( file, dontUnfocus );
-
-		writeTyped( file, camera_->GetPosition() );
-		writeTyped( file, camera_->GetViewDirection() );
-
-		writeTyped( file, cameraPositions_.collection );
-		writeTyped( file, cameraPositions_.collectionLabels );
-
-		writeTyped( file, targetVolumes_.collection );
-		writeTyped( file, targetVolumes_.collectionLabels );
-
-		fclose( file );
+		matchedProbes_[index].end();
 	}
 
 	void readState() {
@@ -694,160 +660,163 @@ private:
 		readTyped( file, position );
 		readTyped( file, viewDirection );
 
+		camera.setPosition( position );
+		camera.lookAt( viewDirection, Vector3f::UnitY() );
+
 		readTyped( file, cameraPositions_.collection );
 		readTyped( file, cameraPositions_.collectionLabels );
 
 		readTyped( file, targetVolumes_.collection );
 		readTyped( file, targetVolumes_.collectionLabels );
-				
-		camera_->SetViewLookAt( position, position + viewDirection, Vector3f::CreateUnit(1) );
 	}
 
-private:
-	// niven stuff
-	Render::EffectManager effectManager_;
-	Render::EffectLoader effectLoader_;
+	void writeState() {
+		using namespace Serialize;
 
-	// AntTweakBar members
-	AntTweakBarEventHandler antTweakBarEventHandler_;
-	std::unique_ptr<AntTWBarGroup> ui_, candidateResultsUI_;
-	
-	ObjScene objScene_;
-	
-	Cubei targetCube_;
+		FILE *file = fopen( "state", "wb" );
+		writeTyped( file, targetCube_ );
+		writeTyped( file, showProbes );
+		writeTyped( file, showMatchedProbes );
+		writeTyped( file, dontUnfocus );
 
-	// volume members
-	std::unique_ptr<Volume::FileBlockStorage> fbs_;
-	std::unique_ptr<MipVolume> mipVolume_;
-	std::unique_ptr<DenseCache> denseCache_;
-	VolumeCalibration volumeCalibration_;
-	LayerCalibration layerCalibration_;
-	std::unique_ptr<Probes> probes_;
+		writeTyped( file, camera.getPosition() );
+		writeTyped( file, camera.getDirection() );
 
-	ProbeDatabase probeDatabase_;
+		writeTyped( file, cameraPositions_.collection );
+		writeTyped( file, cameraPositions_.collectionLabels );
 
-	ProbeDatabase::SparseCandidateInfos results_;
+		writeTyped( file, targetVolumes_.collection );
+		writeTyped( file, targetVolumes_.collectionLabels );
 
-	// render objects
-	DebugRenderObject probeVolume_;
-	DebugRenderObject probeCrosses_;
+		fclose( file );
+	}
 
-	std::vector<Render::DebugRenderUtility> matchedProbes_;
+	void Do_findCandidates() {
+		ProbeMatchSettings settings;
+		settings.maxDelta = probes_->step;
+		settings.maxDistance = maxDistance_;
 
-	std::vector<ObjectTemplate> objectTemplates_;
-	std::vector<ObjectInstance> objectInstances_;
+		results_ = probeDatabase_.findCandidates( *probes_, targetCube_ );
 
-	// ui callbacks
-	AntTWBarGroup::ButtonCallback findCandidatesCallback_, writeStateCallback_;
-	AntTWBarGroup::VariableCallback<Vector3i> minCallback_, sizeCallback_;
+		activeProbe_ = 0;
 
-	// ui fields
-	bool showProbes;
-	bool showMatchedProbes;
-	bool dontUnfocus;
+		candidateResultsUI_->clear();
+		for( int i = 0 ; i < results_.size() ; ++i ) {
+			const ProbeDatabase::CandidateInfo &info = results_[i].second;
+			candidateResultsUI_->addVarRO( AntTWBarGroup::format( "Candidate %i", results_[i].first ), info.score );
 
-	float maxDistance_;
-	
-	int activeProbe_;
-	std::vector<UIButton> uiButtons_;
-	UIManager uiManager_;
+			visualizeMatchedProbes(i);
+		}
+	}
 
-	struct Transformation {
-		Matrix4f world;
-		Matrix4f view;
-		Matrix4f projection;
-	} previewTransformation_;
+	void drawPreview() {
+		glMatrixMode( GL_PROJECTION );
+		glLoadMatrix( previewTransformation_.projection );
 
-	AntTWBarCollection<CameraPosition> cameraPositions_;
-	AntTWBarCollection<Cubei> targetVolumes_;
+		glMatrixMode( GL_MODELVIEW );
+		glLoadMatrix( previewTransformation_.view );
+		glMultMatrix( previewTransformation_.world );
 
-private:
-	SampleApplication( const SampleApplication & ) {}
+		const int maxPreviewWidth = window.getSize().x / 10;
+		const int maxTotalPreviewHeight = (maxPreviewWidth + 10) * results_.size();
+		const int previewSize = (maxTotalPreviewHeight < window.getSize().y) ? maxPreviewWidth : (window.getSize().y - 20) / results_.size() - 10;
+
+		Vector2i bottomLeft( window.getSize().x - previewSize - 10, window.getSize().y - previewSize - 10 );
+		Vector2i size( previewSize, previewSize );
+
+		glEnable( GL_SCISSOR_TEST );
+
+		for( int i = 0 ; i < results_.size() ; ++i, bottomLeft.y() -= previewSize + 10 ) {
+			ObjectTemplate &objectTemplate = objectTemplates_[ results_[i].first ];
+
+			glViewport( bottomLeft.x(), bottomLeft.y(), size.x(), size.y() );
+			glScissor( bottomLeft.x(), bottomLeft.y(), size.x(), size.y() );
+			
+			glClear( GL_DEPTH_BUFFER_BIT );
+
+			glPushMatrix();
+			glScale( Vector3f::Constant( 2.0 / objectTemplate.bbSize.maxCoeff() ) );
+			objectTemplate.Draw();
+			glPopMatrix();
+
+			UIButton &button = uiButtons_[i];
+			button.area.min() = bottomLeft;
+			button.area.max() = bottomLeft + size;
+			button.SetVisible( true );
+		}
+
+		glViewport( 0, 0, window.getSize().x, window.getSize().y );
+		glDisable( GL_SCISSOR_TEST );
+	}
+
+	typedef float Seconds;
+	void update( const Seconds deltaTime, const Seconds elapsedTime ) {
+		cameraInputControl.update( deltaTime, false );
+
+		float angle = elapsedTime * 2 * Math::PI / 10.0;
+		previewTransformation_.world = Affine3f(AngleAxisf( angle, Vector3f::UnitY() )).matrix();		
+	}
+
+	void main() {
+		initEverything();
+
+		glEnable(GL_DEPTH_TEST);
+		glDepthMask(GL_TRUE);
+		glClearDepth(1.f);
+
+		loadScene();
+
+		eventDispatcher.eventHandlers.push_back( make_persistent_shared( cameraInputControl ) );
+
+		initAntTweakBar();
+		initAntTweakBarUI();
+
+		// The main loop - ends as soon as the window is closed
+		sf::Clock frameClock, clock;		
+		while (window.isOpen())
+		{
+			// Event processing
+			sf::Event event;
+			while (window.pollEvent(event))
+			{
+				// Request for closing the window
+				if (event.type == sf::Event::Closed)
+					window.close();
+
+				if( event.type == sf::Event::Resized ) {
+					camera.perspectiveProjectionParameters.aspect = float( event.size.width ) / event.size.height;
+					glViewport( 0, 0, event.size.width, event.size.height );
+				}
+
+				eventDispatcher.handleEvent( event );
+			}
+
+			update( frameClock.restart().asSeconds(), clock.getElapsedTime().asSeconds() );
+
+			// Activate the window for OpenGL rendering
+			window.setActive();
+
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+			// OpenGL drawing commands go here...
+			glMatrixMode( GL_PROJECTION );
+			glLoadMatrix( camera.getProjectionMatrix() );
+
+			glMatrixMode( GL_MODELVIEW );
+			glLoadMatrix( camera.getViewTransformation().matrix() );
+
+			drawEverything();
+
+			// End the current frame and display its contents on screen
+			window.display();
+		}
+	}
 };
-#endif
-
-struct null_deleter {
-	template<typename T>
-	void operator() (T*) {}
-};
-
-template<typename T>
-std::shared_ptr<T> shared_from_stack(T &object) {
-	return std::shared_ptr<T>( &object, null_deleter() );
-}
 
 int main (int /* argc */, char* /* argv */ [])
 {
-	sf::Window window( sf::VideoMode( 640, 480 ), "Position Solver", sf::Style::Default, sf::ContextSettings(32) );
-	glewInit();
-
-	Camera camera;
-	camera.perspectiveProjectionParameters.aspect = 640.0 / 480.0;
-	camera.perspectiveProjectionParameters.FoV_y = 75.0;
-	camera.perspectiveProjectionParameters.zNear = 1.0;
-	camera.perspectiveProjectionParameters.zFar = 500.0;
-	//camera.position.z() = 5;
-
-	CameraInputControl cameraInputControl;
-	cameraInputControl.init( shared_from_stack(camera), shared_from_stack(window) );
-
-	// Activate the window for OpenGL rendering
-	window.setActive();
-
-	glEnable(GL_DEPTH_TEST);
-	glDepthMask(GL_TRUE);
-	glClearDepth(1.f);
-
-	DebugRender::CombinedCalls debugScene;
-	debugScene.begin();
-	glMatrixMode( GL_MODELVIEW );
-	glRotatef( 45.0, 0.0, 1.0, 0.0 );
-	debugScene.drawBox( Vector3f::Constant(8), false, true );
-	debugScene.end();
-
-	// The main loop - ends as soon as the window is closed
-	sf::Clock frameClock, clock;
-
-	EventDispatcher eventDispatcher;
-	eventDispatcher.eventHandlers.push_back( shared_from_stack( cameraInputControl ) );
-
-	while (window.isOpen())
-	{
-		// Event processing
-		sf::Event event;
-		while (window.pollEvent(event))
-		{
-			// Request for closing the window
-			if (event.type == sf::Event::Closed)
-				window.close();
-
-			if( event.type == sf::Event::Resized ) {
-				camera.perspectiveProjectionParameters.aspect = float( event.size.width ) / event.size.height;
-				glViewport( 0, 0, event.size.width, event.size.height );
-			}
-
-			eventDispatcher.handleEvent( event );
-		}
-
-		cameraInputControl.update( frameClock.restart().asSeconds(), false );
-
-		// Activate the window for OpenGL rendering
-		window.setActive();
-
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-		// OpenGL drawing commands go here...
-		glMatrixMode( GL_PROJECTION );
-		glLoadMatrix( camera.getProjectionMatrix() );
-
-		glMatrixMode( GL_MODELVIEW );
-		glLoadMatrix( camera.getViewTransformation().matrix() );
-
-		debugScene.render();
-		
-		// End the current frame and display its contents on screen
-		window.display();
-	}
+	Application app;
+	app.main();
 
 	return 0;
 }

@@ -52,6 +52,9 @@ void ObjSceneGL::Init( const char *objFile ) {
 			SubModel subModel;
 			simpleMeshes.push_back( ConvertToSimpleMesh (chunk) );
 			subModel.texture = 0;
+			subModel.diffuseColor[0] = (i + 1 & 1) != 0; 
+			subModel.diffuseColor[1] = (i + 1 & 2) != 0;
+			subModel.diffuseColor[2] = (i + 1 & 4) != 0;
 
 			subModel.objectName = chunk->GetObjectName().ToStdString();
 			std::transform( chunk->GetGroups().cbegin(), chunk->GetGroups().cend(), std::inserter( subModel.groupNames, subModel.groupNames.begin() ), [] (const niven::String &str) { return str.ToStdString(); } );

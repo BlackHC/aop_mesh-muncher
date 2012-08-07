@@ -1,31 +1,15 @@
 #pragma once
 
-#include <niven.Engine.Draw2D.h>
-#include <niven.Engine.Draw2DRectangle.h>
+#include "debugRender.h"
+#include "eventHandling.h"
+#include <Eigen/Eigen>
 
-#include <niven.Engine.Event.EventForwarder.h>
-
-#include <niven.Engine.Event.MouseClickEvent.h>
-#include <niven.Engine.Event.MouseMoveEvent.h>
-#include <niven.Engine.Event.KeyboardEvent.h>
-#include <niven.Engine.Event.MouseWheelEvent.h>
-#include <niven.Engine.Event.TextInputEvent.h>
-#include <niven.Engine.Event.RenderWindowResizedEvent.h>
-
-#include <niven.Core.Geometry.Rectangle.h>
-
-#include <niven.Render.RenderWindow.h>
-#include <niven.Render.RenderContext.h>
-#include <niven.Render.RenderSystem.h>
-
-// TODO: remove this using
-using namespace niven;
-
+// TODO: rework callback parameters to be library agnostic
 struct UIElement {
-	virtual void Draw( Draw2D *draw2D ) {}
+	virtual void Draw() {}
 
-	bool MouseMove( const class MouseMoveEvent& event ) {
-		bool inArea = IsInArea( event.GetPosition() );
+	bool MouseMove( const sf::Event::MouseMoveEvent &event ) {
+		bool inArea = IsInArea( Eigen::Vector2i( event.x, event.y ) );
 		if( inArea || IsActive() ) {
 			return MouseMoveImpl( event, inArea );
 		}
@@ -34,12 +18,12 @@ struct UIElement {
 		}		
 	}
 
-	bool MouseClick( const class MouseClickEvent& event ) {
+	bool MouseClick( const sf::Event::MouseButtonEvent &event, bool pressed ) {
 		if( !IsActive() ) {
 			return false;
 		}
 
-		return MouseClickImpl( event );
+		return MouseClickImpl( event, pressed );
 	}
 
 	bool IsActive() const {
@@ -61,53 +45,47 @@ struct UIElement {
 private:
 	bool active_;
 
-	virtual bool IsInArea( const Vector2i &position ) = 0;
+	virtual bool IsInArea( const Eigen::Vector2i &position ) = 0;
 
 	virtual void Unfocus() {}
 	virtual void Focus() {}
 
-	virtual bool MouseMoveImpl( const class MouseMoveEvent& event, bool inArea ) {
+	virtual bool MouseMoveImpl( const sf::Event::MouseMoveEvent &event, bool inArea ) {
 		return false;
 	}
 
-	virtual bool MouseClickImpl( const class MouseClickEvent& event ) {
+	virtual bool MouseClickImpl( const sf::Event::MouseButtonEvent &event, bool pressed ) {
 		return false;
 	}
 };
 
-struct UIManager : public IEventHandler {
+struct UIManager : public EventHandler {
 	std::vector<UIElement*> elements;
 	UIElement *active;
 
-	Draw2D *draw2D;
-	IRenderWindow *renderWindow_;
-	
-	void Init( Render::IRenderSystem *renderSystem, Render::IRenderContext *renderContext, Render::IRenderWindow *renderWindow ) {
-		draw2D = new Draw2D( renderSystem, renderContext );
-		draw2D->SetWindowSize( renderWindow->GetWidth(), renderWindow->GetHeight() );
-		renderWindow_ = renderWindow;
+	void Init() {
 		active = nullptr;
 	}
 
-	bool OnMouseClickImpl( const class MouseClickEvent& event ) 
+	bool OnMouseClickImpl( const sf::Event::MouseButtonEvent &event, bool pressed ) 
 	{
-		if( renderWindow_->IsCursorCaptured() ){
+		/*if( renderWindow_->IsCursorCaptured() ){
 			return false;
-		}
-
+		}*/
+		
 		for( int i = 0 ; i < elements.size() ; ++i ) {
-			if( elements[i]->MouseClick( event ) ) {
+			if( elements[i]->MouseClick( event, pressed ) ) {
 				return true;
 			}
 		}
 		return false;
 	}
 
-	bool OnMouseMoveImpl( const class MouseMoveEvent& event ) 
+	bool OnMouseMoveImpl( const sf::Event::MouseMoveEvent & event ) 
 	{
-		if( renderWindow_->IsCursorCaptured() ){
+		/*if( renderWindow_->IsCursorCaptured() ){
 			return false;
-		}
+		}*/
 
 		for( int i = 0 ; i < elements.size() ; ++i ) {
 			if( elements[i]->MouseMove( event ) ) {
@@ -124,17 +102,23 @@ struct UIManager : public IEventHandler {
 		return false;
 	}
 
-	bool OnRenderWindowResizedImpl( const class RenderWindowResizedEvent& event ) 
-	{
-		draw2D->SetWindowSize( event.GetWidth(), event.GetHeight() );
-
-		return false;
-	}
-
 	void Draw() {
 		for( int i = 0 ; i < elements.size() ; ++i ) {
-			elements[i]->Draw( draw2D );
+			elements[i]->Draw();
 		}
+	}
+
+	virtual bool handleEvent( const sf::Event &event ) 
+	{
+		switch( event.type ) {
+		case sf::Event::MouseMoved:
+			return OnMouseMoveImpl( event.mouseMove );
+		case sf::Event::MouseButtonReleased:
+			return OnMouseClickImpl( event.mouseButton, false );
+		case sf::Event::MouseButtonPressed:
+			return OnMouseClickImpl( event.mouseButton, true );
+		}
+		return false;
 	}
 };
 
@@ -146,7 +130,7 @@ struct UIButton : public UIElement {
 		STATE_CLICKED
 	} state;
 
-	Rectangle<int> area;
+	Eigen::AlignedBox2i area;
 	std::function<void ()> onAction, onFocus, onUnfocus;	
 
 	bool IsVisible() const {
@@ -165,11 +149,11 @@ protected:
 	bool visible_;
 
 private:
-	bool IsInArea( const Vector2i &position ) {
-		return visible_ && area.Contains( position );
+	bool IsInArea( const Eigen::Vector2i &position ) {
+		return visible_ && area.contains( position );
 	}
 
-	bool MouseMoveImpl( const class MouseMoveEvent& event, bool inArea ) {
+	bool MouseMoveImpl( const sf::Event::MouseMoveEvent& event, bool inArea ) {
 		switch( state ) {
 		case STATE_CLICKED:
 			return true;
@@ -201,32 +185,32 @@ private:
 			onUnfocus();
 	}
 
-	bool MouseClickImpl( const class MouseClickEvent& event ) {
-		bool inArea = IsInArea( event.GetPosition() );
+	bool MouseClickImpl( const sf::Event::MouseButtonEvent& event, bool pressed ) {
+		bool inArea = IsInArea( Eigen::Vector2i( event.x, event.y ) );
 		if( !inArea ) {
 			return false;
 		}
 
-		if( event.GetButton() == MouseButton::Left ) {			
-			if( event.IsPressed() ) { 
+		if( event.button == sf::Mouse::Left ) {			
+			if( pressed ) { 
 				state = STATE_CLICKED;
 				if( onAction ) {
 					onAction();
 				}
 			}
-			if( event.IsReleased() ) {
+			else {
 				state = inArea ? STATE_MOUSE_OVER : STATE_ACTIVE;
 			}
 		}
 		return true;
 	}
 
-	void Draw( Draw2D *draw2D ) {
+	void Draw() {
 		if( !visible_ ) {
 			return;
 		}
 
-		Draw2DRectangle *rect = nullptr;
+		/*Draw2DRectangle *rect = nullptr;
 
 		switch( state ) {
 		case STATE_ACTIVE:
@@ -243,6 +227,6 @@ private:
 		if( rect ) {
 			draw2D->Draw( rect );
 			draw2D->Release( rect );
-		}
+		}*/
 	}
 };

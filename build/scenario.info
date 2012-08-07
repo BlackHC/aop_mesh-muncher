@@ -11,9 +11,9 @@ objectTemplates
         }
         color
         {
-            r 1
-            g 1
-            b 1
+            x 1
+            y 1
+            z 1
         }
     }
     item
@@ -27,9 +27,9 @@ objectTemplates
         }
         color
         {
-            r 0
-            g 1
-            b 1
+            x 0
+            y 1
+            z 1
         }
     }
 }

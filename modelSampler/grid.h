@@ -12,7 +12,12 @@ struct Indexer3 {
 	Eigen::Vector3i size;
 	int count;
 
-	Indexer3( const Eigen::Vector3i &size ) : size( size ), count( size.prod() ) {
+	Indexer3( const Eigen::Vector3i &size = Eigen::Vector3i::Zero() ) : size( size ), count( size.prod() ) {
+	}
+
+	void init( const Eigen::Vector3i &size ) {
+		this->size = size;
+		count = size.prod();
 	}
 
 	// x, y, z -> |z|y|x|  
@@ -60,7 +65,7 @@ public:
 		return index;
 	}
 
-	operator bool() const {
+	bool hasMore() const {
 		return index < indexer.count;
 	}
 
@@ -89,8 +94,8 @@ public:
 	RangedIterator3( const Eigen::Vector3i &beginCorner, const Eigen::Vector3i &endCorner ) : Index3Value( beginCorner ), beginCorner( beginCorner ), endCorner( endCorner ) {
 	}
 
-	operator bool() const {
-		return index3[2] >= endCorner[2];
+	bool hasMore() const {
+		return index3[2] < endCorner[2];
 	}
 
 	const Eigen::Vector3i & operator* () const {
@@ -113,7 +118,13 @@ struct Grid : Indexer3 {
 	Eigen::Vector3f offset;
 	float resolution;
 
-	Grid( const Eigen::Vector3i &size, const Eigen::Vector3f &offset, float resolution ) : Indexer3( size ), offset( offset ), resolution( resolution ) {
+	Grid( const Eigen::Vector3i &size = Eigen::Vector3i::Zero(), const Eigen::Vector3f &offset = Eigen::Vector3f::Zero(), float resolution = 0.0f ) : Indexer3( size ), offset( offset ), resolution( resolution ) {
+	}
+
+	void init( const Eigen::Vector3i &size, const Eigen::Vector3f &offset, float resolution ) {
+		Indexer3::init( size );
+		this->offset = offset;
+		this->resolution = resolution;
 	}
 
 	Eigen::Vector3f getPosition( const Eigen::Vector3i &index3 ) const {
