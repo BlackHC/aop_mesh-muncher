@@ -3,15 +3,15 @@
 #include <niven.Core.IO.Path.h>
 
 #include <niven.Render.Effect.h>
-#include <niven.Engine.Render.EffectManager.h>
 #include <niven.Render.RenderContext.h>
 #include <niven.Render.Texture.h>
 #include <niven.Render.VertexLayout.h>
 #include <niven.Render.VertexBuffer.h>
 #include <niven.Render.IndexBuffer.h>
+#include <niven.Render.EffectManager.h>
 
 #include <niven.Engine.Geometry.SimpleMesh.h>
-#include <niven.Engine.Spatial.AxisAlignedBoundingBox.h>
+#include <niven.Geometry.Spatial.AxisAlignedBoundingBox.h>
 
 #include <set>
 #include <boost/container/flat_map.hpp>

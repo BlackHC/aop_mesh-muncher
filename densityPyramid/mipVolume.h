@@ -4,7 +4,6 @@
 #include "niven.Volume.MarchingCubes.h"
 #include "niven.Volume.Volume.h"
 
-#include "niven.Core.MemoryLayout.h"
 #include "niven.Core.Iterator3D.h"
 
 #include "niven.Core.Math.Vector.h"

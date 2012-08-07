@@ -5,17 +5,18 @@
 #include <niven.Core.IO.FileSystem.h>
 #include <niven.Core.Log.h>
 #include <niven.Core.StringFormat.h>
-#include <niven.Engine.Render.EffectLoader.h>
+#include <niven.Render.EffectLoader.h>
 #include <niven.Core.Stopwatch.h>
-#include <niven.Engine.Render.DrawCommand.h>
+#include <niven.Render.DrawCommand.h>
 #include <niven.Core.IO.File.h>
 #include <niven.Image.Image2D.h>
 #include <niven.Image.Image2D_All.h>
 #include <niven.Image.ImageLoadHelper.h>
-#include <niven.Engine.Render.Texture2D.h>
+#include <niven.Render.Texture2D.h>
 #include <niven.Core.Math.Matrix.h>
 #include <niven.Core.Math.MatrixFunctions.h>
-#include <niven.Engine.Interop.ObjReader.h>
+#include <niven.Geometry.Interop.ObjChunk.h>
+#include <niven.Geometry.Interop.ObjReader.h>
 
 using namespace niven;
 

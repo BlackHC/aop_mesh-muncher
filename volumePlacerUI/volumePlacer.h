@@ -4,14 +4,13 @@
 
 #include "niven.Core.Geometry.Plane.h"
 
-#include "niven.Core.MemoryLayout.h"
 #include "niven.Core.Iterator3D.h"
 
 #include "niven.Core.Math.VectorToString.h"
 
 #include "niven.Engine.Sample.h"
 #include "niven.Core.Math.3dUtility.h"
-#include "niven.Engine.Spatial.AxisAlignedBoundingBox.h"
+#include "niven.Geometry.Spatial.AxisAlignedBoundingBox.h"
 #include "niven.Core.Geometry.Ray.h"
 
 #include <iostream>
