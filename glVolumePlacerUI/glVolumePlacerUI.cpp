@@ -31,6 +31,154 @@ int TW_CALL TwEventSFML20(const sf::Event *event);
 #include <Eigen/Eigen>
 using namespace Eigen;
 
+struct glShaderBuilder {
+	std::vector< const char * > sourceBuffers;
+	std::vector< int > sourceBufferLengths;
+
+	GLenum type;
+	GLuint handle;
+
+	bool fail;
+	std::string infoLog;
+
+	glShaderBuilder( GLenum type ) {
+		this->type = type;
+		this->handle = 0;
+		this->fail = true;
+	}
+
+	glShaderBuilder & addSource( const char *buffer, int length ) {
+		sourceBuffers.push_back( buffer );
+		sourceBufferLengths.push_back( length );
+		return *this;
+	}
+
+	glShaderBuilder & addSource( const char *buffer ) {
+		sourceBuffers.push_back( buffer );
+		sourceBufferLengths.push_back( strlen( buffer ) );
+		return *this;
+	}
+
+	glShaderBuilder & compile() {
+		handle = glCreateShader( type );
+		if( !handle ) {
+			return *this;
+		}
+
+		// set sources
+		glShaderSource( handle, sourceBuffers.size(), &sourceBuffers.front(), &sourceBufferLengths.front() );
+
+		glCompileShader( handle );
+
+		GLint status;
+		glGetShaderiv( handle, GL_COMPILE_STATUS, &status );
+		fail = status == GL_FALSE;
+
+		return *this;
+	}
+
+	glShaderBuilder & extractInfoLog() {
+		GLint infoLogLength;
+		glGetShaderiv( handle, GL_INFO_LOG_LENGTH, &infoLogLength );
+
+		infoLog.resize( infoLogLength + 1 );
+
+		glGetShaderInfoLog( handle, infoLogLength, NULL, &infoLog.front() );
+
+		return *this;
+	}
+
+	glShaderBuilder & dumpInfoLog( std::ostream &out ) {
+		extractInfoLog();
+		out << infoLog;
+		return *this;
+	}
+
+	~glShaderBuilder() {
+		if( fail && handle ) {
+			glDeleteShader( handle );
+		}
+	}
+};
+
+struct glProgramBuilder {
+	std::vector<GLuint> shaders;
+
+	GLuint program;
+	bool fail;
+
+	std::string infoLog;
+
+	glProgramBuilder() {
+		program = 0;
+		fail = true;
+	}
+
+	glProgramBuilder & attachShader( GLuint shader ) {
+		if( shader ) {
+			shaders.push_back( shader );
+		}
+		else {
+			// TODO:
+		}
+
+		return *this;
+	}
+
+	glProgramBuilder & link() {
+		program = glCreateProgram();
+		if( !program ) {
+			return *this;
+		}
+
+		for( auto shader = shaders.begin() ; shader != shaders.end() ; ++shader ) {
+			glAttachShader( program, *shader );
+		}
+
+		glLinkProgram( program );
+
+		for( auto shader = shaders.begin() ; shader != shaders.end() ; ++shader ) {
+			glDetachShader( program, *shader );
+		}
+
+		GLint status;
+		glGetProgramiv( program, GL_LINK_STATUS, &status );
+		fail = status == GL_FALSE;
+
+		return *this;
+	}
+
+	glProgramBuilder & extractInfoLog() {
+		GLint infoLogLength;
+		glGetProgramiv( program, GL_INFO_LOG_LENGTH, &infoLogLength );
+
+		infoLog.resize( infoLogLength );
+
+		glGetProgramInfoLog( program, infoLogLength, NULL, &infoLog.front() );
+
+		return *this;
+	}
+
+	glProgramBuilder & dumpInfoLog( std::ostream &out ) {
+		extractInfoLog();
+		out << infoLog;
+		return *this;
+	}
+
+	glProgramBuilder & deleteShaders() {
+		for( auto shader = shaders.begin() ; shader != shaders.end() ; ++shader ) {
+			glDeleteShader( *shader );
+		}
+		shaders.clear();
+		return *this;
+	}
+
+	~glProgramBuilder() {
+		if( fail && program ) {
+			glDeleteProgram( program );
+		}
+	}
+};
 
 Vector3i ceil( const Vector3f &v ) {
 	return Vector3i( ceil( v[0] ), ceil( v[1] ), ceil( v[2] ) );
@@ -178,6 +326,7 @@ struct CameraPosition {
 
 struct Application {
 	ObjSceneGL objScene;
+	GLuint viewerPPLProgram;
 	Camera camera;
 	CameraInputControl cameraInputControl;
 	sf::Window window;
@@ -241,7 +390,7 @@ struct Application {
 	void initCamera() {
 		camera.perspectiveProjectionParameters.aspect = 640.0 / 480.0;
 		camera.perspectiveProjectionParameters.FoV_y = 75.0;
-		camera.perspectiveProjectionParameters.zNear = 1.0;
+		camera.perspectiveProjectionParameters.zNear = 0.1;
 		camera.perspectiveProjectionParameters.zFar = 500.0;
 	}
 
@@ -274,6 +423,26 @@ struct Application {
 		initPreviewUI();
 
 		loadScene();
+
+		glProgramBuilder programBuilder;
+		programBuilder.
+			attachShader(
+				glShaderBuilder( GL_VERTEX_SHADER ).
+					addSource( "varying vec3 viewPos; void main() { gl_FrontColor = gl_Color; viewPos = gl_ModelViewMatrix * gl_Vertex; gl_Position = ftransform(); }" ).
+					compile().
+					handle
+			).
+			attachShader( 
+				glShaderBuilder( GL_FRAGMENT_SHADER ).
+					addSource( "varying vec3 viewPos; void main() { vec3 normal = cross( dFdx( viewPos ), dFdy( viewPos ) ); gl_FragColor = vec4( gl_Color.rgb * max( 0.0, 2.0 / length( viewPos ) * abs( dot( normalize( normal ), normalize( viewPos ) ) ) ) + 0.1, 1.0 ); }" ).
+					compile().
+					handle
+				).
+			link().
+			deleteShaders().
+			dumpInfoLog( std::cout );
+
+		viewerPPLProgram = programBuilder.program;
 	}
 
 	void initPreviewTransformation() {
@@ -353,7 +522,9 @@ struct Application {
 	}
 
 	void drawEverything() {
-		//objScene.Draw();
+		glUseProgram( viewerPPLProgram );
+		objScene.Draw();
+		glUseProgram( 0 );
 
 		Vector3f minCorner = voxelGrid.getPosition( targetCube_.minCorner );
 		Vector3f maxCorner = voxelGrid.getPosition( targetCube_.maxCorner );
@@ -455,7 +626,7 @@ struct Application {
 		cameraPositions_.getSummary = [=] ( const CameraPosition &camPos, int ) {
 			return AntTWBarGroup::format( "View %f %f %f", camPos.position[0], camPos.position[1], camPos.position[2] );
 		};
-		cameraPositions_.getNewItem = [=] () {
+		cameraPositions_.getNewItem = [=] (){ 
 			return CameraPosition( camera.getPosition(), camera.getDirection() );
 		};
 		cameraPositions_.init( "Camera views", nullptr );
@@ -475,7 +646,7 @@ struct Application {
 
 	void visualizeProbes() {
 		probeVisualization.begin();
-
+#if 0
 		const float visSize = 0.05;
 		for( RangedIterator3 iter(Vector3i::Zero(), probes_->probeDims) ; iter.hasMore() ; ++iter ) {
 			const Vector3f probePosition = voxelGrid.getPosition( probes_->getPosition( *iter ) );
@@ -493,6 +664,7 @@ struct Application {
 				probeVisualization.drawVector( vector * visSize );				
 			}			
 		}
+#endif
 		probeVisualization.end();
 
 		probeVolume.begin();
@@ -642,8 +814,7 @@ struct Application {
 		glEnable(GL_DEPTH_TEST);
 		glDepthMask(GL_TRUE);
 		glClearDepth(1.f);
-
-
+		
 		// The main loop - ends as soon as the window is closed
 		sf::Clock frameClock, clock;		
 		while (window.isOpen())
@@ -653,8 +824,10 @@ struct Application {
 			while (window.pollEvent(event))
 			{
 				// Request for closing the window
-				if (event.type == sf::Event::Closed)
+				if (event.type == sf::Event::Closed) {
 					window.close();
+					return;
+				}
 
 				if( event.type == sf::Event::Resized ) {
 					camera.perspectiveProjectionParameters.aspect = float( event.size.width ) / event.size.height;

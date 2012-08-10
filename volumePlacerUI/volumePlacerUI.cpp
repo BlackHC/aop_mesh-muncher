@@ -115,13 +115,13 @@ void ptree_serializer_exchange( ptree_serializer &tree, niven::Vector<S, N> &dat
 
 template<ptree_serializer_mode mode, typename S, int N>
 void ptree_serializer_exchange( ptree_serializer &tree, niven::Color<S, N> &data ) {
-	ptree_serialize<mode>( tree, "r", data[0] );
+	ptree_serialize<mode>( tree, "x", data[0] );
 	if( N >= 2 )
-		ptree_serialize<mode>( tree, "g", data[1] );
+		ptree_serialize<mode>( tree, "y", data[1] );
 	if( N >= 3 )
-		ptree_serialize<mode>( tree, "b", data[2] );
+		ptree_serialize<mode>( tree, "z", data[2] );
 	if( N >= 4 )
-		ptree_serialize<mode>( tree, "a", data[2] );
+		ptree_serialize<mode>( tree, "w", data[2] );
 }
 
 template<ptree_serializer_mode mode>
