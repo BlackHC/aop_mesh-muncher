@@ -32,6 +32,7 @@ ADD_EXECUTABLE(glVolumePlacerUI
 	anttwbargroup.h
 	volumePlacer.h
 	twEventSFML20.cpp
+	glHelpers.h
 	ui.h
 	../modelSampler/depthSampler.h
 	../modelSampler/eigenProjectionMatrices.h
