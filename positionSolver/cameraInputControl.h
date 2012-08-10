@@ -46,14 +46,16 @@ struct MouseCapture : public EventHandler  {
 			if( captureMouse ) {
 				sf::Mouse::setPosition( sf::Vector2i( window->getSize() / 2u ), *window );	
 				oldMousePosition = sf::Mouse::getPosition();
+				return true;
 			}
-			return true;
+			break;
 		case sf::Event::MouseMoved:
 			if( captureMouse ) {
 				mouseDelta += sf::Mouse::getPosition() - oldMousePosition;
 				oldMousePosition = sf::Mouse::getPosition();
+				return true;
 			}			
-			return true;
+			break;
 		}
 		return false;
 	}
@@ -83,8 +85,9 @@ struct CameraInputControl : public MouseCapture {
 		case sf::Event::KeyPressed:
 			if( event.key.code == sf::Keyboard::Escape ) {
 				setCapture( false );
+				return true;
 			}
-			return true;
+			break;
 		case sf::Event::MouseButtonPressed:
 			if( event.mouseButton.button == sf::Mouse::Left ) {
 				setCapture( true );

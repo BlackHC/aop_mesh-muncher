@@ -393,6 +393,7 @@ struct Application {
 
 		// input camera input control
 		cameraInputControl.init( make_persistent_shared(camera), make_persistent_shared(window) );
+		eventDispatcher.eventHandlers.push_back( make_persistent_shared( cameraInputControl ) );
 
 		// TODO: move
 		maxDistance_ = 128.0;
@@ -405,8 +406,13 @@ struct Application {
 
 		initObjectData();
 
+		initAntTweakBar();
+		initAntTweakBarUI();
+
 		initPreviewTransformation();
 		initPreviewUI();
+
+		loadScene();
 	}
 
 	void initPreviewTransformation() {
@@ -509,11 +515,22 @@ struct Application {
 			matchedProbes_[activeProbe_].render();
 		}
 
-		drawPreview();
-
 		TwDraw();
 
-		uiManager_.Draw();		
+		drawPreview();
+
+		// setup a 2d drawing context
+		glMatrixMode( GL_PROJECTION );
+		glLoadIdentity();
+		glOrtho( 0.0, window.getSize().x, window.getSize().y, 0.0, -1.0, 1.0 );
+		glMatrixMode( GL_MODELVIEW );
+		glLoadIdentity();
+
+		glDisable( GL_DEPTH_TEST );
+
+		uiManager_.Draw();
+
+		glEnable( GL_DEPTH_TEST );
 	}
 
 	void initAntTweakBar() {
@@ -721,16 +738,17 @@ struct Application {
 		const int maxTotalPreviewHeight = (maxPreviewWidth + 10) * results_.size();
 		const int previewSize = (maxTotalPreviewHeight < window.getSize().y) ? maxPreviewWidth : (window.getSize().y - 20) / results_.size() - 10;
 
-		Vector2i bottomLeft( window.getSize().x - previewSize - 10, window.getSize().y - previewSize - 10 );
+		Vector2i topLeft( window.getSize().x - previewSize - 10, 10 );
 		Vector2i size( previewSize, previewSize );
 
 		glEnable( GL_SCISSOR_TEST );
 
-		for( int i = 0 ; i < results_.size() ; ++i, bottomLeft.y() -= previewSize + 10 ) {
+		for( int i = 0 ; i < results_.size() ; ++i, topLeft.y() += previewSize + 10 ) {
 			ObjectTemplate &objectTemplate = objectTemplates_[ results_[i].first ];
 
-			glViewport( bottomLeft.x(), bottomLeft.y(), size.x(), size.y() );
-			glScissor( bottomLeft.x(), bottomLeft.y(), size.x(), size.y() );
+			int flippedBottom = window.getSize().y - (topLeft.y() + size.y());
+			glViewport( topLeft.x(), flippedBottom, size.x(), size.y() );
+			glScissor( topLeft.x(), flippedBottom, size.x(), size.y() );
 			
 			glClear( GL_DEPTH_BUFFER_BIT );
 
@@ -740,8 +758,8 @@ struct Application {
 			glPopMatrix();
 
 			UIButton &button = uiButtons_[i];
-			button.area.min() = bottomLeft;
-			button.area.max() = bottomLeft + size;
+			button.area.min() = topLeft;
+			button.area.max() = topLeft + size;
 			button.SetVisible( true );
 		}
 
@@ -764,12 +782,6 @@ struct Application {
 		glDepthMask(GL_TRUE);
 		glClearDepth(1.f);
 
-		loadScene();
-
-		eventDispatcher.eventHandlers.push_back( make_persistent_shared( cameraInputControl ) );
-
-		initAntTweakBar();
-		initAntTweakBarUI();
 
 		// The main loop - ends as soon as the window is closed
 		sf::Clock frameClock, clock;		
@@ -788,7 +800,12 @@ struct Application {
 					glViewport( 0, 0, event.size.width, event.size.height );
 				}
 
-				eventDispatcher.handleEvent( event );
+				if( !cameraInputControl.getCapture() ) {
+					eventDispatcher.handleEvent( event );
+				}
+				else {
+					cameraInputControl.handleEvent( event );
+				}
 			}
 
 			update( frameClock.restart().asSeconds(), clock.getElapsedTime().asSeconds() );

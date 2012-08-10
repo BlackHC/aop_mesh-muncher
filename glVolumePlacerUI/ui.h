@@ -206,27 +206,28 @@ private:
 	}
 
 	void Draw() {
-		if( !visible_ ) {
+		if( !visible_ /*|| state == STATE_INACTIVE*/ ) {
 			return;
 		}
 
-		/*Draw2DRectangle *rect = nullptr;
-
+		DebugRender::ImmediateCalls render;
+		render.begin();
 		switch( state ) {
 		case STATE_ACTIVE:
-			rect = draw2D->CreateRectangle( Color4f::Constant(0), draw2D->AbsoluteToRelative( area.GetLeft(), area.GetTop() ), Draw2DAnchor::Top_Left, area.GetSize(), Color4f( 0.5, 0.5, 0.5, 1.0 ) );
+			render.setColor( Vector3f( 0.5, 0.5, 0.5 ) );
 			break;
 		case STATE_MOUSE_OVER:
-			rect = draw2D->CreateRectangle( Color4f::Constant(0), draw2D->AbsoluteToRelative( area.GetLeft(), area.GetTop() ), Draw2DAnchor::Top_Left, area.GetSize(), Color4f( 1.0, 1.0, 1.0, 1.0 ) );
+			render.setColor( Vector3f( 1.0, 1.0, 1.0 ) );
 			break;
 		case STATE_CLICKED:
-			rect = draw2D->CreateRectangle( Color4f::Constant(0), draw2D->AbsoluteToRelative( area.GetLeft(), area.GetTop() ), Draw2DAnchor::Top_Left, area.GetSize(), Color4f( 1.0, 0.0, 0.0, 1.0 ) );
+			render.setColor( Vector3f( 1.0, 0.0, 0.0 ) );
+			break;
+		default:
+			render.setColor( Vector3f( 1.0, 0.0, 1.0 ) );
 			break;
 		}
 
-		if( rect ) {
-			draw2D->Draw( rect );
-			draw2D->Release( rect );
-		}*/
+		render.drawAABB( Vector3f( area.min().x(), area.min().y(), 0.0 ), Vector3f( area.max().x(), area.max().y(), 0.0 ) );
+		render.end();
 	}
 };
