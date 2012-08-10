@@ -13,13 +13,18 @@ ADD_SUBDIRECTORY(densityPyramid)
 #ADD_SUBDIRECTORY(simpleBoxScenario)
 #ADD_SUBDIRECTORY(sampleBoxSphere)
 #ADD_SUBDIRECTORY(volumePlacer)
-ADD_SUBDIRECTORY(volumePlacerUI)
-ADD_SUBDIRECTORY(glVolumePlacerUI)
-ADD_SUBDIRECTORY(calibrateVolumeBB)
-ADD_SUBDIRECTORY(positionSolver)
 ADD_SUBDIRECTORY(minimumDensityClustering)
+ADD_SUBDIRECTORY(volumePlacerUI)
+ADD_SUBDIRECTORY(calibrateVolumeBB)
+
+ADD_SUBDIRECTORY(positionSolver)
+
 ADD_SUBDIRECTORY(modelSampler)
 ADD_SUBDIRECTORY(modelExport)
+
+ADD_SUBDIRECTORY(glVolumePlacerUI)
+
+ADD_SUBDIRECTORY(shaderTest)
 
 # Adds a new build target which copies the niven binaries to
 # the output folder
