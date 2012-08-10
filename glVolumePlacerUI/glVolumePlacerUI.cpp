@@ -6,6 +6,7 @@
 
 #include <vector>
 #include <memory>
+#include "make_nonallocated_shared.h"
 
 #include <SFML/Window.hpp>
 #include <AntTweakBar.h>
@@ -159,16 +160,6 @@ void ptree_serializer_exchange( ptree_serializer &tree, ObjectInstance &data ) {
 	ptree_serialize<mode>( tree, "position", data.position );
 }
 
-struct null_deleter {
-	template<typename T>
-	void operator() (T*) {}
-};
-
-template<typename T>
-std::shared_ptr<T> make_persistent_shared(T &object) {
-	return std::shared_ptr<T>( &object, null_deleter() );
-}
-
 struct CameraPosition {
 	Vector3f position;
 	Vector3f direction;
@@ -255,8 +246,8 @@ struct Application {
 		initCamera();
 
 		// input camera input control
-		cameraInputControl.init( make_persistent_shared(camera), make_persistent_shared(window) );
-		eventDispatcher.eventHandlers.push_back( make_persistent_shared( cameraInputControl ) );
+		cameraInputControl.init( make_nonallocated_shared(camera), make_nonallocated_shared(window) );
+		eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( cameraInputControl ) );
 
 		// TODO: move
 		maxDistance_ = 128.0;
@@ -323,7 +314,7 @@ struct Application {
 			uiButtons_[i].onUnfocus = [=] () { if( !dontUnfocus ) activeProbe_ = -1; };
 		}
 
-		eventDispatcher.eventHandlers.push_back( make_persistent_shared( uiManager_ ) );
+		eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( uiManager_ ) );
 
 		activeProbe_ = -1;
 	}
@@ -428,7 +419,7 @@ struct Application {
 			add( "z", &AntTWBarGroupTypes::Vector3i::z ).
 			define();
 
-		eventDispatcher.eventHandlers.push_back( make_persistent_shared( antTweakBarEventHandler ) );
+		eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( antTweakBarEventHandler ) );
 	}
 
 	void initProbes() {
