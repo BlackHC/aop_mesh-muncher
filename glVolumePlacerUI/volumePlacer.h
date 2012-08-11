@@ -80,7 +80,7 @@ const Vector3i neighborOffsets[] = {
 };
 
 struct UnorderedDistanceContext {
-	static const int numSamples = 27;
+	static const int numSamples = 26;
 	static Vector3f directions[numSamples];
 	float sortedDistances[numSamples];
 	float distances[numSamples];
@@ -91,9 +91,7 @@ struct UnorderedDistanceContext {
 		}
 	}
 
-	void fill( const DepthSamples &samples, const Vector3i &volumePosition ) {
-		int index = samples.getGrid().getIndex( volumePosition );
-
+	void fill( const DepthSamples &samples, const int index ) {
 		std::copy( samples.getSampleBegin( index ), samples.getSampleEnd( index ), distances );
 		boost::range::copy( distances, sortedDistances );
 		std::sort( sortedDistances, sortedDistances + numSamples );
@@ -452,18 +450,20 @@ void sampleProbes( const Grid &voxelGrid, Probes &probes, std::function<void()> 
 	DepthSampler sampler;
 	OrientedGrid subGrid = OrientedGrid::from( voxelGrid.getSubGrid( probes.min, probes.size, probes.step ) );
 	sampler.grid = &subGrid;
-	sampler.maxDepth = 256.0;
 	
 	sampler.directions[0].assign( &UnorderedDistanceContext::directions[0], &UnorderedDistanceContext::directions[6]);
 	sampler.directions[1].assign( &UnorderedDistanceContext::directions[6], &UnorderedDistanceContext::directions[8]);
 	sampler.directions[2].assign( &UnorderedDistanceContext::directions[8], &UnorderedDistanceContext::directions[26]);
 	
 	sampler.init();
+	sampler.depthUnit = voxelGrid.resolution;
+	sampler.maxDepth = 128.0 * voxelGrid.resolution;
+
 	sampler.sample( renderSceneCallback );
 
 	for( Iterator3 it = probes.getIterator() ; it.hasMore() ; ++it ) {
 		Probe &probe = probes[ it.getIndex() ];
-		probe.distanceContext.fill( sampler.depthSamples, probes.getPosition( *it ) );
+		probe.distanceContext.fill( sampler.depthSamples, it.getIndex() );
 	}
 }
 

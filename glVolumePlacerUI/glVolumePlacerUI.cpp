@@ -228,7 +228,7 @@ struct Application {
 	UIManager uiManager_;
 	
 	void loadScene() {
-		objScene.Init( "P:\\BlenderScenes\\two_boxes.obj" );
+		objScene.Init( "two_boxes.obj" );
 	}
 
 	void initCamera() {
@@ -255,6 +255,10 @@ struct Application {
 		UnorderedDistanceContext::setDirections();
 
 		readState();
+
+		glEnable(GL_DEPTH_TEST);
+		glDepthMask(GL_TRUE);
+		glClearDepth(1.f);
 
 		glProgramBuilder programBuilder;
 		programBuilder.
@@ -493,7 +497,7 @@ struct Application {
 
 	void visualizeProbes() {
 		probeVisualization.begin();
-#if 0
+#if 1
 		const float visSize = 0.05;
 		for( RangedIterator3 iter(Vector3i::Zero(), probes_->probeDims) ; iter.hasMore() ; ++iter ) {
 			const Vector3f probePosition = voxelGrid.getPosition( probes_->getPosition( *iter ) );
@@ -657,11 +661,7 @@ struct Application {
 
 	void main() {
 		initEverything();
-
-		glEnable(GL_DEPTH_TEST);
-		glDepthMask(GL_TRUE);
-		glClearDepth(1.f);
-		
+	
 		// The main loop - ends as soon as the window is closed
 		sf::Clock frameClock, clock;		
 		while (window.isOpen())

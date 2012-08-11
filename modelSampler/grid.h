@@ -136,8 +136,9 @@ struct Grid : Indexer3 {
 	}
 
 	// TODO: take a cube as parameter...
+	// TODO: remove this again... very weird behavior...
 	Grid getSubGrid( const Eigen::Vector3i &offsetIndex, const Eigen::Vector3i &subSize, int subResolution ) const {
-		return Grid( subSize, getPosition( offsetIndex ), resolution * subResolution );
+		return Grid( subSize / subResolution + Eigen::Vector3i::Constant(1), getPosition( offsetIndex ), resolution * subResolution );
 	}
 };
 
