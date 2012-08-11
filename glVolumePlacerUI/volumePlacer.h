@@ -4,6 +4,8 @@
 #include <utility>
 #include <vector>
 
+#include <boost/range/algorithm.hpp>
+
 #include <Eigen/Eigen>
 
 #include "contextHelper.h"
@@ -12,6 +14,8 @@
 #include <cmath>
 
 #include "grid.h"
+
+#include "depthSampler.h"
 
 using namespace Eigen;
 
@@ -42,8 +46,26 @@ int getVolume( const Vector3i &size ) {
 	return size.prod();
 }
 
+// z: 6, x: 2, y: 18
 const Vector3i neighborOffsets[] = {
-	// z = 0
+	// first z, then x, then y
+
+	// z
+	Vector3i( -1, 0, -1 ), Vector3i( 0, 0, -1 ), Vector3i( 1, 0, -1 ), 
+	Vector3i( -1, 0, 1 ), Vector3i( 0, 0, 1 ), Vector3i( 1, 0, 1 ), 
+
+	// x
+	Vector3i( -1, 0, 0  ), Vector3i( 1, 0, 0 ), 
+
+	// y
+	Vector3i( -1, -1, 0 ), Vector3i( 0, -1, 0 ), Vector3i( 1, -1, 0 ),
+	Vector3i( -1, 1, 0 ), Vector3i( 0, 1, 0 ), Vector3i( 1, 1, 0 ),
+	Vector3i( -1, -1, -1 ), Vector3i( 0, -1, -1 ), Vector3i( 1, -1, -1 ),
+	Vector3i( -1, 1, -1 ), Vector3i( 0, 1, -1 ), Vector3i( 1, 1, -1 ),
+	Vector3i( -1, -1, 1 ), Vector3i( 0, -1, 1 ), Vector3i( 1, -1, 1 ),
+	Vector3i( -1, 1, 1 ), Vector3i( 0, 1, 1 ), Vector3i( 1, 1, 1 ),
+
+/*	// z = 0
 	Vector3i( -1, 0, 0  ), Vector3i( 1, 0, 0 ), 
 	Vector3i( -1, -1, 0 ), Vector3i( 0, -1, 0 ), Vector3i( 1, -1, 0 ),
 	Vector3i( -1, 1, 0 ), Vector3i( 0, 1, 0 ), Vector3i( 1, 1, 0 ),
@@ -54,7 +76,7 @@ const Vector3i neighborOffsets[] = {
 	// z = 1
 	Vector3i( -1, 0, 1 ), Vector3i( 0, 0, 1 ), Vector3i( 1, 0, 1 ), 
 	Vector3i( -1, -1, 1 ), Vector3i( 0, -1, 1 ), Vector3i( 1, -1, 1 ),
-	Vector3i( -1, 1, 1 ), Vector3i( 0, 1, 1 ), Vector3i( 1, 1, 1 ),
+	Vector3i( -1, 1, 1 ), Vector3i( 0, 1, 1 ), Vector3i( 1, 1, 1 ),*/
 };
 
 struct UnorderedDistanceContext {
@@ -69,14 +91,13 @@ struct UnorderedDistanceContext {
 		}
 	}
 
-	/*void fill( DenseCache &cache, const Vector3i &volumePosition ) {
-		for( int index = 0 ; index < numSamples ; ++index ) {
-			RayQuery query( volumePosition.Cast<float>(), directions[index] );
+	void fill( const DepthSamples &samples, const Vector3i &volumePosition ) {
+		int index = samples.getGrid().getIndex( volumePosition );
 
-			distances[index] = sortedDistances[index] = Math::Sqrt<float>( findSquaredDistanceToNearestConditionedVoxel( cache, volumePosition, query ) );
-		}
+		std::copy( samples.getSampleBegin( index ), samples.getSampleEnd( index ), distances );
+		boost::range::copy( distances, sortedDistances );
 		std::sort( sortedDistances, sortedDistances + numSamples );
-	}*/
+	}
 
 	double calculateAverage() const {
 		double average = 0.;
@@ -427,21 +448,24 @@ struct ProbeDatabase {
 	std::vector<int> instanceProbeCountForId;
 };
 
-/*void sampleProbes( DenseCache &cache, Probes &probes ) {
-	for( Iterator3D it = probes.getIterator() ; !it.IsAtEnd() ; ++it ) {
-		Probe &probe = probes[it];
-		probe.distanceContext.fill( cache, probes.getPosition( it ) );
-		//probes[ it ].normalizeWithAverage();
+void sampleProbes( const Grid &voxelGrid, Probes &probes, std::function<void()> renderSceneCallback ) {
+	DepthSampler sampler;
+	OrientedGrid subGrid = OrientedGrid::from( voxelGrid.getSubGrid( probes.min, probes.size, probes.step ) );
+	sampler.grid = &subGrid;
+	sampler.maxDepth = 256.0;
+	
+	sampler.directions[0].assign( &UnorderedDistanceContext::directions[0], &UnorderedDistanceContext::directions[6]);
+	sampler.directions[1].assign( &UnorderedDistanceContext::directions[6], &UnorderedDistanceContext::directions[8]);
+	sampler.directions[2].assign( &UnorderedDistanceContext::directions[8], &UnorderedDistanceContext::directions[26]);
+	
+	sampler.init();
+	sampler.sample( renderSceneCallback );
 
-#if 0
-		std::cout << StringConverter::ToString(it.ToVector()) << " " << StringConverter::ToString( probes.getPosition( it ) );
-		for( int i = 0 ; i < Probe::numSamples ; i++ ) {
-			std::cout << " " << probe.distances[i];
-		}
-		std::cout << "\n";
-#endif
+	for( Iterator3 it = probes.getIterator() ; it.hasMore() ; ++it ) {
+		Probe &probe = probes[ it.getIndex() ];
+		probe.distanceContext.fill( sampler.depthSamples, probes.getPosition( *it ) );
 	}
-}*/
+}
 
 void printCandidates( std::ostream &out, const ProbeDatabase::SparseCandidateInfos &candidates ) {
 	out << candidates.size() << " candidates\n";

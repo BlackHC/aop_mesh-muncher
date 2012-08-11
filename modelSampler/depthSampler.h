@@ -5,6 +5,7 @@
 #include <vector>
 #include <memory>
 #include <functional>
+#include <iostream>
 
 #include <boost/algorithm/cxx11/all_of.hpp>
 
@@ -39,6 +40,14 @@ public:
 
 	float &sample( int index, int directionIndex ) {
 		return depthSamples[ index * numDirections + directionIndex ];
+	}
+
+	const float * getSampleBegin( int index ) const {
+		return &depthSamples[ index * numDirections ];
+	}
+
+	const float * getSampleEnd( int index ) const {
+		return &depthSamples[ (index + 1) * numDirections ];
 	}
 };
 
@@ -108,6 +117,9 @@ struct DepthSampler {
 
 		glDrawBuffer( GL_NONE );
 
+		size_t totalSizeInMB = (sizeof( DepthSample ) * grid->count * numDirections + (1<<20)-1) >> 20;
+		size_t currentSizeinMB = 0;
+
 		int directionIndex = 0;
 		DepthSample *offset = nullptr;
 		for( int mainAxis = 0 ; mainAxis < 3 ; ++mainAxis ) {
@@ -158,6 +170,12 @@ struct DepthSampler {
 					glReadPixels( 0, 0, permutedGrid.size[0], permutedGrid.size[1], GL_DEPTH_COMPONENT, GL_FLOAT, (GLvoid*) offset );
 
 					offset += permutedGrid.size.head<2>().prod();
+
+					size_t newSizeInMB = ((char*)offset - (char*)nullptr) >> 20;
+					if( newSizeInMB != currentSizeinMB ) {
+						currentSizeinMB = newSizeInMB;
+						std::cout << currentSizeinMB << "/" << totalSizeInMB << std::endl;
+					}
 				}
 			}
 			glPopAttrib();

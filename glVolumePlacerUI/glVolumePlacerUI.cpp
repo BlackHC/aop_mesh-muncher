@@ -254,19 +254,7 @@ struct Application {
 
 		UnorderedDistanceContext::setDirections();
 
-		initProbes();
-
 		readState();
-
-		initObjectData();
-
-		initAntTweakBar();
-		initAntTweakBarUI();
-
-		initPreviewTransformation();
-		initPreviewUI();
-
-		loadScene();
 
 		glProgramBuilder programBuilder;
 		programBuilder.
@@ -281,12 +269,23 @@ struct Application {
 					addSource( "varying vec3 viewPos; void main() { vec3 normal = cross( dFdx( viewPos ), dFdy( viewPos ) ); gl_FragColor = vec4( gl_Color.rgb * max( 0.0, 2.0 / length( viewPos ) * abs( dot( normalize( normal ), normalize( viewPos ) ) ) ) + 0.1, 1.0 ); }" ).
 					compile().
 					handle
-				).
+			).
 			link().
 			deleteShaders().
 			dumpInfoLog( std::cout );
 
 		viewerPPLProgram = programBuilder.program;
+
+		loadScene();
+		initProbes();
+
+		initObjectData();
+
+		initAntTweakBar();
+		initAntTweakBarUI();
+
+		initPreviewTransformation();
+		initPreviewUI();
 	}
 
 	void initPreviewTransformation() {
@@ -327,7 +326,7 @@ struct Application {
 			t.bbSize = layerCalibration_.getSize( probes_->getSize( Vector3i( 4, 1, 1) ) );
 			t.color = Color3f( 1.0, 1.0, 1.0 );
 			t.id = 0;
-			objectTemplates_.push_back( t );
+			oµµbjectTemplates_.push_back( t );
 
 			t.bbSize = layerCalibration_.getSize( probes_->getSize( Vector3i( 3, 1, 1 ) ) );
 			t.color = Color3f( 0.0, 1.0, 1.0 );
@@ -365,10 +364,14 @@ struct Application {
 		}
 	}
 
-	void drawEverything() {
+	void drawScene() {
 		glUseProgram( viewerPPLProgram );
 		objScene.Draw();
 		glUseProgram( 0 );
+	}
+
+	void drawEverything() {
+		drawScene();
 
 		Vector3f minCorner = voxelGrid.getPosition( targetCube_.minCorner );
 		Vector3f maxCorner = voxelGrid.getPosition( targetCube_.maxCorner );
@@ -427,7 +430,7 @@ struct Application {
 		probes_ = std::unique_ptr<Probes>( new Probes( Vector3i( 127, 83, 83 ), Vector3i( 1025, 346, 346 ), 16) );
 
 		if( !probes_->readFromFile( "probes.data" ) ) {
-			__debugbreak();
+			sampleProbes( voxelGrid, *probes_, std::bind( &Application::drawScene, this ) );			
 		}
 
 		visualizeProbes();

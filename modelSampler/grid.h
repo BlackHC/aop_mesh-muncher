@@ -134,6 +134,11 @@ struct Grid : Indexer3 {
 	Eigen::Vector3f getIndex3( const Eigen::Vector3f &position ) const {
 		return (position - offset) / resolution;
 	}
+
+	// TODO: take a cube as parameter...
+	Grid getSubGrid( const Eigen::Vector3i &offsetIndex, const Eigen::Vector3i &subSize, int subResolution ) const {
+		return Grid( subSize, getPosition( offsetIndex ), resolution * subResolution );
+	}
 };
 
 struct OrientedGrid : Indexer3 {
