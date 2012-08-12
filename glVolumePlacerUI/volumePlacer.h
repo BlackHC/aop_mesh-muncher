@@ -224,145 +224,6 @@ public:
 	}
 };
 
-template< typename Data >
-struct DataVolume {
-	typedef Cubei VolumeCube;
-	typedef Cubei IndexCube;
-	typedef Vector3i VolumeVector;
-	typedef Vector3i IndexVector;
-
-	VolumeVector min, size;
-	int step;
-	IndexVector probeDims;
-	int probeCount;
-
-	Indexer3 indexer;
-
-	Data *data;
-
-	DataVolume( VolumeVector min, VolumeVector size, int step ) : min( min ), size( size ), step( step ), probeDims( (size + Vector3i::Constant(step)) / step ), probeCount( probeDims.prod() ),indexer( probeDims ) {
-		data = new Data[probeCount];
-	}
-
-	~DataVolume() {
-		delete[] data;
-	}
-	
-	IndexCube getIndexFromVolumeCube( const VolumeCube &volumeCube ) const {
-		const Vector3i minVolumeIndex = getCeilIndex( volumeCube.minCorner );
-		const Vector3i maxVolumeIndex = getFloorIndex( volumeCube.maxCorner );
-		return IndexCube( minVolumeIndex, maxVolumeIndex );
-	}
-
-	VolumeCube getVolumeFromIndexCube( const IndexCube &indexCube ) const {
-		return VolumeCube( getPosition( indexCube.minCorner ), getPosition( indexCube.maxCorner ) );
-	} 
-
-	Iterator3 getIterator() const { return Iterator3( indexer ); }
-
-	VolumeIterator3 getIteratorFromVolume( const VolumeCube &volume ) const {
-		const IndexCube	indexCube = getIndexFromVolumeCube( volume );
-		return VolumeIterator3( indexCube.minCorner, indexCube.maxCorner + Vector3i::Constant(1) );
-	}
-	
-	VolumeVector getPosition( const IndexVector &index ) const {
-		return index * step + min;
-	}
-
-	VolumeVector getSize( const IndexVector &size ) const {
-		return size * step;
-	}
-
-	IndexVector getFloorIndex( const VolumeVector &position ) const {
-		return (position - min) / step;
-	}
-
-	IndexVector getCeilIndex( const VolumeVector &position ) const {
-		return (position + Vector3i::Constant( step - 1 ) - min) / step;
-	}
-
-	template< typename Indexer >
-	Data& operator[] ( Indexer index ) {
-		return get( index );
-	}
-
-	template< typename Indexer >
-	const Data& operator[] ( Indexer index ) const {
-		return get( index );
-	}
-
-	Data& get( int index ) {
-		return data[ index ];
-	}
-
-	const Data& get( int index ) const {
-		return data[ index ];
-	}
-
-	Data& get( const Eigen::Vector3i &index3 ) {
-		return data[ indexer.getIndex( index3 ) ];
-	}
-
-	const Data& get( const Eigen::Vector3i &index3 ) const {
-		return data[ indexer.getIndex( index3 ) ];
-	}
-
-	bool validIndex( const Vector3i &index ) const {
-		for( int i = 0 ; i < 3 ; ++i ) {
-			if( index[i] < 0 || index[i] >= probeDims[i] ) {
-				return false;
-			}
-		}
-		return true;
-	}
-
-	void writeToFile( const char *file ) {
-		using namespace Serialize;
-
-		FILE *fileHandle = fopen( file, "wb" );
-		writeTyped( fileHandle, min );
-		writeTyped( fileHandle, size );
-		writeTyped( fileHandle, step );
-		writeTyped( fileHandle, probeCount );
-
-		fwrite( data, sizeof(Data), probeCount, fileHandle );
-		fclose( fileHandle );
-	}
-
-	bool readFromFile( const char *file ) {
-		using namespace Serialize;
-
-		FILE *fileHandle = fopen( file, "rb" );
-		if( !fileHandle ) {
-			std::cerr << "'" << file << "' could not be opened!\n";
-			return false;
-		}
-
-		Vector3i headerMin, headerSize;
-		int headerStep, headerProbeCount;
-		readTyped( fileHandle, headerMin );
-		readTyped( fileHandle, headerSize );
-		readTyped( fileHandle, headerStep );
-		readTyped( fileHandle, headerProbeCount );
-
-		if( headerMin != min || headerSize != size || headerStep != step || headerProbeCount != probeCount ) {
-			fclose( fileHandle );
-			return false;
-		}
-
-		if( fread( data, sizeof(Data), probeCount, fileHandle ) != probeCount ) {
-			fclose( fileHandle );
-			return false;
-		}
-
-		fclose( fileHandle );
-		return true;
-	}
-};
-
-typedef DataVolume<Probe> Probes;
-
-
 typedef DataGrid<Probe> ProbeGrid;
 
 struct InstanceProbe {
@@ -489,7 +350,7 @@ struct ProbeDatabase {
 };
 
 // TODO: fix the depthUnit hack
-void sampleProbes( ProbeGrid &probeGrid, std::function<void()> renderSceneCallback, float depthUnit ) {
+void sampleProbes( ProbeGrid &probeGrid, std::function<void()> renderSceneCallback, float maxDistance ) {
 	DepthSampler sampler;
 	sampler.grid = &probeGrid.getGrid();
 	
@@ -498,8 +359,7 @@ void sampleProbes( ProbeGrid &probeGrid, std::function<void()> renderSceneCallba
 	sampler.directions[2].assign( &UnorderedDistanceContext::directions[8], &UnorderedDistanceContext::directions[26]);
 	
 	sampler.init();
-	sampler.depthUnit = depthUnit;
-	sampler.maxDepth = 128.0 * depthUnit;
+	sampler.maxDepth = maxDistance;
 
 	sampler.sample( renderSceneCallback );
 

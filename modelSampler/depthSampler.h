@@ -56,7 +56,6 @@ struct DepthSampler {
 
 	const OrientedGrid *grid;
 
-	float depthUnit;	
 	float maxDepth;
 
 	int numDirections;
@@ -74,7 +73,6 @@ struct DepthSampler {
 	}
 
 	void init() {
-		depthUnit = 1.0;
 		numDirections = directions[0].size() + directions[1].size() + directions[2].size();
 		depthSamples.init( grid, numDirections );
 
@@ -98,7 +96,7 @@ struct DepthSampler {
 					Indexer3 permutedIndexer = Indexer3::fromPermuted( *grid, permutation );
 					const int targetIndex = permutedIndexer.getIndex( targetIndex3 );
 
-					depthSamples.sample( sample, directionIndex ) = getMappedDepthSample( mappedDepthSamples, targetIndex, directionIndex ) * maxDepth / depthUnit;
+					depthSamples.sample( sample, directionIndex ) = getMappedDepthSample( mappedDepthSamples, targetIndex, directionIndex ) * maxDepth;
 				}
 			}
 		}		 

@@ -248,9 +248,6 @@ struct Application {
 		cameraInputControl.init( make_nonallocated_shared(camera), make_nonallocated_shared(window) );
 		eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( cameraInputControl ) );
 
-		// TODO: move
-		maxDistance_ = 128.0;
-
 		UnorderedDistanceContext::setDirections();
 
 		readState();
@@ -363,7 +360,7 @@ struct Application {
 			const Cubef bbox = objectInstances_[i].GetBBox();
 			ProbeGrid probeGrid( OrientedGrid::from( floor( bbox.getSize() / gridResolution_ ) + Vector3i::Constant(1), bbox.minCorner, gridResolution_ ) );
 
-			sampleProbes( probeGrid, std::bind( &Application::drawScene, this ), gridResolution_ / 16 );
+			sampleProbes( probeGrid, std::bind( &Application::drawScene, this ), maxDistance_ );
 			probeDatabase_.addObjectInstanceToDatabase( probeGrid, objectInstances_[i].objectTemplate->id );
 
 			// visualize this probe grid
@@ -453,6 +450,8 @@ struct Application {
 		voxelGrid.init( Vector3i( 1024, 1024, 1024 ), Vector3f( -18.4209571, -7.4209571, -7.4209571 ), 7.4209571 / 256.0 );
 		probeCoordGrid = OrientedGrid::from( voxelGrid.getSubGrid( Vector3i( 127, 83, 83 ), Vector3i( 1025, 346, 346 ), 16 ) );
 		gridResolution_ = voxelGrid.resolution * 16;
+		// TODO: move
+		maxDistance_ = gridResolution_ * 8;
 	}
 
 	void initAntTweakBarUI() {
@@ -580,10 +579,10 @@ struct Application {
 
 	void Do_findCandidates() {
 		ProbeGrid probeGrid( OrientedGrid::from( Vector3i::Constant(1) + ceil( targetCube_.getSize().cast<float>() / 16 ), voxelGrid.getPosition( targetCube_.minCorner ), gridResolution_ ) );
-		sampleProbes( probeGrid, std::bind( &Application::drawScene, this ), gridResolution_ / 16 );
+		sampleProbes( probeGrid, std::bind( &Application::drawScene, this ), maxDistance_ );
 
 		ProbeMatchSettings settings;
-		settings.maxDelta = 16;
+		settings.maxDelta = gridResolution_;
 		settings.maxDistance = maxDistance_;
 
 		results_ = probeDatabase_.findCandidates( probeGrid );
