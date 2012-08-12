@@ -106,6 +106,10 @@ struct ObjectTemplate {
 	}
 };
 
+
+// TODO: blub
+ObjectTemplate *objectTemplateBase = nullptr;
+
 #define PUT_MEMBER( reader, value, member ) put( reader, #member, value.member )
 #define GET_MEMBER( reader, value, member ) get( reader, #member, value.member )
 
@@ -126,49 +130,37 @@ namespace Serializer {
 }
 
 struct ObjectInstance {
-	ObjectTemplate *objectTemplate;
-
+	int templateId;
 	Vector3f position;
 
-	static ObjectInstance FromFrontTopLeft( const Vector3f &anchor, ObjectTemplate *objectTemplate ) {
-		ObjectInstance instance;
+	ObjectInstance() : templateId( 0 ), position( Vector3f::Zero() ) {}
 
-		instance.objectTemplate = objectTemplate;
-		instance.position = anchor + 0.5 * objectTemplate->bbSize;
-
-		return instance;
+	ObjectTemplate &getTemplate() const {
+		return objectTemplateBase[ templateId ];
 	}
 
-	Cubef GetBBox() const {
-		return Cubef::fromMinSize( position - objectTemplate->bbSize * 0.5, objectTemplate->bbSize );
+	Cubef getBBox() const {
+		return Cubef::fromMinSize( position - getTemplate().bbSize * 0.5, getTemplate().bbSize );
 	}
 
-	virtual void Draw() {
+	virtual void draw() {
 		glPushMatrix();
 		glTranslate( position );
-		objectTemplate->Draw();
+		getTemplate().Draw();
 		glPopMatrix();
 	}
 };
 
-// TODO: blub
-ObjectTemplate *base = nullptr;
-
 namespace Serializer {
 	template< typename Reader >
 	void read( Reader &reader, ObjectInstance &value ) {
-		int id;
-		get( reader, "templateId", id );
-		value.objectTemplate = base + id;
-
+		GET_MEMBER( reader, value, templateId );
 		GET_MEMBER( reader, value, position );		
 	}
 
 	template< typename Emitter >
 	void write( Emitter &emitter, const ObjectInstance &value ) {
-		int id = value.objectTemplate - base;
-		put( emitter, "templateId", id );
-
+		PUT_MEMBER( emitter, value, templateId );
 		PUT_MEMBER( emitter, value, position );
 	}
 }
@@ -214,11 +206,17 @@ namespace AntTWBarGroupTypes {
 	};
 
 	template<>
+	struct TypeMapping< Eigen::Vector3f > {
+		static int Type;
+	};
+
+	template<>
 	struct TypeMapping< ObjectInstance > {
 		static int Type;
 	};
 
 	int TypeMapping< Eigen::Vector3i >::Type;
+	int TypeMapping< Eigen::Vector3f >::Type;
 	int TypeMapping< ObjectInstance >::Type;
 }
 
@@ -241,9 +239,6 @@ struct Application {
 	EventDispatcher eventDispatcher;
 
 	// probes
-	Grid voxelGrid;
-	OrientedGrid probeCoordGrid;
-
 	ProbeDatabase probeDatabase_;
 	ProbeDatabase::SparseCandidateInfos results_;
 
@@ -259,13 +254,13 @@ struct Application {
 	float maxDistance_;
 	float gridResolution_;
 
-	Cubei targetCube_;
+	Cubef targetCube_;
 
 	AntTWBarCollection<CameraPosition> cameraPositions_;
-	AntTWBarCollection<Cubei> targetVolumes_;
+	AntTWBarCollection<Cubef> targetVolumes_;
 
 	// anttweakbar callbacks
-	AntTWBarGroup::VariableCallback<Vector3i> minCallback_, sizeCallback_;
+	AntTWBarGroup::VariableCallback<Vector3f> minCallback_, sizeCallback_;
 	AntTWBarGroup::ButtonCallback writeStateCallback_;
 	AntTWBarGroup::ButtonCallback findCandidatesCallback_;
 	AntTWBarGroup::ButtonCallback writeObjectsCallback;
@@ -277,7 +272,7 @@ struct Application {
 
 	// object data
 	std::vector<ObjectTemplate> objectTemplates_;
-	std::vector<ObjectInstance> objectInstances_;
+	AntTWBarEditableCollection<ObjectInstance> objectInstances_;
 
 	// preview
 	struct Transformation {
@@ -314,8 +309,6 @@ struct Application {
 
 		UnorderedDistanceContext::setDirections();
 
-		readState();
-
 		glEnable(GL_DEPTH_TEST);
 		glDepthMask(GL_TRUE);
 		glClearDepth(1.f);
@@ -342,6 +335,8 @@ struct Application {
 
 		loadScene();
 		initProbes();
+
+		readState();
 
 		initObjectData();
 
@@ -386,17 +381,17 @@ struct Application {
 		{
 			Serializer::TextReader reader( "objects.json" );
 			Serializer::get( reader, "objectTemplates", objectTemplates_ );
-			base = &objectTemplates_.front();
-			Serializer::get( reader, "objectInstances", objectInstances_ );
+			objectTemplateBase = &objectTemplates_.front();
+			Serializer::get( reader, "objectInstances", objectInstances_.items );
 		}
 
 		// fill probe database (and visualize the probes)
-		for( int i = 0 ; i < objectInstances_.size() ; i++ ) {
-			const Cubef bbox = objectInstances_[i].GetBBox();
+		for( int i = 0 ; i < objectInstances_.items.size() ; i++ ) {
+			const Cubef bbox = objectInstances_.items[i].getBBox();
 			ProbeGrid probeGrid( OrientedGrid::from( floor( bbox.getSize() / gridResolution_ ) + Vector3i::Constant(1), bbox.minCorner, gridResolution_ ) );
 
 			sampleProbes( probeGrid, std::bind( &Application::drawScene, this ), maxDistance_ );
-			probeDatabase_.addObjectInstanceToDatabase( probeGrid, objectInstances_[i].objectTemplate->id );
+			probeDatabase_.addObjectInstanceToDatabase( probeGrid, objectInstances_.items[i].templateId );
 
 			// visualize this probe grid
 			probeVisualization.append();
@@ -430,20 +425,18 @@ struct Application {
 	void drawEverything() {
 		drawScene();
 
-		Vector3f minCorner = voxelGrid.getPosition( targetCube_.minCorner );
-		Vector3f maxCorner = voxelGrid.getPosition( targetCube_.maxCorner );
 		DebugRender::ImmediateCalls targetVolume;
 		targetVolume.begin();
 		targetVolume.setColor( Vector3f::Unit(1) );
-		targetVolume.drawAABB( minCorner, maxCorner );
+		targetVolume.drawAABB( targetCube_.minCorner, targetCube_.maxCorner );
 		targetVolume.end();
 
 		if( showProbes ) {
 			probeVisualization.render();
 		}
 
-		for( int i = 0 ; i < objectInstances_.size() ; i++ ) {
-			objectInstances_[i].Draw();
+		for( int i = 0 ; i < objectInstances_.items.size() ; i++ ) {
+			objectInstances_.items[i].draw();
 		}
 
 		if( showMatchedProbes && activeProbe_ != -1 ) {
@@ -472,14 +465,23 @@ struct Application {
 		TwInit(  TW_OPENGL, NULL );
 		TwWindowSize( window.getSize().x, window.getSize().y );
 
-		AntTWBarGroupTypes::TypeMapping<Vector3i>::Type = AntTWBarGroupTypes::Struct<Eigen::Vector3i,AntTWBarGroupTypes::Vector3i, EigenSummarizer<Eigen::Vector3i> >( "Vector3i" ).
+		AntTWBarGroupTypes::TypeMapping<Vector3i>::Type = 
+			AntTWBarGroupTypes::Struct<Eigen::Vector3i, AntTWBarGroupTypes::Vector3i, EigenSummarizer<Eigen::Vector3i> >( "Vector3i" ).
 			add( "x", &AntTWBarGroupTypes::Vector3i::x ).
 			add( "y", &AntTWBarGroupTypes::Vector3i::y ).
 			add( "z", &AntTWBarGroupTypes::Vector3i::z ).
 			define();
 
+		AntTWBarGroupTypes::TypeMapping<Vector3f>::Type = 
+			AntTWBarGroupTypes::Struct<Eigen::Vector3f, AntTWBarGroupTypes::Vector3f, EigenSummarizer<Eigen::Vector3f> >( "Vector3f" ).
+			add( "x", &AntTWBarGroupTypes::Vector3f::x ).
+			add( "y", &AntTWBarGroupTypes::Vector3f::y ).
+			add( "z", &AntTWBarGroupTypes::Vector3f::z ).
+			define();
+		
 		AntTWBarGroupTypes::TypeMapping<ObjectInstance>::Type =
 			AntTWBarGroupTypes::Struct<ObjectInstance>( "ObjectInstance" ).
+			add( "templateId", &ObjectInstance::templateId ).
 			add( "position", &ObjectInstance::position ).
 			define();
 
@@ -487,9 +489,7 @@ struct Application {
 	}
 
 	void initProbes() {
-		voxelGrid.init( Vector3i( 1024, 1024, 1024 ), Vector3f( -18.4209571, -7.4209571, -7.4209571 ), 7.4209571 / 256.0 );
-		probeCoordGrid = OrientedGrid::from( voxelGrid.getSubGrid( Vector3i( 127, 83, 83 ), Vector3i( 1025, 346, 346 ), 16 ) );
-		gridResolution_ = voxelGrid.resolution * 16;
+		gridResolution_ = 7.4209571 / 256.0 * 16;
 		// TODO: move
 		maxDistance_ = gridResolution_ * 8;
 	}
@@ -497,12 +497,12 @@ struct Application {
 	void initAntTweakBarUI() {
 		ui_ = std::unique_ptr<AntTWBarGroup>( new AntTWBarGroup("UI") );
 
-		minCallback_.getCallback = [&](Vector3i &v) { v = targetCube_.minCorner; };
-		minCallback_.setCallback = [&](const Vector3i &v) { targetCube_ = Cubei::fromMinSize( v, targetCube_.getSize() ); };
+		minCallback_.getCallback = [&](Vector3f &v) { v = targetCube_.minCorner; };
+		minCallback_.setCallback = [&](const Vector3f &v) { targetCube_ = Cubef::fromMinSize( v, targetCube_.getSize() ); };
 		ui_->addVarCB("Min target", minCallback_ );
 
-		sizeCallback_.getCallback = [&](Vector3i &v) { v = targetCube_.getSize(); };
-		sizeCallback_.setCallback = [&](const Vector3i &v) { targetCube_ = Cubei::fromMinSize( targetCube_.minCorner, v ); };
+		sizeCallback_.getCallback = [&](Vector3f &v) { v = targetCube_.getSize(); };
+		sizeCallback_.setCallback = [&](const Vector3f &v) { targetCube_ = Cubef::fromMinSize( targetCube_.minCorner, v ); };
 		ui_->addVarCB("Size target", sizeCallback_ );
 
 		ui_->addVarRW( "Max probe distance", maxDistance_, "min=0" );
@@ -539,17 +539,19 @@ struct Application {
 		};
 		cameraPositions_.init( "Camera views", nullptr );
 
-		targetVolumes_.onAction = [=] ( const Cubei &tV ) {
+		targetVolumes_.onAction = [=] ( const Cubef &tV ) {
 			targetCube_ = tV;
 		};
-		targetVolumes_.getSummary = [=] ( const Cubei &tV, int ) -> std::string {
-			Vector3i size = tV.getSize();
-			return AntTWBarGroup::format( "(%i,%i,%i) %ix%ix%i", tV.minCorner[0], tV.minCorner[1], tV.minCorner[2], size[0], size[1], size[2] );
+		targetVolumes_.getSummary = [=] ( const Cubef &tV, int ) -> std::string {
+			Vector3f size = tV.getSize();
+			return AntTWBarGroup::format( "(%f,%f,%f) %fx%fx%f", tV.minCorner[0], tV.minCorner[1], tV.minCorner[2], size[0], size[1], size[2] );
 		};
 		targetVolumes_.getNewItem = [=] () {
 			return targetCube_;
 		};
 		targetVolumes_.init( "Target cubes", nullptr );
+
+		objectInstances_.init( "Object Instances", nullptr );
 	}
 
 	void visualizeMatchedProbes(int index) {
@@ -572,37 +574,33 @@ struct Application {
 	}
 
 	void readState() {
-		using namespace Serialize;
+		using namespace Serializer;
 
-		FILE *file = fopen( "state", "rb" );
+		TextReader reader( "state.json" );
 
-		if( !file ) {
-			return;
-		}
+		get( reader, "targetCube", targetCube_ );
+		get( reader, "showProbes", showProbes );
+		get( reader, "showMatchedProbes", showMatchedProbes );
+		get( reader, "dontUnfocus", dontUnfocus );
 
-		readTyped( file, targetCube_ );
-		readTyped( file, showProbes );		
-		readTyped( file, showMatchedProbes );
-		readTyped( file, dontUnfocus );
+		Vector3f cameraPosition, cameraDirection;
+		get( reader, "cameraPosition", cameraPosition );
+		get( reader, "cameraDirection", cameraDirection );
 
-		Vector3f position, viewDirection;
-		readTyped( file, position );
-		readTyped( file, viewDirection );
+		camera.setPosition( cameraPosition );
+		camera.lookAt( cameraDirection, Vector3f::UnitY() );
 
-		camera.setPosition( position );
-		camera.lookAt( viewDirection, Vector3f::UnitY() );
+		get( reader, "cameraPositions", cameraPositions_.collection );
+		get( reader, "cameraPositionLabels", cameraPositions_.collectionLabels );
 
-		readTyped( file, cameraPositions_.collection );
-		readTyped( file, cameraPositions_.collectionLabels );
-
-		readTyped( file, targetVolumes_.collection );
-		readTyped( file, targetVolumes_.collectionLabels );
+		get( reader, "targetVolumes", targetVolumes_.collection );
+		get( reader, "targetVolumeLabels", targetVolumes_.collectionLabels );
 	}
 
 	void writeState() {
 		using namespace Serializer;
 
-		BinaryEmitter emitter( "state.txt" );
+		TextEmitter emitter( "state.json" );
 
 		put( emitter, "targetCube", targetCube_ );
 		put( emitter, "showProbes", showProbes );
@@ -622,11 +620,12 @@ struct Application {
 	void writeObjects() {
 		Serializer::TextEmitter emitter( "objects.json" );
 		Serializer::put( emitter, "objectTemplates", objectTemplates_ );
-		Serializer::put( emitter, "objectInstances", objectInstances_ );
+		Serializer::put( emitter, "objectInstances", objectInstances_.items );
+		Serializer::put( emitter, "objectPrototype", objectInstances_.prototype );
 	}
 
 	void Do_findCandidates() {
-		ProbeGrid probeGrid( OrientedGrid::from( Vector3i::Constant(1) + ceil( targetCube_.getSize().cast<float>() / 16 ), voxelGrid.getPosition( targetCube_.minCorner ), gridResolution_ ) );
+		ProbeGrid probeGrid( OrientedGrid::from( Vector3i::Constant(1) + ceil( targetCube_.getSize() / gridResolution_ ), targetCube_.minCorner, gridResolution_ ) );
 		sampleProbes( probeGrid, std::bind( &Application::drawScene, this ), maxDistance_ );
 
 		ProbeMatchSettings settings;
