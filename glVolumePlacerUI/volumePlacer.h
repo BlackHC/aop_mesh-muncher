@@ -16,9 +16,11 @@
 #include "grid.h"
 
 #include "depthSampler.h"
+#include <memory>
 
 using namespace Eigen;
 
+// TODO: use AlignedBox?
 template<typename V>
 struct Cube {
 	V minCorner, maxCorner;
@@ -181,6 +183,48 @@ namespace Serialize {
 }
 
 template< typename Data >
+class DataGrid {
+	OrientedGrid grid;
+	std::unique_ptr<Data[]> data;
+
+public:
+	DataGrid() {}
+
+	DataGrid( const OrientedGrid &grid ) {
+		reset( grid );
+	}
+
+	void reset( const OrientedGrid &grid ) {
+		this->grid = grid;
+		data.reset( new Data[ grid.count ] );
+	}
+
+	const OrientedGrid & getGrid() const {
+		return grid;
+	}
+
+	Iterator3 getIterator() const {
+		return Iterator3( grid );
+	}
+
+	Data & operator[] ( const int index ) {
+		return data[ index ];
+	}
+
+	Data & operator[] ( const Eigen::Vector3i &index3 ) {
+		return data[ grid.getIndex( index3 ) ];
+	}
+
+	const Data & operator[] ( const int index ) const {
+		return data[ index ];
+	}
+
+	const Data & operator[] ( const Eigen::Vector3i &index3 ) const {
+		return data[ grid.getIndex( index3 ) ];
+	}
+};
+
+template< typename Data >
 struct DataVolume {
 	typedef Cubei VolumeCube;
 	typedef Cubei IndexCube;
@@ -216,9 +260,9 @@ struct DataVolume {
 
 	Iterator3 getIterator() const { return Iterator3( indexer ); }
 
-	RangedIterator3 getIteratorFromVolume( const VolumeCube &volume ) const {
+	VolumeIterator3 getIteratorFromVolume( const VolumeCube &volume ) const {
 		const IndexCube	indexCube = getIndexFromVolumeCube( volume );
-		return RangedIterator3( indexCube.minCorner, indexCube.maxCorner + Vector3i::Constant(1) );
+		return VolumeIterator3( indexCube.minCorner, indexCube.maxCorner + Vector3i::Constant(1) );
 	}
 	
 	VolumeVector getPosition( const IndexVector &index ) const {
@@ -318,6 +362,9 @@ struct DataVolume {
 
 typedef DataVolume<Probe> Probes;
 
+
+typedef DataGrid<Probe> ProbeGrid;
+
 struct InstanceProbe {
 	Probe probe;
 	int id;
@@ -333,23 +380,20 @@ struct ProbeDatabase {
 
 	ProbeDatabase() : numIds( 0 ) {}
 
-	void addObjectInstanceToDatabase( Probes &probes, const Probes::VolumeCube &instanceVolume, int id ) {
-		Vector3f instanceCenter = instanceVolume.getCenter();
+	void addObjectInstanceToDatabase( const ProbeGrid &probeGrid, int id ) {
+		const Vector3f instanceCenter = probeGrid.getGrid().getCenter();
 
 		numIds = std::max( id + 1, numIds );
 		idInfos.resize( numIds );
 		
-		int count = 0;
-		for( RangedIterator3 it = probes.getIteratorFromVolume( instanceVolume ) ; it.hasMore() ; ++it, ++count ) {
-			if( probes.validIndex( *it ) ) {
-				const Vector3f delta = instanceCenter - it.getIndex3().cast<float>();
+		for( Iterator3 iterator = probeGrid.getIterator() ; iterator.hasMore() ; ++iterator ) {
+			const Vector3f delta = probeGrid.getGrid().getPosition( iterator.getIndex3() ) - instanceCenter;
 
-				probeIdMap.push_back( InstanceProbe( probes[ *it ], id, delta.norm() ) );
-			}
+			probeIdMap.push_back( InstanceProbe( probeGrid[ *iterator ], id, delta.norm() ) );
 		}
 
 		idInfos[id].numObjects++;
-		idInfos[id].totalProbeCount += count;
+		idInfos[id].totalProbeCount += probeGrid.getGrid().count;
 	}
 
 	struct CandidateInfo {
@@ -360,7 +404,7 @@ struct ProbeDatabase {
 		int maxSingleMatchCount;
 
 		std::vector< const InstanceProbe * > matches;
-		std::vector< std::pair<Probes::IndexVector, int> > matchesPositionEndOffsets;
+		std::vector< std::pair<Eigen::Vector3f, int> > matchesPositionEndOffsets;
 
 		CandidateInfo() : totalMatchCount(0), maxSingleMatchCount(0), score(0) {}
 
@@ -370,37 +414,35 @@ struct ProbeDatabase {
 	typedef std::vector<CandidateInfo> CandidateInfos;
 	typedef std::vector< std::pair<int, CandidateInfo > > SparseCandidateInfos;
 
-	SparseCandidateInfos findCandidates( const Probes &probes, const Probes::VolumeCube &targetVolume ) {
+	SparseCandidateInfos findCandidates( const ProbeGrid &probeGrid ) {
 		CandidateInfos candidateInfos( numIds );
 
 		std::vector<int> matchCounts(numIds);
-		for( RangedIterator3 targetIterator = probes.getIteratorFromVolume( targetVolume ) ; targetIterator.hasMore() ; ++targetIterator ) {
-			if( probes.validIndex( *targetIterator ) ) {
-				const Probe &probe = probes[ *targetIterator ];
+		for( Iterator3 iterator = probeGrid.getIterator() ; iterator.hasMore() ; ++iterator ) {
+			const Probe &probe = probeGrid[ *iterator ];
 
-				std::fill( matchCounts.begin(), matchCounts.end(), 0 );
-
-				for( auto refIterator = probeIdMap.cbegin() ; refIterator != probeIdMap.cend() ; ++refIterator ) {
-					if( Probe::match( refIterator->probe, probe ) ) {
-						const int id = refIterator->id;
-						candidateInfos[id].matches.push_back( &*refIterator );
-						matchCounts[id]++;
-					}
-				}				
-
-				for( int id = 0 ; id < numIds ; ++id ) {
-					const int matchCount = matchCounts[id];
-					if( matchCount == 0 ) {
-						continue;
-					}
-					
-					CandidateInfo &candidateInfo = candidateInfos[id];
-					
-					candidateInfo.totalMatchCount += matchCount;
-					candidateInfo.maxSingleMatchCount = std::max( candidateInfo.maxSingleMatchCount, matchCount );
-
-					candidateInfo.matchesPositionEndOffsets.push_back( std::make_pair( *targetIterator, (int) candidateInfo.matches.size() ) );
+			std::fill( matchCounts.begin(), matchCounts.end(), 0 );
+		
+			for( auto refIterator = probeIdMap.cbegin() ; refIterator != probeIdMap.cend() ; ++refIterator ) {
+				if( Probe::match( refIterator->probe, probe ) ) {
+					const int id = refIterator->id;
+					candidateInfos[id].matches.push_back( &*refIterator );
+					matchCounts[id]++;
 				}
+			}				
+
+			for( int id = 0 ; id < numIds ; ++id ) {
+				const int matchCount = matchCounts[id];
+				if( matchCount == 0 ) {
+					continue;
+				}
+
+				CandidateInfo &candidateInfo = candidateInfos[id];
+
+				candidateInfo.totalMatchCount += matchCount;
+				candidateInfo.maxSingleMatchCount = std::max( candidateInfo.maxSingleMatchCount, matchCount );
+
+				candidateInfo.matchesPositionEndOffsets.push_back( std::make_pair( probeGrid.getGrid().getPosition( iterator.getIndex3() ), (int) candidateInfo.matches.size() ) );
 			}
 		}
 
@@ -446,24 +488,24 @@ struct ProbeDatabase {
 	std::vector<int> instanceProbeCountForId;
 };
 
-void sampleProbes( const Grid &voxelGrid, Probes &probes, std::function<void()> renderSceneCallback ) {
+// TODO: fix the depthUnit hack
+void sampleProbes( ProbeGrid &probeGrid, std::function<void()> renderSceneCallback, float depthUnit ) {
 	DepthSampler sampler;
-	OrientedGrid subGrid = OrientedGrid::from( voxelGrid.getSubGrid( probes.min, probes.size, probes.step ) );
-	sampler.grid = &subGrid;
+	sampler.grid = &probeGrid.getGrid();
 	
 	sampler.directions[0].assign( &UnorderedDistanceContext::directions[0], &UnorderedDistanceContext::directions[6]);
 	sampler.directions[1].assign( &UnorderedDistanceContext::directions[6], &UnorderedDistanceContext::directions[8]);
 	sampler.directions[2].assign( &UnorderedDistanceContext::directions[8], &UnorderedDistanceContext::directions[26]);
 	
 	sampler.init();
-	sampler.depthUnit = voxelGrid.resolution;
-	sampler.maxDepth = 128.0 * voxelGrid.resolution;
+	sampler.depthUnit = depthUnit;
+	sampler.maxDepth = 128.0 * depthUnit;
 
 	sampler.sample( renderSceneCallback );
 
-	for( Iterator3 it = probes.getIterator() ; it.hasMore() ; ++it ) {
-		Probe &probe = probes[ it.getIndex() ];
-		probe.distanceContext.fill( sampler.depthSamples, it.getIndex() );
+	for( Iterator3 iterator = probeGrid.getIterator() ; iterator.hasMore() ; ++iterator ) {
+		Probe &probe = probeGrid[ *iterator ];
+		probe.distanceContext.fill( sampler.depthSamples, iterator.getIndex() );
 	}
 }
 

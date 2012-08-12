@@ -179,10 +179,9 @@ struct Application {
 
 	// probes
 	Grid voxelGrid;
-	std::unique_ptr<Probes> probes_;
+	OrientedGrid probeCoordGrid;
 
 	ProbeDatabase probeDatabase_;
-
 	ProbeDatabase::SparseCandidateInfos results_;
 
 	// anttweakbar 
@@ -195,6 +194,7 @@ struct Application {
 	bool dontUnfocus;
 
 	float maxDistance_;
+	float gridResolution_;
 
 	Cubei targetCube_;
 
@@ -208,7 +208,6 @@ struct Application {
 
 	// debug visualizations
 	DebugRender::CombinedCalls probeVisualization;
-	DebugRender::CombinedCalls probeVolume;
 
 	std::vector<DebugRender::CombinedCalls> matchedProbes_;
 
@@ -359,12 +358,34 @@ struct Application {
 		ptree_serialize<PSM_READING>( tree, "objectInstances", objectInstances_ );
 #endif
 
-		// fill probe database
+		// fill probe database (and visualize the probes)
 		for( int i = 0 ; i < objectInstances_.size() ; i++ ) {
 			const Cubef bbox = objectInstances_[i].GetBBox();
-			const Cubei volumeCoords( floor( voxelGrid.getIndex3( bbox.minCorner ) ), ceil( voxelGrid.getIndex3( bbox.maxCorner ) ) );
+			ProbeGrid probeGrid( OrientedGrid::from( floor( bbox.getSize() / gridResolution_ ) + Vector3i::Constant(1), bbox.minCorner, gridResolution_ ) );
 
-			probeDatabase_.addObjectInstanceToDatabase( *probes_, volumeCoords, objectInstances_[i].objectTemplate->id );
+			sampleProbes( probeGrid, std::bind( &Application::drawScene, this ), gridResolution_ / 16 );
+			probeDatabase_.addObjectInstanceToDatabase( probeGrid, objectInstances_[i].objectTemplate->id );
+
+			// visualize this probe grid
+			probeVisualization.append();
+			const float visSize = 0.05;
+			for( Iterator3 iterator = probeGrid.getIterator() ; iterator.hasMore() ; ++iterator ) {
+				const Vector3f &probePosition = probeGrid.getGrid().getPosition( iterator.getIndex3() );
+				const Probe &probe = probeGrid[ *iterator ];
+
+				probeVisualization.setPosition( probePosition );
+
+				for( int i = 0 ; i < Probe::DistanceContext::numSamples ; ++i ) {
+					const Vector3f &direction = probe.distanceContext.directions[i];
+					const float distance = probe.distanceContext.distances[i];
+
+					const Vector3f &vector = direction * (1.0 - distance / maxDistance_);
+
+					probeVisualization.setColor( Vector3f::Unit(2) * vector.norm() );
+					probeVisualization.drawVector( vector * visSize );				
+				}
+			}
+			probeVisualization.end();
 		}
 	}
 
@@ -385,7 +406,6 @@ struct Application {
 		targetVolume.drawAABB( minCorner, maxCorner );
 		targetVolume.end();
 
-		probeVolume.render();
 		if( showProbes ) {
 			probeVisualization.render();
 		}
@@ -431,13 +451,8 @@ struct Application {
 
 	void initProbes() {
 		voxelGrid.init( Vector3i( 1024, 1024, 1024 ), Vector3f( -18.4209571, -7.4209571, -7.4209571 ), 7.4209571 / 256.0 );
-		probes_ = std::unique_ptr<Probes>( new Probes( Vector3i( 127, 83, 83 ), Vector3i( 1025, 346, 346 ), 16) );
-
-		if( !probes_->readFromFile( "probes.data" ) ) {
-			sampleProbes( voxelGrid, *probes_, std::bind( &Application::drawScene, this ) );			
-		}
-
-		visualizeProbes();
+		probeCoordGrid = OrientedGrid::from( voxelGrid.getSubGrid( Vector3i( 127, 83, 83 ), Vector3i( 1025, 346, 346 ), 16 ) );
+		gridResolution_ = voxelGrid.resolution * 16;
 	}
 
 	void initAntTweakBarUI() {
@@ -495,48 +510,19 @@ struct Application {
 		targetVolumes_.init( "Target cubes", nullptr );
 	}
 
-	void visualizeProbes() {
-		probeVisualization.begin();
-#if 1
-		const float visSize = 0.05;
-		for( RangedIterator3 iter(Vector3i::Zero(), probes_->probeDims) ; iter.hasMore() ; ++iter ) {
-			const Vector3f probePosition = voxelGrid.getPosition( probes_->getPosition( *iter ) );
-			const Probe &probe = probes_->get(*iter);
-
-			probeVisualization.setPosition( probePosition );
-
-			for( int i = 0 ; i < Probe::DistanceContext::numSamples ; ++i ) {
-				const Vector3f &direction = probe.distanceContext.directions[i];
-				const float distance = probe.distanceContext.distances[i];
-
-				const Vector3f &vector = direction * (1.0 - distance / maxDistance_);
-				
-				probeVisualization.setColor( Vector3f::Unit(2) * vector.norm() );
-				probeVisualization.drawVector( vector * visSize );				
-			}			
-		}
-#endif
-		probeVisualization.end();
-
-		probeVolume.begin();
-		probeVolume.setColor( Vector3f::Unit(0) );
-		probeVolume.drawAABB( voxelGrid.getPosition( probes_->min ), voxelGrid.getPosition( probes_->min + probes_->size ) );
-		probeVolume.end();
-	}
-
 	void visualizeMatchedProbes(int index) {
 		const ProbeDatabase::CandidateInfo &info = results_[index].second;
 
 		matchedProbes_[index].begin();
 		int begin = 0;
 		for( int i = 0 ; i < info.matchesPositionEndOffsets.size() ; ++i ) {
-			const Vector3f position = voxelGrid.getPosition( probes_->getPosition( info.matchesPositionEndOffsets[i].first ) );
+			const Vector3f &position = info.matchesPositionEndOffsets[i].first;
 
 			const int end = info.matchesPositionEndOffsets[i].second;
 			const int count = end - begin;
 			matchedProbes_[index].setPosition( position );
 			matchedProbes_[index].setColor( Vector3f( 1.0 - float(count) / info.maxSingleMatchCount, 1.0, 0.0 ) );
-			matchedProbes_[index].drawAbstractSphere( 0.05 );
+			matchedProbes_[index].drawAbstractSphere( gridResolution_ / 4 );
 
 			begin = end;
 		}
@@ -593,11 +579,14 @@ struct Application {
 	}
 
 	void Do_findCandidates() {
+		ProbeGrid probeGrid( OrientedGrid::from( Vector3i::Constant(1) + ceil( targetCube_.getSize().cast<float>() / 16 ), voxelGrid.getPosition( targetCube_.minCorner ), gridResolution_ ) );
+		sampleProbes( probeGrid, std::bind( &Application::drawScene, this ), gridResolution_ / 16 );
+
 		ProbeMatchSettings settings;
-		settings.maxDelta = probes_->step;
+		settings.maxDelta = 16;
 		settings.maxDistance = maxDistance_;
 
-		results_ = probeDatabase_.findCandidates( *probes_, targetCube_ );
+		results_ = probeDatabase_.findCandidates( probeGrid );
 
 		activeProbe_ = 0;
 

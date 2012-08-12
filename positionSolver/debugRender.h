@@ -204,6 +204,20 @@ namespace DebugRender {
 			glEndList();
 		}
 
+		void append() {
+			// TODO: this breaks destruction...
+			GLuint oldList = list;
+			
+			list = glGenLists( 1 );
+
+			glNewList( list, GL_COMPILE );
+			
+			if( oldList )
+				glCallList( oldList );
+
+			ImmediateCalls::begin();
+		}
+
 		void render() {
 			glCallList( list );
 		}

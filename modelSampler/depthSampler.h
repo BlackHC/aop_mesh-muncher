@@ -54,7 +54,7 @@ public:
 struct DepthSampler {
 	GLuint pbo;
 
-	OrientedGrid *grid;
+	const OrientedGrid *grid;
 
 	float depthUnit;	
 	float maxDepth;
@@ -132,7 +132,8 @@ struct DepthSampler {
 			BOOST_VERIFY( boost::algorithm::all_of( subDirections, [&permutation]( const Eigen::Vector3f &v ) { return abs( v[permutation[2]] ) > 0.1; } ) );
 
 			OrientedGrid permutedGrid = OrientedGrid::from( *grid, permutation );
-			auto invTransformation = permutedGrid.transformation.inverse();
+			// TODO: use the new methods
+			auto invTransformation = permutedGrid.positionToIndex;
 
 			glBindBuffer( GL_PIXEL_PACK_BUFFER, pbo );
 
