@@ -5,18 +5,20 @@
 
 #include "anttwbargroup.h"
 
-template< typename Value, int LABEL_MAX_LENGTH = 64 >
+struct AntTWBarLabel {
+	static const int LABEL_MAX_LENGTH = 64;
+	char value[LABEL_MAX_LENGTH];
+
+	AntTWBarLabel() {
+		value[0] = 0;
+	}
+};
+
+template< typename Value >
 struct AntTWBarCollection {
 	std::vector<Value> collection;
-
-	struct Label {
-		char value[LABEL_MAX_LENGTH];
-
-		Label() {
-			value[0] = 0;
-		}
-	};
-	std::vector<Label> collectionLabels;
+	
+	std::vector<AntTWBarLabel> collectionLabels;
 
 	std::unique_ptr<AntTWBarGroup> ui;
 	std::vector<AntTWBarGroup::ButtonCallback> buttonCallbacks;
@@ -46,7 +48,7 @@ struct AntTWBarCollection {
 		if( getNewItem ) {
 			buttonCallbacks.back().callback = [=] () {
 				collection.push_back( getNewItem() );
-				collectionLabels.push_back( AntTWBarCollection<Value>::Label() );
+				collectionLabels.push_back( AntTWBarLabel() );
 				refresh();
 			};
 			ui->addButton( "Add", buttonCallbacks.back() );
@@ -66,7 +68,7 @@ struct AntTWBarCollection {
 
 			ui->addSeparator();
 			ui->addButton( getSummary( collection[i], i ), buttonCallbacks[2*i] );
-			ui->_addVarRW( "Label", TW_TYPE_CSSTRING(LABEL_MAX_LENGTH), &collectionLabels[i] );
+			ui->_addVarRW( "Label", TW_TYPE_CSSTRING(AntTWBarLabel::LABEL_MAX_LENGTH), &collectionLabels[i] );
 			ui->addButton( "Remove", buttonCallbacks[2*i+1] );
 		}		
 	}
