@@ -52,257 +52,26 @@ struct AntTweakBarEventHandler : EventHandler {
 	}
 };
 
-#include "ptree_serializer.h"
 #include "anttwbarcollection.h"
 
 #include "ui.h"
 
 #include "contextHelper.h"
 
-#include <boost/property_tree/ptree.hpp>
-#include <boost/property_tree/json_parser.hpp>
-#include <boost/lexical_cast.hpp>
+#include "serializer.h"
 
 namespace Serializer {
-	typedef boost::property_tree::ptree ptree;
-	struct BinaryEmitter : boost::noncopyable {
-		FILE *handle;
-
-		BinaryEmitter( const char *filename ) : handle( fopen( filename , "wb" ) ) {}
-		~BinaryEmitter() {
-			if( handle ) {
-				fclose( handle );
-			}
-		}
-	};
-
-	struct BinaryReader : boost::noncopyable {
-		FILE *handle;
-
-		BinaryReader( const char *filename ) : handle( fopen( filename , "rb" ) ) {}
-		~BinaryReader() {
-			if( handle ) {
-				fclose( handle );
-			}
-		}
-	};
-
-	struct TextEmitter : boost::noncopyable {
-		ptree root, *current;
-
-		std::string filename;
-
-		TextEmitter( const char *filename ) : filename( filename ), current( &root ) {}
-		~TextEmitter() {
-			boost::property_tree::json_parser::write_json( filename, root );
-		}
-	};
-
-	struct TextReader : boost::noncopyable {
-		ptree root, *current;		
-
-		TextReader( const char *filename ) : current( &root ) {
-			boost::property_tree::json_parser::read_json( filename, root );
-		}
-	};
-
-	template< typename Value >
-	void put( BinaryEmitter &emitter, const char *key, const Value &value ) {
-		write( emitter, value );
-	}
-
-	template< typename Value >
-	void put( TextEmitter &emitter, const char *key, const Value &value ) {
-		ptree *parent = emitter.current;
-		emitter.current = &parent->push_back( std::make_pair( key, ptree() ) )->second;
-		write( emitter, value );
-		emitter.current = parent;
-	}
-
-	template< typename Value >
-	void get( BinaryReader &reader, const char *key, Value &value ) {
-		read( reader, value );
-	}
-
-	template< typename Value >
-	void get( TextReader &reader, const char *key, Value &value, const Value &defaultValue = Value() ) {
-		auto it = reader.current->find( key );
-		
-		if( it != tree.not_found() ) {
-			ptree *parent = reader.current;
-			reader.current = &*it;
-			read( reader, data );
-			reader.current = parent;
-		}
-		else {
-			data = defaultValue;
-		}
-	}
-
-	// arithmetic types
-	template< typename Value >
-	typename boost::enable_if< boost::is_arithmetic< Value > >::type
-		read( BinaryReader &reader, Value &value ) {
-		fread( &value, sizeof( Value ), 1, reader.handle );
-	}
-
-	template< typename Value >
-	typename boost::enable_if< boost::is_arithmetic< Value > >::type
-		read( TextReader &reader, Value &value ) {
-		value = reader.current->get_value<Value>();
-	}
-
-	template< typename Value >
-	typename boost::enable_if< boost::is_arithmetic< Value > >::type
-		write( BinaryEmitter &emitter, const Value &value ) {
-			fwrite( &value, sizeof( Value ), 1, emitter.handle );
-	}
-
-	template< typename Value >
-	typename boost::enable_if< boost::is_arithmetic< Value > >::type
-		write( TextEmitter &emitter, const Value &value ) {
-		emitter.current->put_value( value );
-	}
-
-	// std::vector
-	template< typename Value >
-	void write( BinaryEmitter &emitter, const std::vector<Value> &collection ) {
-		size_t size = collection.size();
-		write( emitter, size );
-		for( auto it = collection.begin() ; it != collection.end() ; ++it ) {
-			write( emitter, *it );
-		}
-	}
-
-	template< typename Value >
-	void write( TextEmitter &emitter, const std::vector<Value> &collection ) {
-		for( auto it = collection.begin() ; it != collection.end() ; ++it ) {
-			put( emitter, "", *it );
-		}
-	}
-
-	template< typename Value >
-	void read( BinaryReader &reader, std::vector<Value> &collection ) {
-		size_t size;
-		read( reader, size );
-		collection.reserve( collection.size() + size );
-		for( int i = 0 ; i < size ; ++i ) {
-			Value value;
-			read( reader, value );
-			collection.push_back( std::move( value ) );
-		}
-	}
-
-	template< typename Value >
-	void read( TextReader &reader, std::vector<Value> &collection ) {
-		size_t size = reader.current->size();
-		collection.reserve( collection.size() + size );
-
-		ptree *parent = reader.current;
-
-		auto end = reader.current->end();
-		for( auto it = reader.current->begin() ; it != end ; ++it ) {
-			reader.currentNode = &*it;
-			Value value;
-			read( reader, value );
-			collection.push_back( std::move( value ) );
-		}
-
-		reader.current = parent;
-	}
-
-	// static array
-	template< typename Value, int N >
-	void write( BinaryEmitter &emitter, const Value (&array)[N] ) {
-		for( int i = 0 ; i < N ; ++i ) {
-			write( emitter, array[i] );
-		}
-	}
-
-	template< typename Value, int N >
-	void write( TextEmitter &emitter, const Value (&array)[N] ) {
-		for( int i = 0 ; i < N ; ++i ) {
-			put( emitter, "", array[i] );
-		}
-	}
-
-	template< typename Value, int N >
-	void read( BinaryReader &reader, Value (&array)[N] ) {
-		for( int i = 0 ; i < N ; ++i ) {
-			read( reader, array[i] );
-		}
-	}
-
-	template< typename Value, int N >
-	void read( TextReader &reader, Value (&array)[N] ) {
-		ptree *parent = reader.current;
-
-		auto end = reader.current->end();
-		int i = 0;
-		for( auto it = reader.current->begin() ; it != end ; ++it, ++i ) {
-			reader.currentNode = &*it;
-			Value value;
-			read( reader, value );
-			collection.push_back( std::move( value ) );
-		}
-
-		reader.current = parent;
-	}
-
-	// std::string
-	void read( BinaryReader &reader, std::string &value ) {
-		size_t size;
-		read( reader, size );
-		value.resize( size + 1 );
-		fread( &value[0], size, 1, reader.handle );
-	}
-
-	void read( TextReader &reader, std::string &value ) {
-		value = reader.current->get_value<std::string>();
-	}
-
-	void write( BinaryEmitter &emitter, const std::string &value ) {
-		size_t size = value.size();
-		fwrite( &value[0], size, 1, emitter.handle );
-	}
-
-	void write( TextEmitter &emitter, const std::string &value ) {
-		emitter.current->put_value( value );
-	}
-}
-
-namespace Serializer {
-	/* custom reader
-	namespace Serializer {
-	template< typename Reader >
-	void read( Reader &reader, X &value ) {
-	}
-
-	template< typename Emitter >
-	void write( Emitter &emitter, const X &value ) {
-	}
-	}
-	*/
-
-	/*template< typename Reader, typename Scalar, int N >
-	void read( Reader &reader, Eigen::Matrix< Scalar, N, 1 > &value ) {
-		read( reader, static_cast<Scalar[N]>(&value[0]) );
-	}
-
-	template< typename Emitter, typename Scalar, int N >
-	void write( Emitter &emitter, const Eigen::Matrix<Scalar, N, 1> &value ) {
-		write( emitter, static_cast<const Scalar[N]>(&value[0]) );
-	}*/
-
 	template< typename Reader, typename Scalar >
 	void read( Reader &reader, Eigen::Matrix< Scalar, 3, 1 > &value ) {
-		read( reader, reinterpret_cast<Scalar &[3]>(&value[0]) );
+		typedef Scalar (*ArrayPointer)[3];
+		ArrayPointer array = (ArrayPointer) &value[0];
+		read( reader, *array );
 	}
 
 	template< typename Emitter, typename Scalar >
 	void write( Emitter &emitter, const Eigen::Matrix<Scalar, 3, 1> &value ) {
 		typedef const Scalar (*ArrayPointer)[3];
-		ArrayPointer array = (ArrayPointer) &value;
+		ArrayPointer array = (ArrayPointer) &value[0];
 		write( emitter, *array );
 	}
 
@@ -320,26 +89,6 @@ namespace Serializer {
 
 	template void write< TextEmitter, float >( TextEmitter &, const Eigen::Matrix< float, 3, 1 > & );
 }
-//#include <boost/property_tree/ptree.hpp>
-
-
-namespace AntTWBarGroupTypes {
-	template<>
-	struct TypeMapping< Eigen::Vector3i > {
-		static int Type;
-	};
-
-	int TypeMapping< Eigen::Vector3i >::Type;
-}
-
-template<typename S>
-struct EigenSummarizer {
-	static void summarize( char *summary, size_t maxLength, const S* object) {
-		std::ostringstream out;
-		out << *object << '\0';
-		out.str().copy( summary, maxLength );
-	}
-};
 
 struct ObjectTemplate {
 	int id;
@@ -357,31 +106,23 @@ struct ObjectTemplate {
 	}
 };
 
-/*
-template<ptree_serializer_mode mode, typename S, int N>
-void ptree_serializer_exchange( ptree_serializer &tree, Eigen::Matrix<S, N, 1> &data ) {
-	ptree_serialize<mode>( tree, "x", data[0] );
-	if( N >= 2 )
-		ptree_serialize<mode>( tree, "y", data[1] );
-	if( N >= 3 )
-		ptree_serialize<mode>( tree, "z", data[2] );
-	if( N >= 4 )
-		ptree_serialize<mode>( tree, "w", data[2] );
-}
-*/
+#define PUT_MEMBER( reader, value, member ) put( reader, #member, value.member )
+#define GET_MEMBER( reader, value, member ) get( reader, #member, value.member )
 
-template<ptree_serializer_mode mode>
-void ptree_serializer_exchange( ptree_serializer &tree, Eigen::Vector3f &data ) {
-	ptree_serialize<mode>( tree, "x", data[0] );
-	ptree_serialize<mode>( tree, "y", data[1] );
-	ptree_serialize<mode>( tree, "z", data[2] );
-}
+namespace Serializer {
+	template< typename Reader >
+	void read( Reader &reader, ObjectTemplate &value ) {
+		GET_MEMBER( reader, value, id );
+		GET_MEMBER( reader, value, bbSize );
+		GET_MEMBER( reader, value, color );
+	}
 
-template<ptree_serializer_mode mode>
-void ptree_serializer_exchange( ptree_serializer &tree, ObjectTemplate &data ) {
-	ptree_serialize<mode>( tree, "id", data.id );
-	ptree_serialize<mode>( tree, "bbSize", data.bbSize );
-	ptree_serialize<mode>( tree, "color", data.color );
+	template< typename Emitter >
+	void write( Emitter &emitter, const ObjectTemplate &value ) {
+		PUT_MEMBER( emitter, value, id );
+		PUT_MEMBER( emitter, value, bbSize );
+		PUT_MEMBER( emitter, value, color );
+	}
 }
 
 struct ObjectInstance {
@@ -413,18 +154,23 @@ struct ObjectInstance {
 // TODO: blub
 ObjectTemplate *base = nullptr;
 
-template<ptree_serializer_mode mode>
-void ptree_serializer_exchange( ptree_serializer &tree, ObjectInstance &data ) {
-	if( mode == PSM_WRITING ) {
-		ptree_serializer_put( tree, "templateId", data.objectTemplate->id );
-	}
-	else if( mode == PSM_READING ) {
+namespace Serializer {
+	template< typename Reader >
+	void read( Reader &reader, ObjectInstance &value ) {
 		int id;
-		ptree_serializer_get( tree, "templateId", id );
-		data.objectTemplate = base + id;
+		get( reader, "templateId", id );
+		value.objectTemplate = base + id;
+
+		GET_MEMBER( reader, value, position );		
 	}
 
-	ptree_serialize<mode>( tree, "position", data.position );
+	template< typename Emitter >
+	void write( Emitter &emitter, const ObjectInstance &value ) {
+		int id = value.objectTemplate - base;
+		put( emitter, "templateId", id );
+
+		PUT_MEMBER( emitter, value, position );
+	}
 }
 
 struct CameraPosition {
@@ -460,6 +206,30 @@ namespace Serializer {
 		write( emitter, value.value );
 	}
 }
+
+namespace AntTWBarGroupTypes {
+	template<>
+	struct TypeMapping< Eigen::Vector3i > {
+		static int Type;
+	};
+
+	template<>
+	struct TypeMapping< ObjectInstance > {
+		static int Type;
+	};
+
+	int TypeMapping< Eigen::Vector3i >::Type;
+	int TypeMapping< ObjectInstance >::Type;
+}
+
+template<typename S>
+struct EigenSummarizer {
+	static void summarize( char *summary, size_t maxLength, const S* object) {
+		std::ostringstream out;
+		out << *object << '\0';
+		out.str().copy( summary, maxLength );
+	}
+};
 
 struct Application {
 	ObjSceneGL objScene;
@@ -498,6 +268,7 @@ struct Application {
 	AntTWBarGroup::VariableCallback<Vector3i> minCallback_, sizeCallback_;
 	AntTWBarGroup::ButtonCallback writeStateCallback_;
 	AntTWBarGroup::ButtonCallback findCandidatesCallback_;
+	AntTWBarGroup::ButtonCallback writeObjectsCallback;
 
 	// debug visualizations
 	DebugRender::CombinedCalls probeVisualization;
@@ -612,41 +383,12 @@ struct Application {
 	}
 
 	void initObjectData() {
-#if 0
-		// init object templates
 		{
-			ObjectTemplate t;
-			t.bbSize = layerCalibration_.getSize( probes_->getSize( Vector3i( 4, 1, 1) ) );
-			t.color = Color3f( 1.0, 1.0, 1.0 );
-			t.id = 0;
-			oµµbjectTemplates_.push_back( t );
-
-			t.bbSize = layerCalibration_.getSize( probes_->getSize( Vector3i( 3, 1, 1 ) ) );
-			t.color = Color3f( 0.0, 1.0, 1.0 );
-			t.id++;
-			objectTemplates_.push_back( t );
+			Serializer::TextReader reader( "objects.json" );
+			Serializer::get( reader, "objectTemplates", objectTemplates_ );
+			base = &objectTemplates_.front();
+			Serializer::get( reader, "objectInstances", objectInstances_ );
 		}
-
-		// create object instances
-		{
-			objectInstances_.push_back( ObjectInstance::FromFrontTopLeft( layerCalibration_.getPosition( probes_->getPosition( Vector3i( 0, 0, 0 ) ) ), &objectTemplates_[0] ) );
-			objectInstances_.push_back( ObjectInstance::FromFrontTopLeft( layerCalibration_.getPosition( probes_->getPosition( Vector3i( 13, 0, 0 ) ) ), &objectTemplates_[0] ) );
-
-			objectInstances_.push_back( ObjectInstance::FromFrontTopLeft( layerCalibration_.getPosition( probes_->getPosition( Vector3i( 5, 5, 5 ) ) ), &objectTemplates_[1] ) );
-			objectInstances_.push_back( ObjectInstance::FromFrontTopLeft( layerCalibration_.getPosition( probes_->getPosition( Vector3i( 8, 8, 8 ) ) ), &objectTemplates_[1] ) );
-		}
-
-		ptree_serializer tree;
-		ptree_serialize<PSM_WRITING>( tree, "objectTemplates", objectTemplates_);
-		ptree_serialize<PSM_WRITING>( tree, "objectInstances", objectInstances_ );
-		boost::property_tree::info_parser::write_info( "scenario.info", tree );
-#else	
-		ptree_serializer tree;
-		boost::property_tree::info_parser::read_info( "scenario.info", tree );
-		ptree_serialize<PSM_READING>( tree, "objectTemplates", objectTemplates_ );
-		base = &objectTemplates_.front();
-		ptree_serialize<PSM_READING>( tree, "objectInstances", objectInstances_ );
-#endif
 
 		// fill probe database (and visualize the probes)
 		for( int i = 0 ; i < objectInstances_.size() ; i++ ) {
@@ -736,6 +478,11 @@ struct Application {
 			add( "z", &AntTWBarGroupTypes::Vector3i::z ).
 			define();
 
+		AntTWBarGroupTypes::TypeMapping<ObjectInstance>::Type =
+			AntTWBarGroupTypes::Struct<ObjectInstance>( "ObjectInstance" ).
+			add( "position", &ObjectInstance::position ).
+			define();
+
 		eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( antTweakBarEventHandler ) );
 	}
 
@@ -771,6 +518,9 @@ struct Application {
 
 		writeStateCallback_.callback = std::bind(&Application::writeState, this);
 		ui_->addButton("Write state", writeStateCallback_ );
+
+		writeObjectsCallback.callback = std::bind( &Application::writeObjects, this );
+		ui_->addButton( "Save objects", writeObjectsCallback );
 
 		findCandidatesCallback_.callback = std::bind(&Application::Do_findCandidates, this);
 		ui_->addButton("Find candidates", findCandidatesCallback_ );
@@ -867,6 +617,12 @@ struct Application {
 
 		put( emitter, "targetVolumes", targetVolumes_.collection );
 		put( emitter, "targetVolumeLabels", targetVolumes_.collectionLabels );
+	}
+
+	void writeObjects() {
+		Serializer::TextEmitter emitter( "objects.json" );
+		Serializer::put( emitter, "objectTemplates", objectTemplates_ );
+		Serializer::put( emitter, "objectInstances", objectInstances_ );
 	}
 
 	void Do_findCandidates() {

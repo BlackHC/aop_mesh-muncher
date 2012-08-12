@@ -25,7 +25,7 @@ ADD_EXECUTABLE(glVolumePlacerUI
 	${GLEW_SOURCE_FILE}
 	make_nonallocated_shared.h
 	antTweakBarEventHandler.h
-	ptree_serializer.h
+	serializer.h
 	anttwbarcollection.h
 	contextHelper.h
 	glVolumePlacerUI.cpp 

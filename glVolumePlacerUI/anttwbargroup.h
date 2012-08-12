@@ -129,7 +129,14 @@ namespace AntTWBarGroupTypes {
 		}
 	};
 
-	template<typename S, typename R = S, typename Summarizer=StdSummarizer<S> >
+	template<typename S>
+	struct NullSummarizer {
+		static void summarize( char *summary, size_t maxLength, const S* object) {
+			*summary = 0;
+		}
+	};
+
+	template<typename S, typename R = S, typename Summarizer=NullSummarizer<S> >
 	struct Struct {
 		const char *name;
 		std::vector<TwStructMember> members;
