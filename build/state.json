@@ -1,4 +1,5 @@
 {
+    "gridResolution": "0.4638098180294037",
     "targetCube":
     {
         "min":
@@ -17,6 +18,7 @@
     "showProbes": "false",
     "showMatchedProbes": "true",
     "dontUnfocus": "true",
+    "showPrototype": "true",
     "cameraPosition":
     [
         "11.35682010650635",

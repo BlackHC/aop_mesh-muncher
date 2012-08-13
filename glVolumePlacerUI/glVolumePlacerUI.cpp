@@ -250,6 +250,7 @@ struct Application {
 	bool showProbes;
 	bool showMatchedProbes;
 	bool dontUnfocus;
+	bool showPrototype;
 
 	float maxDistance_;
 	float gridResolution_;
@@ -435,10 +436,12 @@ struct Application {
 		}
 
 		// draw the prototype
-		glEnable( GL_LINE_STIPPLE );
-		glLineStipple( 1, 0x003f );
-		objectInstances_.prototype.draw();
-		glDisable( GL_LINE_STIPPLE );
+		if( showPrototype ) {
+			glEnable( GL_LINE_STIPPLE );
+			glLineStipple( 1, 0x003f );
+			objectInstances_.prototype.draw();
+			glDisable( GL_LINE_STIPPLE );
+		}
 
 		if( showMatchedProbes && activeProbe_ != -1 ) {
 			matchedProbes_[activeProbe_].render();
@@ -482,7 +485,7 @@ struct Application {
 		
 		AntTWBarGroupTypes::TypeMapping<ObjectInstance>::Type =
 			AntTWBarGroupTypes::Struct<ObjectInstance>( "ObjectInstance" ).
-			add( "templateId", &ObjectInstance::templateId ).
+			add( "templateId", &ObjectInstance::templateId, AntTWBarGroup::format( "min=0 max=%i", objectTemplates_.size() - 1 ).c_str() ).
 			add( "position", &ObjectInstance::position ).
 			define();
 
@@ -490,7 +493,6 @@ struct Application {
 	}
 
 	void initProbes() {
-		gridResolution_ = 7.4209571 / 256.0 * 16;
 		// TODO: move
 		maxDistance_ = gridResolution_ * 8;
 	}
@@ -508,14 +510,13 @@ struct Application {
 
 		ui_->addVarRW( "Max probe distance", maxDistance_, "min=0" );
 
-		showProbes = false;
 		ui_->addVarRW( "Show probes", showProbes );
 
-		showMatchedProbes = true;
 		ui_->addVarRW( "Show matched probes", showMatchedProbes );
-
-		dontUnfocus = true;
+		
 		ui_->addVarRW( "Fix selection", dontUnfocus );
+
+		ui_->addVarRW( "Show prototype", showPrototype );
 
 		writeStateCallback_.callback = std::bind(&Application::writeState, this);
 		ui_->addButton("Write state", writeStateCallback_ );
@@ -583,10 +584,14 @@ struct Application {
 
 		TextReader reader( "state.json" );
 
+		get( reader, "gridResolution", gridResolution_ );
+		maxDistance_ = gridResolution_ * 8;
+
 		get( reader, "targetCube", targetCube_ );
 		get( reader, "showProbes", showProbes );
 		get( reader, "showMatchedProbes", showMatchedProbes );
 		get( reader, "dontUnfocus", dontUnfocus );
+		get( reader, "showPrototype", showPrototype );
 
 		Vector3f cameraPosition, cameraDirection;
 		get( reader, "cameraPosition", cameraPosition );
@@ -607,11 +612,14 @@ struct Application {
 
 		TextEmitter emitter( "state.json" );
 
+		put( emitter, "gridResolution", gridResolution_ );
+
 		put( emitter, "targetCube", targetCube_ );
 		put( emitter, "showProbes", showProbes );
 		put( emitter, "showMatchedProbes", showMatchedProbes );
 		put( emitter, "dontUnfocus", dontUnfocus );
-
+		put( emitter, "showPrototype", showPrototype );
+		
 		put( emitter, "cameraPosition", camera.getPosition() );
 		put( emitter, "cameraDirection", camera.getDirection() );
 
