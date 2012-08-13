@@ -45,6 +45,15 @@ Vector3i floor( const Vector3f &v ) {
 	return Vector3i( floor( v[0] ), floor( v[1] ), floor( v[2] ) );
 }
 
+AlignedBox3f AlignedBox3f_fromMinSize( const Vector3f &min, const Vector3f &size ) {
+	return AlignedBox3f( min, min + size );
+}
+
+AlignedBox3f AlignedBox3f_fromCenterSize( const Vector3f &center, const Vector3f &size ) {
+	const Vector3f halfSize = size / 2;
+	return AlignedBox3f( center - halfSize, center + halfSize );
+}
+
 struct AntTweakBarEventHandler : EventHandler {
 	virtual bool handleEvent( const sf::Event &event ) 
 	{
@@ -75,16 +84,16 @@ namespace Serializer {
 		write( emitter, *array );
 	}
 
-	template< typename Reader, typename Scalar >
-	void read( Reader &reader, Cube<Scalar> &value ) {
-		get( reader, "min", value.minCorner );
-		get( reader, "max", value.maxCorner );
+	template< typename Reader >
+	void read( Reader &reader, AlignedBox3f &value ) {
+		get( reader, "min", value.min() );
+		get( reader, "max", value.max() );
 	}
 
-	template< typename Emitter, typename Scalar >
-	void write( Emitter &emitter, const Cube<Scalar> &value ) {
-		put( emitter, "min", value.minCorner );
-		put( emitter, "max", value.maxCorner );
+	template< typename Emitter >
+	void write( Emitter &emitter, const AlignedBox3f &value ) {
+		put( emitter, "min", value.min() );
+		put( emitter, "max", value.max() );
 	}
 
 	template void write< TextEmitter, float >( TextEmitter &, const Eigen::Matrix< float, 3, 1 > & );
@@ -159,8 +168,8 @@ struct ObjectInstance {
 		return objectTemplateBase[ templateId ];
 	}
 
-	Cubef getBBox() const {
-		return Cubef::fromMinSize( position - getTemplate().bbSize * 0.5, getTemplate().bbSize );
+	AlignedBox3f getBBox() const {
+		return AlignedBox3f_fromCenterSize( position, getTemplate().bbSize );
 	}
 
 	virtual void draw() {
@@ -317,10 +326,10 @@ struct Application {
 	float maxDistance_;
 	float gridResolution_;
 
-	Cubef targetCube_;
+	AlignedBox3f targetCube_;
 
 	AntTWBarCollection<CameraPosition> cameraPositions_;
-	AntTWBarCollection<Cubef> targetVolumes_;
+	AntTWBarCollection<AlignedBox3f> targetVolumes_;
 
 	// anttweakbar callbacks
 	AntTWBarGroup::VariableCallback<Vector3f> minCallback_, sizeCallback_;
@@ -454,8 +463,8 @@ struct Application {
 		probeVisualization.clear();
 		// fill probe database (and visualize the probes)
 		for( int i = 0 ; i < objectInstances_.items.size() ; i++ ) {
-			const Cubef bbox = objectInstances_.items[i].getBBox();
-			ProbeGrid probeGrid( OrientedGrid::from( floor( bbox.getSize() / gridResolution_ ) + Vector3i::Constant(1), bbox.minCorner, gridResolution_ ) );
+			const AlignedBox3f bbox = objectInstances_.items[i].getBBox();
+			ProbeGrid probeGrid( OrientedGrid::from( floor( bbox.sizes() / gridResolution_ ) + Vector3i::Constant(1), bbox.min(), gridResolution_ ) );
 
 			renderContext.disableObjectIndex = i;			
 			if( probeMask == MASK_ALL_SIBLINGS ) {
@@ -478,7 +487,7 @@ struct Application {
 					const Vector3f &direction = probe.distanceContext.directions[i];
 					const float distance = probe.distanceContext.distances[i];
 
-					const Vector3f &vector = direction * (1.0 - distance / maxDistance_);
+					const Vector3f &vector = probeGrid.getGrid().getIndexDirection( direction ) * (1.0 - distance / maxDistance_);
 
 					probeVisualization.setColor( Vector3f::Unit(2) * vector.norm() );
 					probeVisualization.drawVector( vector * visSize );				
@@ -519,7 +528,7 @@ struct Application {
 		DebugRender::ImmediateCalls targetVolume;
 		targetVolume.begin();
 		targetVolume.setColor( Vector3f::Unit(1) );
-		targetVolume.drawAABB( targetCube_.minCorner, targetCube_.maxCorner );
+		targetVolume.drawAABB( targetCube_.min(), targetCube_.max() );
 		targetVolume.end();
 
 		if( showProbes ) {
@@ -593,12 +602,12 @@ struct Application {
 	void initAntTweakBarUI() {
 		ui_ = std::unique_ptr<AntTWBarGroup>( new AntTWBarGroup("UI") );
 
-		minCallback_.getCallback = [&](Vector3f &v) { v = targetCube_.minCorner; };
-		minCallback_.setCallback = [&](const Vector3f &v) { targetCube_ = Cubef::fromMinSize( v, targetCube_.getSize() ); };
+		minCallback_.getCallback = [&](Vector3f &v) { v = targetCube_.min(); };
+		minCallback_.setCallback = [&](const Vector3f &v) { targetCube_ = AlignedBox3f_fromMinSize( v, targetCube_.sizes() ); };
 		ui_->addVarCB("Min target", minCallback_ );
 
-		sizeCallback_.getCallback = [&](Vector3f &v) { v = targetCube_.getSize(); };
-		sizeCallback_.setCallback = [&](const Vector3f &v) { targetCube_ = Cubef::fromMinSize( targetCube_.minCorner, v ); };
+		sizeCallback_.getCallback = [&](Vector3f &v) { v = targetCube_.sizes(); };
+		sizeCallback_.setCallback = [&](const Vector3f &v) { targetCube_ = AlignedBox3f_fromMinSize( targetCube_.min(), v ); };
 		ui_->addVarCB("Size target", sizeCallback_ );
 
 		ui_->addVarRW( "Grid resolution", gridResolution_, "min=0 step = 0.1" );
@@ -637,12 +646,12 @@ struct Application {
 		};
 		cameraPositions_.init( "Camera views", nullptr );
 
-		targetVolumes_.onAction = [=] ( const Cubef &tV ) {
+		targetVolumes_.onAction = [=] ( const AlignedBox3f &tV ) {
 			targetCube_ = tV;
 		};
-		targetVolumes_.getSummary = [=] ( const Cubef &tV, int ) -> std::string {
-			Vector3f size = tV.getSize();
-			return AntTWBarGroup::format( "(%f,%f,%f) %fx%fx%f", tV.minCorner[0], tV.minCorner[1], tV.minCorner[2], size[0], size[1], size[2] );
+		targetVolumes_.getSummary = [=] ( const AlignedBox3f &tV, int ) -> std::string {
+			Vector3f size = tV.sizes();
+			return AntTWBarGroup::format( "(%f,%f,%f) %fx%fx%f", tV.min()[0], tV.min()[1], tV.min()[2], size[0], size[1], size[2] );
 		};
 		targetVolumes_.getNewItem = [=] () {
 			return targetCube_;
@@ -752,7 +761,7 @@ struct Application {
 	}
 
 	void Do_findCandidates() {
-		ProbeGrid probeGrid( OrientedGrid::from( Vector3i::Constant(1) + ceil( targetCube_.getSize() / gridResolution_ ), targetCube_.minCorner, gridResolution_ ) );
+		ProbeGrid probeGrid( OrientedGrid::from( Vector3i::Constant(1) + ceil( targetCube_.sizes() / gridResolution_ ), targetCube_.min(), gridResolution_ ) );
 
 		{
 			RenderContext renderContext;

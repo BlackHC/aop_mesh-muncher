@@ -20,34 +20,6 @@
 
 using namespace Eigen;
 
-// TODO: use AlignedBox?
-template<typename V>
-struct Cube {
-	V minCorner, maxCorner;
-
-	Cube() {}
-	Cube( const V &minCorner, const V &maxCorner ) : minCorner( minCorner ), maxCorner( maxCorner ) {}
-
-	static Cube fromMinSize( const V &minCorner, const V &size ) {
-		return Cube( minCorner, minCorner + size );
-	}
-
-	V getSize() const {
-		return maxCorner - minCorner;
-	}
-
-	Vector3f getCenter() const {
-		return (minCorner + maxCorner).cast<float>() / 2;
-	}
-};
-
-typedef Cube<Vector3i> Cubei;
-typedef Cube<Vector3f> Cubef;
-
-int getVolume( const Vector3i &size ) {
-	return size.prod();
-}
-
 // z: 6, x: 2, y: 18
 const Vector3i neighborOffsets[] = {
 	// first z, then x, then y

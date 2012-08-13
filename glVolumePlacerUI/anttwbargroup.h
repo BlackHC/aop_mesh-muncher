@@ -214,7 +214,7 @@ namespace AntTWBarGroupTypes {
 		}
 
 		TwType define() {
-			return TwDefineEnum( name, &values.front(), values.size() );
+			return TwDefineEnum( name, &values.front(), (int) values.size() );
 		}
 	};
 }
