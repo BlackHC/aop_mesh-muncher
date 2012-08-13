@@ -189,6 +189,15 @@ namespace DebugRender {
 		GLuint list;
 
 		CombinedCalls() : list( 0 ) {}
+		~CombinedCalls() {
+			clear();
+		}
+
+		void clear() {
+			if( list ) {
+				glDeleteLists( list, 1 );
+			}
+		}
 
 		void begin() {
 			list = glGenLists( 1 );

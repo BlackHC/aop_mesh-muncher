@@ -1,5 +1,9 @@
 {
     "gridResolution": "0.4638098180294037",
+    "solidObjects": "false",
+    "maskAllInstancesOnRefill": "false",
+    "maskAllObjectsOnRefill": "false",
+    "maskAllObjectsOnFind": "false",
     "targetCube":
     {
         "min":
@@ -21,15 +25,15 @@
     "showPrototype": "true",
     "cameraPosition":
     [
-        "11.35682010650635",
+        "6.728230953216553",
         "1.917390704154968",
-        "-3.622355461120606"
+        "1.29480516910553"
     ],
     "cameraDirection":
     [
-        "0.2649283707141876",
-        "-0.3504133522510529",
-        "0.898344874382019"
+        "0.926022469997406",
+        "-0.3175129592418671",
+        "-0.2041271924972534"
     ],
     "cameraPositions":
     [

@@ -90,6 +90,21 @@ namespace Serializer {
 	template void write< TextEmitter, float >( TextEmitter &, const Eigen::Matrix< float, 3, 1 > & );
 }
 
+struct RenderContext : AsExecutionContext<RenderContext> {
+	bool solidObjects;
+	int disableObjectIndex;
+	int disableTemplateId;
+	bool disableObjects;
+
+	void setDefault() {
+		solidObjects = false;
+
+		disableObjects = false;
+		disableObjectIndex = -1;
+		disableTemplateId = -1;
+	}
+};
+
 struct ObjectTemplate {
 	int id;
 
@@ -98,14 +113,19 @@ struct ObjectTemplate {
 	Vector3f color;
 
 	void Draw() {
+		RenderContext renderContext;
+
+		if( renderContext.disableTemplateId == id ) {
+			return;
+		}
+
 		DebugRender::ImmediateCalls bbox;
 		bbox.begin();
 		bbox.setColor( color );
-		bbox.drawAABB( -bbSize * 0.5, bbSize * 0.5 );
+		bbox.drawAABB( -bbSize * 0.5, bbSize * 0.5, !renderContext.solidObjects );
 		bbox.end();
 	}
 };
-
 
 // TODO: blub
 ObjectTemplate *objectTemplateBase = nullptr;
@@ -251,6 +271,10 @@ struct Application {
 	bool showMatchedProbes;
 	bool dontUnfocus;
 	bool showPrototype;
+	bool solidObjects;
+	bool maskAllInstancesOnRefill;
+	bool maskAllObjectsOnRefill;
+	bool maskAllObjectsOnFind;
 
 	float maxDistance_;
 	float gridResolution_;
@@ -264,6 +288,7 @@ struct Application {
 	AntTWBarGroup::VariableCallback<Vector3f> minCallback_, sizeCallback_;
 	AntTWBarGroup::ButtonCallback writeStateCallback_;
 	AntTWBarGroup::ButtonCallback findCandidatesCallback_;
+	AntTWBarGroup::ButtonCallback refillProbeDatabaseCallback;
 	AntTWBarGroup::ButtonCallback writeObjectsCallback;
 
 	// debug visualizations
@@ -335,11 +360,11 @@ struct Application {
 		viewerPPLProgram = programBuilder.program;
 
 		loadScene();
-		initProbes();
 
 		readState();
+		readObjects();
 
-		initObjectData();
+		refillProbeDatabase();
 
 		initAntTweakBar();
 		initAntTweakBarUI();
@@ -378,13 +403,26 @@ struct Application {
 		activeProbe_ = -1;
 	}
 
-	void initObjectData() {
-		readObjects();
+	void refillProbeDatabase() {
+		// reset the database
+		probeDatabase_ = ProbeDatabase();
 
+		RenderContext renderContext;
+		renderContext.solidObjects = true;
+		if( maskAllObjectsOnRefill ) {
+			renderContext.disableObjects = true;
+		}
+
+		probeVisualization.clear();
 		// fill probe database (and visualize the probes)
 		for( int i = 0 ; i < objectInstances_.items.size() ; i++ ) {
 			const Cubef bbox = objectInstances_.items[i].getBBox();
 			ProbeGrid probeGrid( OrientedGrid::from( floor( bbox.getSize() / gridResolution_ ) + Vector3i::Constant(1), bbox.minCorner, gridResolution_ ) );
+
+			renderContext.disableObjectIndex = i;			
+			if( maskAllInstancesOnRefill ) {
+				renderContext.disableTemplateId = objectInstances_.items[i].templateId;
+			}
 
 			sampleProbes( probeGrid, std::bind( &Application::drawScene, this ), maxDistance_ );
 			probeDatabase_.addObjectInstanceToDatabase( probeGrid, objectInstances_.items[i].templateId );
@@ -415,11 +453,30 @@ struct Application {
 	void drawScene() {
 		glUseProgram( viewerPPLProgram );
 		objScene.Draw();
+
+		RenderContext renderContext;
+		if( !renderContext.disableObjects ) {
+			if( !renderContext.solidObjects ) {
+				glUseProgram( 0 );
+			}
+			for( int i = 0 ; i < objectInstances_.items.size() ; i++ ) {
+				if( renderContext.disableObjectIndex == i ) {
+					continue;
+				}
+
+				objectInstances_.items[i].draw();
+			}
+		}
+
 		glUseProgram( 0 );
 	}
 
 	void drawEverything() {
-		drawScene();
+		{
+			RenderContext context;
+			context.solidObjects = solidObjects;
+			drawScene();
+		}
 
 		DebugRender::ImmediateCalls targetVolume;
 		targetVolume.begin();
@@ -429,10 +486,6 @@ struct Application {
 
 		if( showProbes ) {
 			probeVisualization.render();
-		}
-
-		for( int i = 0 ; i < objectInstances_.items.size() ; i++ ) {
-			objectInstances_.items[i].draw();
 		}
 
 		// draw the prototype
@@ -492,11 +545,6 @@ struct Application {
 		eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( antTweakBarEventHandler ) );
 	}
 
-	void initProbes() {
-		// TODO: move
-		maxDistance_ = gridResolution_ * 8;
-	}
-
 	void initAntTweakBarUI() {
 		ui_ = std::unique_ptr<AntTWBarGroup>( new AntTWBarGroup("UI") );
 
@@ -509,14 +557,14 @@ struct Application {
 		ui_->addVarCB("Size target", sizeCallback_ );
 
 		ui_->addVarRW( "Max probe distance", maxDistance_, "min=0" );
-
 		ui_->addVarRW( "Show probes", showProbes );
-
-		ui_->addVarRW( "Show matched probes", showMatchedProbes );
-		
+		ui_->addVarRW( "Show matched probes", showMatchedProbes );		
 		ui_->addVarRW( "Fix selection", dontUnfocus );
-
 		ui_->addVarRW( "Show prototype", showPrototype );
+		ui_->addVarRW( "Solid objects", solidObjects );
+		ui_->addVarRW( "Mask templateId on refill", maskAllInstancesOnRefill );
+		ui_->addVarRW( "Mask all objects on refill", maskAllObjectsOnRefill );
+		ui_->addVarRW( "Mask all objects on find", maskAllObjectsOnFind );
 
 		writeStateCallback_.callback = std::bind(&Application::writeState, this);
 		ui_->addButton("Write state", writeStateCallback_ );
@@ -526,6 +574,9 @@ struct Application {
 
 		findCandidatesCallback_.callback = std::bind(&Application::Do_findCandidates, this);
 		ui_->addButton("Find candidates", findCandidatesCallback_ );
+
+		refillProbeDatabaseCallback.callback = std::bind( &Application::refillProbeDatabase, this );
+		ui_->addButton( "Refill probe database", refillProbeDatabaseCallback );
 				
 		candidateResultsUI_ = std::unique_ptr<AntTWBarGroup>( new AntTWBarGroup( "Candidates", ui_.get() ) );
 
@@ -587,6 +638,11 @@ struct Application {
 		get( reader, "gridResolution", gridResolution_ );
 		maxDistance_ = gridResolution_ * 8;
 
+		get( reader, "solidObjects", solidObjects );
+		get( reader, "maskAllInstancesOnRefill", maskAllInstancesOnRefill );
+		get( reader, "maskAllObjectsOnRefill", maskAllObjectsOnRefill );
+		get( reader, "maskAllObjectsOnFind", maskAllObjectsOnFind );
+
 		get( reader, "targetCube", targetCube_ );
 		get( reader, "showProbes", showProbes );
 		get( reader, "showMatchedProbes", showMatchedProbes );
@@ -613,6 +669,11 @@ struct Application {
 		TextEmitter emitter( "state.json" );
 
 		put( emitter, "gridResolution", gridResolution_ );
+		put( emitter, "solidObjects", solidObjects );
+		
+		put( emitter, "maskAllInstancesOnRefill", maskAllInstancesOnRefill );
+		put( emitter, "maskAllObjectsOnRefill", maskAllObjectsOnRefill );
+		put( emitter, "maskAllObjectsOnFind", maskAllObjectsOnFind );
 
 		put( emitter, "targetCube", targetCube_ );
 		put( emitter, "showProbes", showProbes );
@@ -649,7 +710,14 @@ struct Application {
 
 	void Do_findCandidates() {
 		ProbeGrid probeGrid( OrientedGrid::from( Vector3i::Constant(1) + ceil( targetCube_.getSize() / gridResolution_ ), targetCube_.minCorner, gridResolution_ ) );
-		sampleProbes( probeGrid, std::bind( &Application::drawScene, this ), maxDistance_ );
+
+		{
+			RenderContext renderContext;
+			if( maskAllObjectsOnFind ) {
+				renderContext.disableObjects = true;
+			}
+			sampleProbes( probeGrid, std::bind( &Application::drawScene, this ), maxDistance_ );
+		}		
 
 		ProbeMatchSettings settings;
 		settings.maxDelta = gridResolution_;
