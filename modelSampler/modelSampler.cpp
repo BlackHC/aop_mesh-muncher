@@ -83,14 +83,13 @@ void main() {
 	glClearDepth(1.f);
 
 	debugScene.begin();
-	glMatrixMode( GL_MODELVIEW );
 	glRotatef( 45.0, 0.0, 1.0, 0.0 );
-	debugScene.drawBox( Vector3f::Constant(8), false, true );
+	const double scaleFactor = sqrt(2.0);
+	debugScene.drawBox( Vector3f( 8 * scaleFactor, 8, 8 * scaleFactor ), false, true );
 	debugScene.end();
 
 	//Grid grid( Vector3i( 4, 8, 16 ), Vector3f( 0.0, 0.0, 0.0 ), 0.25 );
-	OrientedGrid grid = OrientedGrid::from( Vector3i::Constant(7), Vector3f::Constant(-3), 1.0 );
-	grid.transformation = Eigen::AngleAxisf( M_PI / 4, Vector3f::UnitY() ) * grid.transformation;
+	OrientedGrid grid = OrientedGrid::from( Vector3i(7, 7, 7), Vector3f(-3, -3, -3), 1.0 );
 
 	DepthSampler sampler;
 	sampler.grid = &grid;
@@ -167,7 +166,7 @@ void main() {
 					for( int y = 0 ; y < grid.size[1] ; y++ ) {
 						const Vector3i index3 = Vector3i( x, y, z );
 						depthInfo.setPosition( grid.getPosition( index3 ) );
-						depthInfo.drawVector( sampler.depthSamples.getSample( grid.getIndex( index3 ), directionIndex ) * direction );
+						depthInfo.drawVector( sampler.depthSamples.getSample( grid.getIndex( index3 ), directionIndex ) * (grid.indexToPosition.linear() * direction) );
 					}
 				}
 			}

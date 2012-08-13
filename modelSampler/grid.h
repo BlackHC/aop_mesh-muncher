@@ -180,8 +180,8 @@ struct OrientedGrid : Indexer3 {
 	}
 
 	// aka vector
-	Eigen::Vector3f getDirection( const Eigen::Vector3i &indexVector ) const {
-		return indexToPosition.linear() * indexVector.cast<float>();
+	Eigen::Vector3f getDirection( const Eigen::Vector3f &indexVector ) const {
+		return indexToPosition.linear() * indexVector;
 	}
 
 	using Indexer3::getIndex3;

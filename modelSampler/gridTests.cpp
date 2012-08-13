@@ -14,7 +14,7 @@ static std::ostream & operator << (std::ostream & s, const Vector4f & m) {
 
 TEST( OrientedGrid, fromIdentity) {
 	OrientedGrid grid = OrientedGrid::from( Vector3i::Constant(4), Vector3f::Zero(), 1.0 );
-	EXPECT_EQ( grid.transformation.matrix(), Matrix4f::Identity() );
+	EXPECT_EQ( grid.indexToPosition.matrix(), Matrix4f::Identity() );
 	EXPECT_EQ( grid.getPosition( Vector3i::Zero() ), Vector3f::Zero() );
 	EXPECT_EQ( grid.getPosition( Vector3i::UnitX() ), Vector3f::UnitX() );
 	EXPECT_EQ( grid.getPosition( Vector3i::UnitY() ), Vector3f::UnitY() );
@@ -61,7 +61,7 @@ TEST( OrientedGrid, permuted_inverse ) {
 	const OrientedGrid grid = OrientedGrid::from( Vector3i::Constant(4), offset, 2.0 );
 	const OrientedGrid permutedGrid = OrientedGrid::from( grid, permutation );
 
-	const Matrix4f inv = permutedGrid.transformation.inverse().matrix();
+	const Matrix4f inv = permutedGrid.positionToIndex.matrix();
 	EXPECT_EQ( h( Vector3f::Zero() ), inv * h(offset) );
 	EXPECT_EQ( h( Vector3f::UnitZ() ), inv * h(offset + Vector3f::UnitX() * 2) );
 	EXPECT_EQ( h( Vector3f::UnitX() ), inv * h(offset + Vector3f::UnitY() * 2) );

@@ -60,6 +60,7 @@ struct DepthSampler {
 
 	int numDirections;
 	// sorted by main axis xyz, yzx, zxy
+	// these are index directions (ie they need to be transformed by the oriented grid to obtain scene directions)
 	std::vector<Eigen::Vector3f> directions[3];
 
 	// size: grid.count * numDirections
@@ -130,8 +131,6 @@ struct DepthSampler {
 			BOOST_VERIFY( boost::algorithm::all_of( subDirections, [&permutation]( const Eigen::Vector3f &v ) { return abs( v[permutation[2]] ) > 0.1; } ) );
 
 			OrientedGrid permutedGrid = OrientedGrid::from( *grid, permutation );
-			// TODO: use the new methods
-			auto invTransformation = permutedGrid.positionToIndex;
 
 			glBindBuffer( GL_PIXEL_PACK_BUFFER, pbo );
 
@@ -140,7 +139,7 @@ struct DepthSampler {
 
 			for( int subDirectionIndex = 0 ; subDirectionIndex < directions[mainAxis].size() ; ++subDirectionIndex, ++directionIndex ) {
 				const Eigen::Vector3f direction = subDirections[subDirectionIndex];
-				const Eigen::Vector3f permutedDirection = invTransformation.linear() * direction.normalized() * maxDepth;
+				const Eigen::Vector3f permutedDirection = permute( direction.normalized(), permutation ) * maxDepth;
 
 				// set the projection matrix
 				glMatrixMode( GL_PROJECTION );
@@ -158,13 +157,15 @@ struct DepthSampler {
 					glClear( GL_DEPTH_BUFFER_BIT );	
 
 					glLoadIdentity();
+					
 					// looking down the negative z axis by default --- so flip if necessary (this changes winding though!!!)
-					glScalef( 1.0, 1.0, permutedDirection.z() > 0 ? -1.0 : 1.0 );
+					glScalef( 1.0, 1.0, (permutedDirection.z() > 0 ? -1.0 : 1.0) * permutedGrid.getDirection( Eigen::Vector3f::UnitZ() ).norm() );
 
 					// pixel alignment and "layer selection"
 					glTranslatef( 0.5, 0.5, -i );
 
-					Eigen::glMultMatrix( invTransformation );
+					// ie "position to permuted index"
+					Eigen::glMultMatrix( permutedGrid.positionToIndex );
 
 					renderSceneCallback();
 					
