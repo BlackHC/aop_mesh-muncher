@@ -312,7 +312,7 @@ struct Application {
 	UIManager uiManager_;
 	
 	void loadScene() {
-		objScene.Init( "two_boxes.obj" );
+		objScene.Init( "lawn_garage_house.obj" );
 	}
 
 	void initCamera() {
@@ -349,7 +349,7 @@ struct Application {
 			).
 			attachShader( 
 				glShaderBuilder( GL_FRAGMENT_SHADER ).
-					addSource( "varying vec3 viewPos; void main() { vec3 normal = cross( dFdx( viewPos ), dFdy( viewPos ) ); gl_FragColor = vec4( gl_Color.rgb * max( 0.0, 2.0 / length( viewPos ) * abs( dot( normalize( normal ), normalize( viewPos ) ) ) ) + 0.1, 1.0 ); }" ).
+					addSource( "varying vec3 viewPos; void main() { vec3 normal = cross( dFdx( viewPos ), dFdy( viewPos ) ); gl_FragColor = vec4( gl_Color.rgb * max( 0.0, 0.4 + 5.0 / length( viewPos ) * abs( dot( normalize( normal ), normalize( viewPos ) ) ) ), 1.0 ); }" ).
 					compile().
 					handle
 			).
@@ -531,9 +531,9 @@ struct Application {
 
 		AntTWBarGroupTypes::TypeMapping<Vector3f>::Type = 
 			AntTWBarGroupTypes::Struct<Eigen::Vector3f, AntTWBarGroupTypes::Vector3f, EigenSummarizer<Eigen::Vector3f> >( "Vector3f" ).
-			add( "x", &AntTWBarGroupTypes::Vector3f::x ).
-			add( "y", &AntTWBarGroupTypes::Vector3f::y ).
-			add( "z", &AntTWBarGroupTypes::Vector3f::z ).
+			add( "x", &AntTWBarGroupTypes::Vector3f::x, "step=0.1" ).
+			add( "y", &AntTWBarGroupTypes::Vector3f::y, "step=0.1" ).
+			add( "z", &AntTWBarGroupTypes::Vector3f::z, "step=0.1" ).
 			define();
 		
 		AntTWBarGroupTypes::TypeMapping<ObjectInstance>::Type =
@@ -556,7 +556,8 @@ struct Application {
 		sizeCallback_.setCallback = [&](const Vector3f &v) { targetCube_ = Cubef::fromMinSize( targetCube_.minCorner, v ); };
 		ui_->addVarCB("Size target", sizeCallback_ );
 
-		ui_->addVarRW( "Max probe distance", maxDistance_, "min=0" );
+		ui_->addVarRW( "Grid resolution", gridResolution_, "min=0 step = 0.1" );
+		ui_->addVarRW( "Max probe distance", maxDistance_, "min=0 step=0.1" );
 		ui_->addVarRW( "Show probes", showProbes );
 		ui_->addVarRW( "Show matched probes", showMatchedProbes );		
 		ui_->addVarRW( "Fix selection", dontUnfocus );
