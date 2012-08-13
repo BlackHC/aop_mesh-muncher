@@ -182,6 +182,41 @@ namespace AntTWBarGroupTypes {
 			Summarizer::summarize( summaryString, summaryMaxLength, static_cast<const S*>(value) );
 		}
 	};
+
+	template<typename E>
+	struct Enum {
+		const char *name;
+		std::vector<TwEnumVal> values;
+
+		Enum( const char *name ) : name( name ) {}
+
+		Enum & add( const char *label, E value ) {
+			TwEnumVal def;
+			def.Value = value;
+			def.Label = label;
+			values.push_back( def );
+
+			return *this;
+		}
+
+		Enum & add( const char *label ) {
+			TwEnumVal def;
+			def.Label = label;
+			if( !values.empty() ) {
+				def.Value = values.back().Value + 1;
+			}
+			else {
+				def.Value = 0;
+			}
+			values.push_back( def );
+
+			return *this;
+		}
+
+		TwType define() {
+			return TwDefineEnum( name, &values.front(), values.size() );
+		}
+	};
 }
 
 class AntTWBarGroup

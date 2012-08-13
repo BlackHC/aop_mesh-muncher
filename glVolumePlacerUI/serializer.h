@@ -163,6 +163,88 @@ namespace Serializer {
 		emitter.current->put_value( value );
 	}
 
+	// enums
+	/*template<typename E> 
+	struct EnumSimpleReflection {
+		//static const char* labels[0];
+	};*/
+
+	template<typename E> 
+	struct EnumReflection {
+		//static const std::pair<const char*, E> labelValuePairs[0];
+	};
+
+	template< typename Value >
+	typename boost::enable_if< boost::is_enum< Value > >::type
+		read( BinaryReader &reader, Value &value ) {
+			fread( &value, sizeof( Value ), 1, reader.handle );
+	}
+
+	// using labelValuePairs
+	template< typename Value >
+	typename boost::enable_if< boost::is_enum< Value > /*&& sizeof( EnumReflection<Value>::labels )*/  >::type
+		read( TextReader &reader, Value &value ) {
+		std::string label;
+		label = reader.current->get_value<std::string>();
+
+		for( int i = 0 ; i < boost::size( EnumReflection<Value>::labelValuePairs ) ; ++i ) {
+			if( label == EnumReflection<Value>::labelValuePairs[i].label ) {
+				value = EnumReflection<Value>::labelValuePairs[i].value;
+				return;
+			}
+		}
+
+		// try it as int
+		value = (Value) reader.current->get_value<int>();
+	}
+
+	// using labels
+	/*template< typename Value >
+	typename boost::enable_if_c< boost::is_enum< Value >::value && sizeof( EnumSimpleReflection<Value>::labels ) >::type
+		read( TextReader &reader, Value &value ) {
+		std::string label;
+		label = reader.current->get_value<std::string>();
+
+		for( int i = 0 ; i < boost::size( EnumSimpleReflection<Value>::labels ) ; ++i ) {
+			if( label == EnumSimpleReflection<Value>::labels[i] ) {
+				value = (E) i;
+				return;
+			}
+		}
+
+		// try it as int
+		value = (E) reader.current->get_value<int>();
+	}*/
+
+	template< typename Value >
+	typename boost::enable_if< boost::is_enum< Value > >::type
+		write( BinaryEmitter &emitter, const Value &value ) {
+			fwrite( &value, sizeof( Value ), 1, emitter.handle );
+	}
+
+	template< typename Value >
+	typename boost::enable_if< boost::is_enum< Value > /* && sizeof( EnumReflection<Value>::labels ) */>::type
+		write( TextEmitter &emitter, const Value &value ) {
+		for( int i = 0 ; i < boost::size( EnumReflection<Value>::labelValuePairs ) ; ++i ) {
+			if( value == EnumReflection<Value>::labelValuePairs[i].value ) {
+				emitter.current->put_value( EnumReflection<Value>::labelValuePairs[i].label );
+				return;
+			}
+		}
+		emitter.current->put_value<int>( value );
+	}
+
+	/*template< typename Value >
+	typename boost::enable_if_c< boost::is_enum< Value >::value && sizeof( EnumSimpleReflection<Value>::labels[0] ) != 0 >::type
+		write( TextEmitter &emitter, const Value &value ) {
+		if( value >= 0 && value < boost::size( EnumSimpleReflection<Value>::labels ) ) {
+			emitter.current->put_value( EnumSimpleReflection<Value>::labels[value] );
+		}
+		else {
+			emitter.current->put_value<int>( value );
+		}		
+	}*/
+
 	// std::vector
 	template< typename Value >
 	void write( BinaryEmitter &emitter, const std::vector<Value> &collection ) {

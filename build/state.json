@@ -1,8 +1,7 @@
 {
     "gridResolution": "0.4638098180294037",
     "solidObjects": "true",
-    "maskAllInstancesOnRefill": "false",
-    "maskAllObjectsOnRefill": "false",
+    "probeMask": "all_objects",
     "maskAllObjectsOnFind": "false",
     "targetCube":
     {

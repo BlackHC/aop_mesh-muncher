@@ -219,6 +219,45 @@ namespace Serializer {
 	}
 }
 
+enum ProbeMask {
+	MASK_NONE,
+	MASK_ALL_SIBLINGS,
+	MASK_ALL_OBJECTS
+};
+
+namespace Serializer {
+	template<> 
+	struct EnumReflection<ProbeMask> {
+		struct LabelValue {
+			const char *label;
+			ProbeMask value;
+		};
+		static const LabelValue labelValuePairs[3];
+		//static const char* labels[3];
+	};
+
+	//const char *EnumSimpleReflection<ProbeMask>::labels[3] = { "none", "all_siblings", "all_objects" };
+	const EnumReflection<ProbeMask>::LabelValue EnumReflection<ProbeMask>::labelValuePairs[3] = {
+		{"none", MASK_NONE},
+		{"all_siblings", MASK_ALL_SIBLINGS},
+		{"all_objects", MASK_ALL_OBJECTS}
+	};
+
+	//template boost::enable_if_c< boost::is_enum< ProbeMask >::value && sizeof( EnumSimpleReflection<ProbeMask>::labels[0] ) != 0 >::type write( TextEmitter &emitter, const ProbeMask &value );
+}
+
+#define ANTTWBARGROUPTYPES_DEFINE_CUSTOM_TYPE( globalType ) \
+	namespace AntTWBarGroupTypes {\
+		template<> \
+		struct TypeMapping< globalType > { \
+			static int Type; \
+		}; \
+		\
+		int TypeMapping< globalType >::Type; \
+	}
+
+ANTTWBARGROUPTYPES_DEFINE_CUSTOM_TYPE( ProbeMask );
+
 namespace AntTWBarGroupTypes {
 	template<>
 	struct TypeMapping< Eigen::Vector3i > {
@@ -272,10 +311,9 @@ struct Application {
 	bool dontUnfocus;
 	bool showPrototype;
 	bool solidObjects;
-	bool maskAllInstancesOnRefill;
-	bool maskAllObjectsOnRefill;
+	ProbeMask probeMask;
 	bool maskAllObjectsOnFind;
-
+	
 	float maxDistance_;
 	float gridResolution_;
 
@@ -378,8 +416,8 @@ struct Application {
 		previewTransformation_.projection = Eigen::createPerspectiveProjectionMatrix( 
 			75.0f,
 			1.0f,
-			0.1f, 10.0f);
-		previewTransformation_.view = Eigen::createViewerMatrix( Vector3f( 0.0, 0.0, 2.0 ), -Vector3f::UnitZ(), Vector3f::UnitY() );
+			0.1f, 100.0f);
+		previewTransformation_.view = Eigen::createViewerMatrix( Vector3f( 0.0, 0.0, 8.0 ), -Vector3f::UnitZ(), Vector3f::UnitY() );
 	}
 
 	void initPreviewUI() 
@@ -409,7 +447,7 @@ struct Application {
 
 		RenderContext renderContext;
 		renderContext.solidObjects = true;
-		if( maskAllObjectsOnRefill ) {
+		if( probeMask == MASK_ALL_OBJECTS ) {
 			renderContext.disableObjects = true;
 		}
 
@@ -420,7 +458,7 @@ struct Application {
 			ProbeGrid probeGrid( OrientedGrid::from( floor( bbox.getSize() / gridResolution_ ) + Vector3i::Constant(1), bbox.minCorner, gridResolution_ ) );
 
 			renderContext.disableObjectIndex = i;			
-			if( maskAllInstancesOnRefill ) {
+			if( probeMask == MASK_ALL_SIBLINGS ) {
 				renderContext.disableTemplateId = objectInstances_.items[i].templateId;
 			}
 
@@ -542,6 +580,13 @@ struct Application {
 			add( "position", &ObjectInstance::position ).
 			define();
 
+		AntTWBarGroupTypes::TypeMapping<ProbeMask>::Type =
+			AntTWBarGroupTypes::Enum<ProbeMask>( "ProbeMask" ).
+			add( "none" ).
+			add( "all instances" ).
+			add( "all objects" ).
+			define();
+
 		eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( antTweakBarEventHandler ) );
 	}
 
@@ -563,8 +608,7 @@ struct Application {
 		ui_->addVarRW( "Fix selection", dontUnfocus );
 		ui_->addVarRW( "Show prototype", showPrototype );
 		ui_->addVarRW( "Solid objects", solidObjects );
-		ui_->addVarRW( "Mask templateId on refill", maskAllInstancesOnRefill );
-		ui_->addVarRW( "Mask all objects on refill", maskAllObjectsOnRefill );
+		ui_->addVarRW( "Refill probe mask", probeMask );
 		ui_->addVarRW( "Mask all objects on find", maskAllObjectsOnFind );
 
 		writeStateCallback_.callback = std::bind(&Application::writeState, this);
@@ -640,8 +684,7 @@ struct Application {
 		maxDistance_ = gridResolution_ * 8;
 
 		get( reader, "solidObjects", solidObjects );
-		get( reader, "maskAllInstancesOnRefill", maskAllInstancesOnRefill );
-		get( reader, "maskAllObjectsOnRefill", maskAllObjectsOnRefill );
+		get( reader, "probeMask", probeMask );
 		get( reader, "maskAllObjectsOnFind", maskAllObjectsOnFind );
 
 		get( reader, "targetCube", targetCube_ );
@@ -672,8 +715,7 @@ struct Application {
 		put( emitter, "gridResolution", gridResolution_ );
 		put( emitter, "solidObjects", solidObjects );
 		
-		put( emitter, "maskAllInstancesOnRefill", maskAllInstancesOnRefill );
-		put( emitter, "maskAllObjectsOnRefill", maskAllObjectsOnRefill );
+		put( emitter, "probeMask", probeMask );
 		put( emitter, "maskAllObjectsOnFind", maskAllObjectsOnFind );
 
 		put( emitter, "targetCube", targetCube_ );
@@ -726,7 +768,7 @@ struct Application {
 
 		results_ = probeDatabase_.findCandidates( probeGrid );
 
-		activeProbe_ = 0;
+		activeProbe_ = -1;
 
 		candidateResultsUI_->clear();
 		for( int i = 0 ; i < results_.size() ; ++i ) {
@@ -754,6 +796,11 @@ struct Application {
 
 		glEnable( GL_SCISSOR_TEST );
 
+		RenderContext renderContext;
+		renderContext.solidObjects = true;
+
+		glUseProgram( viewerPPLProgram );
+
 		for( int i = 0 ; i < results_.size() ; ++i, topLeft.y() += previewSize + 10 ) {
 			ObjectTemplate &objectTemplate = objectTemplates_[ results_[i].first ];
 
@@ -764,7 +811,7 @@ struct Application {
 			glClear( GL_DEPTH_BUFFER_BIT );
 
 			glPushMatrix();
-			glScale( Vector3f::Constant( 2.0 / objectTemplate.bbSize.maxCoeff() ) );
+			glScale( Vector3f::Constant( 8.0 / objectTemplate.bbSize.norm() ) );
 			objectTemplate.Draw();
 			glPopMatrix();
 
@@ -773,7 +820,11 @@ struct Application {
 			button.area.max() = topLeft + size;
 			button.SetVisible( true );
 		}
+		for( int i = results_.size() ; i < objectTemplates_.size() ; ++i ) {
+			uiButtons_[i].SetVisible( false );
+		}
 
+		glUseProgram( 0 );
 		glViewport( 0, 0, window.getSize().x, window.getSize().y );
 		glDisable( GL_SCISSOR_TEST );
 	}
