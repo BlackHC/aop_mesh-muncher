@@ -378,12 +378,7 @@ struct Application {
 	}
 
 	void initObjectData() {
-		{
-			Serializer::TextReader reader( "objects.json" );
-			Serializer::get( reader, "objectTemplates", objectTemplates_ );
-			objectTemplateBase = &objectTemplates_.front();
-			Serializer::get( reader, "objectInstances", objectInstances_.items );
-		}
+		readObjects();
 
 		// fill probe database (and visualize the probes)
 		for( int i = 0 ; i < objectInstances_.items.size() ; i++ ) {
@@ -438,6 +433,12 @@ struct Application {
 		for( int i = 0 ; i < objectInstances_.items.size() ; i++ ) {
 			objectInstances_.items[i].draw();
 		}
+
+		// draw the prototype
+		glEnable( GL_LINE_STIPPLE );
+		glLineStipple( 1, 0x003f );
+		objectInstances_.prototype.draw();
+		glDisable( GL_LINE_STIPPLE );
 
 		if( showMatchedProbes && activeProbe_ != -1 ) {
 			matchedProbes_[activeProbe_].render();
@@ -551,6 +552,10 @@ struct Application {
 		};
 		targetVolumes_.init( "Target cubes", nullptr );
 
+		objectInstances_.onItemSelected = [=] (const ObjectInstance &value, int i) {
+			objectInstances_.prototype = value;
+		};
+
 		objectInstances_.init( "Object Instances", nullptr );
 	}
 
@@ -617,8 +622,18 @@ struct Application {
 		put( emitter, "targetVolumeLabels", targetVolumes_.collectionLabels );
 	}
 
+	void readObjects() {
+		Serializer::TextReader reader( "objects.json" );
+
+		Serializer::get( reader, "objectTemplates", objectTemplates_ );
+		objectTemplateBase = &objectTemplates_.front();
+		Serializer::get( reader, "objectInstances", objectInstances_.items );
+		Serializer::get( reader, "objectPrototype", objectInstances_.prototype );
+	}
+
 	void writeObjects() {
 		Serializer::TextEmitter emitter( "objects.json" );
+
 		Serializer::put( emitter, "objectTemplates", objectTemplates_ );
 		Serializer::put( emitter, "objectInstances", objectInstances_.items );
 		Serializer::put( emitter, "objectPrototype", objectInstances_.prototype );

@@ -81,14 +81,14 @@ struct AntTWBarEditableCollection {
 
 	std::unique_ptr<AntTWBarGroup> ui, members;
 	AntTWBarGroup::ButtonCallback addCallback;
-	std::vector<AntTWBarGroup::ButtonCallback> buttonCallbacks;
+	std::vector<AntTWBarGroup::ButtonCallback> removeCallbacks, selectCallbacks;
 
 	std::function<std::string (const Value &, int)> getSummary;
-	std::function<bool (const Value &)> validatePrototype;
+	std::function<bool (Value &)> validatePrototype;
+	std::function<void (const Value &, int)> onItemSelected;
 	
 	AntTWBarEditableCollection() {
 		getSummary = [] (const Value &, int i) { return AntTWBarGroup::format( "%i", i ); };
-		validatePrototype = [](const Value &) { return true; };
 	}
 
 	void init( const char *title, AntTWBarGroup *parent ) {
@@ -103,26 +103,38 @@ struct AntTWBarEditableCollection {
 		ui->removeItem( "prototype" );
 		members->clear();
 
-		buttonCallbacks.clear();
-		buttonCallbacks.resize( items.size() );
+		removeCallbacks.clear();
+		removeCallbacks.resize( items.size() );
+
+		selectCallbacks.clear();
+		selectCallbacks.resize( items.size() );
 
 		for( int i = 0 ; i < items.size() ; ++i ) {
-			buttonCallbacks[i].callback = [=] () {
+			removeCallbacks[i].callback = [=] () {
 				items.erase( items.begin() + i );
 				refresh();
 			};
 
-			if( i > 0 )
+			selectCallbacks[i].callback = [=] () {
+				if( onItemSelected ) {
+					onItemSelected( items[i], i );
+				}
+			};
+
+			if( i > 0 ) {
 				members->addSeparator();
+			}
+
+			members->addButton( "Select " + getSummary( items[i], i ), selectCallbacks[i] );
 			members->addVarRW( getSummary( items[i], i ), items[i] );
-			members->addButton( "Remove", buttonCallbacks[i] );
+			members->addButton( "Remove", removeCallbacks[i] );
 			
 		}
 
 		ui->addVarRW( "Prototype", prototype, "", "prototype" );
 	
 		addCallback.callback = [=] () {
-			if( !validatePrototype( prototype ) ) {
+			if( validatePrototype && !validatePrototype( prototype ) ) {
 				return;
 			}
 			items.push_back( prototype );
