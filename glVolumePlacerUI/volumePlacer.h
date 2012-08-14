@@ -5,6 +5,7 @@
 #include <vector>
 
 #include <boost/range/algorithm.hpp>
+#include <boost/timer/timer.hpp>
 
 #include <Eigen/Eigen>
 
@@ -19,6 +20,16 @@
 #include <memory>
 
 using namespace Eigen;
+
+struct ProbeSettings : AsExecutionContext<ProbeSettings> {
+	float maxDelta;
+	float maxDistance;
+
+	void setDefault() {
+		maxDelta = 0.0;
+		maxDistance = std::numeric_limits<float>::max();
+	}
+};
 
 // z: 6, x: 2, y: 18
 const Vector3i neighborOffsets[] = {
@@ -53,12 +64,14 @@ const Vector3i neighborOffsets[] = {
 	Vector3i( -1, 1, 1 ), Vector3i( 0, 1, 1 ), Vector3i( 1, 1, 1 ),*/
 };
 
-struct UnorderedDistanceContext {
+struct EnvironmentContext {
 	static const int numSamples = 26;
 	static Vector3f directions[numSamples];
 	float sortedDistances[numSamples];
 	float distances[numSamples];
-
+	// != global maxDistance
+	float realMaxDistance;
+	
 	static void setDirections() {
 		for( int i = 0 ; i < numSamples ; i++ ) {
 			directions[i] = neighborOffsets[i].cast<float>();
@@ -69,6 +82,14 @@ struct UnorderedDistanceContext {
 		std::copy( samples.getSampleBegin( index ), samples.getSampleEnd( index ), distances );
 		boost::range::copy( distances, sortedDistances );
 		std::sort( sortedDistances, sortedDistances + numSamples );
+
+		int i;
+		for( i = numSamples - 1 ; i > 0 ; --i ) {
+			if( sortedDistances[i] < ProbeSettings::context->maxDistance - ProbeSettings::context->maxDelta / 2 ) {
+				break;
+			}
+		}
+		realMaxDistance = sortedDistances[i];
 	}
 
 	double calculateAverage() const {
@@ -79,44 +100,47 @@ struct UnorderedDistanceContext {
 		average /= numSamples;
 		return average;
 	}
-
-	void normalizeWithAverage() {
-		double average = calculateAverage();
-		for( int index = 0 ; index < numSamples ; ++index ) {
-			sortedDistances[index] /= average;
-		}
-	}
-
-	static double compare( const UnorderedDistanceContext &a, const UnorderedDistanceContext &b, const float maxDistance ) {
+	
+#if 0
+	static double compare( const EnvironmentContext &a, const EnvironmentContext &b ) {
 		// use L2 norm because it accentuates big differences better than L1
 		double norm = 0.;
 		for( int index = 0 ; index < numSamples ; ++index ) {
-			double delta = std::min( maxDistance, a.sortedDistances[index] ) - std::min( b.sortedDistances[index], maxDistance );
+			double delta = a.sortedDistances[index] - b.sortedDistances[index];
 			norm = std::max( norm, std::abs(delta) );
 		}
 		return norm;
 	}
-};
+#endif
 
-Vector3f UnorderedDistanceContext::directions[UnorderedDistanceContext::numSamples];
+	static bool match( const EnvironmentContext &a, const EnvironmentContext &b, const float maxDelta ) {
+#define MATCH(i) \
+		if( std::abs( a.sortedDistances[i] - b.sortedDistances[i] ) > maxDelta ) { \
+			return false; \
+		} 
 
-struct ProbeMatchSettings : AsExecutionContext<ProbeMatchSettings> {
-	float maxDistance;
-	float maxDelta;
-
-	void setDefault() {
-		maxDistance = 128.0;
-		maxDelta = 1.0;
+		MATCH(0)
+		/*MATCH( numSamples - 1 )
+		for( int i = 1 ; i < numSamples - 2 ; ++i ) {
+			MATCH( i )
+		}*/
+		if( std::abs( a.realMaxDistance - b.realMaxDistance ) > maxDelta ) {
+			return false;
+		}
+		return true;
+#undef MATCH
 	}
 };
 
+Vector3f EnvironmentContext::directions[EnvironmentContext::numSamples];
+
 // TODO: rename to InstanceProbe or InstanceSample
 struct Probe {
-	typedef UnorderedDistanceContext DistanceContext;
+	typedef EnvironmentContext DistanceContext;
 	DistanceContext distanceContext;
 
 	static bool match( const Probe &a, const Probe &b ) {
-		return DistanceContext::compare( a.distanceContext, b.distanceContext, ProbeMatchSettings::context->maxDistance ) <= ProbeMatchSettings::context->maxDelta;
+		return DistanceContext::match( a.distanceContext, b.distanceContext, ProbeSettings::context->maxDelta );
 	}
 };
 
@@ -250,6 +274,8 @@ struct ProbeDatabase {
 	SparseCandidateInfos findCandidates( const ProbeGrid &probeGrid ) {
 		CandidateInfos candidateInfos( numIds );
 
+		boost::timer::auto_cpu_timer timer;
+
 		std::vector<int> matchCounts(numIds);
 		for( Iterator3 iterator = probeGrid.getIterator() ; iterator.hasMore() ; ++iterator ) {
 			const Probe &probe = probeGrid[ *iterator ];
@@ -295,7 +321,7 @@ struct ProbeDatabase {
 		}
 
 		std::sort( results.begin(), results.end(), []( const ProbeDatabase::SparseCandidateInfos::value_type &a, const ProbeDatabase::SparseCandidateInfos::value_type &b ) { return a.second.score > b.second.score; } );
-
+		
 		return results;
 	}
 
@@ -305,6 +331,18 @@ struct ProbeDatabase {
 
 	// probe->id
 	std::vector<InstanceProbe> probeIdMap;
+
+	void dumpMinDistances() {
+		std::vector< float > minDistances;
+		for( int i = 1 ; i < probeIdMap.size() ; ++i ) {
+			minDistances.push_back( probeIdMap[i].probe.distanceContext.sortedDistances[0] );
+		}
+		boost::sort( minDistances );
+
+		for( int i = 0 ; i < minDistances.size() ; ++i ) {
+			std::cout << minDistances[i] << std::endl;
+		}
+	}
 
 	struct IdInfo {
 		int numObjects;
@@ -326,9 +364,9 @@ void sampleProbes( ProbeGrid &probeGrid, std::function<void()> renderSceneCallba
 	DepthSampler sampler;
 	sampler.grid = &probeGrid.getGrid();
 	
-	sampler.directions[0].assign( &UnorderedDistanceContext::directions[0], &UnorderedDistanceContext::directions[6]);
-	sampler.directions[1].assign( &UnorderedDistanceContext::directions[6], &UnorderedDistanceContext::directions[8]);
-	sampler.directions[2].assign( &UnorderedDistanceContext::directions[8], &UnorderedDistanceContext::directions[26]);
+	sampler.directions[0].assign( &EnvironmentContext::directions[0], &EnvironmentContext::directions[6]);
+	sampler.directions[1].assign( &EnvironmentContext::directions[6], &EnvironmentContext::directions[8]);
+	sampler.directions[2].assign( &EnvironmentContext::directions[8], &EnvironmentContext::directions[26]);
 	
 	sampler.init();
 	sampler.maxDepth = maxDistance;

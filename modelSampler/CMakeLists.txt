@@ -17,6 +17,7 @@ ADD_EXECUTABLE(modelSampler
 	../positionSolver/camera.h
 	../positionSolver/eventHandling.h
 	depthSampler.h
+	colorAndDepthSampler.h
 	modelSampler.cpp 
 	grid.h
 	eigenProjectionMatrices.h
