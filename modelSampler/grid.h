@@ -9,7 +9,7 @@ Vector permute( const Vector &v, const int *permutation ) {
 }
 
 template< typename Vector >
-Vector unpermute( const Vector &w, const int *permutation ) {
+Vector permute_reverse( const Vector &w, const int *permutation ) {
 	Vector v;
 	for( int i = 0 ; i < 3 ; ++i ) {
 		v[ permutation[i] ] = w[i];	

@@ -14,6 +14,7 @@
 
 #include <unsupported/Eigen/OpenGLSupport>
 #include <boost/assert.hpp>
+#include <boost/timer/timer.hpp>
 
 __declspec(align(4)) struct Color4ub {
 	GLubyte r,g,b;
@@ -130,6 +131,7 @@ struct VolumeSampler {
 	}
 
 	void mergeSamples( const ColorSample *mappedColorSamples, const DepthSample *mappedDepthSamples ) {
+
 		int directionIndex = 0;
 		// TODO: parallelize this..
 		for( int mainAxis = 0 ; mainAxis < 3 ; ++mainAxis ) {

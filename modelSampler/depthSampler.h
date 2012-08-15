@@ -86,22 +86,105 @@ struct DepthSampler {
 	}
 
 	void rearrangeMappedDepthSamples( const float *mappedDepthSamples ) {
+		boost::timer::auto_cpu_timer timer;
+
+		/*
+		semi sequential writes:
+			8.4		0.10
+		semi semi sequential writes:
+			9.x		0.18
+		sequential writes:
+			9.04	0.218
+		sequential reads:
+			14		0.1
+
+		so the simplest code yields the best results
+		*/
+#if 1
+		// semi sequential writes
 		int directionIndex = 0;
 		for( int mainAxis = 0 ; mainAxis < 3 ; ++mainAxis ) {
 			int permutation[3] = { mainAxis, (mainAxis + 1) % 3, (mainAxis + 2) % 3 };
 
+			// 1. moved up to avoid recalculation
+			Indexer3 permutedIndexer = Indexer3::fromPermuted( *grid, permutation );
+
 			for( int i = 0 ; i < directions[mainAxis].size() ; ++i, ++directionIndex ) {
-				for( int sample = 0 ; sample < grid->count ; ++sample ) {
-					const Eigen::Vector3i index3 = grid->getIndex3( sample );
-					const Eigen::Vector3i targetIndex3 = permute( index3, permutation );
+				for( int sampleIndex = 0 ; sampleIndex < grid->count ; ++sampleIndex ) {
+					// we iterate sequentially over the result samples
+					const Eigen::Vector3i targetIndex3 = grid->getIndex3( sampleIndex );
+					// index into the source data (we permute the coordinates)
+					const Eigen::Vector3i sourceIndex3 = permute( targetIndex3, permutation );
+					const int sourceIndex = permutedIndexer.getIndex( sourceIndex3 );
 
-					Indexer3 permutedIndexer = Indexer3::fromPermuted( *grid, permutation );
-					const int targetIndex = permutedIndexer.getIndex( targetIndex3 );
-
-					depthSamples.sample( sample, directionIndex ) = getMappedDepthSample( mappedDepthSamples, targetIndex, directionIndex ) * maxDepth;
+					depthSamples.sample( sampleIndex, directionIndex ) = getMappedDepthSample( mappedDepthSamples, sourceIndex, directionIndex ) * maxDepth;
 				}
 			}
-		}		 
+		}
+#elif 0
+		// semi semi sequential writes
+		int directionIndex = 0;
+		for( int mainAxis = 0 ; mainAxis < 3 ; ++mainAxis ) {
+			int permutation[3] = { mainAxis, (mainAxis + 1) % 3, (mainAxis + 2) % 3 };
+
+			// 1. moved up to avoid recalculation
+			Indexer3 permutedIndexer = Indexer3::fromPermuted( *grid, permutation );
+
+			int startDirectionIndex = directionIndex;
+			for( int sampleIndex = 0 ; sampleIndex < grid->count ; ++sampleIndex ) {
+				directionIndex = startDirectionIndex;
+				for( int i = 0 ; i < directions[mainAxis].size() ; ++i, ++directionIndex ) {
+					// we iterate sequentially over the result samples
+					const Eigen::Vector3i targetIndex3 = grid->getIndex3( sampleIndex );
+					// index into the source data (we permute the coordinates)
+					const Eigen::Vector3i sourceIndex3 = permute( targetIndex3, permutation );
+					const int sourceIndex = permutedIndexer.getIndex( sourceIndex3 );
+
+					depthSamples.sample( sampleIndex, directionIndex ) = getMappedDepthSample( mappedDepthSamples, sourceIndex, directionIndex ) * maxDepth;
+				}
+			}
+		}
+#elif 0
+		// sequential writes
+		int permutations[3][3] = { {0,1,2}, {1,2,0}, {2,1,0} };
+		Indexer3 permutedIndexers[3] = { Indexer3::fromPermuted( *grid, permutations[0] ), Indexer3::fromPermuted( *grid, permutations[1] ), Indexer3::fromPermuted( *grid, permutations[2] ) };
+
+		for( int sampleIndex = 0 ; sampleIndex < grid->count ; ++sampleIndex ) {
+			int directionIndex = 0;
+			for( int mainAxis = 0 ; mainAxis < 3 ; ++mainAxis ) {
+				for( int i = 0 ; i < directions[mainAxis].size() ; ++i, ++directionIndex ) {
+					// we iterate sequentially over the result samples
+					const Eigen::Vector3i targetIndex3 = grid->getIndex3( sampleIndex );
+					// index into the source data (we permute the coordinates)
+					const Eigen::Vector3i sourceIndex3 = permute( targetIndex3, permutations[mainAxis] );
+					const int sourceIndex = permutedIndexers[mainAxis].getIndex( sourceIndex3 );
+
+					depthSamples.sample( sampleIndex, directionIndex ) = getMappedDepthSample( mappedDepthSamples, sourceIndex, directionIndex ) * maxDepth;
+				}
+			}
+		}
+#else
+		// sequential reads
+		int directionIndex = 0;
+		for( int mainAxis = 0 ; mainAxis < 3 ; ++mainAxis ) {
+			int permutation[3] = { mainAxis, (mainAxis + 1) % 3, (mainAxis + 2) % 3 };
+
+			// 1. moved up to avoid recalculation
+			Indexer3 permutedIndexer = Indexer3::fromPermuted( *grid, permutation );
+
+			for( int i = 0 ; i < directions[mainAxis].size() ; ++i, ++directionIndex ) {
+				for( int sampleIndex = 0 ; sampleIndex < grid->count ; ++sampleIndex ) {
+					// we iterate sequentially over the source samples (that are stored in different order)
+					const Eigen::Vector3i permutedIndex3 = permutedIndexer.getIndex3( sampleIndex );
+					// index into the result buffer (we unpermute the coordinates)
+					const Eigen::Vector3i targetIndex3 = permute_reverse( permutedIndex3, permutation );
+					const int targetIndex = grid->getIndex( targetIndex3 );
+
+					depthSamples.sample( targetIndex, directionIndex ) = getMappedDepthSample( mappedDepthSamples, sampleIndex, directionIndex ) * maxDepth;
+				}
+			}
+		}
+#endif 
 	}
 
 	void sample( std::function<void()> renderSceneCallback ) {
