@@ -380,7 +380,7 @@ struct Application {
 		cameraInputControl.init( make_nonallocated_shared(camera), make_nonallocated_shared(window) );
 		eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( cameraInputControl ) );
 
-		UnorderedDistanceContext::setDirections();
+		EnvironmentContext::setDirections();
 
 		glEnable(GL_DEPTH_TEST);
 		glDepthMask(GL_TRUE);
@@ -460,6 +460,10 @@ struct Application {
 			renderContext.disableObjects = true;
 		}
 
+		ProbeSettings probeSettings;
+		probeSettings.maxDistance = maxDistance_;
+		probeSettings.maxDelta = gridResolution_;
+
 		probeVisualization.clear();
 		// fill probe database (and visualize the probes)
 		for( int i = 0 ; i < objectInstances_.items.size() ; i++ ) {
@@ -495,6 +499,8 @@ struct Application {
 			}
 			probeVisualization.end();
 		}
+
+		//probeDatabase_.dumpMinDistances();
 	}
 
 	void drawScene() {
@@ -763,6 +769,10 @@ struct Application {
 	void Do_findCandidates() {
 		ProbeGrid probeGrid( OrientedGrid::from( Vector3i::Constant(1) + ceil( targetCube_.sizes() / gridResolution_ ), targetCube_.min(), gridResolution_ ) );
 
+		ProbeSettings settings;
+		settings.maxDelta = gridResolution_;
+		settings.maxDistance = maxDistance_;
+
 		{
 			RenderContext renderContext;
 			if( maskAllObjectsOnFind ) {
@@ -770,10 +780,6 @@ struct Application {
 			}
 			sampleProbes( probeGrid, std::bind( &Application::drawScene, this ), maxDistance_ );
 		}		
-
-		ProbeMatchSettings settings;
-		settings.maxDelta = gridResolution_;
-		settings.maxDistance = maxDistance_;
 
 		results_ = probeDatabase_.findCandidates( probeGrid );
 

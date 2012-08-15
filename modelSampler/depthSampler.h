@@ -14,6 +14,7 @@
 
 #include <unsupported/Eigen/OpenGLSupport>
 #include <boost/assert.hpp>
+#include <boost/timer/timer.hpp>
 
 class DepthSamples {
 	const OrientedGrid *grid;

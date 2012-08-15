@@ -20,7 +20,7 @@ __declspec(align(4)) struct Color4ub {
 	char x;
 };
 
-class ColorAndDepthSamples {
+class Samples {
 public:
 	struct Sample {
 		float depth;
@@ -63,8 +63,8 @@ public:
 	}
 };
 
-struct ColorAndDepthSampler {
-	typedef ColorAndDepthSamples::Sample Sample;
+struct VolumeSampler {
+	typedef Samples::Sample Sample;
 	typedef Color4ub ColorSample;
 	typedef float DepthSample;
 
@@ -109,7 +109,7 @@ struct ColorAndDepthSampler {
 
 	// size: grid.count * numDirections
 
-	ColorAndDepthSamples colorAndDepthSamples;
+	Samples samples;
 
 	const ColorSample & getMappedColorSample( const ColorSample *mappedColorSamples, int index, int directionIndex ) const {
 		return mappedColorSamples[ directionIndex * grid->count + index ];
@@ -121,7 +121,7 @@ struct ColorAndDepthSampler {
 
 	void init() {
 		numDirections = directions[0].size() + directions[1].size() + directions[2].size();
-		colorAndDepthSamples.init( grid, numDirections );
+		samples.init( grid, numDirections );
 
 		glPixelStorei( GL_PACK_ALIGNMENT, 1 );
 		size_t numSamples = grid->count * numDirections;
@@ -131,6 +131,7 @@ struct ColorAndDepthSampler {
 
 	void mergeSamples( const ColorSample *mappedColorSamples, const DepthSample *mappedDepthSamples ) {
 		int directionIndex = 0;
+		// TODO: parallelize this..
 		for( int mainAxis = 0 ; mainAxis < 3 ; ++mainAxis ) {
 			int permutation[3] = { mainAxis, (mainAxis + 1) % 3, (mainAxis + 2) % 3 };
 
@@ -142,7 +143,7 @@ struct ColorAndDepthSampler {
 					Indexer3 permutedIndexer = Indexer3::fromPermuted( *grid, permutation );
 					const int targetIndex = permutedIndexer.getIndex( targetIndex3 );
 
-					Sample &sample = colorAndDepthSamples.sample( sampleIndex, directionIndex );
+					Sample &sample = samples.sample( sampleIndex, directionIndex );
 					sample.depth = getMappedDepthSample( mappedDepthSamples, targetIndex, directionIndex ) * maxDepth;
 					sample.color = getMappedColorSample( mappedColorSamples, targetIndex, directionIndex );
 				}

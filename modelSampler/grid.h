@@ -8,6 +8,15 @@ Vector permute( const Vector &v, const int *permutation ) {
 	return Vector( v[permutation[0]], v[permutation[1]], v[permutation[2]] );
 }
 
+template< typename Vector >
+Vector unpermute( const Vector &w, const int *permutation ) {
+	Vector v;
+	for( int i = 0 ; i < 3 ; ++i ) {
+		v[ permutation[i] ] = w[i];	
+	}
+	return v;
+}
+
 // converts between a 3d index and a 1d index
 struct Indexer3 {
 	Eigen::Vector3i size;
