@@ -297,6 +297,12 @@ struct EigenSummarizer {
 	}
 };
 
+std::string readFile( const char *filename ) {
+	// http://www.gamedev.net/topic/353162-reading-a-whole-file-into-a-string-with-ifstream/
+	std::ifstream file( filename );
+	return std::string( std::istreambuf_iterator<char>( file ), std::istreambuf_iterator<char>() );
+}
+
 struct Application {
 	ObjSceneGL objScene;
 	GLuint viewerPPLProgram;
@@ -337,6 +343,7 @@ struct Application {
 	AntTWBarGroup::ButtonCallback findCandidatesCallback_;
 	AntTWBarGroup::ButtonCallback refillProbeDatabaseCallback;
 	AntTWBarGroup::ButtonCallback writeObjectsCallback;
+	AntTWBarGroup::ButtonCallback reloadShadersCallback;
 
 	// debug visualizations
 	DebugRender::CombinedCalls probeVisualization;
@@ -370,7 +377,7 @@ struct Application {
 	}
 
 	void initEverything() {
-		window.create( sf::VideoMode( 640, 480 ), "Position Solver", sf::Style::Default, sf::ContextSettings(32) );
+		window.create( sf::VideoMode( 640, 480 ), "Position Solver", sf::Style::Default, sf::ContextSettings(42) );
 		window.setActive( true );
 		glewInit();
 
@@ -386,25 +393,7 @@ struct Application {
 		glDepthMask(GL_TRUE);
 		glClearDepth(1.f);
 
-		glProgramBuilder programBuilder;
-		programBuilder.
-			attachShader(
-				glShaderBuilder( GL_VERTEX_SHADER ).
-					addSource( "varying vec3 viewPos; void main() { gl_FrontColor = gl_Color; viewPos = gl_ModelViewMatrix * gl_Vertex; gl_Position = ftransform(); }" ).
-					compile().
-					handle
-			).
-			attachShader( 
-				glShaderBuilder( GL_FRAGMENT_SHADER ).
-					addSource( "varying vec3 viewPos; void main() { vec3 normal = cross( dFdx( viewPos ), dFdy( viewPos ) ); gl_FragColor = vec4( gl_Color.rgb * max( 0.0, 0.4 + 5.0 / length( viewPos ) * abs( dot( normalize( normal ), normalize( viewPos ) ) ) ), 1.0 ); }" ).
-					compile().
-					handle
-			).
-			link().
-			deleteShaders().
-			dumpInfoLog( std::cout );
-
-		viewerPPLProgram = programBuilder.program;
+		initShaders();
 
 		loadScene();
 
@@ -418,6 +407,45 @@ struct Application {
 
 		initPreviewTransformation();
 		initPreviewUI();
+	}
+
+	void initShaders() {
+		glProgramBuilder programBuilder;
+		
+		while( true ) {
+			const char *versionText = "#version 420 compatibility\n";
+			std::string shaderSource = readFile( "shader.glsl" );
+
+			programBuilder.
+				attachShader(
+					glShaderBuilder( GL_VERTEX_SHADER ).
+					addSource( versionText ).
+					addSource( "#define VERTEX_SHADER\n" ).
+					addSource( shaderSource.c_str() ).
+					compile().
+					handle
+				).
+				attachShader( 
+					glShaderBuilder( GL_FRAGMENT_SHADER ).
+					addSource( versionText ).
+					addSource( "#define FRAGMENT_SHADER\n" ).
+					addSource( shaderSource.c_str() ).
+					compile().
+					handle
+				).
+				link().
+				deleteShaders().
+				dumpInfoLog( std::cout );
+
+			if( !programBuilder.fail ) {
+				break;
+			}
+			else {
+				__debugbreak();
+			}
+		}
+
+		viewerPPLProgram = programBuilder.program;
 	}
 
 	void initPreviewTransformation() {
@@ -489,11 +517,11 @@ struct Application {
 
 				for( int i = 0 ; i < Probe::DistanceContext::numSamples ; ++i ) {
 					const Vector3f &direction = probe.distanceContext.directions[i];
-					const float distance = probe.distanceContext.distances[i];
+					const float distance = probe.distanceContext.samples[i].depth;
 
 					const Vector3f &vector = probeGrid.getGrid().getIndexDirection( direction ) * (1.0 - distance / maxDistance_);
 
-					probeVisualization.setColor( Vector3f::Unit(2) * vector.norm() );
+					glColor3ubv( &probe.distanceContext.samples[i].color.r );
 					probeVisualization.drawVector( vector * visSize );				
 				}
 			}
@@ -631,6 +659,9 @@ struct Application {
 
 		writeObjectsCallback.callback = std::bind( &Application::writeObjects, this );
 		ui_->addButton( "Save objects", writeObjectsCallback );
+
+		reloadShadersCallback.callback = std::bind( &Application::initShaders, this );
+		ui_->addButton( "Reload shaders", reloadShadersCallback );
 
 		findCandidatesCallback_.callback = std::bind(&Application::Do_findCandidates, this);
 		ui_->addButton("Find candidates", findCandidatesCallback_ );

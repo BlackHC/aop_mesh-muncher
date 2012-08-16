@@ -91,7 +91,9 @@ void main() {
 	//Grid grid( Vector3i( 4, 8, 16 ), Vector3f( 0.0, 0.0, 0.0 ), 0.25 );
 	OrientedGrid grid = OrientedGrid::from( Vector3i(7, 7, 7), Vector3f(-3, -3, -3), 1.0 );
 
-	VolumeSampler sampler;
+	VolumeSampler<> sampler;
+	Samples samples;
+	sampler.samplesView.samples = &samples;
 	sampler.grid = &grid;
 	/*sampler.directions[0].push_back( Vector3f( 0.3, 0.0, -1.0 ) )
 	sampler.directions[0].push_back( Vector3f( -0.3, 0.0, -1.0 ) );
@@ -109,6 +111,8 @@ void main() {
 	sampler.maxDepth = 20;
 
 	sampler.init();
+	samples.init( &grid, sampler.numDirections );
+
 	sampler.sample( [&]() { debugScene.render(); } );
 
 	// The main loop - ends as soon as the window is closed
@@ -167,7 +171,7 @@ void main() {
 						const Vector3i index3 = Vector3i( x, y, z );
 						depthInfo.setPosition( grid.getPosition( index3 ) );
 
-						auto &sample = sampler.samples.getSample( grid.getIndex( index3 ), directionIndex );
+						auto &sample = samples.getSample( grid.getIndex( index3 ), directionIndex );
 						glColor3ubv( &sample.color.r );
 						depthInfo.drawVector( sample.depth * (grid.indexToPosition.linear() * direction) );
 					}

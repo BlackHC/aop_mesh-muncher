@@ -64,8 +64,19 @@ public:
 	const Sample * getSampleEnd( int index ) const {
 		return &samples[ (index + 1) * numDirections ];
 	}
+
+	struct View {
+		Samples *samples;
+
+		inline void putSample( int index, int directionIndex, const Color4ub &color, const float depth ) {
+			Sample &sample = samples->sample( index, directionIndex );
+			sample.depth = depth;
+			sample.color = color;
+		}
+	};
 };
 
+template<typename SamplesView = Samples::View>
 struct VolumeSampler {
 	typedef Samples::Sample Sample;
 	typedef Color4ub ColorSample;
@@ -112,7 +123,7 @@ struct VolumeSampler {
 
 	// size: grid.count * numDirections
 
-	Samples samples;
+	SamplesView samplesView;
 
 	const ColorSample & getMappedColorSample( const ColorSample *mappedColorSamples, int index, int directionIndex ) const {
 		return mappedColorSamples[ directionIndex * grid->count + index ];
@@ -124,7 +135,6 @@ struct VolumeSampler {
 
 	void init() {
 		numDirections = directions[0].size() + directions[1].size() + directions[2].size();
-		samples.init( grid, numDirections );
 
 		glPixelStorei( GL_PACK_ALIGNMENT, 1 );
 		size_t numSamples = grid->count * numDirections;
@@ -154,9 +164,12 @@ struct VolumeSampler {
 					const Eigen::Vector3i sourceIndex3 = permute( targetIndex3, permutation );
 					const int sourceIndex = permutedIndexer.getIndex( sourceIndex3 );
 
-					Sample &sample = samples.sample( sampleIndex, directionIndex );
-					sample.depth = getMappedDepthSample( mappedDepthSamples, sourceIndex, directionIndex ) * maxDepth;
-					sample.color = getMappedColorSample( mappedColorSamples, sourceIndex, directionIndex );
+					samplesView.putSample( 
+						sampleIndex, 
+						directionIndex, 
+						getMappedColorSample( mappedColorSamples, sourceIndex, directionIndex ), 
+						getMappedDepthSample( mappedDepthSamples, sourceIndex, directionIndex ) * maxDepth 
+					);
 				}
 			}
 		} 

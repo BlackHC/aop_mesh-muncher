@@ -5,6 +5,8 @@
 #include <vector>
 
 #include <boost/range/algorithm.hpp>
+#include <boost/range/adaptor/transformed.hpp>
+
 #include <boost/timer/timer.hpp>
 
 #include <Eigen/Eigen>
@@ -16,7 +18,7 @@
 
 #include "grid.h"
 
-#include "depthSampler.h"
+#include "colorAndDepthSampler.h"
 #include <memory>
 
 using namespace Eigen;
@@ -31,44 +33,36 @@ struct ProbeSettings : AsExecutionContext<ProbeSettings> {
 	}
 };
 
-// z: 6, x: 2, y: 18
+// z: 9, x: 9, y: 8
 const Vector3i neighborOffsets[] = {
 	// first z, then x, then y
 
 	// z
-	Vector3i( -1, 0, -1 ), Vector3i( 0, 0, -1 ), Vector3i( 1, 0, -1 ), 
-	Vector3i( -1, 0, 1 ), Vector3i( 0, 0, 1 ), Vector3i( 1, 0, 1 ), 
-
+	Vector3i( 0, 0, 1 ), Vector3i( 0, 0, -1 ), Vector3i( -1, 0, -1 ),
+	Vector3i( 1, 0, -1 ), Vector3i( -1, 0, 1 ),  Vector3i( 1, 0, 1 ),
+	Vector3i( 0, 1, -1 ), Vector3i( 0, -1, -1 ), Vector3i( -1, 1, -1 ),
 	// x
-	Vector3i( -1, 0, 0  ), Vector3i( 1, 0, 0 ), 
-
+	Vector3i( 1, 0, 0 ), Vector3i( -1, 0, 0  ), Vector3i( 1, 1, -1 ),
+	Vector3i( 1, -1, 1 ), Vector3i( 1, 1, 1 ), Vector3i( 1, -1, -1 ),
+	Vector3i( -1, 1, 0 ), Vector3i( 1, 1, 0 ), Vector3i( -1, -1, -1 ),
 	// y
-	Vector3i( -1, -1, 0 ), Vector3i( 0, -1, 0 ), Vector3i( 1, -1, 0 ),
-	Vector3i( -1, 1, 0 ), Vector3i( 0, 1, 0 ), Vector3i( 1, 1, 0 ),
-	Vector3i( -1, -1, -1 ), Vector3i( 0, -1, -1 ), Vector3i( 1, -1, -1 ),
-	Vector3i( -1, 1, -1 ), Vector3i( 0, 1, -1 ), Vector3i( 1, 1, -1 ),
-	Vector3i( -1, -1, 1 ), Vector3i( 0, -1, 1 ), Vector3i( 1, -1, 1 ),
-	Vector3i( -1, 1, 1 ), Vector3i( 0, 1, 1 ), Vector3i( 1, 1, 1 ),
-
-/*	// z = 0
-	Vector3i( -1, 0, 0  ), Vector3i( 1, 0, 0 ), 
-	Vector3i( -1, -1, 0 ), Vector3i( 0, -1, 0 ), Vector3i( 1, -1, 0 ),
-	Vector3i( -1, 1, 0 ), Vector3i( 0, 1, 0 ), Vector3i( 1, 1, 0 ),
-	// z = -1
-	Vector3i( -1, 0, -1 ), Vector3i( 0, 0, -1 ), Vector3i( 1, 0, -1 ), 
-	Vector3i( -1, -1, -1 ), Vector3i( 0, -1, -1 ), Vector3i( 1, -1, -1 ),
-	Vector3i( -1, 1, -1 ), Vector3i( 0, 1, -1 ), Vector3i( 1, 1, -1 ),
-	// z = 1
-	Vector3i( -1, 0, 1 ), Vector3i( 0, 0, 1 ), Vector3i( 1, 0, 1 ), 
-	Vector3i( -1, -1, 1 ), Vector3i( 0, -1, 1 ), Vector3i( 1, -1, 1 ),
-	Vector3i( -1, 1, 1 ), Vector3i( 0, 1, 1 ), Vector3i( 1, 1, 1 ),*/
+	Vector3i( 0, 1, 0 ), Vector3i( 0, -1, 0 ), Vector3i( -1, -1, 0 ), Vector3i( 1, -1, 0 ),
+	Vector3i( -1, -1, 1 ), Vector3i( 0, -1, 1 ),  Vector3i( -1, 1, 1 ), Vector3i( 0, 1, 1 )
 };
 
 struct EnvironmentContext {
+	struct Sample {
+		float depth;
+		Color4ub color;
+	};
+
 	static const int numSamples = 26;
 	static Vector3f directions[numSamples];
+
+	Sample samples[numSamples];
+
 	float sortedDistances[numSamples];
-	float distances[numSamples];
+	
 	// != global maxDistance
 	float realMaxDistance;
 	
@@ -78,9 +72,12 @@ struct EnvironmentContext {
 		}
 	}
 
-	void fill( const DepthSamples &samples, const int index ) {
-		std::copy( samples.getSampleBegin( index ), samples.getSampleEnd( index ), distances );
-		boost::range::copy( distances, sortedDistances );
+	static float getDepth( const Sample &sample ) {
+		return sample.depth;
+	}
+
+	void finish() {
+		boost::range::copy( samples | boost::adaptors::transformed( &getDepth ), sortedDistances );
 		std::sort( sortedDistances, sortedDistances + numSamples );
 
 		int i;
@@ -218,9 +215,35 @@ public:
 	const Data & operator[] ( const Eigen::Vector3i &index3 ) const {
 		return data[ grid.getIndex( index3 ) ];
 	}
+
+	Data & get( const int index ) {
+		return data[ index ];
+	}
+
+	Data & get( const Eigen::Vector3i &index3 ) {
+		return data[ grid.getIndex( index3 ) ];
+	}
+
+	const Data & get( const int index ) const {
+		return data[ index ];
+	}
+
+	const Data & get( const Eigen::Vector3i &index3 ) const {
+		return data[ grid.getIndex( index3 ) ];
+	}
 };
 
 typedef DataGrid<Probe> ProbeGrid;
+
+struct SamplerProbeView {
+	ProbeGrid *probeGrid;
+
+	inline void putSample( int index, int directionIndex, const Color4ub &color, const float depth ) {
+		auto &sample = probeGrid->get( index ).distanceContext.samples[ directionIndex ];
+		sample.depth = depth;
+		sample.color = color;
+	}	
+};
 
 struct InstanceProbe {
 	Probe probe;
@@ -361,21 +384,24 @@ struct ProbeDatabase {
 
 // TODO: fix the depthUnit hack
 void sampleProbes( ProbeGrid &probeGrid, std::function<void()> renderSceneCallback, float maxDistance ) {
-	DepthSampler sampler;
+	boost::timer::auto_cpu_timer timer;
+
+	VolumeSampler<SamplerProbeView> sampler;
+	sampler.samplesView.probeGrid = &probeGrid;
 	sampler.grid = &probeGrid.getGrid();
 	
-	sampler.directions[0].assign( &EnvironmentContext::directions[0], &EnvironmentContext::directions[6]);
-	sampler.directions[1].assign( &EnvironmentContext::directions[6], &EnvironmentContext::directions[8]);
-	sampler.directions[2].assign( &EnvironmentContext::directions[8], &EnvironmentContext::directions[26]);
+	sampler.directions[0].assign( &EnvironmentContext::directions[0], &EnvironmentContext::directions[9]);
+	sampler.directions[1].assign( &EnvironmentContext::directions[9], &EnvironmentContext::directions[18]);
+	sampler.directions[2].assign( &EnvironmentContext::directions[18], &EnvironmentContext::directions[26]);
 	
 	sampler.init();
 	sampler.maxDepth = maxDistance;
 
 	sampler.sample( renderSceneCallback );
 
-	for( Iterator3 iterator = probeGrid.getIterator() ; iterator.hasMore() ; ++iterator ) {
-		Probe &probe = probeGrid[ *iterator ];
-		probe.distanceContext.fill( sampler.depthSamples, iterator.getIndex() );
+	for( int index = 0 ; index < probeGrid.getGrid().count ; ++index ) {
+		Probe &probe = probeGrid[ index ];
+		probe.distanceContext.finish();
 	}
 }
 

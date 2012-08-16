@@ -37,7 +37,7 @@ ADD_EXECUTABLE(glVolumePlacerUI
 	twEventSFML20.cpp
 	glHelpers.h
 	ui.h
-	../modelSampler/depthSampler.h
+	../modelSampler/colorAndDepthSampler.h
 	../modelSampler/eigenProjectionMatrices.h
 	../modelSampler/grid.h
 	../positionSolver/camera.h
@@ -48,6 +48,7 @@ ADD_EXECUTABLE(glVolumePlacerUI
 	../objScene/objSceneGL.cpp
 	../objScene/materialLibrary.h
 	../objScene/materialLibrary.cpp
+	../build/shader.glsl
 	)
 
 # The test application uses niven core, so link against it
