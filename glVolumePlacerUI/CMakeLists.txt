@@ -6,6 +6,8 @@ FIND_PACKAGE(AntTweakBar REQUIRED)
 # niven is built with RTTI disabled (/GR-) and unicode-aware
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /GR- /D_UNICODE")
 
+ADD_OPENMP_FLAGS()
+
 # Must link both against niven and Boost
 INCLUDE_DIRECTORIES(
 	${ANTTWEAKBAR_INCLUDE_DIR}

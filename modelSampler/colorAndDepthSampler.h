@@ -16,6 +16,8 @@
 #include <boost/assert.hpp>
 #include <boost/timer/timer.hpp>
 
+#include <omp.h>
+
 __declspec(align(4)) struct Color4ub {
 	GLubyte r,g,b;
 	char x;
@@ -131,26 +133,33 @@ struct VolumeSampler {
 	}
 
 	void mergeSamples( const ColorSample *mappedColorSamples, const DepthSample *mappedDepthSamples ) {
+		// semi sequential writes
+		int directionOffset[3] = { 0, directions[0].size(), numDirections - directions[2].size() };
 
-		int directionIndex = 0;
-		// TODO: parallelize this..
+		omp_set_nested( true );
+#pragma omp parallel for num_threads(3)
 		for( int mainAxis = 0 ; mainAxis < 3 ; ++mainAxis ) {
 			int permutation[3] = { mainAxis, (mainAxis + 1) % 3, (mainAxis + 2) % 3 };
 
-			for( int i = 0 ; i < directions[mainAxis].size() ; ++i, ++directionIndex ) {
-				for( int sampleIndex = 0 ; sampleIndex < grid->count ; ++sampleIndex ) {
-					const Eigen::Vector3i index3 = grid->getIndex3( sampleIndex );
-					const Eigen::Vector3i targetIndex3 = permute( index3, permutation );
+			// 1. moved up to avoid recalculation
+			Indexer3 permutedIndexer = Indexer3::fromPermuted( *grid, permutation );
 
-					Indexer3 permutedIndexer = Indexer3::fromPermuted( *grid, permutation );
-					const int targetIndex = permutedIndexer.getIndex( targetIndex3 );
+#pragma omp parallel for num_threads(9)
+			for( int i = 0 ; i < directions[mainAxis].size() ; ++i ) {
+				const int directionIndex = directionOffset[mainAxis] + i;
+				for( int sampleIndex = 0 ; sampleIndex < grid->count ; ++sampleIndex ) {
+					// we iterate sequentially over the result samples
+					const Eigen::Vector3i targetIndex3 = grid->getIndex3( sampleIndex );
+					// index into the source data (we permute the coordinates)
+					const Eigen::Vector3i sourceIndex3 = permute( targetIndex3, permutation );
+					const int sourceIndex = permutedIndexer.getIndex( sourceIndex3 );
 
 					Sample &sample = samples.sample( sampleIndex, directionIndex );
-					sample.depth = getMappedDepthSample( mappedDepthSamples, targetIndex, directionIndex ) * maxDepth;
-					sample.color = getMappedColorSample( mappedColorSamples, targetIndex, directionIndex );
+					sample.depth = getMappedDepthSample( mappedDepthSamples, sourceIndex, directionIndex ) * maxDepth;
+					sample.color = getMappedColorSample( mappedColorSamples, sourceIndex, directionIndex );
 				}
 			}
-		}		 
+		} 
 	}
 
 	void sample( std::function<void()> renderSceneCallback ) {

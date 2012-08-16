@@ -52,6 +52,14 @@ public:
 	}
 };
 
+#include <omp.h>
+#include <stdio.h>
+void report_num_threads(int level)
+{
+	printf("Level %d: %i/%d\n",
+			level, omp_get_thread_num(), omp_get_num_threads());
+}
+
 struct DepthSampler {
 	GLuint pbo;
 
@@ -102,14 +110,17 @@ struct DepthSampler {
 		*/
 #if 1
 		// semi sequential writes
-		int directionIndex = 0;
+		int directionOffset[3] = { 0, directions[0].size(), numDirections - directions[2].size() };
+
+		omp_set_nested( true );
+#pragma omp parallel for num_threads(3)
 		for( int mainAxis = 0 ; mainAxis < 3 ; ++mainAxis ) {
 			int permutation[3] = { mainAxis, (mainAxis + 1) % 3, (mainAxis + 2) % 3 };
-
-			// 1. moved up to avoid recalculation
 			Indexer3 permutedIndexer = Indexer3::fromPermuted( *grid, permutation );
 
-			for( int i = 0 ; i < directions[mainAxis].size() ; ++i, ++directionIndex ) {
+#pragma omp parallel for num_threads(9)
+			for( int i = 0 ; i < directions[mainAxis].size() ; ++i ) {
+				const int directionIndex = directionOffset[mainAxis] + i;
 				for( int sampleIndex = 0 ; sampleIndex < grid->count ; ++sampleIndex ) {
 					// we iterate sequentially over the result samples
 					const Eigen::Vector3i targetIndex3 = grid->getIndex3( sampleIndex );

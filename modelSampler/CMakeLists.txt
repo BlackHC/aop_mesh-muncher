@@ -3,6 +3,7 @@ PROJECT(modelSampler)
 
 # niven is built with RTTI disabled (/GR-) and unicode-aware
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /GR- /D_UNICODE")
+ADD_OPENMP_FLAGS()
 
 FIND_PACKAGE(OpenGL)
 
@@ -49,3 +50,4 @@ TARGET_LINK_LIBRARIES(modelSamplerTests ${SFML_LIBRARIES})
 TARGET_LINK_LIBRARIES(modelSamplerTests ${OPENGL_LIBRARIES})
 
 TARGET_LINK_LIBRARIES(modelSampler ${Boost_LIBRARIES})
+TARGET_LINK_LIBRARIES(modelSamplerTests ${Boost_LIBRARIES})
