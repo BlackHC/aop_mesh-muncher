@@ -30,7 +30,7 @@ void ObjSceneGL::Init( const char *objFile ) {
 	Stopwatch stopWatch;
 
 	Interop::Obj::Reader reader;
-	reader.Load (*FileSystem::OpenFile (objPath));
+	reader.Load (*IO::FileSystem::OpenFile (objPath));
 	Log::Info ("ObjModel", String::Format (" ... {0} seconds") % stopWatch.GetElapsedTime ());
 
 	MaterialLibrary materialLibrary;
@@ -40,7 +40,7 @@ void ObjSceneGL::Init( const char *objFile ) {
 
 		Log::Info ("ObjModel", String::Format ("Loading mtllib '{0}'") % mtlPath );
 
-		MaterialLibrary::LoadMTL( *FileSystem::OpenFile( mtlPath ), materialLibrary );
+		MaterialLibrary::LoadMTL( *IO::FileSystem::OpenFile( mtlPath ), materialLibrary );
 	}
 
 	std::vector<SimpleMesh::Ptr> simpleMeshes;
@@ -91,7 +91,7 @@ void ObjSceneGL::Init( const char *objFile ) {
 					}
 
 					try {
-						Image::Image2D::Ptr image = Image::LoadImage<Image2D_4b>( imagePath, LoadImageFlags::AutoConvert );								
+						Image::Image2D::Ptr image = Image::LoadImage<Image::Image2D_4b>( imagePath, Image::LoadImageFlags::AutoConvert );								
 						GLuint texture;
 						glGenTextures( 1, &texture );
 						glBindTexture( GL_TEXTURE_2D, texture );

@@ -173,6 +173,7 @@ struct ObjectInstance {
 	}
 
 	virtual void draw() {
+		//glMatrixMode( GL_MODELVIEW );
 		glPushMatrix();
 		glTranslate( position );
 		getTemplate().Draw();
@@ -303,9 +304,84 @@ std::string readFile( const char *filename ) {
 	return std::string( std::istreambuf_iterator<char>( file ), std::istreambuf_iterator<char>() );
 }
 
+struct Shader {
+	std::string filename;
+	GLuint program;
+
+	virtual void setLocations() {}
+
+	void init( const char *filename ) {
+		this->filename = filename;
+		reload();
+	}
+
+	void reload() {
+		glProgramBuilder programBuilder;
+
+		while( true ) {
+			const char *versionText = "#version 420 compatibility\n";
+			std::string shaderSource = readFile( "shader.glsl" );
+
+			programBuilder.
+				attachShader(
+				glShaderBuilder( GL_VERTEX_SHADER ).
+					addSource( versionText ).
+					addSource( 
+						"#define VERTEX_SHADER 1\n"
+						"#define FRAGMENT_SHADER 0\n"
+					).
+					addSource( shaderSource.c_str() ).
+					compile().
+					handle
+				).
+				attachShader( 
+				glShaderBuilder( GL_FRAGMENT_SHADER ).
+					addSource( versionText ).
+					addSource( 
+						"#define VERTEX_SHADER 0\n"
+						"#define FRAGMENT_SHADER 1\n"
+					).
+					addSource( shaderSource.c_str() ).
+					compile().
+					handle
+				).
+				link().
+				deleteShaders().
+				dumpInfoLog( std::cout );
+
+			if( !programBuilder.fail ) {
+				break;
+			}
+			else {
+				__debugbreak();
+			}
+		}
+
+		program = programBuilder.program;
+		setLocations();
+	}
+
+	void apply() {
+		glUseProgram( program );
+	}
+};
+
+struct SceneShader : Shader {
+	GLuint viewerPos;
+
+	void init() {
+		Shader::init( "shader.glsl" );
+	}
+
+	void setLocations() {
+		viewerPos = glGetUniformLocation( program, "viewerPos" );
+	}
+};
+
 struct Application {
 	ObjSceneGL objScene;
-	GLuint viewerPPLProgram;
+	SceneShader sceneShader;
+
 	Camera camera;
 	CameraInputControl cameraInputControl;
 	sf::Window window;
@@ -410,42 +486,7 @@ struct Application {
 	}
 
 	void initShaders() {
-		glProgramBuilder programBuilder;
-		
-		while( true ) {
-			const char *versionText = "#version 420 compatibility\n";
-			std::string shaderSource = readFile( "shader.glsl" );
-
-			programBuilder.
-				attachShader(
-					glShaderBuilder( GL_VERTEX_SHADER ).
-					addSource( versionText ).
-					addSource( "#define VERTEX_SHADER\n" ).
-					addSource( shaderSource.c_str() ).
-					compile().
-					handle
-				).
-				attachShader( 
-					glShaderBuilder( GL_FRAGMENT_SHADER ).
-					addSource( versionText ).
-					addSource( "#define FRAGMENT_SHADER\n" ).
-					addSource( shaderSource.c_str() ).
-					compile().
-					handle
-				).
-				link().
-				deleteShaders().
-				dumpInfoLog( std::cout );
-
-			if( !programBuilder.fail ) {
-				break;
-			}
-			else {
-				__debugbreak();
-			}
-		}
-
-		viewerPPLProgram = programBuilder.program;
+		sceneShader.init();
 	}
 
 	void initPreviewTransformation() {
@@ -521,7 +562,7 @@ struct Application {
 
 					const Vector3f &vector = probeGrid.getGrid().getIndexDirection( direction ) * (1.0 - distance / maxDistance_);
 
-					glColor3ubv( &probe.distanceContext.samples[i].color.r );
+					probeVisualization.setColor( probe.distanceContext.samples[i].color );
 					probeVisualization.drawVector( vector * visSize );				
 				}
 			}
@@ -532,7 +573,9 @@ struct Application {
 	}
 
 	void drawScene() {
-		glUseProgram( viewerPPLProgram );
+		sceneShader.apply();
+		glUniform( sceneShader.viewerPos, camera.getPosition() );
+
 		objScene.Draw();
 
 		RenderContext renderContext;
@@ -845,7 +888,7 @@ struct Application {
 		RenderContext renderContext;
 		renderContext.solidObjects = true;
 
-		glUseProgram( viewerPPLProgram );
+		sceneShader.apply();
 
 		for( int i = 0 ; i < results_.size() ; ++i, topLeft.y() += previewSize + 10 ) {
 			ObjectTemplate &objectTemplate = objectTemplates_[ results_[i].first ];
@@ -923,9 +966,10 @@ struct Application {
 			// OpenGL drawing commands go here...
 			glMatrixMode( GL_PROJECTION );
 			glLoadMatrix( camera.getProjectionMatrix() );
+			glMultMatrix( camera.getViewTransformation().matrix() );
 
 			glMatrixMode( GL_MODELVIEW );
-			glLoadMatrix( camera.getViewTransformation().matrix() );
+			glLoadIdentity();
 
 			drawEverything();
 

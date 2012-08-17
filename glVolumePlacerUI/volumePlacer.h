@@ -53,15 +53,14 @@ const Vector3i neighborOffsets[] = {
 struct EnvironmentContext {
 	struct Sample {
 		float depth;
-		Color4ub color;
+		Vector3f color;
 	};
 
 	static const int numSamples = 26;
 	static Vector3f directions[numSamples];
 
 	Sample samples[numSamples];
-
-	float sortedDistances[numSamples];
+	Sample samplesSortedByDistance[numSamples];
 	
 	// != global maxDistance
 	float realMaxDistance;
@@ -77,25 +76,17 @@ struct EnvironmentContext {
 	}
 
 	void finish() {
-		boost::range::copy( samples | boost::adaptors::transformed( &getDepth ), sortedDistances );
-		std::sort( sortedDistances, sortedDistances + numSamples );
+		//boost::range::copy( samples | boost::adaptors::transformed( &getDepth ), sortedDistances );
+		boost::range::copy( samples , samplesSortedByDistance );
+		std::sort( samplesSortedByDistance, samplesSortedByDistance + numSamples, [] ( const Sample &a, const Sample &b ) { return a.depth < b.depth; } );
 
 		int i;
 		for( i = numSamples - 1 ; i > 0 ; --i ) {
-			if( sortedDistances[i] < ProbeSettings::context->maxDistance - ProbeSettings::context->maxDelta / 2 ) {
+			if( samplesSortedByDistance[i].depth < ProbeSettings::context->maxDistance - ProbeSettings::context->maxDelta / 2 ) {
 				break;
 			}
 		}
-		realMaxDistance = sortedDistances[i];
-	}
-
-	double calculateAverage() const {
-		double average = 0.;
-		for( int index = 0 ; index < numSamples ; ++index ) {
-			average += sortedDistances[index];
-		}
-		average /= numSamples;
-		return average;
+		realMaxDistance = samplesSortedByDistance[i].depth;
 	}
 	
 #if 0
@@ -111,21 +102,34 @@ struct EnvironmentContext {
 #endif
 
 	static bool match( const EnvironmentContext &a, const EnvironmentContext &b, const float maxDelta ) {
-#define MATCH(i) \
-		if( std::abs( a.sortedDistances[i] - b.sortedDistances[i] ) > maxDelta ) { \
+#define COLOR_AND_DEPTH_MATCH(i) \
+		if( std::abs( a.samplesSortedByDistance[i].depth - b.samplesSortedByDistance[i].depth ) > maxDelta || \
+			(a.samplesSortedByDistance[i].color - b.samplesSortedByDistance[i].color).lpNorm<Eigen::Infinity>() > 0.5 ) { \
 			return false; \
-		} 
+		}
+#define COLOR_MATCH(i) \
+	if(	(a.samplesSortedByDistance[i].color - b.samplesSortedByDistance[i].color).lpNorm<Eigen::Infinity>() > 0.5 ) { \
+	return false; \
+	} 
+#define DEPTH_MATCH(i) \
+	if( std::abs( a.samplesSortedByDistance[i].depth - b.samplesSortedByDistance[i].depth ) > maxDelta ) { \
+	return false; \
+	} 
 
-		MATCH(0)
-		/*MATCH( numSamples - 1 )
-		for( int i = 1 ; i < numSamples - 2 ; ++i ) {
-			MATCH( i )
-		}*/
+		DEPTH_MATCH(0)
+		//DEPTH_MATCH( numSamples - 1 )
 		if( std::abs( a.realMaxDistance - b.realMaxDistance ) > maxDelta ) {
 			return false;
 		}
+
+		for( int i = 0 ; i < numSamples ; ++i ) {
+			COLOR_MATCH( i )
+		}
+
 		return true;
-#undef MATCH
+#undef COLOR_MATCH
+#undef DEPTH_MATCH
+#undef COLOR_AND_DEPTH_MATCH
 	}
 };
 
@@ -241,7 +245,7 @@ struct SamplerProbeView {
 	inline void putSample( int index, int directionIndex, const Color4ub &color, const float depth ) {
 		auto &sample = probeGrid->get( index ).distanceContext.samples[ directionIndex ];
 		sample.depth = depth;
-		sample.color = color;
+		sample.color = Vector3f( color.r / 255.0, color.g / 255.0, color.b / 255.0 );
 	}	
 };
 
@@ -354,18 +358,6 @@ struct ProbeDatabase {
 
 	// probe->id
 	std::vector<InstanceProbe> probeIdMap;
-
-	void dumpMinDistances() {
-		std::vector< float > minDistances;
-		for( int i = 1 ; i < probeIdMap.size() ; ++i ) {
-			minDistances.push_back( probeIdMap[i].probe.distanceContext.sortedDistances[0] );
-		}
-		boost::sort( minDistances );
-
-		for( int i = 0 ; i < minDistances.size() ; ++i ) {
-			std::cout << minDistances[i] << std::endl;
-		}
-	}
 
 	struct IdInfo {
 		int numObjects;

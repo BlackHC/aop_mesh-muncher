@@ -218,8 +218,6 @@ struct VolumeSampler {
 				const float shearedMaxDepth = abs( permutedDirection[2] );
 				Eigen::glLoadMatrix( createShearProjectionMatrix( Eigen::Vector2f::Zero(), permutedGrid.size.head<2>().cast<float>(), 0, shearedMaxDepth, permutedDirection.head<2>() / shearedMaxDepth ) );
 
-				glMatrixMode( GL_MODELVIEW );
-
 				for( int i = 0 ; i < permutedGrid.size[2] ; ++i ) {
 					glNamedRenderbufferStorageEXT( colorRenderBuffers[i], GL_RGBA8, permutedGrid.size[0], permutedGrid.size[1] );
 					glNamedRenderbufferStorageEXT( depthRenderBuffers[i], GL_DEPTH_COMPONENT32F, permutedGrid.size[0], permutedGrid.size[1] );
@@ -232,8 +230,9 @@ struct VolumeSampler {
 										
 					glClear( GL_DEPTH_BUFFER_BIT );	
 
-					glLoadIdentity();
-					
+					//glMatrixMode( GL_PROJECTION );
+					glPushMatrix();
+
 					// looking down the negative z axis by default --- so flip if necessary (this changes winding though!!!)
 					glScalef( 1.0, 1.0, (permutedDirection.z() > 0 ? -1.0 : 1.0) * permutedGrid.getDirection( Eigen::Vector3f::UnitZ() ).norm() );
 
@@ -243,7 +242,13 @@ struct VolumeSampler {
 					// ie "position to permuted index"
 					Eigen::glMultMatrix( permutedGrid.positionToIndex );
 
+					glMatrixMode( GL_MODELVIEW );
+					glLoadIdentity();
+
 					renderSceneCallback();
+
+					glMatrixMode( GL_PROJECTION );
+					glPopMatrix();
 
 					glReadBuffer( GL_COLOR_ATTACHMENT0 );					
 
@@ -258,7 +263,7 @@ struct VolumeSampler {
 					if( newSizeInMB != currentSizeinMB ) {
 						currentSizeinMB = newSizeInMB;
 						std::cout << currentSizeinMB << "/" << totalSizeInMB << std::endl;
-					}
+					}		
 				}
 			}
 			glPopAttrib();
