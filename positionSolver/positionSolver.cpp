@@ -97,17 +97,23 @@ struct SparseCellInfo {
 		fullCount( c.fullCount ), fullPointIndices( std::move( c.fullPointIndices ) ), partialPointIndices( std::move( c.partialPointIndices ) ) {}
 };
 
-std::vector<std::vector<SparseCellInfo>> solveIntersections( const std::vector<Point> &points, float halfThickness ) {
+std::vector<std::vector<SparseCellInfo>> solveIntersectionsFromPigeonLevel( const std::vector<Point> &points, float halfThickness ) {
+	// advantage: starts at intermediate level
+	// disadvantage: if there are many points, an additional acceleration structure is required for the first step
 	std::vector<std::vector<SparseCellInfo>> results;
-
-	// start with a resolution that guarantees that there will be full matches
-	float resolution = halfThickness * 0.707106; // rounded down
 
 	Vector3f minGridCorner = std::accumulate( points.cbegin(), points.cend(), points[0].center, [] (const Vector3f &x, const Point &p) { return x.cwiseMin( p.center - Vector3f::Constant( p.distance ) ); } );
 	Vector3f maxGridCorner = std::accumulate( points.cbegin(), points.cend(), points[0].center, [] (const Vector3f &x, const Point &p) { return x.cwiseMax( p.center + Vector3f::Constant( p.distance ) ); } );
 
+#if 0
+	float resolution = (maxGridCorner - minGridCorner).maxCoeff();
+	Grid grid( Vector3i::Constant( 1 ), minGridCorner, resolution );
+#else
+	// start with a resolution that guarantees that there will be full matches
+	float resolution = halfThickness * 0.707106; // rounded down
 	Vector3i size = ((maxGridCorner - minGridCorner) / resolution + Vector3f::Constant(1)).cast<int>();
 	Grid grid( size, minGridCorner, resolution );
+#endif
 
 	int bestFullCount = 0;
 	int bestTotalCount = 0;
@@ -175,6 +181,131 @@ std::vector<std::vector<SparseCellInfo>> solveIntersections( const std::vector<P
 
 	// refine
 	for( int refineStep = 0 ; refineStep < 8 ; ++refineStep ) {
+		resolution /= 2;
+
+		std::vector<SparseCellInfo> refinedSparseCellInfos;
+		refinedSparseCellInfos.reserve( sparseCellInfos.size() * 8 );
+
+		// reset total count to lowest possible value (ie bestFullCount)
+		bestTotalCount = bestFullCount;
+
+		for( int i = 0 ; i < sparseCellInfos.size() ; ++i ) {
+			const SparseCellInfo &parentCellInfo = sparseCellInfos[i];
+
+			// early out if there is nothing to refine
+			if( parentCellInfo.partialPointIndices.empty() ) {
+				refinedSparseCellInfos.push_back( parentCellInfo );
+				continue;
+			}
+
+			for( int k = 0 ; k < 8 ; k++ ) {
+				Vector3f offset = indexToCubeCorner[k].cast<float>() * resolution;
+
+				Vector3f minCorner = parentCellInfo.minCorner + offset;
+				Vector3f maxCorner = minCorner + Vector3f::Constant( resolution );
+
+				SparseCellInfo cellInfo;
+				// full overlaps in the parent are also full overlaps in the refined child
+				cellInfo.fullPointIndices = parentCellInfo.fullPointIndices;
+				cellInfo.fullCount = parentCellInfo.fullCount;
+
+				// reset total count to lowest possible value (ie bestFullCount)
+				cellInfo.totalCount = cellInfo.fullCount;
+
+				// check which partial overlaps become full overlaps in the refined child
+				for( int j = 0 ; j < parentCellInfo.partialPointIndices.size() ; j++ ) {
+					const int pointIndex = parentCellInfo.partialPointIndices[j];
+
+					const Point &point = points[pointIndex];
+					float minSquaredDistance = squaredMinDistanceAABoxPoint( minCorner, maxCorner, point.center );
+					float maxSquaredDistance = squaredMaxDistanceAABoxPoint( minCorner, maxCorner, point.center );
+
+					float minSphereSquaredDistance = (point.distance - halfThickness) * (point.distance - halfThickness);
+					float maxSphereSquaredDistance = (point.distance + halfThickness) * (point.distance + halfThickness);
+					if( maxSquaredDistance < minSphereSquaredDistance || maxSphereSquaredDistance < minSquaredDistance ) {
+						continue;
+					}
+					// at least partial
+					cellInfo.totalCount++;
+
+					// full?
+					if( minSphereSquaredDistance <= minSquaredDistance && maxSquaredDistance <= maxSphereSquaredDistance ) {
+						cellInfo.fullCount++;
+						cellInfo.fullPointIndices.push_back( pointIndex );
+					}
+					else {
+						// only partial
+						cellInfo.partialPointIndices.push_back( pointIndex );
+					}
+				}
+
+				// only keep potential solutions
+				if( cellInfo.totalCount >= bestFullCount && cellInfo.totalCount > 0 ) {
+					cellInfo.minCorner = minCorner;
+					cellInfo.maxCorner = maxCorner;
+
+					bestTotalCount = std::max( bestTotalCount, cellInfo.totalCount );
+					bestFullCount = std::max( bestFullCount, cellInfo.fullCount );
+
+					refinedSparseCellInfos.push_back( std::move( cellInfo ) );
+				}
+			}
+		}
+
+		std::swap( sparseCellInfos, refinedSparseCellInfos );
+
+		results.push_back( std::move( refinedSparseCellInfos ) );
+
+		// filter
+		if( bestFullCount > 0 ) {
+			std::vector<SparseCellInfo> filteredSparseCellInfos;
+			filteredSparseCellInfos.reserve( sparseCellInfos.size() );
+
+			std::remove_copy_if( sparseCellInfos.begin(), sparseCellInfos.end(), std::back_inserter( filteredSparseCellInfos ), [bestFullCount](SparseCellInfo &info) { return info.totalCount < bestFullCount; } );
+			std::swap( filteredSparseCellInfos, sparseCellInfos );
+		}
+
+		// done?
+		if( bestFullCount == bestTotalCount ) {
+			// solution found
+			results.push_back( std::move( sparseCellInfos ) );
+			return results;
+		}
+	}
+
+	results.push_back( std::move( sparseCellInfos ) );
+	return results;
+}
+
+std::vector<std::vector<SparseCellInfo>> solveIntersections( const std::vector<Point> &points, float halfThickness ) {
+	// advantage: if there are many points, an additional acceleration structure is required for the first step
+	// disadvantage: no meaning full results during the first (possibly many steps until resolution <= halfThickness * 0.707106)
+	std::vector<std::vector<SparseCellInfo>> results;
+
+	Vector3f minGridCorner = std::accumulate( points.cbegin(), points.cend(), points[0].center, [] (const Vector3f &x, const Point &p) { return x.cwiseMin( p.center - Vector3f::Constant( p.distance ) ); } );
+	Vector3f maxGridCorner = std::accumulate( points.cbegin(), points.cend(), points[0].center, [] (const Vector3f &x, const Point &p) { return x.cwiseMax( p.center + Vector3f::Constant( p.distance ) ); } );
+
+	float resolution = (maxGridCorner - minGridCorner).maxCoeff();
+	//Grid grid( Vector3i::Constant( 1 ), minGridCorner, resolution );
+
+	int bestFullCount = 0;
+	int bestTotalCount = points.size();
+
+	std::vector<SparseCellInfo> sparseCellInfos;
+
+	SparseCellInfo gridCell;
+	gridCell.minCorner = minGridCorner;
+	gridCell.maxCorner = minGridCorner + Vector3f::Constant( resolution );
+	gridCell.fullCount = 0;
+	gridCell.totalCount = points.size();
+	gridCell.partialPointIndices.resize( points.size() );
+	for( int i = 0 ; i < points.size() ; ++i ) {
+		gridCell.partialPointIndices[i] = i;
+	}
+	sparseCellInfos.push_back( gridCell );
+
+	// refine
+	for( int refineStep = 0 ; refineStep < 16 ; ++refineStep ) {
 		resolution /= 2;
 
 		std::vector<SparseCellInfo> refinedSparseCellInfos;
@@ -415,12 +546,20 @@ struct CameraInputControl : public MouseCapture {
 void main() {
 	std::vector<Point> points;
 
-	/*points.push_back( Point( Vector3f(0,0,0), 5 ) );
-	points.push_back( Point( Vector3f(10,0,0), 5 ) );
-	points.push_back( Point( Vector3f(5,0,5), 5 ) );*/
-
 	points.push_back( Point( Vector3f(0,0,0), 5 ) );
-	points.push_back( Point( Vector3f(11.8,0,0), 5 ) );
+	points.push_back( Point( Vector3f(10,0,0), 5 ) );
+	points.push_back( Point( Vector3f(5,0,5), 5 ) );
+
+	points.push_back( Point( Vector3f(0,6,0), 5 ) );
+	points.push_back( Point( Vector3f(10,6,0), 5 ) );
+	points.push_back( Point( Vector3f(5,6,5), 5 ) );
+
+	points.push_back( Point( Vector3f(0,6.5,0), 5 ) );
+	points.push_back( Point( Vector3f(10,6.5,0), 5 ) );
+	points.push_back( Point( Vector3f(5,6.5,5), 5 ) );
+
+	/*points.push_back( Point( Vector3f(0,0,0), 5 ) );
+	points.push_back( Point( Vector3f(11.8,0,0), 5 ) );*/
 
 	const float halfThickness = 1;
 	auto results = solveIntersections( points, halfThickness );
