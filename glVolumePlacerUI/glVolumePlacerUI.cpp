@@ -402,6 +402,8 @@ struct Application {
 	// anttweakbar fields
 	bool showProbes;
 	bool showMatchedProbes;
+	bool showCandidatePositionVolumes;
+	bool showCandidateSuggestions;
 	bool dontUnfocus;
 	bool showPrototype;
 	bool solidObjects;
@@ -430,11 +432,12 @@ struct Application {
 
 	std::vector<DebugRender::CombinedCalls> matchedProbes_;
 	std::vector<DebugRender::CombinedCalls> matchedCandidatePositions_;
+	std::vector<boost::optional<ObjectInstance>> candidateSuggestions;
 
 	// object data
 	std::vector<ObjectTemplate> objectTemplates_;
 	AntTWBarEditableCollection<ObjectInstance> objectInstances_;
-
+	
 	// preview
 	struct Transformation {
 		Matrix4f world;
@@ -512,6 +515,7 @@ struct Application {
 		uiButtons_.resize( objectTemplates_.size() );
 		matchedProbes_.resize( objectTemplates_.size() );
 		matchedCandidatePositions_.resize( objectTemplates_.size() );
+		candidateSuggestions.resize( objectTemplates_.size() );
 
 		for( int i = 0 ; i < uiButtons_.size() ; i++ ) {
 			uiManager_.elements.push_back( &uiButtons_[i] );
@@ -631,9 +635,21 @@ struct Application {
 			glDisable( GL_LINE_STIPPLE );
 		}
 
-		if( showMatchedProbes && activeProbe_ != -1 ) {
-			matchedProbes_[activeProbe_].render();
-			matchedCandidatePositions_[activeProbe_].render();
+		if( activeProbe_ != -1 ) {
+			if( showMatchedProbes ) {
+				matchedProbes_[activeProbe_].render();
+			}
+
+			if( showCandidatePositionVolumes ) {
+				matchedCandidatePositions_[activeProbe_].render();
+			}
+
+			if( showCandidateSuggestions && candidateSuggestions[activeProbe_] ) {
+				glEnable( GL_LINE_STIPPLE );
+				glLineStipple( 1, 0x203f );
+				candidateSuggestions[activeProbe_]->draw();
+				glDisable( GL_LINE_STIPPLE );
+			}
 		}
 
 		TwDraw();
@@ -701,23 +717,32 @@ struct Application {
 
 		ui_->addVarRW( "Grid resolution", gridResolution_, "min=0 step = 0.1" );
 		ui_->addVarRW( "Max probe distance", maxDistance_, "min=0 step=0.1" );
+
+		ui_->addSeparator();
 		ui_->addVarRW( "Show probes", showProbes );
-		ui_->addVarRW( "Show matched probes", showMatchedProbes );		
+		ui_->addVarRW( "Show matched probes", showMatchedProbes );
+		ui_->addVarRW( "Show candidate position volumes", showCandidatePositionVolumes );
+		ui_->addVarRW( "Show candidate suggestions", showCandidateSuggestions );
+
 		ui_->addVarRW( "Fix selection", dontUnfocus );
 		ui_->addVarRW( "Show prototype", showPrototype );
 		ui_->addVarRW( "Solid objects", solidObjects );
+		ui_->addSeparator();
+
 		ui_->addVarRW( "Refill probe mask", probeMask );
 		ui_->addVarRW( "Mask all objects on find", maskAllObjectsOnFind );
 
+		ui_->addSeparator();
 		writeStateCallback_.callback = std::bind(&Application::writeState, this);
 		ui_->addButton("Write state", writeStateCallback_ );
 
 		writeObjectsCallback.callback = std::bind( &Application::writeObjects, this );
 		ui_->addButton( "Save objects", writeObjectsCallback );
-
+		
 		reloadShadersCallback.callback = std::bind( &Application::initShaders, this );
 		ui_->addButton( "Reload shaders", reloadShadersCallback );
 
+		ui_->addSeparator();
 		findCandidatesCallback_.callback = std::bind(&Application::Do_findCandidates, this);
 		ui_->addButton("Find candidates", findCandidatesCallback_ );
 
@@ -726,7 +751,8 @@ struct Application {
 
 		refillProbeDatabaseCallback.callback = std::bind( &Application::refillProbeDatabase, this );
 		ui_->addButton( "Refill probe database", refillProbeDatabaseCallback );
-				
+		ui_->addSeparator();
+
 		candidateResultsUI_ = std::unique_ptr<AntTWBarGroup>( new AntTWBarGroup( "Candidates", ui_.get() ) );
 
 		cameraPositions_.onAction = [=] ( const CameraPosition &camPos ) {
@@ -802,7 +828,7 @@ struct Application {
 		TextReader reader( "state.json" );
 
 		get( reader, "gridResolution", gridResolution_ );
-		maxDistance_ = gridResolution_ * 8;
+		get( reader, "maxDistance", maxDistance_, gridResolution_ * 8 );
 
 		get( reader, "solidObjects", solidObjects );
 		get( reader, "probeMask", probeMask );
@@ -811,6 +837,9 @@ struct Application {
 		get( reader, "targetCube", targetCube_ );
 		get( reader, "showProbes", showProbes );
 		get( reader, "showMatchedProbes", showMatchedProbes );
+		get( reader, "showCandidatePositionVolumes", showCandidatePositionVolumes );
+		get( reader, "showCandidateSuggestions", showCandidateSuggestions );
+
 		get( reader, "dontUnfocus", dontUnfocus );
 		get( reader, "showPrototype", showPrototype );
 
@@ -834,6 +863,8 @@ struct Application {
 		TextEmitter emitter( "state.json" );
 
 		put( emitter, "gridResolution", gridResolution_ );
+		put( emitter, "maxDistance", maxDistance_ );
+
 		put( emitter, "solidObjects", solidObjects );
 		
 		put( emitter, "probeMask", probeMask );
@@ -842,6 +873,9 @@ struct Application {
 		put( emitter, "targetCube", targetCube_ );
 		put( emitter, "showProbes", showProbes );
 		put( emitter, "showMatchedProbes", showMatchedProbes );
+		put( emitter, "showCandidatePositionVolumes", showCandidatePositionVolumes );
+		put( emitter, "showCandidateSuggestions", showCandidateSuggestions );
+
 		put( emitter, "dontUnfocus", dontUnfocus );
 		put( emitter, "showPrototype", showPrototype );
 		
@@ -921,8 +955,21 @@ struct Application {
 			}
 
 			float numProbesPerInstance = probeDatabase_.getProbeCountPerInstanceForId( results_[i].first );
-			auto results = solveIntersectionsWithPriority( points, gridResolution_ / 2, gridResolution_ / 2, numProbesPerInstance, numProbesPerInstance / 2 );
+			auto results = solveIntersectionsWithPriority( points, gridResolution_ / 2, gridResolution_ / 2, numProbesPerInstance, numProbesPerInstance );
 			visualizeCandidatePositions(i, results);
+
+			// determine the best position (if any)
+			auto minElement = boost::max_element( results, []( const SparseCellInfo &a, const SparseCellInfo &b ) { return a.lowerBound + a.upperBound < b.lowerBound + b.upperBound; } );  
+			if( minElement->upperBound + minElement->lowerBound > 2 * numProbesPerInstance ) {
+				ObjectInstance instance;
+				instance.templateId = results_[i].first;
+				instance.position = minElement->minCorner + Vector3f::Constant( minElement->resolution / 2 );
+				
+				candidateSuggestions[i] = instance;
+			}
+			else {
+				candidateSuggestions[i] = boost::optional<ObjectInstance>();
+			}
 		}
 	}
 

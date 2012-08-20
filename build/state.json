@@ -1,5 +1,6 @@
 {
     "gridResolution": "0.5",
+    "maxDistance": "6",
     "solidObjects": "false",
     "probeMask": "none",
     "maskAllObjectsOnFind": "false",
@@ -20,19 +21,21 @@
     },
     "showProbes": "true",
     "showMatchedProbes": "true",
+    "showCandidatePositionVolumes": "true",
+    "showCandidateSuggestions": "true",
     "dontUnfocus": "true",
     "showPrototype": "true",
     "cameraPosition":
     [
-        "-3.731036",
-        "7.021944",
-        "2.198443"
+        "-7.174812",
+        "12.1254",
+        "6.269177"
     ],
     "cameraDirection":
     [
-        "0.8017458",
-        "-0.5521158",
-        "-0.2288491"
+        "0.1214771",
+        "-0.809143",
+        "0.5749182"
     ],
     "cameraPositions":
     [

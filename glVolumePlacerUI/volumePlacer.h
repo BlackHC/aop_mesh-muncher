@@ -91,8 +91,9 @@ struct EnvironmentContext {
 	}
 	
 	static bool match( const EnvironmentContext &a, const EnvironmentContext &b, const float maxDelta ) {
+#define samplesSortedByDistance samples
 #define COLOR_AND_DEPTH_MATCH(i) \
-		if( std::abs( a.samplesSortedByDistance[i].depth - b.samplesSortedByDistance[i].depth ) > maxDelta || \
+		if( std::abs( a.samplesSortedByDistance[i].depth - b.samplesSortedByDistance[i].depth ) > maxDelta * 2 || \
 			(a.samplesSortedByDistance[i].color - b.samplesSortedByDistance[i].color).lpNorm<Eigen::Infinity>() > 0.5 ) { \
 			return false; \
 		}
@@ -105,21 +106,22 @@ struct EnvironmentContext {
 	return false; \
 	} 
 
-		DEPTH_MATCH(0)
-		DEPTH_MATCH( numSamples - 1 )
+		/*DEPTH_MATCH(0)
+		DEPTH_MATCH( numSamples - 1 )*/
 		/*if( std::abs( a.realMaxDistance - b.realMaxDistance ) > maxDelta ) {
 			return false;
 		}*/
 
-		for( int i = 1 ; i < numSamples - 1 ; ++i ) {
-			//COLOR_MATCH( i )
-			DEPTH_MATCH( i )
+		for( int i = 0 ; i < numSamples ; ++i ) {
+			COLOR_AND_DEPTH_MATCH( i )
+			//DEPTH_MATCH( i )
 		}
 
 		return true;
 #undef COLOR_MATCH
 #undef DEPTH_MATCH
 #undef COLOR_AND_DEPTH_MATCH
+#undef samplesSortedByDistance
 	}
 };
 
