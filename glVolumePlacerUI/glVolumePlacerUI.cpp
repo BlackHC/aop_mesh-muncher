@@ -34,8 +34,11 @@ using namespace Eigen;
 
 #include "glHelpers.h"
 
+#include "positionSolver.h"
+
 #include <boost/type_traits.hpp>
 #include <boost/utility/enable_if.hpp>
+#include <boost/range/numeric.hpp>
 
 Vector3i ceil( const Vector3f &v ) {
 	return Vector3i( ceil( v[0] ), ceil( v[1] ), ceil( v[2] ) );
@@ -417,6 +420,7 @@ struct Application {
 	AntTWBarGroup::VariableCallback<Vector3f> minCallback_, sizeCallback_;
 	AntTWBarGroup::ButtonCallback writeStateCallback_;
 	AntTWBarGroup::ButtonCallback findCandidatesCallback_;
+	AntTWBarGroup::ButtonCallback findCandidatePositionsCallback_;
 	AntTWBarGroup::ButtonCallback refillProbeDatabaseCallback;
 	AntTWBarGroup::ButtonCallback writeObjectsCallback;
 	AntTWBarGroup::ButtonCallback reloadShadersCallback;
@@ -425,6 +429,7 @@ struct Application {
 	DebugRender::CombinedCalls probeVisualization;
 
 	std::vector<DebugRender::CombinedCalls> matchedProbes_;
+	std::vector<DebugRender::CombinedCalls> matchedCandidatePositions_;
 
 	// object data
 	std::vector<ObjectTemplate> objectTemplates_;
@@ -506,6 +511,7 @@ struct Application {
 
 		uiButtons_.resize( objectTemplates_.size() );
 		matchedProbes_.resize( objectTemplates_.size() );
+		matchedCandidatePositions_.resize( objectTemplates_.size() );
 
 		for( int i = 0 ; i < uiButtons_.size() ; i++ ) {
 			uiManager_.elements.push_back( &uiButtons_[i] );
@@ -559,11 +565,16 @@ struct Application {
 				for( int i = 0 ; i < Probe::DistanceContext::numSamples ; ++i ) {
 					const Vector3f &direction = probe.distanceContext.directions[i];
 					const float distance = probe.distanceContext.samples[i].depth;
+					if( distance == maxDistance_ ) {
+						continue;
+					}
 
-					const Vector3f &vector = probeGrid.getGrid().getIndexDirection( direction ) * (1.0 - distance / maxDistance_);
+					const Vector3f &vector = probeGrid.getGrid().getDirection( direction ).normalized() * distance; //* (1.0 - distance / maxDistance_) * visSize;
 
-					probeVisualization.setColor( probe.distanceContext.samples[i].color );
-					probeVisualization.drawVector( vector * visSize );				
+					probeVisualization.setColor( probe.distanceContext.samples[i].color * 0.9 );
+					probeVisualization.drawVector( vector );				
+
+					//std::cout << probePosition.y() + vector.y() << "\n";
 				}
 			}
 			probeVisualization.end();
@@ -622,6 +633,7 @@ struct Application {
 
 		if( showMatchedProbes && activeProbe_ != -1 ) {
 			matchedProbes_[activeProbe_].render();
+			matchedCandidatePositions_[activeProbe_].render();
 		}
 
 		TwDraw();
@@ -709,6 +721,9 @@ struct Application {
 		findCandidatesCallback_.callback = std::bind(&Application::Do_findCandidates, this);
 		ui_->addButton("Find candidates", findCandidatesCallback_ );
 
+		findCandidatePositionsCallback_.callback = std::bind( &Application::Do_findCandidatePositions, this );
+		ui_->addButton( "Find candidate positions", findCandidatePositionsCallback_ );
+
 		refillProbeDatabaseCallback.callback = std::bind( &Application::refillProbeDatabase, this );
 		ui_->addButton( "Refill probe database", refillProbeDatabaseCallback );
 				
@@ -745,21 +760,38 @@ struct Application {
 		objectInstances_.init( "Object Instances", nullptr );
 	}
 
+	void visualizeCandidatePositions( int index, const std::vector<SparseCellInfo> results ) {
+		float maxAverage = boost::accumulate( results, 0.0f, []( float value, const SparseCellInfo &cell ) { return std::max( value, (cell.upperBound + cell.lowerBound) / 2.0f ); } );
+
+		matchedCandidatePositions_[index].begin();
+		for( int i = 0 ; i < results.size() ; ++i ) {
+			const SparseCellInfo &cell = results[i];
+
+			matchedCandidatePositions_[index].setColor( Eigen::Vector3f( 1.0, 0.0, 0.0 ) * ( float(cell.upperBound + cell.lowerBound) / 2.0 / maxAverage * 0.75 + 0.25 ) );
+			matchedCandidatePositions_[index].drawAABB( cell.minCorner, cell.minCorner + Vector3f::Constant( cell.resolution ) );
+		}
+		matchedCandidatePositions_[index].end();
+	}
+
 	void visualizeMatchedProbes(int index) {
 		const ProbeDatabase::CandidateInfo &info = results_[index].second;
 
+/*
+		int globalMaxSingleMatchCount = results_[0].second.maxSingleMatchCount;
+		for( int i = 1 ; i < results_.size() ; ++i ) {
+			globalMaxSingleMatchCount = results_.
+		}
+*/
+
 		matchedProbes_[index].begin();
 		int begin = 0;
-		for( int i = 0 ; i < info.matchesPositionEndOffsets.size() ; ++i ) {
-			const Vector3f &position = info.matchesPositionEndOffsets[i].first;
+		for( int i = 0 ; i < info.matchesPositionMatchCount.size() ; ++i ) {
+			const Vector3f &position = info.matchesPositionMatchCount[i].first;
 
-			const int end = info.matchesPositionEndOffsets[i].second;
-			const int count = end - begin;
+			const int count = info.matchesPositionMatchCount[i].second;
 			matchedProbes_[index].setPosition( position );
 			matchedProbes_[index].setColor( Vector3f( 1.0 - float(count) / info.maxSingleMatchCount, 1.0, 0.0 ) );
 			matchedProbes_[index].drawAbstractSphere( gridResolution_ / 4 );
-
-			begin = end;
 		}
 		matchedProbes_[index].end();
 	}
@@ -862,9 +894,35 @@ struct Application {
 		candidateResultsUI_->clear();
 		for( int i = 0 ; i < results_.size() ; ++i ) {
 			const ProbeDatabase::CandidateInfo &info = results_[i].second;
+
 			candidateResultsUI_->addVarRO( AntTWBarGroup::format( "Candidate %i", results_[i].first ), info.score );
 
 			visualizeMatchedProbes(i);
+		}
+	}
+
+	void Do_findCandidatePositions() {
+		for( int i = 0 ; i < results_.size() ; ++i ) {
+			const ProbeDatabase::CandidateInfo &info = results_[i].second;
+
+			std::vector<Point> points;
+			points.reserve( info.matchDistances.size() );
+			int begin = 0;
+			for( int j = 0 ; j < info.matchesPositionMatchCount.size() ; ++j ) {
+				const Vector3f &position = info.matchesPositionMatchCount[j].first;
+
+				const int end = begin + info.matchesPositionMatchCount[j].second;
+
+				for( int probeIndex = begin ; probeIndex < end ; ++probeIndex ) {
+					points.push_back( Point( position, info.matchDistances[ probeIndex ], 1 ) );
+				}
+
+				begin = end;
+			}
+
+			float numProbesPerInstance = probeDatabase_.getProbeCountPerInstanceForId( results_[i].first );
+			auto results = solveIntersectionsWithPriority( points, gridResolution_ / 2, gridResolution_ / 2, numProbesPerInstance, numProbesPerInstance / 2 );
+			visualizeCandidatePositions(i, results);
 		}
 	}
 

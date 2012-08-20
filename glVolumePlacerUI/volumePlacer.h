@@ -5,6 +5,7 @@
 #include <vector>
 
 #include <boost/range/algorithm.hpp>
+#include <boost/range/algorithm_ext.hpp>
 #include <boost/range/adaptor/transformed.hpp>
 
 #include <boost/timer/timer.hpp>
@@ -63,11 +64,11 @@ struct EnvironmentContext {
 	Sample samplesSortedByDistance[numSamples];
 	
 	// != global maxDistance
-	float realMaxDistance;
+	//float realMaxDistance;
 	
 	static void setDirections() {
 		for( int i = 0 ; i < numSamples ; i++ ) {
-			directions[i] = neighborOffsets[i].cast<float>();
+			directions[i] = neighborOffsets[i].cast<float>(); 
 		}
 	}
 
@@ -77,30 +78,18 @@ struct EnvironmentContext {
 
 	void finish() {
 		//boost::range::copy( samples | boost::adaptors::transformed( &getDepth ), sortedDistances );
-		boost::range::copy( samples , samplesSortedByDistance );
+		boost::range::copy( samples, samplesSortedByDistance );
 		std::sort( samplesSortedByDistance, samplesSortedByDistance + numSamples, [] ( const Sample &a, const Sample &b ) { return a.depth < b.depth; } );
 
-		int i;
+		/*int i;
 		for( i = numSamples - 1 ; i > 0 ; --i ) {
 			if( samplesSortedByDistance[i].depth < ProbeSettings::context->maxDistance - ProbeSettings::context->maxDelta / 2 ) {
 				break;
 			}
 		}
-		realMaxDistance = samplesSortedByDistance[i].depth;
+		realMaxDistance = samplesSortedByDistance[i].depth;*/
 	}
 	
-#if 0
-	static double compare( const EnvironmentContext &a, const EnvironmentContext &b ) {
-		// use L2 norm because it accentuates big differences better than L1
-		double norm = 0.;
-		for( int index = 0 ; index < numSamples ; ++index ) {
-			double delta = a.sortedDistances[index] - b.sortedDistances[index];
-			norm = std::max( norm, std::abs(delta) );
-		}
-		return norm;
-	}
-#endif
-
 	static bool match( const EnvironmentContext &a, const EnvironmentContext &b, const float maxDelta ) {
 #define COLOR_AND_DEPTH_MATCH(i) \
 		if( std::abs( a.samplesSortedByDistance[i].depth - b.samplesSortedByDistance[i].depth ) > maxDelta || \
@@ -117,13 +106,14 @@ struct EnvironmentContext {
 	} 
 
 		DEPTH_MATCH(0)
-		//DEPTH_MATCH( numSamples - 1 )
-		if( std::abs( a.realMaxDistance - b.realMaxDistance ) > maxDelta ) {
+		DEPTH_MATCH( numSamples - 1 )
+		/*if( std::abs( a.realMaxDistance - b.realMaxDistance ) > maxDelta ) {
 			return false;
-		}
+		}*/
 
-		for( int i = 0 ; i < numSamples ; ++i ) {
-			COLOR_MATCH( i )
+		for( int i = 1 ; i < numSamples - 1 ; ++i ) {
+			//COLOR_MATCH( i )
+			DEPTH_MATCH( i )
 		}
 
 		return true;
@@ -146,38 +136,6 @@ struct Probe {
 };
 
 typedef std::vector<Probe> ProbeVector;
-
-namespace Serialize {
-	template<typename T>
-	void writeTyped( FILE *fileHandle, const T &d ) {
-		fwrite( &d, sizeof(T), 1, fileHandle );
-	}
-
-	template<typename T>
-	void readTyped( FILE *fileHandle, T &d ) {
-		fread( &d, sizeof(T), 1, fileHandle );
-	}
-
-	template<typename V>
-	void writeTyped( FILE *fileHandle, const std::vector<V> &d ) {
-		int num = (int) d.size();
-		writeTyped( fileHandle, num );
-		for( int i = 0 ; i < num ; ++i ) {
-			writeTyped( fileHandle, d[i] );
-		}
-	}
-
-	template<typename V>
-	void readTyped( FILE *fileHandle, std::vector<V> &d ) {
-		int num;
-		readTyped( fileHandle, num );
-		d.resize( num );
-
-		for( int i = 0 ; i < num ; ++i ) {
-			readTyped( fileHandle, d[i] );
-		}
-	}
-}
 
 template< typename Data >
 class DataGrid {
@@ -287,12 +245,20 @@ struct ProbeDatabase {
 		int totalMatchCount;
 		int maxSingleMatchCount;
 
-		std::vector< const InstanceProbe * > matches;
-		std::vector< std::pair<Eigen::Vector3f, int> > matchesPositionEndOffsets;
+		//std::vector< const InstanceProbe * > matches;
+		std::vector< float > matchDistances;
+		std::vector< std::pair<Eigen::Vector3f, int> > matchesPositionMatchCount;
 
 		CandidateInfo() : totalMatchCount(0), maxSingleMatchCount(0), score(0) {}
 
-		CandidateInfo( CandidateInfo &&o ) : score( o.score ), totalMatchCount( o.totalMatchCount ), maxSingleMatchCount( o.maxSingleMatchCount ), matches( std::move( o.matches ) ), matchesPositionEndOffsets( std::move( o.matchesPositionEndOffsets ) ) {}
+		CandidateInfo( CandidateInfo &&o ) : 
+			score( o.score ),
+			totalMatchCount( o.totalMatchCount ), 
+			maxSingleMatchCount( o.maxSingleMatchCount ), 
+			/*matches( std::move( o.matches ) ), */
+			matchDistances( std::move( o.matchDistances ) ),
+			matchesPositionMatchCount( std::move( o.matchesPositionMatchCount ) ) {
+		}
 	};
 
 	typedef std::vector<CandidateInfo> CandidateInfos;
@@ -303,32 +269,50 @@ struct ProbeDatabase {
 
 		boost::timer::auto_cpu_timer timer;
 
-		std::vector<int> matchCounts(numIds);
-		for( Iterator3 iterator = probeGrid.getIterator() ; iterator.hasMore() ; ++iterator ) {
-			const Probe &probe = probeGrid[ *iterator ];
+#pragma omp parallel num_threads(12)
+		{
+			CandidateInfos localCandidateInfos( numIds );
+			std::vector<int> matchCounts(numIds);
+			//for( Iterator3 iterator = probeGrid.getIterator() ; iterator.hasMore() ; ++iterator ) {
+#pragma omp for nowait
+			for( int index = 0 ; index < probeGrid.getGrid().count ; ++index ) {
+				const Probe &probe = probeGrid[ index ];
 
-			std::fill( matchCounts.begin(), matchCounts.end(), 0 );
+				std::fill( matchCounts.begin(), matchCounts.end(), 0 );
 		
-			for( auto refIterator = probeIdMap.cbegin() ; refIterator != probeIdMap.cend() ; ++refIterator ) {
-				if( Probe::match( refIterator->probe, probe ) ) {
-					const int id = refIterator->id;
-					candidateInfos[id].matches.push_back( &*refIterator );
-					matchCounts[id]++;
+				for( auto refIterator = probeIdMap.cbegin() ; refIterator != probeIdMap.cend() ; ++refIterator ) {
+					if( Probe::match( refIterator->probe, probe ) ) {
+						const int id = refIterator->id;
+						//candidateInfos[id].matches.push_back( &*refIterator );
+						localCandidateInfos[id].matchDistances.push_back( refIterator->distance );
+						matchCounts[id]++;
+					}
+				}				
+
+				for( int id = 0 ; id < numIds ; ++id ) {
+					const int matchCount = matchCounts[id];
+					if( matchCount == 0 ) {
+						continue;
+					}
+
+					CandidateInfo &candidateInfo = localCandidateInfos[id];
+
+					candidateInfo.totalMatchCount += matchCount;
+					candidateInfo.maxSingleMatchCount = std::max( candidateInfo.maxSingleMatchCount, matchCount );
+
+					candidateInfo.matchesPositionMatchCount.push_back( std::make_pair( probeGrid.getGrid().getPosition( probeGrid.getGrid().getIndex3( index ) ), matchCount ) );
 				}
-			}				
+			}
+#pragma omp critical
+			{
+				// merge candidate infos
+				for( int id = 0 ; id < numIds ; ++id ) {
+					candidateInfos[id].maxSingleMatchCount = std::max( candidateInfos[id].maxSingleMatchCount, localCandidateInfos[id].maxSingleMatchCount );
+					candidateInfos[id].totalMatchCount += localCandidateInfos[id].totalMatchCount;
 
-			for( int id = 0 ; id < numIds ; ++id ) {
-				const int matchCount = matchCounts[id];
-				if( matchCount == 0 ) {
-					continue;
+					boost::push_back( candidateInfos[id].matchDistances, localCandidateInfos[id].matchDistances );
+					boost::push_back( candidateInfos[id].matchesPositionMatchCount, localCandidateInfos[id].matchesPositionMatchCount );
 				}
-
-				CandidateInfo &candidateInfo = candidateInfos[id];
-
-				candidateInfo.totalMatchCount += matchCount;
-				candidateInfo.maxSingleMatchCount = std::max( candidateInfo.maxSingleMatchCount, matchCount );
-
-				candidateInfo.matchesPositionEndOffsets.push_back( std::make_pair( probeGrid.getGrid().getPosition( iterator.getIndex3() ), (int) candidateInfo.matches.size() ) );
 			}
 		}
 

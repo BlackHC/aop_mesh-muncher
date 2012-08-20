@@ -44,6 +44,7 @@ ADD_EXECUTABLE(glVolumePlacerUI
 	../positionSolver/cameraInputControl.h
 	../positionSolver/debugRender.h
 	../positionSolver/eventHandling.h
+	../positionSolver/positionSolver.h
 	../objScene/objSceneGL.h
 	../objScene/objSceneGL.cpp
 	../objScene/materialLibrary.h

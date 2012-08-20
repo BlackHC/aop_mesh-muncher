@@ -8,8 +8,9 @@
 struct Point {
 	Eigen::Vector3f center;
 	float distance;
+	int weight;
 
-	Point( const Eigen::Vector3f &center, float distance ) : center( center ), distance( distance ) {}
+	Point( const Eigen::Vector3f &center, float distance, int weight = 1 ) : center( center ), distance( distance ), weight( weight ) {}
 };
 
 const Eigen::Vector3i indexToCubeCorner[] = {
@@ -89,7 +90,7 @@ void filterCells( std::vector<SparseCellInfo> &cells, const std::function<bool(c
 	std::swap( filteredCells, cells );
 }
 
-std::vector<SparseCellInfo> solveIntersectionsWithPriority( const std::vector<Point> &points, const float halfThickness, const float minResolution ) {
+std::vector<SparseCellInfo> solveIntersectionsWithPriority( const std::vector<Point> &points, const float halfThickness, const float minResolution, int maxLowerBound = std::numeric_limits<int>::max(), int minUpperBound = 0 ) {
 	SparseCellInfo rootCell = buildRootCell( points, halfThickness );	
 	const int maxCellRadius = (int) ceil( rootCell.resolution / 2 / minResolution );
 	const int minCellRadius = (int) floor( (rootCell.resolution / 2 - 2 * halfThickness) / minResolution );
@@ -110,6 +111,10 @@ std::vector<SparseCellInfo> solveIntersectionsWithPriority( const std::vector<Po
 	int formerBestLowerBound;
 
 	for( int refinementStep = 0 ; refinementStep < maxNumRefinementSteps ; ++refinementStep ) {
+		if( (refinementStep % 1000) == 0 ) {
+			std::cout << refinementStep << "/" << maxNumRefinementSteps - 1 << "\n";
+		}
+
 		formerBestLowerBound = bestLowerBound;
 
 		SparseCellInfo parentCell;
@@ -131,6 +136,8 @@ std::vector<SparseCellInfo> solveIntersectionsWithPriority( const std::vector<Po
 			// reset to lower bound before we test whether any partial overlap has become a full one
 			cell.upperBound = parentCell.lowerBound;
 
+			cell.partialPointIndices.reserve( parentCell.partialPointIndices.size() );
+			
 			for( int j = 0 ; j < parentCell.partialPointIndices.size() ; j++ ) {
 				const int pointIndex = parentCell.partialPointIndices[j];
 				const Point &point = points[pointIndex];
@@ -144,11 +151,11 @@ std::vector<SparseCellInfo> solveIntersectionsWithPriority( const std::vector<Po
 					continue;
 				}
 				// at least partial
-				cell.upperBound++;
+				cell.upperBound += point.weight;
 
 				// full?
 				if( minSphereSquaredDistance <= minSquaredDistance && maxSquaredDistance <= maxSphereSquaredDistance ) {
-					cell.lowerBound++;
+					cell.lowerBound += point.weight;
 					//cell.fullPointIndices.push_back( pointIndex );
 				}
 				else {
@@ -158,7 +165,7 @@ std::vector<SparseCellInfo> solveIntersectionsWithPriority( const std::vector<Po
 			}
 
 			// only keep cells that are a potential solution
-			if( cell.upperBound >= bestLowerBound && cell.upperBound > 0 ) {
+			if( cell.upperBound >= bestLowerBound && cell.upperBound > 0 && cell.upperBound >= minUpperBound ) {
 				cell.minCorner = minCorner;
 				cell.resolution = resolution;
 
@@ -167,7 +174,7 @@ std::vector<SparseCellInfo> solveIntersectionsWithPriority( const std::vector<Po
 				if( cell.upperBound == cell.lowerBound ) {
 					finishedCells.push_back( cell );
 				}
-				else if( resolution <= minResolution ) {
+				else if( resolution <= minResolution || cell.lowerBound > maxLowerBound ) {
 					finishedCells.push_back( cell );
 				}
 				else {
@@ -212,7 +219,7 @@ std::vector<SparseCellInfo> solveIntersectionsWithPriority( const std::vector<Po
 	}
 
 	// filter the finishedCells
-	filterCells( finishedCells, [bestLowerBound](const SparseCellInfo &cell) { return cell.upperBound < bestLowerBound; } );	
+	filterCells( finishedCells, [minUpperBound, bestLowerBound](const SparseCellInfo &cell) { return cell.upperBound < bestLowerBound && cell.upperBound >= minUpperBound; } );	
 
 	// move the remaining cells
 	//std::move( cells.begin(), cells.end(), std::back_inserter( finishedCells ) );

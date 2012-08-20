@@ -192,7 +192,7 @@ struct VolumeSampler {
 
 		glDrawBuffer( GL_NONE );
 
-		size_t totalSizeInMB = ((sizeof( GLfloat ) + sizeof( GLbyte[3] )) * grid->count * numDirections + (1<<20)-1) >> 20;
+		size_t totalSizeInMB = ((sizeof( GLfloat ) + sizeof( GLbyte[4] )) * grid->count * numDirections) >> 20;
 		size_t currentSizeinMB = 0;
 
 		int directionIndex = 0;
@@ -213,10 +213,12 @@ struct VolumeSampler {
 				const Eigen::Vector3f direction = subDirections[subDirectionIndex];
 				const Eigen::Vector3f permutedDirection = permute( direction.normalized(), permutation ) * maxDepth;
 
+				const float resolution = permutedGrid.getDirection( Eigen::Vector3f::UnitZ() ).norm();
+
 				// set the projection matrix
 				glMatrixMode( GL_PROJECTION );
 				const float shearedMaxDepth = abs( permutedDirection[2] );
-				Eigen::glLoadMatrix( createShearProjectionMatrix( Eigen::Vector2f::Zero(), permutedGrid.size.head<2>().cast<float>(), 0, shearedMaxDepth, permutedDirection.head<2>() / shearedMaxDepth ) );
+				Eigen::glLoadMatrix( createShearProjectionMatrix( Eigen::Vector2f::Zero(), permutedGrid.size.head<2>().cast<float>(), 0, shearedMaxDepth, permutedDirection.head<2>() / shearedMaxDepth / resolution ) );
 
 				for( int i = 0 ; i < permutedGrid.size[2] ; ++i ) {
 					glNamedRenderbufferStorageEXT( colorRenderBuffers[i], GL_RGBA8, permutedGrid.size[0], permutedGrid.size[1] );
@@ -228,17 +230,18 @@ struct VolumeSampler {
 
 					glDrawBuffer( GL_COLOR_ATTACHMENT0 );
 										
-					glClear( GL_DEPTH_BUFFER_BIT );	
+					// TODO: remove | GL_COLOR_BUFFER_BIT again!
+					glClear( GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT );	
 
 					//glMatrixMode( GL_PROJECTION );
 					glPushMatrix();
 
 					// looking down the negative z axis by default --- so flip if necessary (this changes winding though!!!)
-					glScalef( 1.0, 1.0, (permutedDirection.z() > 0 ? -1.0 : 1.0) * permutedGrid.getDirection( Eigen::Vector3f::UnitZ() ).norm() );
+					glScalef( 1.0, 1.0, (permutedDirection.z() > 0 ? -1.0 : 1.0) * resolution );
 
 					// pixel alignment and "layer selection"
 					glTranslatef( 0.5, 0.5, -i );
-
+					//
 					// ie "position to permuted index"
 					Eigen::glMultMatrix( permutedGrid.positionToIndex );
 

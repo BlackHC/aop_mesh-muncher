@@ -28,6 +28,7 @@ ADD_EXECUTABLE(modelSampler
 ADD_EXECUTABLE(modelSamplerTests
 	${GLEW_SOURCE_FILE}
 	depthSamplerTests.cpp
+	samplerTests.cpp
 	gridTests.cpp
 	shearMatrixTests.cpp
 	../gtest/gtest_main.cc
