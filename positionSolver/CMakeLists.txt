@@ -16,7 +16,8 @@ ADD_EXECUTABLE(positionSolver
 	debugRender.h
 	camera.h
 	eventHandling.h
-	positionSolver.cpp 
+	positionSolver.cpp
+	positionSolver.h
 	../gtest/gtest-all.cc
 	)
 
