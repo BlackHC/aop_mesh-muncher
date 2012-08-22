@@ -31,21 +31,21 @@ public:
 	};
 
 private:
-	const OrientedGrid *grid;
+	const SimpleOrientedGrid *grid;
 	
 	// xyz
 	std::unique_ptr<Sample[]> samples;
 	int numDirections;
 
 public:
-	void init( const OrientedGrid *grid, int numDirections ) {
+	void init( const SimpleOrientedGrid *grid, int numDirections ) {
 		this->grid = grid;
 		this->numDirections = numDirections;
 
 		samples.reset( new Sample[ grid->count * numDirections ] );
 	}
 
-	const OrientedGrid & getGrid() const {
+	const SimpleOrientedGrid & getGrid() const {
 		return *grid;
 	}
 
@@ -112,7 +112,7 @@ struct VolumeSampler {
 	ReadOncePBO<DepthSample> depthPBO;
 	ReadOncePBO<ColorSample> colorPBO;
 
-	const OrientedGrid *grid;
+	const SimpleOrientedGrid *grid;
 
 	float maxDepth;
 
@@ -152,7 +152,7 @@ struct VolumeSampler {
 			int permutation[3] = { mainAxis, (mainAxis + 1) % 3, (mainAxis + 2) % 3 };
 
 			// 1. moved up to avoid recalculation
-			Indexer3 permutedIndexer = Indexer3::fromPermuted( *grid, permutation );
+			SimpleIndexer3 permutedIndexer = grid->SimpleIndexer3::permuted( permutation );
 
 #pragma omp parallel for num_threads(9)
 			for( int i = 0 ; i < directions[mainAxis].size() ; ++i ) {
@@ -204,7 +204,7 @@ struct VolumeSampler {
 
 			BOOST_VERIFY( boost::algorithm::all_of( subDirections, [&permutation]( const Eigen::Vector3f &v ) { return abs( v[permutation[2]] ) > 0.1; } ) );
 
-			OrientedGrid permutedGrid = OrientedGrid::from( *grid, permutation );
+			SimpleOrientedGrid permutedGrid = grid->permuted( permutation );
 
 			glPushAttrib(GL_VIEWPORT_BIT);
 			glViewport(0, 0, permutedGrid.size[0], permutedGrid.size[1]); 

@@ -17,21 +17,21 @@
 #include <boost/timer/timer.hpp>
 
 class DepthSamples {
-	const OrientedGrid *grid;
+	const SimpleOrientedGrid *grid;
 
 	// xyz
 	std::unique_ptr<float[]> depthSamples;
 	int numDirections;
 
 public:
-	void init( const OrientedGrid *grid, int numDirections ) {
+	void init( const SimpleOrientedGrid *grid, int numDirections ) {
 		this->grid = grid;
 		this->numDirections = numDirections;
 
 		depthSamples.reset( new float[ grid->count * numDirections ] );
 	}
 
-	const OrientedGrid &getGrid() const {
+	const SimpleOrientedGrid &getGrid() const {
 		return *grid;
 	}
 
@@ -63,7 +63,7 @@ void report_num_threads(int level)
 struct DepthSampler {
 	GLuint pbo;
 
-	const OrientedGrid *grid;
+	const SimpleOrientedGrid *grid;
 
 	float maxDepth;
 
@@ -116,7 +116,7 @@ struct DepthSampler {
 #pragma omp parallel for num_threads(3)
 		for( int mainAxis = 0 ; mainAxis < 3 ; ++mainAxis ) {
 			int permutation[3] = { mainAxis, (mainAxis + 1) % 3, (mainAxis + 2) % 3 };
-			Indexer3 permutedIndexer = Indexer3::fromPermuted( *grid, permutation );
+			SimpleIndexer3 permutedIndexer = grid->SimpleIndexer3::permuted( permutation );
 
 #pragma omp parallel for num_threads(9)
 			for( int i = 0 ; i < directions[mainAxis].size() ; ++i ) {
@@ -225,7 +225,7 @@ struct DepthSampler {
 
 			BOOST_VERIFY( boost::algorithm::all_of( subDirections, [&permutation]( const Eigen::Vector3f &v ) { return abs( v[permutation[2]] ) > 0.1; } ) );
 
-			OrientedGrid permutedGrid = OrientedGrid::from( *grid, permutation );
+			SimpleOrientedGrid permutedGrid = grid->permuted( permutation );
 
 			glBindBuffer( GL_PIXEL_PACK_BUFFER, pbo );
 

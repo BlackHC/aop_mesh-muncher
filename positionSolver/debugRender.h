@@ -196,6 +196,7 @@ namespace DebugRender {
 		void clear() {
 			if( list ) {
 				glDeleteLists( list, 1 );
+				list = 0;
 			}
 		}
 
@@ -228,7 +229,8 @@ namespace DebugRender {
 		}
 
 		void render() {
-			glCallList( list );
+			if( list )
+				glCallList( list );
 		}
 	};
 }

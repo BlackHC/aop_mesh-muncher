@@ -89,7 +89,7 @@ void main() {
 	debugScene.end();
 
 	//Grid grid( Vector3i( 4, 8, 16 ), Vector3f( 0.0, 0.0, 0.0 ), 0.25 );
-	OrientedGrid grid = OrientedGrid::from( Vector3i(7, 7, 7), Vector3f(-3, -3, -3), 1.0 );
+	SimpleOrientedGrid grid = OrientedGrid_from( Vector3i(7, 7, 7), Vector3f(-3, -3, -3), 1.0 );
 
 	VolumeSampler<> sampler;
 	Samples samples;
@@ -183,5 +183,4 @@ void main() {
 		// End the current frame and display its contents on screen
 		window.display();
 	}
-
 };

@@ -30,6 +30,7 @@ int TW_CALL TwEventSFML20(const sf::Event *event);
 #include "volumePlacer.h"
 
 #include <Eigen/Eigen>
+using namespace Eigen;
 
 #include "glHelpers.h"
 
@@ -38,8 +39,6 @@ int TW_CALL TwEventSFML20(const sf::Event *event);
 #include <boost/type_traits.hpp>
 #include <boost/utility/enable_if.hpp>
 #include <boost/range/numeric.hpp>
-
-using namespace Eigen;
 
 AlignedBox3f AlignedBox3f_fromMinSize( const Vector3f &min, const Vector3f &size ) {
 	return AlignedBox3f( min, min + size );
@@ -374,6 +373,21 @@ struct SceneShader : Shader {
 	}
 };
 
+
+void visualizeVoxelGrid( const VoxelGrid &voxelGrid, DebugRender::CombinedCalls &dr ) {
+	const float resolution = voxelGrid.getGrid().getResolution();
+	dr.append();
+	for( auto iterator = voxelGrid.getIterator() ; iterator.hasMore() ; ++iterator ) {
+		auto &voxel = voxelGrid[ *iterator ];
+		if( voxel.count ) {
+			dr.setPosition( voxelGrid.getGrid().getPosition( iterator.getIndex3() ) );
+			dr.setColor( ColorConversion::CIELab_to_RGB( voxel.color ) );
+			dr.drawAbstractSphere( resolution * 0.25f );
+		}
+	}
+	dr.end();
+}
+
 struct Application {
 	ObjSceneGL objScene;
 	SceneShader sceneShader;
@@ -410,7 +424,7 @@ struct Application {
 
 	AntTWBarCollection<CameraPosition> cameraPositions_;
 	AntTWBarCollection<AlignedBox3f> targetVolumes_;
-
+	
 	// anttweakbar callbacks
 	AntTWBarGroup::VariableCallback<Vector3f> minCallback_, sizeCallback_;
 	AntTWBarGroup::ButtonCallback writeStateCallback_;
@@ -426,6 +440,7 @@ struct Application {
 	std::vector<DebugRender::CombinedCalls> matchedProbes_;
 	std::vector<DebugRender::CombinedCalls> matchedCandidatePositions_;
 	std::vector<std::vector<ObjectInstance>> candidateSuggestions;
+	DebugRender::CombinedCalls voxelizedTargetVolume;
 
 	// object data
 	std::vector<ObjectTemplate> objectTemplates_;
@@ -522,6 +537,35 @@ struct Application {
 		activeProbe_ = -1;
 	}
 
+	void visualizeProbes( const ProbeGrid &probeGrid, DebugRender::CombinedCalls &probeVisualization ) {
+		probeVisualization.append();
+		const float visSize = 0.05;
+		for( auto iterator = probeGrid.getIterator() ; iterator.hasMore() ; ++iterator ) {
+			const Vector3f &probePosition = probeGrid.getGrid().getPosition( iterator.getIndex3() );
+			const Probe &probe = probeGrid[ *iterator ];
+
+			probeVisualization.setPosition( probePosition );
+
+			for( int i = 0 ; i < Probe::DistanceContext::numSamples ; ++i ) {
+				const Vector3f &direction = probe.distanceContext.directions[i];
+				const float distance = probe.distanceContext.samples[i].depth;
+				if( distance == maxDistance_ ) {
+					continue;
+				}
+
+				const Vector3f &vector = probeGrid.getGrid().getDirection( direction ).normalized() * distance; //* (1.0 - distance / maxDistance_) * visSize;
+
+				probeVisualization.setColor( ColorConversion::CIELab_to_RGB( probe.distanceContext.samples[i].color ) * 0.9 );
+				/*probeVisualization.setPosition( probePosition + vector );
+				probeVisualization.drawVector( visSize * probeGrid.getGrid().getDirection( direction ).normalized()  );*/
+				probeVisualization.drawVector( vector );
+
+				//std::cout << probePosition.y() + vector.y() << "\n";
+			}
+		}
+		probeVisualization.end();
+	}
+
 	void refillProbeDatabase() {
 		// reset the database
 		probeDatabase_ = ProbeDatabase();
@@ -551,30 +595,7 @@ struct Application {
 			probeDatabase_.addObjectInstanceToDatabase( probeGrid, objectInstances_.items[i].templateId );
 
 			// visualize this probe grid
-			probeVisualization.append();
-			const float visSize = 0.05;
-			for( auto iterator = probeGrid.getIterator() ; iterator.hasMore() ; ++iterator ) {
-				const Vector3f &probePosition = probeGrid.getGrid().getPosition( iterator.getIndex3() );
-				const Probe &probe = probeGrid[ *iterator ];
-
-				probeVisualization.setPosition( probePosition );
-
-				for( int i = 0 ; i < Probe::DistanceContext::numSamples ; ++i ) {
-					const Vector3f &direction = probe.distanceContext.directions[i];
-					const float distance = probe.distanceContext.samples[i].depth;
-					if( distance == maxDistance_ ) {
-						continue;
-					}
-
-					const Vector3f &vector = probeGrid.getGrid().getDirection( direction ).normalized() * distance; //* (1.0 - distance / maxDistance_) * visSize;
-
-					probeVisualization.setColor( ColorConversion::CIELab_to_RGB( probe.distanceContext.samples[i].color ) * 0.9 );
-					probeVisualization.drawVector( vector );				
-
-					//std::cout << probePosition.y() + vector.y() << "\n";
-				}
-			}
-			probeVisualization.end();
+			visualizeProbes( probeGrid, probeVisualization );
 		}
 
 		//probeDatabase_.dumpMinDistances();
@@ -609,6 +630,7 @@ struct Application {
 			context.solidObjects = solidObjects;
 			drawScene();
 		}
+		voxelizedTargetVolume.render();
 
 		DebugRender::ImmediateCalls targetVolume;
 		targetVolume.begin();
@@ -915,10 +937,14 @@ struct Application {
 				renderContext.disableObjects = true;
 			}
 			renderContext.solidObjects = true;
-
 			sampleProbes( probeGrid, std::bind( &Application::drawScene, this ), maxDistance_ );
-		}		
+		}
 
+		VoxelGrid voxelGrid;
+		voxelize( probeGrid, voxelGrid, maxDistance_ );
+		voxelizedTargetVolume.clear();
+		visualizeVoxelGrid( voxelGrid, voxelizedTargetVolume );
+		
 		results_ = probeDatabase_.findCandidates( probeGrid );
 
 		activeProbe_ = -1;

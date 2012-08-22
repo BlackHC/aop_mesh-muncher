@@ -142,29 +142,29 @@ struct Probe {
 
 typedef std::vector<Probe> ProbeVector;
 
-template< typename Data >
+template< typename Data, typename OrientedGrid = SimpleOrientedGrid >
 class DataGrid {
-	SimpleOrientedGrid grid;
+	OrientedGrid grid;
 	std::unique_ptr<Data[]> data;
 
 public:
 	DataGrid() {}
 
-	DataGrid( const SimpleOrientedGrid &grid ) {
+	DataGrid( const OrientedGrid &grid ) {
 		reset( grid );
 	}
 
-	void reset( const SimpleOrientedGrid &grid ) {
+	void reset( const OrientedGrid &grid ) {
 		this->grid = grid;
 		data.reset( new Data[ grid.count ] );
 	}
 
-	const SimpleOrientedGrid & getGrid() const {
+	const OrientedGrid & getGrid() const {
 		return grid;
 	}
 
-	SimpleOrientedGrid::Iterator getIterator() const {
-		return SimpleOrientedGrid::Iterator( grid );
+	typename OrientedGrid::Iterator getIterator() const {
+		return OrientedGrid::Iterator( grid );
 	}
 
 	Data & operator[] ( const int index ) {
@@ -220,6 +220,60 @@ struct InstanceProbe {
 
 	InstanceProbe( const Probe &probe, int id, float distance ) : probe( probe ), id( id ), distance( distance ) {}
 };
+
+struct Voxel {
+	Eigen::Vector3f color;
+	float weight;
+	int count;
+
+	Voxel() : weight( 0 ), color( Vector3f::Zero() ), count( 0 ) {}
+};
+
+typedef DataGrid<Voxel, SubOrientedGrid> VoxelGrid;
+
+void voxelize( const ProbeGrid &probeGrid, VoxelGrid &voxelGrid, float maxDistance ) {
+	// use the same resolution for now
+	voxelGrid.reset( probeGrid.getGrid().getExpandedGrid( maxDistance ) );
+
+	const float resolution = probeGrid.getGrid().getResolution();
+	const float unitWeight = 1.0 / probeGrid.getGrid().count;
+	for( auto iterator = probeGrid.getIterator() ; iterator.hasMore() ; ++iterator ) {
+		const Vector3i &index3 = iterator.getIndex3();
+		
+		for( int directionIndex = 0 ; directionIndex < EnvironmentContext::numSamples ; ++directionIndex ) {
+			// its important that all direction coeffs are either 0, 1 or -1
+			const Vector3i direction = EnvironmentContext::directions[ directionIndex ].cast<int>();
+
+			const auto &sample = probeGrid[ *iterator ].distanceContext.samples[ directionIndex ];
+			
+			const int numSteps = int( sample.depth / direction.cast<float>().norm() / resolution + 0.5 );
+			for( int i = 0 ; i <= numSteps - 1 ; ++i ) {
+				const Vector3i target = index3 + i * direction;
+				if( voxelGrid.getGrid().isValid(target) ) {
+					voxelGrid[target].weight += unitWeight;
+				}
+			}
+
+			if( sample.depth == maxDistance && sample.color.isZero() ) {
+				continue;
+			}
+			const Vector3i target = index3 + numSteps * direction;
+			if( voxelGrid.getGrid().isValid(target) ) {
+				auto &voxel = voxelGrid[target];
+				voxel.color += sample.color;
+				voxel.weight += unitWeight;
+				voxel.count++;
+			}
+		}
+	}
+
+	for( auto iterator = voxelGrid.getIterator() ; iterator.hasMore() ; ++iterator ) {
+		auto &voxel = voxelGrid[ *iterator ];
+		if( voxel.count ) {
+			voxel.color /= voxel.count;
+		}
+	}
+}
 
 // TODO: add weighted probes (probe weighted by inverse instance volume to be scale-invariant (more or less))
 struct ProbeDatabase {
