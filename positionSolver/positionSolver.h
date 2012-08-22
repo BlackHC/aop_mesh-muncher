@@ -218,10 +218,11 @@ std::vector<SparseCellInfo> solveIntersectionsWithPriority( const std::vector<Po
 		}
 	}
 
-	// filter the finishedCells
-	filterCells( finishedCells, [minUpperBound, bestLowerBound](const SparseCellInfo &cell) { return cell.upperBound < bestLowerBound && cell.upperBound >= minUpperBound; } );	
+	// compress the cells and remove unneeded information
+	//boost::for_each( finishedCells, [] ( SparseCellInfo &cell ) { cell.partialPointIndices.resize( 0 ); } );
 
-	// move the remaining cells
-	//std::move( cells.begin(), cells.end(), std::back_inserter( finishedCells ) );
+	// filter the finishedCells
+	filterCells( finishedCells, [minUpperBound, bestLowerBound](const SparseCellInfo &cell) { return cell.upperBound < bestLowerBound; } );	
+
 	return finishedCells;
 }

@@ -432,7 +432,7 @@ struct Application {
 
 	std::vector<DebugRender::CombinedCalls> matchedProbes_;
 	std::vector<DebugRender::CombinedCalls> matchedCandidatePositions_;
-	std::vector<boost::optional<ObjectInstance>> candidateSuggestions;
+	std::vector<std::vector<ObjectInstance>> candidateSuggestions;
 
 	// object data
 	std::vector<ObjectTemplate> objectTemplates_;
@@ -461,7 +461,7 @@ struct Application {
 	}
 
 	void initEverything() {
-		window.create( sf::VideoMode( 640, 480 ), "Position Solver", sf::Style::Default, sf::ContextSettings(42) );
+		window.create( sf::VideoMode( 640, 480 ), "glVolumerPlacerUI", sf::Style::Default, sf::ContextSettings(42) );
 		window.setActive( true );
 		glewInit();
 
@@ -575,7 +575,7 @@ struct Application {
 
 					const Vector3f &vector = probeGrid.getGrid().getDirection( direction ).normalized() * distance; //* (1.0 - distance / maxDistance_) * visSize;
 
-					probeVisualization.setColor( probe.distanceContext.samples[i].color * 0.9 );
+					probeVisualization.setColor( ColorConversion::CIELab_to_RGB( probe.distanceContext.samples[i].color ) * 0.9 );
 					probeVisualization.drawVector( vector );				
 
 					//std::cout << probePosition.y() + vector.y() << "\n";
@@ -644,10 +644,13 @@ struct Application {
 				matchedCandidatePositions_[activeProbe_].render();
 			}
 
-			if( showCandidateSuggestions && candidateSuggestions[activeProbe_] ) {
+			if( showCandidateSuggestions && !candidateSuggestions[activeProbe_].empty() ) {
 				glEnable( GL_LINE_STIPPLE );
 				glLineStipple( 1, 0x203f );
-				candidateSuggestions[activeProbe_]->draw();
+				auto suggestions = candidateSuggestions[activeProbe_];
+				for( auto it = suggestions.begin() ; it != suggestions.end() ; ++it ) {
+					it->draw();
+				}
 				glDisable( GL_LINE_STIPPLE );
 			}
 		}
@@ -936,8 +939,9 @@ struct Application {
 	}
 
 	void Do_findCandidatePositions() {
-		for( int i = 0 ; i < results_.size() ; ++i ) {
-			const ProbeDatabase::CandidateInfo &info = results_[i].second;
+		for( int resultIndex = 0 ; resultIndex < results_.size() ; ++resultIndex ) {
+			const int templateId = results_[resultIndex].first;
+			const ProbeDatabase::CandidateInfo &info = results_[resultIndex].second;
 
 			std::vector<Point> points;
 			points.reserve( info.matchDistances.size() );
@@ -954,21 +958,34 @@ struct Application {
 				begin = end;
 			}
 
-			float numProbesPerInstance = probeDatabase_.getProbeCountPerInstanceForId( results_[i].first );
-			auto results = solveIntersectionsWithPriority( points, gridResolution_ / 2, gridResolution_ / 2, numProbesPerInstance, numProbesPerInstance );
-			visualizeCandidatePositions(i, results);
+			float numProbesPerInstance = probeDatabase_.getProbeCountPerInstanceForId( templateId );
+			auto results = solveIntersectionsWithPriority( points, gridResolution_ / 2, gridResolution_ / 4, numProbesPerInstance, numProbesPerInstance );
+			visualizeCandidatePositions(resultIndex, results);
 
 			// determine the best position (if any)
-			auto minElement = boost::max_element( results, []( const SparseCellInfo &a, const SparseCellInfo &b ) { return a.lowerBound + a.upperBound < b.lowerBound + b.upperBound; } );  
-			if( minElement->upperBound + minElement->lowerBound > 2 * numProbesPerInstance ) {
-				ObjectInstance instance;
-				instance.templateId = results_[i].first;
-				instance.position = minElement->minCorner + Vector3f::Constant( minElement->resolution / 2 );
-				
-				candidateSuggestions[i] = instance;
-			}
-			else {
-				candidateSuggestions[i] = boost::optional<ObjectInstance>();
+			boost::remove_erase_if( results, [numProbesPerInstance] ( const SparseCellInfo &cell ) { return cell.lowerBound + cell.upperBound < 2 * numProbesPerInstance; } );
+			boost::sort( results, []( const SparseCellInfo &a, const SparseCellInfo &b ) { return a.lowerBound + a.upperBound > b.lowerBound + b.upperBound; } );
+			
+			candidateSuggestions[resultIndex].clear();
+
+			if( !results.empty() ) {
+				const int minScore = (results[0].lowerBound + results[0].upperBound) * 2 / 3;
+				boost::remove_erase_if( results, [minScore] ( const SparseCellInfo &cell ) { return cell.lowerBound + cell.upperBound < minScore; } );
+
+				for( int i = 0 ; i < results.size() - 1 ; ++i ) {
+					const float minDistance = objectTemplates_[ templateId ].bbSize.norm();
+					const Vector3f position = results[i].minCorner + Vector3f::Constant( results[i].resolution / 2 );
+
+					results.erase( std::remove_if( results.begin() + i + 1, results.end(), [position, minDistance] ( const SparseCellInfo &cell ) { return (position - (cell.minCorner + Vector3f::Constant( cell.resolution / 2))).squaredNorm() <= minDistance * minDistance; } ), results.end() );
+				}
+
+				for( int i = 0 ; i < results.size() ; ++i ) {
+					ObjectInstance instance;
+					instance.templateId = templateId;
+					instance.position = results[i].minCorner + Vector3f::Constant( results[i].resolution / 2 );
+
+					candidateSuggestions[resultIndex].push_back( instance );
+				}
 			}
 		}
 	}

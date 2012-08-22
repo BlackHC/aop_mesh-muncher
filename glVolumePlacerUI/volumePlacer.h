@@ -21,8 +21,11 @@
 
 #include "colorAndDepthSampler.h"
 #include <memory>
+#include "cielab.h"
 
 using namespace Eigen;
+
+const float CIELAB_ColorStep = 30.0; // ~ difference between 1.0 and 0.5 channel intensity
 
 struct ProbeSettings : AsExecutionContext<ProbeSettings> {
 	float maxDelta;
@@ -93,12 +96,12 @@ struct EnvironmentContext {
 	static bool match( const EnvironmentContext &a, const EnvironmentContext &b, const float maxDelta ) {
 #define samplesSortedByDistance samples
 #define COLOR_AND_DEPTH_MATCH(i) \
-		if( std::abs( a.samplesSortedByDistance[i].depth - b.samplesSortedByDistance[i].depth ) > maxDelta * 2 || \
-			(a.samplesSortedByDistance[i].color - b.samplesSortedByDistance[i].color).lpNorm<Eigen::Infinity>() > 0.5 ) { \
+		if( std::abs( a.samplesSortedByDistance[i].depth - b.samplesSortedByDistance[i].depth ) > 2 * maxDelta || \
+			(a.samplesSortedByDistance[i].color - b.samplesSortedByDistance[i].color).norm() > CIELAB_ColorStep ) { \
 			return false; \
 		}
 #define COLOR_MATCH(i) \
-	if(	(a.samplesSortedByDistance[i].color - b.samplesSortedByDistance[i].color).lpNorm<Eigen::Infinity>() > 0.5 ) { \
+	if(	(a.samplesSortedByDistance[i].color - b.samplesSortedByDistance[i].color).norm() > CIELAB_ColorStep ) { \
 	return false; \
 	} 
 #define DEPTH_MATCH(i) \
@@ -205,7 +208,7 @@ struct SamplerProbeView {
 	inline void putSample( int index, int directionIndex, const Color4ub &color, const float depth ) {
 		auto &sample = probeGrid->get( index ).distanceContext.samples[ directionIndex ];
 		sample.depth = depth;
-		sample.color = Vector3f( color.r / 255.0, color.g / 255.0, color.b / 255.0 );
+		sample.color = ColorConversion::RGB_to_CIELab( Vector3f( color.r / 255.0, color.g / 255.0, color.b / 255.0 ) );
 	}	
 };
 

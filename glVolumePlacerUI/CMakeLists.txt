@@ -20,6 +20,7 @@ INCLUDE_DIRECTORIES(
 	../positionSolver
 	../modelSampler
 	../objScene
+	../cielab
 	)
 
 # ../gtest/gtest_main.cc
@@ -50,6 +51,8 @@ ADD_EXECUTABLE(glVolumePlacerUI
 	../objScene/materialLibrary.h
 	../objScene/materialLibrary.cpp
 	../build/shader.glsl
+	../cielab/cielab.h
+	../cielab/cielab.cpp
 	)
 
 # The test application uses niven core, so link against it

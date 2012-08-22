@@ -43,7 +43,9 @@ ADD_SUBDIRECTORY(glVolumePlacerUI)
 
 ADD_SUBDIRECTORY(shaderTest)
 
+ADD_SUBDIRECTORY(cielab)
+
 # Adds a new build target which copies the niven binaries to
 # the output folder
 NIVEN_COPY_BINARIES(${CMAKE_BINARY_DIR})
-ANTTWEAKBAR_COPY_BINARIES()
+ANTTWEAKBAR_COPY_BINARIES()	
