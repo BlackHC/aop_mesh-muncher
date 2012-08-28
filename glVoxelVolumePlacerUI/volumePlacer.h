@@ -7,6 +7,7 @@
 #include <boost/range/algorithm.hpp>
 #include <boost/range/algorithm_ext.hpp>
 #include <boost/range/adaptor/transformed.hpp>
+#include <boost/range/size.hpp>
 
 #include <boost/timer/timer.hpp>
 
@@ -27,128 +28,40 @@ using namespace Eigen;
 
 const float CIELAB_ColorStep = 30.0; // ~ difference between 1.0 and 0.5 channel intensity
 
-struct ProbeSettings : AsExecutionContext<ProbeSettings> {
-	float maxDelta;
-	float maxDistance;
-
-	void setDefault() {
-		maxDelta = 0.0;
-		maxDistance = std::numeric_limits<float>::max();
-	}
-};
-
 // z: 9, x: 9, y: 8
-const Vector3i neighborOffsets[] = {
+const Vector3f neighborOffsets[] = {
 	// first z, then x, then y
 
 	// z
-	Vector3i( 0, 0, 1 ), Vector3i( 0, 0, -1 ), Vector3i( -1, 0, -1 ),
-	Vector3i( 1, 0, -1 ), Vector3i( -1, 0, 1 ),  Vector3i( 1, 0, 1 ),
-	Vector3i( 0, 1, -1 ), Vector3i( 0, -1, -1 ), Vector3i( -1, 1, -1 ),
+	Vector3f( 0, 0, 1 ), Vector3f( 0, 0, -1 ), Vector3f( -1, 0, -1 ),
+	Vector3f( 1, 0, -1 ), Vector3f( -1, 0, 1 ),  Vector3f( 1, 0, 1 ),
+	Vector3f( 0, 1, -1 ), Vector3f( 0, -1, -1 ), Vector3f( -1, 1, -1 ),
 	// x
-	Vector3i( 1, 0, 0 ), Vector3i( -1, 0, 0  ), Vector3i( 1, 1, -1 ),
-	Vector3i( 1, -1, 1 ), Vector3i( 1, 1, 1 ), Vector3i( 1, -1, -1 ),
-	Vector3i( -1, 1, 0 ), Vector3i( 1, 1, 0 ), Vector3i( -1, -1, -1 ),
+	Vector3f( 1, 0, 0 ), Vector3f( -1, 0, 0  ), Vector3f( 1, 1, -1 ),
+	Vector3f( 1, -1, 1 ), Vector3f( 1, 1, 1 ), Vector3f( 1, -1, -1 ),
+	Vector3f( -1, 1, 0 ), Vector3f( 1, 1, 0 ), Vector3f( -1, -1, -1 ),
 	// y
-	Vector3i( 0, 1, 0 ), Vector3i( 0, -1, 0 ), Vector3i( -1, -1, 0 ), Vector3i( 1, -1, 0 ),
-	Vector3i( -1, -1, 1 ), Vector3i( 0, -1, 1 ),  Vector3i( -1, 1, 1 ), Vector3i( 0, 1, 1 )
+	Vector3f( 0, 1, 0 ), Vector3f( 0, -1, 0 ), Vector3f( -1, -1, 0 ), Vector3f( 1, -1, 0 ),
+	Vector3f( -1, -1, 1 ), Vector3f( 0, -1, 1 ),  Vector3f( -1, 1, 1 ), Vector3f( 0, 1, 1 )
 };
-
-struct EnvironmentContext {
-	struct Sample {
-		float depth;
-		Vector3f color;
-	};
-
-	static const int numSamples = 26;
-	static Vector3f directions[numSamples];
-
-	Sample samples[numSamples];
-	Sample samplesSortedByDistance[numSamples];
-	
-	// != global maxDistance
-	//float realMaxDistance;
-	
-	static void setDirections() {
-		for( int i = 0 ; i < numSamples ; i++ ) {
-			directions[i] = neighborOffsets[i].cast<float>(); 
-		}
-	}
-
-	static float getDepth( const Sample &sample ) {
-		return sample.depth;
-	}
-
-	void finish() {
-		//boost::range::copy( samples | boost::adaptors::transformed( &getDepth ), sortedDistances );
-		boost::range::copy( samples, samplesSortedByDistance );
-		std::sort( samplesSortedByDistance, samplesSortedByDistance + numSamples, [] ( const Sample &a, const Sample &b ) { return a.depth < b.depth; } );
-
-		/*int i;
-		for( i = numSamples - 1 ; i > 0 ; --i ) {
-			if( samplesSortedByDistance[i].depth < ProbeSettings::context->maxDistance - ProbeSettings::context->maxDelta / 2 ) {
-				break;
-			}
-		}
-		realMaxDistance = samplesSortedByDistance[i].depth;*/
-	}
-	
-	static bool match( const EnvironmentContext &a, const EnvironmentContext &b, const float maxDelta ) {
-#define samplesSortedByDistance samples
-#define COLOR_AND_DEPTH_MATCH(i) \
-		if( std::abs( a.samplesSortedByDistance[i].depth - b.samplesSortedByDistance[i].depth ) > 2 * maxDelta || \
-			(a.samplesSortedByDistance[i].color - b.samplesSortedByDistance[i].color).norm() > CIELAB_ColorStep ) { \
-			return false; \
-		}
-#define COLOR_MATCH(i) \
-	if(	(a.samplesSortedByDistance[i].color - b.samplesSortedByDistance[i].color).norm() > CIELAB_ColorStep ) { \
-	return false; \
-	} 
-#define DEPTH_MATCH(i) \
-	if( std::abs( a.samplesSortedByDistance[i].depth - b.samplesSortedByDistance[i].depth ) > maxDelta ) { \
-	return false; \
-	} 
-
-		/*DEPTH_MATCH(0)
-		DEPTH_MATCH( numSamples - 1 )*/
-		/*if( std::abs( a.realMaxDistance - b.realMaxDistance ) > maxDelta ) {
-			return false;
-		}*/
-
-		for( int i = 0 ; i < numSamples ; ++i ) {
-			COLOR_AND_DEPTH_MATCH( i )
-			//DEPTH_MATCH( i )
-		}
-
-		return true;
-#undef COLOR_MATCH
-#undef DEPTH_MATCH
-#undef COLOR_AND_DEPTH_MATCH
-#undef samplesSortedByDistance
-	}
-};
-
-Vector3f EnvironmentContext::directions[EnvironmentContext::numSamples];
-
-// TODO: rename to InstanceProbe or InstanceSample
-struct Probe {
-	typedef EnvironmentContext DistanceContext;
-	DistanceContext distanceContext;
-
-	static bool match( const Probe &a, const Probe &b ) {
-		return DistanceContext::match( a.distanceContext, b.distanceContext, ProbeSettings::context->maxDelta );
-	}
-};
-
-typedef std::vector<Probe> ProbeVector;
 
 template< typename Data, typename OrientedGrid = SimpleOrientedGrid >
-class DataGrid {
+class DataGrid : public boost::noncopyable {
 	OrientedGrid grid;
 	std::unique_ptr<Data[]> data;
 
 public:
 	DataGrid() {}
+
+	// move constructor
+	DataGrid( DataGrid &&other ) : grid( std::move( other.grid ) ), data( std::move( other.data ) ) {}
+
+	DataGrid & operator = ( DataGrid &&other ) {
+		grid = std::move( other.grid );
+		data = std::move( other.data );
+
+		return *this;
+	}
 
 	DataGrid( const OrientedGrid &grid ) {
 		reset( grid );
@@ -198,70 +111,59 @@ public:
 	const Data & get( const Eigen::Vector3i &index3 ) const {
 		return data[ grid.getIndex( index3 ) ];
 	}
-};
-
-typedef DataGrid<Probe> ProbeGrid;
-
-struct SamplerProbeView {
-	ProbeGrid *probeGrid;
-
-	inline void putSample( int index, int directionIndex, const Color4ub &color, const float depth ) {
-		auto &sample = probeGrid->get( index ).distanceContext.samples[ directionIndex ];
-		sample.depth = depth;
-		sample.color = ColorConversion::RGB_to_CIELab( Vector3f( color.r / 255.0, color.g / 255.0, color.b / 255.0 ) );
-	}	
-};
-
-struct InstanceProbe {
-	Probe probe;
-	int id;
-	//Vector3f delta;
-	float distance;
-
-	InstanceProbe( const Probe &probe, int id, float distance ) : probe( probe ), id( id ), distance( distance ) {}
+	
+	Data tryGet( const Eigen::Vector3i &index3 ) const {
+		if( grid.isValid( index3 ) ) {
+			return get( index3 );
+		}
+		else {
+			return Data();
+		}
+	}
 };
 
 struct Voxel {
 	Eigen::Vector3f color;
-	float weight;
-	int count;
+	int weight; // traversal count
+	int count; // target count
 
 	Voxel() : weight( 0 ), color( Vector3f::Zero() ), count( 0 ) {}
 };
 
 typedef DataGrid<Voxel, SubOrientedGrid> VoxelGrid;
 
-void voxelize( const ProbeGrid &probeGrid, VoxelGrid &voxelGrid, float maxDistance ) {
+void voxelize( const Samples &probeGrid, VoxelGrid &voxelGrid, float maxDistance ) {
 	// use the same resolution for now
 	voxelGrid.reset( probeGrid.getGrid().getExpandedGrid( maxDistance ) );
 
 	const float resolution = probeGrid.getGrid().getResolution();
-	const float unitWeight = 1.0 / probeGrid.getGrid().count;
-	for( auto iterator = probeGrid.getIterator() ; iterator.hasMore() ; ++iterator ) {
+	for( auto iterator = probeGrid.getGrid().getIterator() ; iterator.hasMore() ; ++iterator ) {
 		const Vector3i &index3 = iterator.getIndex3();
 		
-		for( int directionIndex = 0 ; directionIndex < EnvironmentContext::numSamples ; ++directionIndex ) {
-			// its important that all direction coeffs are either 0, 1 or -1
-			const Vector3i direction = EnvironmentContext::directions[ directionIndex ].cast<int>();
+		voxelGrid[index3].weight += 1000;
 
-			const auto &sample = probeGrid[ *iterator ].distanceContext.samples[ directionIndex ];
-			
+		for( int directionIndex = 0 ; directionIndex < boost::size( neighborOffsets ) ; ++directionIndex ) {
+			// its important that all direction coeffs are either 0, 1 or -1
+			const Vector3i direction = neighborOffsets[ directionIndex ].cast<int>();
+
+			const auto &sample = probeGrid.getSample( *iterator, directionIndex );
+		
 			const int numSteps = int( sample.depth / direction.cast<float>().norm() / resolution + 0.5 );
-			for( int i = 0 ; i <= numSteps - 1 ; ++i ) {
+			for( int i = 1 ; i <= numSteps - 1 ; ++i ) {
 				const Vector3i target = index3 + i * direction;
 				if( voxelGrid.getGrid().isValid(target) ) {
-					voxelGrid[target].weight += unitWeight;
+					voxelGrid[target].weight++;
 				}
 			}
 
-			if( sample.depth == maxDistance && sample.color.isZero() ) {
+			if( sample.depth == maxDistance ) {
 				continue;
 			}
 			const Vector3i target = index3 + numSteps * direction;
 			if( voxelGrid.getGrid().isValid(target) ) {
 				auto &voxel = voxelGrid[target];
-				voxel.color += sample.color;
-				voxel.weight += unitWeight;
+				voxel.color += ColorConversion::RGB_to_CIELab( Vector3f( sample.color.r / 255.0, sample.color.g / 255.0, sample.color.b / 255.0 ) );
+				voxel.weight++;
 				voxel.count++;
 			}
 		}
@@ -275,174 +177,271 @@ void voxelize( const ProbeGrid &probeGrid, VoxelGrid &voxelGrid, float maxDistan
 	}
 }
 
-// TODO: add weighted probes (probe weighted by inverse instance volume to be scale-invariant (more or less))
-struct ProbeDatabase {
-	int numIds;
-
-	ProbeDatabase() : numIds( 0 ) {}
-
-	void addObjectInstanceToDatabase( const ProbeGrid &probeGrid, int id ) {
-		const Vector3f instanceCenter = probeGrid.getGrid().getCenter();
-
-		numIds = std::max( id + 1, numIds );
-		idInfos.resize( numIds );
-		
-		for( auto iterator = probeGrid.getIterator() ; iterator.hasMore() ; ++iterator ) {
-			const Vector3f delta = probeGrid.getGrid().getPosition( iterator.getIndex3() ) - instanceCenter;
-
-			probeIdMap.push_back( InstanceProbe( probeGrid[ *iterator ], id, delta.norm() ) );
-		}
-
-		idInfos[id].numObjects++;
-		idInfos[id].totalProbeCount += probeGrid.getGrid().count;
-	}
-
-	struct CandidateInfo {
-		float score;
-
-		// for the score
-		int totalMatchCount;
-		int maxSingleMatchCount;
-
-		//std::vector< const InstanceProbe * > matches;
-		std::vector< float > matchDistances;
-		std::vector< std::pair<Eigen::Vector3f, int> > matchesPositionMatchCount;
-
-		CandidateInfo() : totalMatchCount(0), maxSingleMatchCount(0), score(0) {}
-
-		CandidateInfo( CandidateInfo &&o ) : 
-			score( o.score ),
-			totalMatchCount( o.totalMatchCount ), 
-			maxSingleMatchCount( o.maxSingleMatchCount ), 
-			/*matches( std::move( o.matches ) ), */
-			matchDistances( std::move( o.matchDistances ) ),
-			matchesPositionMatchCount( std::move( o.matchesPositionMatchCount ) ) {
-		}
-	};
-
-	typedef std::vector<CandidateInfo> CandidateInfos;
-	typedef std::vector< std::pair<int, CandidateInfo > > SparseCandidateInfos;
-
-	SparseCandidateInfos findCandidates( const ProbeGrid &probeGrid ) {
-		CandidateInfos candidateInfos( numIds );
-
-		boost::timer::auto_cpu_timer timer;
-
-#pragma omp parallel num_threads(12)
-		{
-			CandidateInfos localCandidateInfos( numIds );
-			std::vector<int> matchCounts(numIds);
-			//for( Iterator3 iterator = probeGrid.getIterator() ; iterator.hasMore() ; ++iterator ) {
-#pragma omp for nowait
-			for( int index = 0 ; index < probeGrid.getGrid().count ; ++index ) {
-				const Probe &probe = probeGrid[ index ];
-
-				std::fill( matchCounts.begin(), matchCounts.end(), 0 );
-		
-				for( auto refIterator = probeIdMap.cbegin() ; refIterator != probeIdMap.cend() ; ++refIterator ) {
-					if( Probe::match( refIterator->probe, probe ) ) {
-						const int id = refIterator->id;
-						//candidateInfos[id].matches.push_back( &*refIterator );
-						localCandidateInfos[id].matchDistances.push_back( refIterator->distance );
-						matchCounts[id]++;
-					}
-				}				
-
-				for( int id = 0 ; id < numIds ; ++id ) {
-					const int matchCount = matchCounts[id];
-					if( matchCount == 0 ) {
-						continue;
-					}
-
-					CandidateInfo &candidateInfo = localCandidateInfos[id];
-
-					candidateInfo.totalMatchCount += matchCount;
-					candidateInfo.maxSingleMatchCount = std::max( candidateInfo.maxSingleMatchCount, matchCount );
-
-					candidateInfo.matchesPositionMatchCount.push_back( std::make_pair( probeGrid.getGrid().getPosition( probeGrid.getGrid().getIndex3( index ) ), matchCount ) );
-				}
-			}
-#pragma omp critical
-			{
-				// merge candidate infos
-				for( int id = 0 ; id < numIds ; ++id ) {
-					candidateInfos[id].maxSingleMatchCount = std::max( candidateInfos[id].maxSingleMatchCount, localCandidateInfos[id].maxSingleMatchCount );
-					candidateInfos[id].totalMatchCount += localCandidateInfos[id].totalMatchCount;
-
-					boost::push_back( candidateInfos[id].matchDistances, localCandidateInfos[id].matchDistances );
-					boost::push_back( candidateInfos[id].matchesPositionMatchCount, localCandidateInfos[id].matchesPositionMatchCount );
-				}
-			}
-		}
-
-		SparseCandidateInfos results;
-		for( int id = 0 ; id < numIds ; ++id ) {
-			CandidateInfo &candidateInfo = candidateInfos[id];
-
-			size_t matchCount = candidateInfo.totalMatchCount;
-			if( matchCount > 0 ) {
-				candidateInfo.score = float(matchCount) / getProbeCountPerInstanceForId(id);
-
-				//typedef decltype(candidateInfo.matches[0]) value_type;
-				//std::sort( candidateInfo.matches.begin(), candidateInfo.matches.end(), [](const value_type &a, const value_type b) { return a.second > b.second; } );
-
-				results.push_back( std::make_pair( id, std::move( candidateInfo ) ) );
-			}
-		}
-
-		std::sort( results.begin(), results.end(), []( const ProbeDatabase::SparseCandidateInfos::value_type &a, const ProbeDatabase::SparseCandidateInfos::value_type &b ) { return a.second.score > b.second.score; } );
-		
-		return results;
-	}
-
-	float getProbeCountPerInstanceForId( int id ) const {
-		return idInfos[id].getAverageProbeCount();
-	}
-
-	// probe->id
-	std::vector<InstanceProbe> probeIdMap;
-
-	struct IdInfo {
-		int numObjects;
-		int totalProbeCount;
-
-		IdInfo() : numObjects( 0 ), totalProbeCount( 0 ) {}
-
-		float getAverageProbeCount() const {
-			return float( totalProbeCount ) / numObjects;
-		}
-	};
-
-	std::vector<IdInfo> idInfos;
-	std::vector<int> instanceProbeCountForId;
-};
-
-// TODO: fix the depthUnit hack
-void sampleProbes( ProbeGrid &probeGrid, std::function<void()> renderSceneCallback, float maxDistance ) {
+void sampleProbes( Samples &samples, std::function<void()> renderSceneCallback, float maxDistance ) {
 	boost::timer::auto_cpu_timer timer;
 
-	VolumeSampler<SamplerProbeView> sampler;
-	sampler.samplesView.probeGrid = &probeGrid;
-	sampler.grid = &probeGrid.getGrid();
+	VolumeSampler<Samples::View> sampler;
+	sampler.samplesView.samples = &samples;
+	sampler.grid = &samples.getGrid();
 	
-	sampler.directions[0].assign( &EnvironmentContext::directions[0], &EnvironmentContext::directions[9]);
-	sampler.directions[1].assign( &EnvironmentContext::directions[9], &EnvironmentContext::directions[18]);
-	sampler.directions[2].assign( &EnvironmentContext::directions[18], &EnvironmentContext::directions[26]);
+	sampler.directions[0].assign( &neighborOffsets[0], &neighborOffsets[9]);
+	sampler.directions[1].assign( &neighborOffsets[9], &neighborOffsets[18]);
+	sampler.directions[2].assign( &neighborOffsets[18], &neighborOffsets[26]);
 	
 	sampler.init();
 	sampler.maxDepth = maxDistance;
 
 	sampler.sample( renderSceneCallback );
+}
 
-	for( int index = 0 ; index < probeGrid.getGrid().count ; ++index ) {
-		Probe &probe = probeGrid[ index ];
-		probe.distanceContext.finish();
+typedef DataGrid<int, SubOrientedGrid> SumGrid;
+
+// build a sum/potential grid over voxels[ * ].count > 0
+void buildSumGrid( const VoxelGrid &voxels, SumGrid &sumGrid ) {
+	sumGrid.reset( voxels.getGrid() );
+	SimpleIndexer3 originIndexer( voxels.getGrid().getSize() );
+
+	// along x
+	for( int z = 0 ; z < originIndexer.size.z() ; ++z ) {
+		for( int y = 0 ; y < originIndexer.size.y() ; ++y ) {
+			int sum = 0;
+			for( int x = 0 ; x < originIndexer.size.x() ; ++x ) {
+				const int index = originIndexer.getIndex( Eigen::Vector3i( x, y, z ) );				
+				bool voxelSet = voxels[ index ].count > 0;
+				sum = sumGrid[ index ] = sum + voxelSet ? 1 : 0;				
+			}
+		}
+	}
+	// along y
+	for( int z = 0 ; z < originIndexer.size.z() ; ++z ) {
+		for( int x = 0 ; x < originIndexer.size.x() ; ++x ) {
+			int sum = sumGrid[ originIndexer.getIndex( Eigen::Vector3i( x, 0, z ) ) ];
+			for( int y = 1 ; y < originIndexer.size.y() ; ++y ) {
+				const int index = originIndexer.getIndex( Eigen::Vector3i( x, y, z ) );
+
+				sum = sumGrid[ index ] += sum;				
+			}
+		}
+	}
+	// along z
+	for( int y = 0 ; y < originIndexer.size.y() ; ++y ) {
+		for( int x = 0 ; x < originIndexer.size.x() ; ++x ) {
+			int sum = sumGrid[ originIndexer.getIndex( Eigen::Vector3i( x, y, 0 ) ) ];
+
+			for( int z = 1 ; z < originIndexer.size.z() ; ++z ) {	
+				const int index = originIndexer.getIndex( Eigen::Vector3i( x, y, z ) );
+
+				sum = sumGrid[ index ] += sum;				
+			}
+		}
 	}
 }
 
-void printCandidates( std::ostream &out, const ProbeDatabase::SparseCandidateInfos &candidates ) {
+struct ObjectDatabase : boost::noncopyable {
+	struct InstanceInfo : boost::noncopyable {
+		VoxelGrid voxelGrid;
+		int solidCount;
+		int dontCares;
+		int totalWeight;
+
+		InstanceInfo( InstanceInfo &&other ) : voxelGrid( std::move( other.voxelGrid ) ), solidCount( other.solidCount ), dontCares( other.dontCares ), totalWeight( other.totalWeight ) {}
+		InstanceInfo & operator = ( InstanceInfo &&other ) {
+			voxelGrid = std::move( other.voxelGrid );
+			solidCount = other.solidCount;
+			dontCares = other.dontCares;
+			totalWeight = other.totalWeight;
+			return *this;
+		}
+
+		InstanceInfo( VoxelGrid &&voxels ) : voxelGrid( std::move( voxels ) ), solidCount( 0 ), dontCares( 0 ), totalWeight( 0 ) {
+			for( int i = 0 ; i < voxelGrid.getGrid().count ; ++i ) {
+				auto &sample = voxelGrid[ i ];
+
+				if( sample.weight ) {
+					totalWeight += sample.weight;
+
+					if( sample.count ) {
+						solidCount++;
+					}
+				}
+				else {
+					dontCares++;
+				}
+			}
+		}
+	};
+
+	struct TemplateInfo : boost::noncopyable {
+		DataGrid< float, SimpleOrientedGrid > mergedWeights; // > 0 for solid voxels, < 0 for empty voxels
+		std::vector< InstanceInfo > instances;
+
+		int cares;
+		float totalMergedWeight;
+
+		TemplateInfo() : cares( 0 ), totalMergedWeight( 0 ) {}
+
+		TemplateInfo( TemplateInfo &&other ) : mergedWeights( std::move( other.mergedWeights ) ), instances( std::move( instances ) ), cares( other.cares ), totalMergedWeight( other.totalMergedWeight ) {}
+		TemplateInfo & operator = ( TemplateInfo &&other ) {
+			mergedWeights = std::move( other.mergedWeights );
+			instances = std::move( other.instances );
+			cares = other.cares;
+			totalMergedWeight = other.totalMergedWeight;
+			return *this;
+		}
+
+		void mergeInstances() {
+			cares = 0;
+			totalMergedWeight = 0.0f;
+
+			if( instances.empty() ) {
+				return;
+			}
+
+			// assert: all grids are equal
+			mergedWeights.reset( instances[0].voxelGrid.getGrid().getGridAtOrigin() );
+			DataGrid< float, SimpleOrientedGrid > tempGrid( instances[0].voxelGrid.getGrid().getGridAtOrigin() );
+
+			int count = mergedWeights.getGrid().count;
+			for( int i = 0 ; i < count ; ++i ) {
+				float mergedWeight = 0;
+				for( int j = 0 ; j < instances.size() ; ++j ) {
+					const auto &sample = instances[j].voxelGrid[ i ];
+					if( sample.count > 0 ) {
+						mergedWeight += sample.weight / float( instances[j].totalWeight );
+					}
+					else {
+						mergedWeight -= sample.weight / float( instances[j].totalWeight );
+					}
+				}
+				tempGrid[i] = mergedWeight;
+			}
+
+			// blur
+			// TODO: use a Gaussian filter..
+			const float attenuation = 1.0 / 27.0;
+			for( auto iterator = mergedWeights.getIterator() ; iterator.hasMore() ; ++iterator ) {
+				float averagedNeighborhood = tempGrid[ *iterator ] * 2.0 / 3.0;
+				for( int i = 0 ; i < boost::size( neighborOffsets ) ; i++ ) {
+					const Eigen::Vector3i neighborIndex3 = iterator.getIndex3() + neighborOffsets[i].cast<int>();
+					averagedNeighborhood += tempGrid.tryGet( neighborIndex3 ) * attenuation / 3.0;
+				}
+				mergedWeights[ *iterator ] = averagedNeighborhood;
+				if( mergedWeights[ *iterator ] != 0 ) {
+					cares++;
+				}
+				totalMergedWeight += abs( mergedWeights[ *iterator ] );
+			}
+		}
+	};
+
+	std::vector< TemplateInfo > templates;
+
+	ObjectDatabase() {}
+	ObjectDatabase( ObjectDatabase &&other ) : templates( std::move( other.templates ) ) {}
+
+	ObjectDatabase & operator = ( ObjectDatabase &&other ) {
+		templates = std::move( other.templates );
+		return *this;
+	}
+
+	void init( int numIds ) {
+		templates.resize( numIds );
+	}
+
+	void addInstance( int id, VoxelGrid &&context ) {
+		BOOST_ASSERT( id < templates.size() );
+		templates[id].instances.emplace_back( std::move( InstanceInfo( std::move( context ) ) ) );
+	}
+
+	void finishInstance( int id ) {
+		templates[id].mergeInstances();
+	}
+
+	void finish() {
+		for( int id = 0 ; id < templates.size() ; ++id ) {
+			finishInstance( id );
+		}
+	}
+
+	struct TemplateSuggestions {
+		int id;
+
+		float bestScore;
+
+		struct Suggestion {
+			Eigen::Vector3f position;
+			float score;
+		};
+
+		std::vector< Suggestion > suggestions;
+	};
+
+	typedef std::vector<TemplateSuggestions> Suggestions;
+
+	Suggestions findSuggestions( const VoxelGrid &targetVolume ) {
+		Suggestions results;
+
+		SimpleOrientedGrid originIndexer = targetVolume.getGrid().getGridAtOrigin();
+
+		/*SumGrid sumGrid;
+		buildSumGrid( targetVolume, sumGrid );*/
+
+		// loop through all templates and find the best matches
+		for( int id = 0 ; id < templates.size() ; ++id ) {
+			const auto &template_ = templates[id];
+
+			if( template_.cares == 0 ) {
+				continue;
+			}
+			
+			Eigen::Vector3i remainingSize = targetVolume.getGrid().getSize() - template_.mergedWeights.getGrid().getSize();
+			if( (remainingSize.array() <= 0).any() ) {
+				continue;
+			}
+
+			auto searchIterator = originIndexer.getSubIterator( Eigen::Vector3i::Zero(), remainingSize );
+			auto templateIterator = template_.mergedWeights.getIterator();
+
+			TemplateSuggestions templateSuggestions;
+			templateSuggestions.id = id;
+			templateSuggestions.bestScore = 0.0;
+
+			for( ; searchIterator.hasMore() ; ++searchIterator ) {
+				float score = 0;
+
+				auto targetIterator = originIndexer.getSubIterator( searchIterator.getIndex3(), searchIterator.getIndex3() + template_.mergedWeights.getGrid().getSize() );
+				auto templateIterator = template_.mergedWeights.getIterator();
+				for( ; templateIterator.hasMore() ; ++templateIterator, ++targetIterator ) {
+					// solid
+					score += (2*int(targetVolume[ *targetIterator ].count > 0)-1) * template_.mergedWeights[ *templateIterator ];
+				}
+
+				if( score > templateSuggestions.bestScore) {
+					templateSuggestions.bestScore = score;
+				}
+
+				TemplateSuggestions::Suggestion suggestion;
+				suggestion.score = score / template_.totalMergedWeight;
+				suggestion.position = originIndexer.getInterpolatedPosition( searchIterator.getIndex3().cast<float>() + 0.5 * template_.mergedWeights.getGrid().getSize().cast<float>() );
+				templateSuggestions.suggestions.push_back( suggestion );
+			}
+
+			boost::sort( templateSuggestions.suggestions, [] (const TemplateSuggestions::Suggestion &a, const TemplateSuggestions::Suggestion &b) { return a.score > b.score; } );
+
+			results.push_back( templateSuggestions );
+		}
+
+		boost::sort( results, [] (const TemplateSuggestions &a, const TemplateSuggestions &b) { return a.bestScore > b.bestScore; } );
+		
+		return results;
+	}
+};
+
+#if 0
+void printCandidates( std::ostream &out, const ObjectDatabase::TemplateSuggestions &candidates ) {
 	out << candidates.size() << " candidates\n";
 	for( int i = 0 ; i < candidates.size() ; ++i ) {
-		out << "Weight: " << candidates[i].second.score << "\t\tId: " << candidates[i].first << "\n";
+		out << "Weight: " << candidates[i].score << "\t\tId: " << candidates[i].id << "\n";
 	}
 }
+#endif 

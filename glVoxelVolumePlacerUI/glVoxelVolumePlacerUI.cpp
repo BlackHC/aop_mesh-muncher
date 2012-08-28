@@ -39,6 +39,8 @@ using namespace Eigen;
 #include <boost/type_traits.hpp>
 #include <boost/utility/enable_if.hpp>
 #include <boost/range/numeric.hpp>
+#include <boost/foreach.hpp>
+#define boost_foreach BOOST_FOREACH
 
 AlignedBox3f AlignedBox3f_fromMinSize( const Vector3f &min, const Vector3f &size ) {
 	return AlignedBox3f( min, min + size );
@@ -215,7 +217,7 @@ namespace Serializer {
 namespace Serializer {
 	template< typename Reader >
 	void read( Reader &reader, AntTWBarLabel &value ) {
-		read( reader, value.value );
+		read( reader, value.value ); 
 	}
 
 	template< typename Emitter >
@@ -388,7 +390,7 @@ void visualizeVoxelGrid( const VoxelGrid &voxelGrid, DebugRender::CombinedCalls 
 	dr.end();
 }
 
-struct Application {
+struct Application : boost::noncopyable {
 	ObjSceneGL objScene;
 	SceneShader sceneShader;
 
@@ -399,12 +401,12 @@ struct Application {
 	EventDispatcher eventDispatcher;
 
 	// probes
-	ProbeDatabase probeDatabase_;
-	ProbeDatabase::SparseCandidateInfos results_;
+	ObjectDatabase objectDatabase;
+	ObjectDatabase::Suggestions results;
 
 	// anttweakbar 
 	AntTweakBarEventHandler antTweakBarEventHandler;
-	std::unique_ptr<AntTWBarGroup> ui_, candidateResultsUI_;
+	std::unique_ptr<AntTWBarGroup> ui, candidateResultsUI_;
 
 	// anttweakbar fields
 	bool showProbes;
@@ -416,7 +418,8 @@ struct Application {
 	bool solidObjects;
 	ProbeMask probeMask;
 	bool maskAllObjectsOnFind;
-	
+	bool showScene;
+
 	float maxDistance_;
 	float gridResolution_;
 
@@ -462,10 +465,10 @@ struct Application {
 	}
 
 	void initCamera() {
-		camera.perspectiveProjectionParameters.aspect = 640.0 / 480.0;
-		camera.perspectiveProjectionParameters.FoV_y = 75.0;
-		camera.perspectiveProjectionParameters.zNear = 0.1;
-		camera.perspectiveProjectionParameters.zFar = 500.0;
+		camera.perspectiveProjectionParameters.aspect = 640.0f / 480.0f;
+		camera.perspectiveProjectionParameters.FoV_y = 75.0f;
+		camera.perspectiveProjectionParameters.zNear = 0.1f;
+		camera.perspectiveProjectionParameters.zFar = 500.0f;
 	}
 
 	void initEverything() {
@@ -479,8 +482,6 @@ struct Application {
 		cameraInputControl.init( make_nonallocated_shared(camera), make_nonallocated_shared(window) );
 		eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( cameraInputControl ) );
 
-		EnvironmentContext::setDirections();
-
 		glEnable(GL_DEPTH_TEST);
 		glDepthMask(GL_TRUE);
 		glClearDepth(1.f);
@@ -492,7 +493,7 @@ struct Application {
 		readState();
 		readObjects();
 
-		refillProbeDatabase();
+		refillObjectDatabase();
 
 		initAntTweakBar();
 		initAntTweakBarUI();
@@ -537,6 +538,7 @@ struct Application {
 		activeProbe_ = -1;
 	}
 
+#if 0
 	void visualizeProbes( const ProbeGrid &probeGrid, DebugRender::CombinedCalls &probeVisualization ) {
 		probeVisualization.append();
 		const float visSize = 0.05;
@@ -565,10 +567,12 @@ struct Application {
 		}
 		probeVisualization.end();
 	}
+#endif 
 
-	void refillProbeDatabase() {
+	void refillObjectDatabase() {
 		// reset the database
-		probeDatabase_ = ProbeDatabase();
+		objectDatabase = ObjectDatabase();
+		objectDatabase.init( objectTemplates_.size() );
 
 		RenderContext renderContext;
 		renderContext.solidObjects = true;
@@ -576,29 +580,35 @@ struct Application {
 			renderContext.disableObjects = true;
 		}
 
-		ProbeSettings probeSettings;
-		probeSettings.maxDistance = maxDistance_;
-		probeSettings.maxDelta = gridResolution_;
-
 		probeVisualization.clear();
 		// fill probe database (and visualize the probes)
 		for( int i = 0 ; i < objectInstances_.items.size() ; i++ ) {
 			const AlignedBox3f bbox = objectInstances_.items[i].getBBox();
-			ProbeGrid probeGrid( OrientedGrid_from( floor( bbox.sizes() / gridResolution_ ) + Vector3i::Constant(1), bbox.min(), gridResolution_ ) );
+			SimpleOrientedGrid grid = OrientedGrid_from( floor( bbox.sizes() / gridResolution_ ) + Vector3i::Constant(1), bbox.min(), gridResolution_ );
+			Samples samples;
+			// TODO: cleanup!!
+			samples.init( &grid, boost::size( neighborOffsets ) );
 
 			renderContext.disableObjectIndex = i;			
 			if( probeMask == MASK_ALL_SIBLINGS ) {
 				renderContext.disableTemplateId = objectInstances_.items[i].templateId;
 			}
 
-			sampleProbes( probeGrid, std::bind( &Application::drawScene, this ), maxDistance_ );
-			probeDatabase_.addObjectInstanceToDatabase( probeGrid, objectInstances_.items[i].templateId );
+			sampleProbes( samples, std::bind( &Application::drawScene, this ), maxDistance_ );
+
+			{
+				VoxelGrid voxelGrid;
+				voxelize( samples, voxelGrid, maxDistance_ );
+				objectDatabase.addInstance( objectInstances_.items[i].templateId, std::move( voxelGrid ) );
+			}
 
 			// visualize this probe grid
+#if 0
 			visualizeProbes( probeGrid, probeVisualization );
+#endif
 		}
 
-		//probeDatabase_.dumpMinDistances();
+		objectDatabase.finish();
 	}
 
 	void drawScene() {
@@ -625,6 +635,7 @@ struct Application {
 	}
 
 	void drawEverything() {
+		if( showScene )
 		{
 			RenderContext context;
 			context.solidObjects = solidObjects;
@@ -723,55 +734,56 @@ struct Application {
 	}
 
 	void initAntTweakBarUI() {
-		ui_ = std::unique_ptr<AntTWBarGroup>( new AntTWBarGroup("UI") );
+		ui = std::unique_ptr<AntTWBarGroup>( new AntTWBarGroup("UI") );
 
 		minCallback_.getCallback = [&](Vector3f &v) { v = targetCube_.min(); };
 		minCallback_.setCallback = [&](const Vector3f &v) { targetCube_ = AlignedBox3f_fromMinSize( v, targetCube_.sizes() ); };
-		ui_->addVarCB("Min target", minCallback_ );
+		ui->addVarCB("Min target", minCallback_ );
 
 		sizeCallback_.getCallback = [&](Vector3f &v) { v = targetCube_.sizes(); };
 		sizeCallback_.setCallback = [&](const Vector3f &v) { targetCube_ = AlignedBox3f_fromMinSize( targetCube_.min(), v ); };
-		ui_->addVarCB("Size target", sizeCallback_ );
+		ui->addVarCB("Size target", sizeCallback_ );
 
-		ui_->addVarRW( "Grid resolution", gridResolution_, "min=0 step = 0.1" );
-		ui_->addVarRW( "Max probe distance", maxDistance_, "min=0 step=0.1" );
+		ui->addVarRW( "Grid resolution", gridResolution_, "min=0 step=0.1" );
+		ui->addVarRW( "Max probe distance", maxDistance_, "min=0 step=0.1" );
 
-		ui_->addSeparator();
-		ui_->addVarRW( "Show probes", showProbes );
-		ui_->addVarRW( "Show matched probes", showMatchedProbes );
-		ui_->addVarRW( "Show candidate position volumes", showCandidatePositionVolumes );
-		ui_->addVarRW( "Show candidate suggestions", showCandidateSuggestions );
+		ui->addSeparator();
+		ui->addVarRW( "Show scene", showScene = true );
+		ui->addVarRW( "Show probes", showProbes );
+		ui->addVarRW( "Show matched probes", showMatchedProbes );
+		ui->addVarRW( "Show candidate position volumes", showCandidatePositionVolumes );
+		ui->addVarRW( "Show candidate suggestions", showCandidateSuggestions );
 
-		ui_->addVarRW( "Fix selection", dontUnfocus );
-		ui_->addVarRW( "Show prototype", showPrototype );
-		ui_->addVarRW( "Solid objects", solidObjects );
-		ui_->addSeparator();
+		ui->addVarRW( "Fix selection", dontUnfocus );
+		ui->addVarRW( "Show prototype", showPrototype );
+		ui->addVarRW( "Solid objects", solidObjects );
+		ui->addSeparator();
 
-		ui_->addVarRW( "Refill probe mask", probeMask );
-		ui_->addVarRW( "Mask all objects on find", maskAllObjectsOnFind );
+		ui->addVarRW( "Refill probe mask", probeMask );
+		ui->addVarRW( "Mask all objects on find", maskAllObjectsOnFind );
 
-		ui_->addSeparator();
+		ui->addSeparator();
 		writeStateCallback_.callback = std::bind(&Application::writeState, this);
-		ui_->addButton("Write state", writeStateCallback_ );
+		ui->addButton("Write state", writeStateCallback_ );
 
 		writeObjectsCallback.callback = std::bind( &Application::writeObjects, this );
-		ui_->addButton( "Save objects", writeObjectsCallback );
+		ui->addButton( "Save objects", writeObjectsCallback );
 		
 		reloadShadersCallback.callback = std::bind( &Application::initShaders, this );
-		ui_->addButton( "Reload shaders", reloadShadersCallback );
+		ui->addButton( "Reload shaders", reloadShadersCallback );
 
-		ui_->addSeparator();
+		ui->addSeparator();
 		findCandidatesCallback_.callback = std::bind(&Application::Do_findCandidates, this);
-		ui_->addButton("Find candidates", findCandidatesCallback_ );
+		ui->addButton("Find candidates", findCandidatesCallback_ );
 
 		findCandidatePositionsCallback_.callback = std::bind( &Application::Do_findCandidatePositions, this );
-		ui_->addButton( "Find candidate positions", findCandidatePositionsCallback_ );
+		ui->addButton( "Find candidate positions", findCandidatePositionsCallback_ );
 
-		refillProbeDatabaseCallback.callback = std::bind( &Application::refillProbeDatabase, this );
-		ui_->addButton( "Refill probe database", refillProbeDatabaseCallback );
-		ui_->addSeparator();
+		refillProbeDatabaseCallback.callback = std::bind( &Application::refillObjectDatabase, this );
+		ui->addButton( "Refill probe database", refillProbeDatabaseCallback );
+		ui->addSeparator();
 
-		candidateResultsUI_ = std::unique_ptr<AntTWBarGroup>( new AntTWBarGroup( "Candidates", ui_.get() ) );
+		candidateResultsUI_ = std::unique_ptr<AntTWBarGroup>( new AntTWBarGroup( "Candidates", ui.get() ) );
 
 		cameraPositions_.onAction = [=] ( const CameraPosition &camPos ) {
 			camera.setPosition( camPos.position );
@@ -818,8 +830,8 @@ struct Application {
 	}
 
 	void visualizeMatchedProbes(int index) {
-		const ProbeDatabase::CandidateInfo &info = results_[index].second;
-
+#if 0
+		const ObjectDatabase::CandidateInfo &info = results[index];
 /*
 		int globalMaxSingleMatchCount = results_[0].second.maxSingleMatchCount;
 		for( int i = 1 ; i < results_.size() ; ++i ) {
@@ -838,6 +850,7 @@ struct Application {
 			matchedProbes_[index].drawAbstractSphere( gridResolution_ / 4 );
 		}
 		matchedProbes_[index].end();
+#endif 
 	}
 
 	void readState() {
@@ -925,11 +938,9 @@ struct Application {
 	}
 
 	void Do_findCandidates() {
-		ProbeGrid probeGrid( OrientedGrid_from( Vector3i::Constant(1) + ceil( targetCube_.sizes() / gridResolution_ ), targetCube_.min(), gridResolution_ ) );
-
-		ProbeSettings settings;
-		settings.maxDelta = gridResolution_;
-		settings.maxDistance = maxDistance_;
+		SimpleOrientedGrid probeGrid( OrientedGrid_from( Vector3i::Constant(1) + ceil( targetCube_.sizes() / gridResolution_ ), targetCube_.min(), gridResolution_ ) );
+		Samples samples;
+		samples.init( &probeGrid, boost::size( neighborOffsets ) );
 
 		{
 			RenderContext renderContext;
@@ -937,78 +948,72 @@ struct Application {
 				renderContext.disableObjects = true;
 			}
 			renderContext.solidObjects = true;
-			sampleProbes( probeGrid, std::bind( &Application::drawScene, this ), maxDistance_ );
+			sampleProbes( samples, std::bind( &Application::drawScene, this ), maxDistance_ );
 		}
 
-		VoxelGrid voxelGrid;
-		voxelize( probeGrid, voxelGrid, maxDistance_ );
-		voxelizedTargetVolume.clear();
-		visualizeVoxelGrid( voxelGrid, voxelizedTargetVolume );
-		
-		results_ = probeDatabase_.findCandidates( probeGrid );
+		{
+			VoxelGrid voxelGrid;
+			voxelize( samples, voxelGrid, maxDistance_ );
+			voxelizedTargetVolume.clear();
+			visualizeVoxelGrid( voxelGrid, voxelizedTargetVolume );
+
+			results = objectDatabase.findSuggestions( voxelGrid );
+		}		
 
 		activeProbe_ = -1;
 
 		candidateResultsUI_->clear();
-		for( int i = 0 ; i < results_.size() ; ++i ) {
-			const ProbeDatabase::CandidateInfo &info = results_[i].second;
+		for( int i = 0 ; i < results.size() ; ++i ) {
+			const auto &info = results[i];
 
-			candidateResultsUI_->addVarRO( AntTWBarGroup::format( "Candidate %i", results_[i].first ), info.score );
+			candidateResultsUI_->addVarRO( AntTWBarGroup::format( "Candidate %i", info.id ), info.bestScore );
 
 			visualizeMatchedProbes(i);
+		}
+
+		for( int resultIndex = 0 ; resultIndex < results.size() ; ++resultIndex ) {
+			auto &info = results[resultIndex];
+
+			info.suggestions.erase(
+				std::remove_if( info.suggestions.begin(), info.suggestions.end(), 
+					[] ( const ObjectDatabase::TemplateSuggestions::Suggestion &suggestion ) {
+						return suggestion.score < 0.8; 
+					}
+				),
+				info.suggestions.end()
+				);
+
+			if( info.suggestions.empty() ) {
+				continue;
+			}
+
+			// filter the suggestions
+			const float minDistance = objectTemplates_[ info.id ].bbSize.norm();
+			const float minDistanceSquared = minDistance * minDistance;
+			for( int i = 0 ; i < info.suggestions.size() - 1 ; ++i ) {				
+				const Vector3f position = info.suggestions[i].position;
+				
+				info.suggestions.erase(
+					std::remove_if( info.suggestions.begin() + i + 1, info.suggestions.end(), 
+						[position, minDistanceSquared] ( const ObjectDatabase::TemplateSuggestions::Suggestion &suggestion ) {
+							return (position - suggestion.position).squaredNorm() <= minDistanceSquared; 
+						}
+					),
+					info.suggestions.end()
+				);
+			}
+
+			boost_foreach( const auto &suggestion, info.suggestions ) {
+				ObjectInstance instance;
+				instance.templateId = info.id;
+				instance.position = suggestion.position;
+
+				candidateSuggestions[resultIndex].push_back( instance );
+			}
 		}
 	}
 
 	void Do_findCandidatePositions() {
-		for( int resultIndex = 0 ; resultIndex < results_.size() ; ++resultIndex ) {
-			const int templateId = results_[resultIndex].first;
-			const ProbeDatabase::CandidateInfo &info = results_[resultIndex].second;
-
-			std::vector<Point> points;
-			points.reserve( info.matchDistances.size() );
-			int begin = 0;
-			for( int j = 0 ; j < info.matchesPositionMatchCount.size() ; ++j ) {
-				const Vector3f &position = info.matchesPositionMatchCount[j].first;
-
-				const int end = begin + info.matchesPositionMatchCount[j].second;
-
-				for( int probeIndex = begin ; probeIndex < end ; ++probeIndex ) {
-					points.push_back( Point( position, info.matchDistances[ probeIndex ], 1 ) );
-				}
-
-				begin = end;
-			}
-
-			float numProbesPerInstance = probeDatabase_.getProbeCountPerInstanceForId( templateId );
-			auto results = solveIntersectionsWithPriority( points, gridResolution_ / 2, gridResolution_ / 4, numProbesPerInstance, numProbesPerInstance );
-			visualizeCandidatePositions(resultIndex, results);
-
-			// determine the best position (if any)
-			boost::remove_erase_if( results, [numProbesPerInstance] ( const SparseCellInfo &cell ) { return cell.lowerBound + cell.upperBound < 2 * numProbesPerInstance; } );
-			boost::sort( results, []( const SparseCellInfo &a, const SparseCellInfo &b ) { return a.lowerBound + a.upperBound > b.lowerBound + b.upperBound; } );
-			
-			candidateSuggestions[resultIndex].clear();
-
-			if( !results.empty() ) {
-				const int minScore = (results[0].lowerBound + results[0].upperBound) * 2 / 3;
-				boost::remove_erase_if( results, [minScore] ( const SparseCellInfo &cell ) { return cell.lowerBound + cell.upperBound < minScore; } );
-
-				for( int i = 0 ; i < results.size() - 1 ; ++i ) {
-					const float minDistance = objectTemplates_[ templateId ].bbSize.norm();
-					const Vector3f position = results[i].minCorner + Vector3f::Constant( results[i].resolution / 2 );
-
-					results.erase( std::remove_if( results.begin() + i + 1, results.end(), [position, minDistance] ( const SparseCellInfo &cell ) { return (position - (cell.minCorner + Vector3f::Constant( cell.resolution / 2))).squaredNorm() <= minDistance * minDistance; } ), results.end() );
-				}
-
-				for( int i = 0 ; i < results.size() ; ++i ) {
-					ObjectInstance instance;
-					instance.templateId = templateId;
-					instance.position = results[i].minCorner + Vector3f::Constant( results[i].resolution / 2 );
-
-					candidateSuggestions[resultIndex].push_back( instance );
-				}
-			}
-		}
 	}
 
 	void drawPreview() {
@@ -1020,8 +1025,8 @@ struct Application {
 		glMultMatrix( previewTransformation_.world );
 
 		const int maxPreviewWidth = window.getSize().x / 10;
-		const int maxTotalPreviewHeight = (maxPreviewWidth + 10) * results_.size();
-		const int previewSize = (maxTotalPreviewHeight < window.getSize().y) ? maxPreviewWidth : (window.getSize().y - 20) / results_.size() - 10;
+		const int maxTotalPreviewHeight = (maxPreviewWidth + 10) * results.size();
+		const int previewSize = (maxTotalPreviewHeight < window.getSize().y) ? maxPreviewWidth : (window.getSize().y - 20) / results.size() - 10;
 
 		Vector2i topLeft( window.getSize().x - previewSize - 10, 10 );
 		Vector2i size( previewSize, previewSize );
@@ -1033,8 +1038,8 @@ struct Application {
 
 		sceneShader.apply();
 
-		for( int i = 0 ; i < results_.size() ; ++i, topLeft.y() += previewSize + 10 ) {
-			ObjectTemplate &objectTemplate = objectTemplates_[ results_[i].first ];
+		for( int i = 0 ; i < results.size() ; ++i, topLeft.y() += previewSize + 10 ) {
+			ObjectTemplate &objectTemplate = objectTemplates_[ results[i].id ];
 
 			int flippedBottom = window.getSize().y - (topLeft.y() + size.y());
 			glViewport( topLeft.x(), flippedBottom, size.x(), size.y() );
@@ -1052,7 +1057,7 @@ struct Application {
 			button.area.max() = topLeft + size;
 			button.SetVisible( true );
 		}
-		for( int i = results_.size() ; i < objectTemplates_.size() ; ++i ) {
+		for( int i = results.size() ; i < objectTemplates_.size() ; ++i ) {
 			uiButtons_[i].SetVisible( false );
 		}
 

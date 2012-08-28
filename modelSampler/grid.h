@@ -3,11 +3,11 @@
 #include <Eigen/Eigen>
 
 inline Eigen::Vector3i ceil( const Eigen::Vector3f &v ) {
-	return Eigen::Vector3i( ceil( v[0] ), ceil( v[1] ), ceil( v[2] ) );
+	return Eigen::Vector3i( (int) ceil( v[0] ), (int) ceil( v[1] ), (int) ceil( v[2] ) );
 }
 
 inline Eigen::Vector3i floor( const Eigen::Vector3f &v ) {
-	return Eigen::Vector3i( floor( v[0] ), floor( v[1] ), floor( v[2] ) );
+	return Eigen::Vector3i( (int) floor( v[0] ), (int) floor( v[1] ), (int) floor( v[2] ) );
 }
 
 // xyz 120 ->yzx
@@ -41,8 +41,17 @@ concept Index3 {
 }
 */
 
+template< typename conceptIndexer3 >
+class Iterator3;
+
+template< typename conceptIndexer3 >
+class SubIterator3;
+
 // converts between a 3d index and a 1d index
 struct SimpleIndexer3 {
+	typedef Iterator3<SimpleIndexer3> Iterator;
+	typedef SubIterator3<SimpleIndexer3> SubIterator;
+
 	Eigen::Vector3i size;
 	int count;
 
@@ -96,13 +105,20 @@ struct SimpleIndexer3 {
 		}
 		return true;
 	}
+
+	Iterator getIterator() const;
+
+	SubIterator getSubIterator( const Eigen::Vector3i &beginCorner, const Eigen::Vector3i &endCorner );
 };
 
 struct SubIndexer3 {
+	typedef Iterator3<SubIndexer3> Iterator;
+	typedef SubIterator3<SubIndexer3> SubIterator;
+
 	Eigen::Vector3i size;
 	Eigen::Vector3i beginCorner, endCorner;
 	int count;
-
+	
 	const Eigen::Vector3i & getSize() const {
 		return size;
 	}
@@ -159,6 +175,10 @@ struct SubIndexer3 {
 		}
 		return true;
 	}
+
+	Iterator getIterator() const;
+
+	SubIterator getSubIterator( const Eigen::Vector3i &beginCorner, const Eigen::Vector3i &endCorner );
 };
 
 // TODO: remove this again?
@@ -208,7 +228,23 @@ public:
 		}
 		return *this;
 	}
+
+	bool rowHasMore() {
+		return index3[0] < indexer.getEndCorner()[0] - 1;
+	}
+
+	bool sliceHasMore() {
+		return index3[1] < indexer.getEndCorner()[1] - 1;
+	}
 };
+
+SimpleIndexer3::Iterator SimpleIndexer3::getIterator() const {
+	return Iterator( *this );
+}
+
+SubIndexer3::Iterator SubIndexer3::getIterator() const {
+	return Iterator( *this );
+}
 
 // main use: iterating over an indexer. Overloading the * operator to return index is the logical shorthand operation
 template< typename conceptIndexer3 = SimpleIndexer3 >
@@ -250,7 +286,25 @@ public:
 		}
 		return *this;
 	}
+
+	bool rowHasMore() {
+		return index3[0] < endCorner[0] - 1;
+	}
+
+	bool sliceHasMore() {
+		return index3[1] < endCorner[1] - 1;
+	}
 };
+
+SimpleIndexer3::SubIterator SimpleIndexer3::getSubIterator( const Eigen::Vector3i &beginCorner, const Eigen::Vector3i &endCorner )
+{
+	return SubIterator( *this, beginCorner, endCorner );
+}
+
+SubIndexer3::SubIterator SubIndexer3::getSubIterator( const Eigen::Vector3i &beginCorner, const Eigen::Vector3i &endCorner )
+{
+	return SubIterator( *this, beginCorner, endCorner );
+}
 
 class VolumeIterator3 : public Index3Composition {
 	Eigen::Vector3i beginCorner, endCorner;
@@ -314,8 +368,6 @@ struct Grid : SimpleIndexer3 {
 template< typename conceptIndexer3 = SimpleIndexer3 >
 struct OrientedGrid : conceptIndexer3 {
 	typedef conceptIndexer3 Indexer3;
-	typedef Iterator3<conceptIndexer3> Iterator;
-	typedef SubIterator3<conceptIndexer3> SubIterator;
 
 	Eigen::Affine3f indexToPosition;
 	Eigen::Affine3f positionToIndex;
@@ -335,6 +387,10 @@ struct OrientedGrid : conceptIndexer3 {
 
 	Eigen::Vector3f getPosition( const Eigen::Vector3i &index3 ) const {
 		return indexToPosition * index3.cast<float>();
+	}
+
+	Eigen::Vector3f getInterpolatedPosition( const Eigen::Vector3f &index3f ) const {
+		return indexToPosition * index3f;
 	}
 
 	// aka vector
@@ -369,6 +425,10 @@ struct OrientedGrid : conceptIndexer3 {
 	OrientedGrid<SubIndexer3> getExpandedGrid( const float expansion ) const {
 		Eigen::Vector3i cellExpansion = ceil( getIndexDirection( Eigen::Vector3f::Constant( expansion ) ) );
 		return getSubGrid( -cellExpansion, Indexer3::getEndCorner() + cellExpansion );
+	}
+
+	OrientedGrid<> getGridAtOrigin() const {
+		return OrientedGrid<SimpleIndexer3>( SimpleIndexer3( getSize() ), indexToPosition * Eigen::Translation3f( getBeginCorner().cast<float>() ) );
 	}
 };
 

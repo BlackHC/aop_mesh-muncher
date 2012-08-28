@@ -54,10 +54,10 @@ namespace Eigen {
 		const Vector3f halfSize = (max - min) / 2.0;
 
 		return (Matrix4f() <<
-			1.0 / halfSize.x(),		0,					0,						-center.x() / halfSize.x(),
-			0,						1.0 / halfSize.y(),	0,						-center.y() / halfSize.y(),
-			0,						0,					-1.0 / halfSize.z(),	-center.z() / halfSize.z(),
-			0,						0,					0,						1.0).finished();
+			1.0f / halfSize.x(),	0,					0,						-center.x() / halfSize.x(),
+			0,						1.0f / halfSize.y(),0,						-center.y() / halfSize.y(),
+			0,						0,					-1.0f / halfSize.z(),	-center.z() / halfSize.z(),
+			0,						0,					0,						1.0f).finished();
 	}
 
 	typedef float Degrees;
