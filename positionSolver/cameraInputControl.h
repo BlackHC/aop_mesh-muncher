@@ -67,10 +67,12 @@ private:
 
 struct CameraInputControl : public MouseCapture {
 	std::shared_ptr<Camera> camera;
+	float moveSpeed;
 
 	void init( const std::shared_ptr<Camera> &camera, const std::shared_ptr<sf::Window> &window ) {
 		super::init( window );
 		this->camera = camera;
+		this->moveSpeed = 10.0f;
 	}
 
 	bool handleEvent( const sf::Event &event ) {
@@ -93,6 +95,11 @@ struct CameraInputControl : public MouseCapture {
 				setCapture( true );
 			}
 			return true;
+		case sf::Event::MouseWheelMoved:
+			if( getCapture() ) {
+				moveSpeed *= std::pow( 1.5f, (float) event.mouseWheel.delta );
+				return true;
+			}
 		}
 		return false;
 	}
@@ -118,8 +125,15 @@ struct CameraInputControl : public MouseCapture {
 			if( sf::Keyboard::isKeyPressed( sf::Keyboard::LControl ) ) {
 				relativeMovement.y() -= 1;
 			}
+			
+			if( !relativeMovement.isZero() ) {
+				relativeMovement.normalize();
+			}
 
-			relativeMovement *= elapsedTime * 10;
+			relativeMovement *= elapsedTime * moveSpeed;
+			if( sf::Keyboard::isKeyPressed( sf::Keyboard::LShift ) ) {
+				relativeMovement *= 4;
+			}
 
 			Eigen::Vector3f newPosition = camera->getPosition() + camera->getViewTransformation().linear().transpose() * relativeMovement;
 			camera->setPosition( newPosition );
