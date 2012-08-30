@@ -49,6 +49,8 @@ ADD_SUBDIRECTORY(shaderTest)
 
 ADD_SUBDIRECTORY(cielab)
 
+ADD_SUBDIRECTORY(glVoxelizer)
+
 # Adds a new build target which copies the niven binaries to
 # the output folder
 NIVEN_COPY_BINARIES(${CMAKE_BINARY_DIR})
