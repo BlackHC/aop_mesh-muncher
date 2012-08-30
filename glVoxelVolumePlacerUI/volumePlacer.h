@@ -140,7 +140,7 @@ void voxelize( const Samples &probeGrid, VoxelGrid &voxelGrid, float maxDistance
 	for( auto iterator = probeGrid.getGrid().getIterator() ; iterator.hasMore() ; ++iterator ) {
 		const Vector3i &index3 = iterator.getIndex3();
 		
-		voxelGrid[index3].weight += 1000;
+		voxelGrid[index3].weight += 27;
 
 		for( int directionIndex = 0 ; directionIndex < boost::size( neighborOffsets ) ; ++directionIndex ) {
 			// its important that all direction coeffs are either 0, 1 or -1
@@ -195,6 +195,7 @@ void sampleProbes( Samples &samples, std::function<void()> renderSceneCallback, 
 }
 
 typedef DataGrid<int, SubOrientedGrid> SumGrid;
+typedef DataGrid< float, SimpleOrientedGrid > FloatGrid;
 
 // build a sum/potential grid over voxels[ * ].count > 0
 void buildSumGrid( const VoxelGrid &voxels, SumGrid &sumGrid ) {
@@ -272,7 +273,7 @@ struct ObjectDatabase : boost::noncopyable {
 	};
 
 	struct TemplateInfo : boost::noncopyable {
-		DataGrid< float, SimpleOrientedGrid > mergedWeights; // > 0 for solid voxels, < 0 for empty voxels
+		FloatGrid mergedWeights; // > 0 for solid voxels, < 0 for empty voxels
 		std::vector< InstanceInfo > instances;
 
 		int cares;
@@ -298,8 +299,12 @@ struct ObjectDatabase : boost::noncopyable {
 			}
 
 			// assert: all grids are equal
-			mergedWeights.reset( instances[0].voxelGrid.getGrid().getGridAtOrigin() );
-			DataGrid< float, SimpleOrientedGrid > tempGrid( instances[0].voxelGrid.getGrid().getGridAtOrigin() );
+			mergedWeights.reset( OrientedGrid_from( instances[0].voxelGrid.getGrid().getSize(), Eigen::Vector3f::Zero(), instances[0].voxelGrid.getGrid().getResolution() ) );
+			FloatGrid tempGrid( mergedWeights.getGrid() );
+
+			for( int j = 0 ; j < instances.size() ; ++j ) {
+				BOOST_ASSERT( mergedWeights.getGrid().getSize() == instances[j].voxelGrid.getGrid().getSize() );
+			}
 
 			int count = mergedWeights.getGrid().count;
 			for( int i = 0 ; i < count ; ++i ) {
@@ -381,7 +386,7 @@ struct ObjectDatabase : boost::noncopyable {
 	Suggestions findSuggestions( const VoxelGrid &targetVolume ) {
 		Suggestions results;
 
-		SimpleOrientedGrid originIndexer = targetVolume.getGrid().getGridAtOrigin();
+		SimpleOrientedGrid originIndexer = targetVolume.getGrid().withBeginCornerAtOrigin();
 
 		/*SumGrid sumGrid;
 		buildSumGrid( targetVolume, sumGrid );*/

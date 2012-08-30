@@ -427,7 +427,7 @@ struct OrientedGrid : conceptIndexer3 {
 		return getSubGrid( -cellExpansion, Indexer3::getEndCorner() + cellExpansion );
 	}
 
-	OrientedGrid<> getGridAtOrigin() const {
+	OrientedGrid<> withBeginCornerAtOrigin() const {
 		return OrientedGrid<SimpleIndexer3>( SimpleIndexer3( getSize() ), indexToPosition * Eigen::Translation3f( getBeginCorner().cast<float>() ) );
 	}
 };

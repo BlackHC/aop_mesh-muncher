@@ -1,6 +1,8 @@
 #pragma once
 
 #include <GL/glew.h>
+#include <string>
+#include <fstream>
 
 struct glShaderBuilder {
 	std::vector< const char * > sourceBuffers;
@@ -148,5 +150,114 @@ struct glProgramBuilder {
 		if( fail && program ) {
 			glDeleteProgram( program );
 		}
+	}
+};
+
+struct Shader {
+	std::string filename;
+	std::string include;
+	std::string source;
+	
+	bool hasGeometryShader;
+
+	GLuint program;
+
+	virtual void setLocations() {}
+
+	void init( const char *filename, const char *include = "", bool hasGeometryShader = false ) {
+		this->filename = filename;
+		this->hasGeometryShader = hasGeometryShader;
+		this->include = include;
+
+		// load the shader
+		reload();
+	}
+
+	// helper
+	void readSource() {
+		// http://www.gamedev.net/topic/353162-reading-a-whole-file-into-a-string-with-ifstream/
+		std::ifstream file( filename );
+		source = std::string( std::istreambuf_iterator<char>( file ), std::istreambuf_iterator<char>() );
+	}
+
+	void reload() {
+		glProgramBuilder programBuilder;
+
+		while( true ) {
+			if( !filename.empty() ) {
+				readSource();
+			}
+
+			const char *versionText = "#version 420 compatibility\n";
+
+			glShaderBuilder vertexShader( GL_VERTEX_SHADER );
+
+			vertexShader.	
+				addSource( versionText ).
+				addSource( include.c_str() ).
+				addSource( 
+					"#define VERTEX_SHADER 1\n"
+					"#define FRAGMENT_SHADER 0\n"
+					"#define GEOMETRY_SHADER 0\n"
+					"#line 1\n"
+				).
+				addSource( source.c_str() ).
+				compile();
+
+			glShaderBuilder fragmentShader( GL_FRAGMENT_SHADER );
+
+			fragmentShader.
+				addSource( versionText ).
+				addSource( include.c_str() ).
+				addSource( 
+					"#define VERTEX_SHADER 0\n"
+					"#define FRAGMENT_SHADER 1\n"
+					"#define GEOMETRY_SHADER 0\n"
+					"#line 1\n"
+				).				
+				addSource( source.c_str() ).
+				compile();
+
+			programBuilder.
+				attachShader( vertexShader.handle ).
+				attachShader( fragmentShader.handle );
+
+			glShaderBuilder geometryShader( GL_GEOMETRY_SHADER );
+
+			geometryShader.
+				addSource( versionText ).
+				addSource( include.c_str() ).
+				addSource( 
+					"#define VERTEX_SHADER 0\n"
+					"#define FRAGMENT_SHADER 0\n"
+					"#define GEOMETRY_SHADER 1\n"
+					"#line 1\n"
+				).				
+				addSource( source.c_str() ).
+				compile();
+
+			if( hasGeometryShader ) {
+				programBuilder.attachShader( geometryShader.handle );
+			}
+
+			programBuilder.
+				link().
+				deleteShaders().
+				dumpInfoLog( std::cout );
+
+			if( !programBuilder.fail ) {
+				break;
+			}
+			else {
+				__debugbreak();
+			}
+		}
+
+		program = programBuilder.program;
+		setLocations();
+	}
+
+	void apply() {
+		glUseProgram( program );
 	}
 };

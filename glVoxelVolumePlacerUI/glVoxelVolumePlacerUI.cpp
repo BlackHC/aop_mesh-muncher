@@ -42,6 +42,8 @@ using namespace Eigen;
 #include <boost/foreach.hpp>
 #define boost_foreach BOOST_FOREACH
 
+#include <boost/format.hpp>
+
 AlignedBox3f AlignedBox3f_fromMinSize( const Vector3f &min, const Vector3f &size ) {
 	return AlignedBox3f( min, min + size );
 }
@@ -295,74 +297,6 @@ struct EigenSummarizer {
 	}
 };
 
-std::string readFile( const char *filename ) {
-	// http://www.gamedev.net/topic/353162-reading-a-whole-file-into-a-string-with-ifstream/
-	std::ifstream file( filename );
-	return std::string( std::istreambuf_iterator<char>( file ), std::istreambuf_iterator<char>() );
-}
-
-struct Shader {
-	std::string filename;
-	GLuint program;
-
-	virtual void setLocations() {}
-
-	void init( const char *filename ) {
-		this->filename = filename;
-		reload();
-	}
-
-	void reload() {
-		glProgramBuilder programBuilder;
-
-		while( true ) {
-			const char *versionText = "#version 420 compatibility\n";
-			std::string shaderSource = readFile( "shader.glsl" );
-
-			programBuilder.
-				attachShader(
-				glShaderBuilder( GL_VERTEX_SHADER ).
-					addSource( versionText ).
-					addSource( 
-						"#define VERTEX_SHADER 1\n"
-						"#define FRAGMENT_SHADER 0\n"
-					).
-					addSource( shaderSource.c_str() ).
-					compile().
-					handle
-				).
-				attachShader( 
-				glShaderBuilder( GL_FRAGMENT_SHADER ).
-					addSource( versionText ).
-					addSource( 
-						"#define VERTEX_SHADER 0\n"
-						"#define FRAGMENT_SHADER 1\n"
-					).
-					addSource( shaderSource.c_str() ).
-					compile().
-					handle
-				).
-				link().
-				deleteShaders().
-				dumpInfoLog( std::cout );
-
-			if( !programBuilder.fail ) {
-				break;
-			}
-			else {
-				__debugbreak();
-			}
-		}
-
-		program = programBuilder.program;
-		setLocations();
-	}
-
-	void apply() {
-		glUseProgram( program );
-	}
-};
-
 struct SceneShader : Shader {
 	GLuint viewerPos;
 
@@ -374,7 +308,6 @@ struct SceneShader : Shader {
 		viewerPos = glGetUniformLocation( program, "viewerPos" );
 	}
 };
-
 
 void visualizeVoxelGrid( const VoxelGrid &voxelGrid, DebugRender::CombinedCalls &dr ) {
 	const float resolution = voxelGrid.getGrid().getResolution();
@@ -389,6 +322,125 @@ void visualizeVoxelGrid( const VoxelGrid &voxelGrid, DebugRender::CombinedCalls 
 	}
 	dr.end();
 }
+
+void visualizeWeightGrid( const FloatGrid &floatGrid, DebugRender::CombinedCalls &dr ) {
+	const float size = floatGrid.getGrid().getResolution() * 0.25;
+	dr.begin();
+
+	if( floatGrid.getGrid().count > 0 ) {
+		float maxWeight = floatGrid[0], minWeight = floatGrid[0];
+		for( int i = 0 ; i < floatGrid.getGrid().count ; ++i ) {
+			maxWeight = std::max( maxWeight, floatGrid[i] + 0.1f );
+			minWeight = std::min( minWeight, floatGrid[i] - 0.1f );
+		}
+
+		for( auto iterator = floatGrid.getIterator() ; iterator.hasMore() ; ++iterator ) {
+			dr.setPosition( floatGrid.getGrid().getPosition( iterator.getIndex3() ) );
+
+			auto &weight = floatGrid[ *iterator ];		
+			if( weight > 0 ) {			
+				dr.setColor( Vector3f( (weight + 0.1) / maxWeight, 0.0, 0.0 ) );			
+			}
+			else if( weight < 0 ) {
+				dr.setColor( Vector3f( 0.0, 0.0, (weight - 0.1) / minWeight ) );			
+			}
+			else {
+				dr.setColor( Vector3f( 0.0, 0.1, 0.0 ) );
+			}
+
+			dr.drawAbstractSphere( size * 0.25f );
+		}
+	}
+
+	dr.end();
+}
+
+struct SimpleVisualizationWindow : std::enable_shared_from_this<SimpleVisualizationWindow> {
+	DebugRender::CombinedCalls data;
+	Camera camera;
+	CameraInputControl cameraInputControl;
+	sf::Window window;
+
+	void init( const std::string &caption ) {
+		window.create( sf::VideoMode( 640, 480 ), caption.c_str(), sf::Style::Default, sf::ContextSettings(42) );
+		window.setActive();
+
+		glEnable(GL_DEPTH_TEST);
+		glDepthMask(GL_TRUE);
+		glClearDepth(1.f);
+
+		// init the camera
+		camera.perspectiveProjectionParameters.aspect = 640.0f / 480.0f;
+		camera.perspectiveProjectionParameters.FoV_y = 75.0f;
+		camera.perspectiveProjectionParameters.zNear = 0.1f;
+		camera.perspectiveProjectionParameters.zFar = 500.0f;
+
+		// input camera input control
+		cameraInputControl.init( make_nonallocated_shared(camera), make_nonallocated_shared(window) );
+	}
+
+	typedef float Seconds;
+	void update( const Seconds deltaTime, const Seconds elapsedTime ) {
+		// process events etc
+		if (window.isOpen()) {
+			// Activate the window for OpenGL rendering		
+			window.setActive();
+
+			// Event processing
+			sf::Event event;
+			while (window.pollEvent(event))
+			{
+				// Request for closing the window
+				if (event.type == sf::Event::Closed) {
+					window.close();
+					return;
+				}
+
+				if( event.type == sf::Event::Resized ) {
+					camera.perspectiveProjectionParameters.aspect = float( event.size.width ) / event.size.height;
+					glViewport( 0, 0, event.size.width, event.size.height );
+				}
+
+				cameraInputControl.handleEvent( event );
+			}
+
+			cameraInputControl.update( deltaTime, false );
+			//update( frameClock.restart().asSeconds(), clock.getElapsedTime().asSeconds() );
+						
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+			// OpenGL drawing commands go here...
+			glMatrixMode( GL_PROJECTION );
+			glLoadMatrix( camera.getProjectionMatrix() );
+			glMultMatrix( camera.getViewTransformation().matrix() );
+
+			glMatrixMode( GL_MODELVIEW );
+			glLoadIdentity();
+
+			DebugRender::ImmediateCalls ic;
+			ic.drawCordinateSystem( 1.0 );
+
+			data.render();
+
+			// End the current frame and display its contents on screen
+			window.display();
+		}
+	}
+};
+
+struct SimpleVisualizationWindowManager {
+	std::vector< std::shared_ptr< SimpleVisualizationWindow > > windows;
+
+	typedef float Seconds;
+	void update( const Seconds deltaTime, const Seconds elapsedTime ) {
+		// remove expired or closed windows
+		boost::remove_erase_if( windows, [] ( const std::shared_ptr< SimpleVisualizationWindow > &window) { return !window->window.isOpen(); } );
+
+		boost_foreach( auto &window, windows ) {
+			window->update( deltaTime, elapsedTime );
+		}
+	}
+};
 
 struct Application : boost::noncopyable {
 	ObjSceneGL objScene;
@@ -444,6 +496,8 @@ struct Application : boost::noncopyable {
 	std::vector<DebugRender::CombinedCalls> matchedCandidatePositions_;
 	std::vector<std::vector<ObjectInstance>> candidateSuggestions;
 	DebugRender::CombinedCalls voxelizedTargetVolume;
+
+	SimpleVisualizationWindowManager visualizationWindows;
 
 	// object data
 	std::vector<ObjectTemplate> objectTemplates_;
@@ -583,8 +637,10 @@ struct Application : boost::noncopyable {
 		probeVisualization.clear();
 		// fill probe database (and visualize the probes)
 		for( int i = 0 ; i < objectInstances_.items.size() ; i++ ) {
-			const AlignedBox3f bbox = objectInstances_.items[i].getBBox();
-			SimpleOrientedGrid grid = OrientedGrid_from( floor( bbox.sizes() / gridResolution_ ) + Vector3i::Constant(1), bbox.min(), gridResolution_ );
+			const Vector3f objectSize = objectInstances_.items[i].getTemplate().bbSize;
+			const Vector3i objectGridSize = floor( objectSize / gridResolution_ ) + Vector3i::Constant(1);
+			const Vector3f gridMinCorner = objectInstances_.items[i].position - objectGridSize.cast<float>() * gridResolution_ / 2;
+			SimpleOrientedGrid grid = OrientedGrid_from( objectGridSize, gridMinCorner, gridResolution_ );
 			Samples samples;
 			// TODO: cleanup!!
 			samples.init( &grid, boost::size( neighborOffsets ) );
@@ -609,6 +665,18 @@ struct Application : boost::noncopyable {
 		}
 
 		objectDatabase.finish();
+
+		for( int id = 0 ; id < objectDatabase.templates.size() ; ++id ) {
+			const auto &templateInfo = objectDatabase.templates[id];
+			if( templateInfo.instances.empty() ) {
+				continue;
+			}
+
+			auto window = std::make_shared< SimpleVisualizationWindow >();
+			visualizeWeightGrid( templateInfo.mergedWeights, window->data );
+			window->init( (boost::format( "MergeWeights %i" ) % id).str() );
+			visualizationWindows.windows.push_back( window );
+		}
 	}
 
 	void drawScene() {
@@ -988,22 +1056,25 @@ struct Application : boost::noncopyable {
 			}
 
 			// filter the suggestions
-			const float minDistance = objectTemplates_[ info.id ].bbSize.norm();
-			const float minDistanceSquared = minDistance * minDistance;
+			const Vector3f minDistance = objectTemplates_[ info.id ].bbSize;
 			for( int i = 0 ; i < info.suggestions.size() - 1 ; ++i ) {				
 				const Vector3f position = info.suggestions[i].position;
 				
 				info.suggestions.erase(
 					std::remove_if( info.suggestions.begin() + i + 1, info.suggestions.end(), 
-						[position, minDistanceSquared] ( const ObjectDatabase::TemplateSuggestions::Suggestion &suggestion ) {
-							return (position - suggestion.position).squaredNorm() <= minDistanceSquared; 
+						[position, minDistance] ( const ObjectDatabase::TemplateSuggestions::Suggestion &suggestion ) {
+							return ((position - suggestion.position).array().abs() < minDistance.array()).all(); 
 						}
 					),
 					info.suggestions.end()
 				);
 			}
 
+			int numSuggestion = 0;
 			boost_foreach( const auto &suggestion, info.suggestions ) {
+				if( ++numSuggestion > 5 ) {
+					break;
+				}
 				ObjectInstance instance;
 				instance.templateId = info.id;
 				instance.position = suggestion.position;
@@ -1078,9 +1149,14 @@ struct Application : boost::noncopyable {
 		initEverything();
 	
 		// The main loop - ends as soon as the window is closed
-		sf::Clock frameClock, clock;		
+		sf::Clock frameClock[2], clock;		
 		while (window.isOpen())
 		{
+			visualizationWindows.update( frameClock[0].restart().asSeconds(), clock.getElapsedTime().asSeconds() );
+
+			// Activate the window for OpenGL rendering
+			window.setActive();
+
 			// Event processing
 			sf::Event event;
 			while (window.pollEvent(event))
@@ -1104,11 +1180,8 @@ struct Application : boost::noncopyable {
 				}
 			}
 
-			update( frameClock.restart().asSeconds(), clock.getElapsedTime().asSeconds() );
-
-			// Activate the window for OpenGL rendering
-			window.setActive();
-
+			update( frameClock[1].restart().asSeconds(), clock.getElapsedTime().asSeconds() );
+						
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 			// OpenGL drawing commands go here...
