@@ -144,27 +144,27 @@ typedef std::vector<Probe> ProbeVector;
 
 template< typename Data >
 class DataGrid {
-	SimpleOrientedGrid grid;
+	SimpleIndexMapping3 grid;
 	std::unique_ptr<Data[]> data;
 
 public:
 	DataGrid() {}
 
-	DataGrid( const SimpleOrientedGrid &grid ) {
+	DataGrid( const SimpleIndexMapping3 &grid ) {
 		reset( grid );
 	}
 
-	void reset( const SimpleOrientedGrid &grid ) {
+	void reset( const SimpleIndexMapping3 &grid ) {
 		this->grid = grid;
 		data.reset( new Data[ grid.count ] );
 	}
 
-	const SimpleOrientedGrid & getGrid() const {
+	const SimpleIndexMapping3 & getGrid() const {
 		return grid;
 	}
 
-	SimpleOrientedGrid::Iterator getIterator() const {
-		return SimpleOrientedGrid::Iterator( grid );
+	SimpleIndexMapping3::Iterator getIterator() const {
+		return SimpleIndexMapping3::Iterator( grid );
 	}
 
 	Data & operator[] ( const int index ) {

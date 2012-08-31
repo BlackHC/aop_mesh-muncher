@@ -540,7 +540,7 @@ struct Application {
 		// fill probe database (and visualize the probes)
 		for( int i = 0 ; i < objectInstances_.items.size() ; i++ ) {
 			const AlignedBox3f bbox = objectInstances_.items[i].getBBox();
-			ProbeGrid probeGrid( OrientedGrid_from( floor( bbox.sizes() / gridResolution_ ) + Vector3i::Constant(1), bbox.min(), gridResolution_ ) );
+			ProbeGrid probeGrid( createIndexMapping( floor( bbox.sizes() / gridResolution_ ) + Vector3i::Constant(1), bbox.min(), gridResolution_ ) );
 
 			renderContext.disableObjectIndex = i;			
 			if( probeMask == MASK_ALL_SIBLINGS ) {
@@ -903,7 +903,7 @@ struct Application {
 	}
 
 	void Do_findCandidates() {
-		ProbeGrid probeGrid( OrientedGrid_from( Vector3i::Constant(1) + ceil( targetCube_.sizes() / gridResolution_ ), targetCube_.min(), gridResolution_ ) );
+		ProbeGrid probeGrid( createIndexMapping( Vector3i::Constant(1) + ceil( targetCube_.sizes() / gridResolution_ ), targetCube_.min(), gridResolution_ ) );
 
 		ProbeSettings settings;
 		settings.maxDelta = gridResolution_;

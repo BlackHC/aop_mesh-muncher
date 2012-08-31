@@ -45,7 +45,7 @@ const Vector3f neighborOffsets[] = {
 	Vector3f( -1, -1, 1 ), Vector3f( 0, -1, 1 ),  Vector3f( -1, 1, 1 ), Vector3f( 0, 1, 1 )
 };
 
-template< typename Data, typename OrientedGrid = SimpleOrientedGrid >
+template< typename Data, typename OrientedGrid = SimpleIndexMapping3 >
 class DataGrid : public boost::noncopyable {
 	OrientedGrid grid;
 	std::unique_ptr<Data[]> data;
@@ -130,11 +130,11 @@ struct Voxel {
 	Voxel() : weight( 0 ), color( Vector3f::Zero() ), count( 0 ) {}
 };
 
-typedef DataGrid<Voxel, SubOrientedGrid> VoxelGrid;
+typedef DataGrid<Voxel, SubIndexMapping> VoxelGrid;
 
 void voxelize( const Samples &probeGrid, VoxelGrid &voxelGrid, float maxDistance ) {
 	// use the same resolution for now
-	voxelGrid.reset( probeGrid.getGrid().getExpandedGrid( maxDistance ) );
+	voxelGrid.reset( probeGrid.getGrid().createExpandedMapping( maxDistance ) );
 
 	const float resolution = probeGrid.getGrid().getResolution();
 	for( auto iterator = probeGrid.getGrid().getIterator() ; iterator.hasMore() ; ++iterator ) {
@@ -194,8 +194,8 @@ void sampleProbes( Samples &samples, std::function<void()> renderSceneCallback, 
 	sampler.sample( renderSceneCallback );
 }
 
-typedef DataGrid<int, SubOrientedGrid> SumGrid;
-typedef DataGrid< float, SimpleOrientedGrid > FloatGrid;
+typedef DataGrid<int, SubIndexMapping > SumGrid;
+typedef DataGrid< float, SimpleIndexMapping3 > FloatGrid;
 
 // build a sum/potential grid over voxels[ * ].count > 0
 void buildSumGrid( const VoxelGrid &voxels, SumGrid &sumGrid ) {
@@ -299,7 +299,7 @@ struct ObjectDatabase : boost::noncopyable {
 			}
 
 			// assert: all grids are equal
-			mergedWeights.reset( OrientedGrid_from( instances[0].voxelGrid.getGrid().getSize(), Eigen::Vector3f::Zero(), instances[0].voxelGrid.getGrid().getResolution() ) );
+			mergedWeights.reset( createIndexMapping( instances[0].voxelGrid.getGrid().getSize(), Eigen::Vector3f::Zero(), instances[0].voxelGrid.getGrid().getResolution() ) );
 			FloatGrid tempGrid( mergedWeights.getGrid() );
 
 			for( int j = 0 ; j < instances.size() ; ++j ) {
@@ -386,7 +386,7 @@ struct ObjectDatabase : boost::noncopyable {
 	Suggestions findSuggestions( const VoxelGrid &targetVolume ) {
 		Suggestions results;
 
-		SimpleOrientedGrid originIndexer = targetVolume.getGrid().withBeginCornerAtOrigin();
+		SimpleIndexMapping3 originIndexer = targetVolume.getGrid().withBeginCornerAtOrigin();
 
 		/*SumGrid sumGrid;
 		buildSumGrid( targetVolume, sumGrid );*/

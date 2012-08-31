@@ -17,7 +17,7 @@ namespace Math {
 	const double SQRT1_2 = 0.707106781186547524401;
 
 	inline float cotf( float radians ) {
-		return std::tanf( PI_2 - radians );
+		return std::tanf( (float) PI_2 - radians );
 	}
 }
 
@@ -62,7 +62,7 @@ namespace Eigen {
 
 	typedef float Degrees;
 	static Matrix4f createPerspectiveProjectionMatrix( const Degrees FoV_y, const float aspectRatio, const float zNear, const float zFar ) {
-		const float f = Math::cotf( FoV_y * Math::PI / 180 / 2 );
+		const float f = Math::cotf( FoV_y * 0.5f * (float) Math::PI / 180.0f );
 		const float depth = zFar - zNear;
 
 		return (Matrix4f() <<
@@ -79,10 +79,10 @@ namespace Eigen {
 		const float depth = zFar - zNear;
 
 		return (Matrix4f() <<
-			1.0 / halfSize.x(),		0,					zStep.x() / halfSize.x(),	-center.x() / halfSize.x(),
-			0,						1.0 / halfSize.y(),	zStep.y() / halfSize.y(),	-center.y() / halfSize.y(),
-			0,						0,					-2.0 / depth,				-(zFar + zNear) / depth,
-			0,						0,					0,							1.0).finished();
+			1.0f / halfSize.x(),	0,					zStep.x() / halfSize.x(),	-center.x() / halfSize.x(),
+			0,						1.0f / halfSize.y(),zStep.y() / halfSize.y(),	-center.y() / halfSize.y(),
+			0,						0,					-2.0f / depth,				-(zFar + zNear) / depth,
+			0,						0,					0,							1.0f).finished();
 	}
 
 	// TODO: rename header to something more fitting.. eigenMatrixHelpers?

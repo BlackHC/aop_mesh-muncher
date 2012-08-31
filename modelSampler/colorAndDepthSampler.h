@@ -31,21 +31,21 @@ public:
 	};
 
 private:
-	const SimpleOrientedGrid *grid;
+	const SimpleIndexMapping3 *grid;
 	
 	// xyz
 	std::unique_ptr<Sample[]> samples;
 	int numDirections;
 
 public:
-	void init( const SimpleOrientedGrid *grid, int numDirections ) {
+	void init( const SimpleIndexMapping3 *grid, int numDirections ) {
 		this->grid = grid;
 		this->numDirections = numDirections;
 
 		samples.reset( new Sample[ grid->count * numDirections ] );
 	}
 
-	const SimpleOrientedGrid & getGrid() const {
+	const SimpleIndexMapping3 & getGrid() const {
 		return *grid;
 	}
 
@@ -112,7 +112,7 @@ struct VolumeSampler {
 	ReadOncePBO<DepthSample> depthPBO;
 	ReadOncePBO<ColorSample> colorPBO;
 
-	const SimpleOrientedGrid *grid;
+	const SimpleIndexMapping3 *grid;
 
 	float maxDepth;
 
@@ -204,7 +204,7 @@ struct VolumeSampler {
 
 			BOOST_VERIFY( boost::algorithm::all_of( subDirections, [&permutation]( const Eigen::Vector3f &v ) { return abs( v[permutation[2]] ) > 0.1; } ) );
 
-			SimpleOrientedGrid permutedGrid = grid->permuted( permutation );
+			SimpleIndexMapping3 permutedGrid = grid->permuted( permutation );
 
 			glPushAttrib(GL_VIEWPORT_BIT);
 			glViewport(0, 0, permutedGrid.size[0], permutedGrid.size[1]); 

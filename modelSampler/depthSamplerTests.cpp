@@ -23,7 +23,7 @@ TEST( DepthSampler, rotatedCubeTest ) {
 	scene.drawBox( Vector3f( 8 * scaleFactor, 8, 8 * scaleFactor ), false, true );
 	scene.end();
 
-	SimpleOrientedGrid grid = OrientedGrid_from( Vector3i::Constant(7), Vector3f::Constant(-3), 1.0 );
+	SimpleIndexMapping3 grid = createIndexMapping( Vector3i::Constant(7), Vector3f::Constant(-3), 1.0 );
 
 	DepthSampler sampler;
 
@@ -75,7 +75,7 @@ TEST( DepthSampler, rotatedBoxTest ) {
 	scene.drawBox( Vector3f( 8 * scaleFactor, 12, 16 * scaleFactor ), false, true );
 	scene.end();
 
-	SimpleOrientedGrid grid = OrientedGrid_from( Vector3i::Constant(7), Vector3f::Constant(-3), 1.0 );
+	SimpleIndexMapping3 grid = createIndexMapping( Vector3i::Constant(7), Vector3f::Constant(-3), 1.0 );
 
 	DepthSampler sampler;
 
@@ -124,7 +124,7 @@ TEST( DepthSampler, cubeTest ) {
 	scene.drawBox( Vector3f::Constant(8), false, true );
 	scene.end();
 
-	SimpleOrientedGrid grid = OrientedGrid_from( Vector3i::Constant(7), Vector3f::Constant(-3), 1.0 );
+	SimpleIndexMapping3 grid = createIndexMapping( Vector3i::Constant(7), Vector3f::Constant(-3), 1.0 );
 
 	DepthSampler sampler;
 
@@ -172,7 +172,7 @@ TEST( DepthSampler, boxTest ) {
 	scene.drawBox( Vector3f(8, 12, 16), false, true );
 	scene.end();
 
-	SimpleOrientedGrid grid = OrientedGrid_from( Vector3i(7, 11, 15), Vector3f(-3, -5, -7), 1.0 );
+	SimpleIndexMapping3 grid = createIndexMapping( Vector3i(7, 11, 15), Vector3f(-3, -5, -7), 1.0 );
 
 	DepthSampler sampler;
 
@@ -222,7 +222,7 @@ TEST( DepthSampler, boxTest90DegreeRotated ) {
 	scene.end();
 
 	const int permutation[3] = {2,0,1};
-	SimpleOrientedGrid grid = OrientedGrid_from( Vector3i(7, 11, 15), Vector3f(-3, -5, -7), 1.0 ).permuted( permutation );
+	SimpleIndexMapping3 grid = createIndexMapping( Vector3i(7, 11, 15), Vector3f(-3, -5, -7), 1.0 ).permuted( permutation );
 	
 	DepthSampler sampler;
 
@@ -270,7 +270,7 @@ TEST( DepthSampler, nonUnitGridCubeTest ) {
 	scene.drawBox( Vector3f::Constant(16), false, true );
 	scene.end();
 
-	SimpleOrientedGrid grid = OrientedGrid_from( Vector3i::Constant(7), Vector3f::Constant(-6), 2.0 );
+	SimpleIndexMapping3 grid = createIndexMapping( Vector3i::Constant(7), Vector3f::Constant(-6), 2.0 );
 
 	DepthSampler sampler;
 

@@ -640,7 +640,7 @@ struct Application : boost::noncopyable {
 			const Vector3f objectSize = objectInstances_.items[i].getTemplate().bbSize;
 			const Vector3i objectGridSize = floor( objectSize / gridResolution_ ) + Vector3i::Constant(1);
 			const Vector3f gridMinCorner = objectInstances_.items[i].position - objectGridSize.cast<float>() * gridResolution_ / 2;
-			SimpleOrientedGrid grid = OrientedGrid_from( objectGridSize, gridMinCorner, gridResolution_ );
+			SimpleIndexMapping3 grid = createIndexMapping( objectGridSize, gridMinCorner, gridResolution_ );
 			Samples samples;
 			// TODO: cleanup!!
 			samples.init( &grid, boost::size( neighborOffsets ) );
@@ -1006,7 +1006,7 @@ struct Application : boost::noncopyable {
 	}
 
 	void Do_findCandidates() {
-		SimpleOrientedGrid probeGrid( OrientedGrid_from( Vector3i::Constant(1) + ceil( targetCube_.sizes() / gridResolution_ ), targetCube_.min(), gridResolution_ ) );
+		SimpleIndexMapping3 probeGrid( createIndexMapping( Vector3i::Constant(1) + ceil( targetCube_.sizes() / gridResolution_ ), targetCube_.min(), gridResolution_ ) );
 		Samples samples;
 		samples.init( &probeGrid, boost::size( neighborOffsets ) );
 

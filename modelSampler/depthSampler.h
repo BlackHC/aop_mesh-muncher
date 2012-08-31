@@ -17,21 +17,21 @@
 #include <boost/timer/timer.hpp>
 
 class DepthSamples {
-	const SimpleOrientedGrid *grid;
+	const SimpleIndexMapping3 *grid;
 
 	// xyz
 	std::unique_ptr<float[]> depthSamples;
 	int numDirections;
 
 public:
-	void init( const SimpleOrientedGrid *grid, int numDirections ) {
+	void init( const SimpleIndexMapping3 *grid, int numDirections ) {
 		this->grid = grid;
 		this->numDirections = numDirections;
 
 		depthSamples.reset( new float[ grid->count * numDirections ] );
 	}
 
-	const SimpleOrientedGrid &getGrid() const {
+	const SimpleIndexMapping3 &getGrid() const {
 		return *grid;
 	}
 
@@ -63,7 +63,7 @@ void report_num_threads(int level)
 struct DepthSampler {
 	GLuint pbo;
 
-	const SimpleOrientedGrid *grid;
+	const SimpleIndexMapping3 *grid;
 
 	float maxDepth;
 
@@ -83,7 +83,7 @@ struct DepthSampler {
 	}
 
 	void init() {
-		numDirections = directions[0].size() + directions[1].size() + directions[2].size();
+		numDirections = int( directions[0].size() + directions[1].size() + directions[2].size() );
 		depthSamples.init( grid, numDirections );
 
 		glGenBuffers( 1, &pbo );
@@ -110,7 +110,7 @@ struct DepthSampler {
 		*/
 #if 1
 		// semi sequential writes
-		int directionOffset[3] = { 0, directions[0].size(), numDirections - directions[2].size() };
+		int directionOffset[3] = { 0, (int) directions[0].size(), (int) numDirections - directions[2].size() };
 
 		omp_set_nested( true );
 #pragma omp parallel for num_threads(3)
@@ -225,7 +225,7 @@ struct DepthSampler {
 
 			BOOST_VERIFY( boost::algorithm::all_of( subDirections, [&permutation]( const Eigen::Vector3f &v ) { return abs( v[permutation[2]] ) > 0.1; } ) );
 
-			SimpleOrientedGrid permutedGrid = grid->permuted( permutation );
+			SimpleIndexMapping3 permutedGrid = grid->permuted( permutation );
 
 			glBindBuffer( GL_PIXEL_PACK_BUFFER, pbo );
 
@@ -254,7 +254,7 @@ struct DepthSampler {
 					glLoadIdentity();
 					
 					// looking down the negative z axis by default --- so flip if necessary (this changes winding though!!!)
-					glScalef( 1.0, 1.0, (permutedDirection.z() > 0 ? -1.0 : 1.0) * permutedGrid.getDirection( Eigen::Vector3f::UnitZ() ).norm() );
+					glScalef( 1.0, 1.0, (permutedDirection.z() > 0 ? -1.0f : 1.0f) * permutedGrid.getDirection( Eigen::Vector3f::UnitZ() ).norm() );
 
 					// pixel alignment and "layer selection"
 					glTranslatef( 0.5, 0.5, -i );

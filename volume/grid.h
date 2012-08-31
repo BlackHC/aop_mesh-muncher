@@ -250,11 +250,11 @@ public:
 	}
 };
 
-SimpleIndexer3::Iterator SimpleIndexer3::getIterator() const {
+inline SimpleIndexer3::Iterator SimpleIndexer3::getIterator() const {
 	return Iterator( *this );
 }
 
-SubIndexer3::Iterator SubIndexer3::getIterator() const {
+inline SubIndexer3::Iterator SubIndexer3::getIterator() const {
 	return Iterator( *this );
 }
 
@@ -308,12 +308,12 @@ public:
 	}
 };
 
-SimpleIndexer3::SubIterator SimpleIndexer3::getSubIterator( const Eigen::Vector3i &beginCorner, const Eigen::Vector3i &endCorner )
+inline SimpleIndexer3::SubIterator SimpleIndexer3::getSubIterator( const Eigen::Vector3i &beginCorner, const Eigen::Vector3i &endCorner )
 {
 	return SubIterator( *this, beginCorner, endCorner );
 }
 
-SubIndexer3::SubIterator SubIndexer3::getSubIterator( const Eigen::Vector3i &beginCorner, const Eigen::Vector3i &endCorner )
+inline SubIndexer3::SubIterator SubIndexer3::getSubIterator( const Eigen::Vector3i &beginCorner, const Eigen::Vector3i &endCorner )
 {
 	return SubIterator( *this, beginCorner, endCorner );
 }

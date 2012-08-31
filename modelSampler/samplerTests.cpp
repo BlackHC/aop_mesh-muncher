@@ -23,7 +23,7 @@ TEST( Sampler, rotatedCubeTest ) {
 	scene.drawBox( Vector3f( 8 * scaleFactor, 8, 8 * scaleFactor ), false, true );
 	scene.end();
 
-	SimpleOrientedGrid grid = OrientedGrid_from( Vector3i::Constant(7), Vector3f::Constant(-3), 1.0 );
+	SimpleIndexMapping3 grid = createIndexMapping( Vector3i::Constant(7), Vector3f::Constant(-3), 1.0 );
 
 	VolumeSampler<> sampler;
 	Samples samples;
@@ -78,7 +78,7 @@ TEST( Sampler, rotatedBoxTest ) {
 	scene.drawBox( Vector3f( 8 * scaleFactor, 12, 16 * scaleFactor ), false, true );
 	scene.end();
 
-	SimpleOrientedGrid grid = OrientedGrid_from( Vector3i::Constant(7), Vector3f::Constant(-3), 1.0 );
+	SimpleIndexMapping3 grid = createIndexMapping( Vector3i::Constant(7), Vector3f::Constant(-3), 1.0 );
 
 	VolumeSampler<> sampler;
 	Samples samples;
@@ -130,7 +130,7 @@ TEST( Sampler, cubeTest ) {
 	scene.drawBox( Vector3f::Constant(8), false, true );
 	scene.end();
 
-	SimpleOrientedGrid grid = OrientedGrid_from( Vector3i::Constant(7), Vector3f::Constant(-3), 1.0 );
+	SimpleIndexMapping3 grid = createIndexMapping( Vector3i::Constant(7), Vector3f::Constant(-3), 1.0 );
 
 	VolumeSampler<> sampler;
 	Samples samples;
@@ -181,7 +181,7 @@ TEST( Sampler, boxTest ) {
 	scene.drawBox( Vector3f(8, 12, 16), false, true );
 	scene.end();
 
-	SimpleOrientedGrid grid = OrientedGrid_from( Vector3i(7, 11, 15), Vector3f(-3, -5, -7), 1.0 );
+	SimpleIndexMapping3 grid = createIndexMapping( Vector3i(7, 11, 15), Vector3f(-3, -5, -7), 1.0 );
 
 	VolumeSampler<> sampler;
 	Samples samples;
@@ -234,7 +234,7 @@ TEST( Sampler, boxTest90DegreeRotated ) {
 	scene.end();
 
 	const int permutation[3] = {2,0,1};
-	SimpleOrientedGrid grid = OrientedGrid_from( Vector3i(7, 11, 15), Vector3f(-3, -5, -7), 1.0 ).permuted( permutation );
+	SimpleIndexMapping3 grid = createIndexMapping( Vector3i(7, 11, 15), Vector3f(-3, -5, -7), 1.0 ).permuted( permutation );
 	
 	VolumeSampler<> sampler;
 	Samples samples;
@@ -285,7 +285,7 @@ TEST( Sampler, nonUnitGridCubeTest ) {
 	scene.drawBox( Vector3f::Constant(16), false, true );
 	scene.end();
 
-	SimpleOrientedGrid grid = OrientedGrid_from( Vector3i::Constant(7), Vector3f::Constant(-6), 2.0 );
+	SimpleIndexMapping3 grid = createIndexMapping( Vector3i::Constant(7), Vector3f::Constant(-6), 2.0 );
 
 	VolumeSampler<> sampler;
 	Samples samples;
@@ -336,7 +336,7 @@ TEST( Sampler, nonUnitGridCubeTest2 ) {
 	scene.drawBox( Vector3f::Constant(16), false, true );
 	scene.end();
 
-	SimpleOrientedGrid grid = OrientedGrid_from( Vector3i::Constant(31), Vector3f::Constant(-7.5), 0.5 );
+	SimpleIndexMapping3 grid = createIndexMapping( Vector3i::Constant(31), Vector3f::Constant(-7.5), 0.5 );
 
 	VolumeSampler<> sampler;
 	Samples samples;

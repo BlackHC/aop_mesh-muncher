@@ -21,6 +21,7 @@ INCLUDE_DIRECTORIES(
 	../modelSampler
 	../objScene
 	../cielab
+	../volume
 	)
 
 # ../gtest/gtest_main.cc
@@ -40,7 +41,7 @@ ADD_EXECUTABLE(glVolumePlacerUI
 	ui.h
 	../modelSampler/colorAndDepthSampler.h
 	../modelSampler/eigenProjectionMatrices.h
-	../modelSampler/grid.h
+	../volume/grid.h
 	../positionSolver/camera.h
 	../positionSolver/cameraInputControl.h
 	../positionSolver/debugRender.h

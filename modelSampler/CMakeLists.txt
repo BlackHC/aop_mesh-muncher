@@ -8,7 +8,7 @@ ADD_OPENMP_FLAGS()
 FIND_PACKAGE(OpenGL)
 
 # Must link both against niven and Boost
-INCLUDE_DIRECTORIES(${ANTTWEAKBAR_INCLUDE_DIR} ${NIVEN_INCLUDE_DIR} ${SFML_INCLUDE_DIR} ${EIGEN3_INCLUDE_DIR} ${OPENGL_INCLUDE_DIR} ${Boost_INCLUDE_DIR} ${GLEW_INCLUDE_DIR} ../gtest/ ../positionSolver/)
+INCLUDE_DIRECTORIES(${ANTTWEAKBAR_INCLUDE_DIR} ${NIVEN_INCLUDE_DIR} ${SFML_INCLUDE_DIR} ${EIGEN3_INCLUDE_DIR} ${OPENGL_INCLUDE_DIR} ${Boost_INCLUDE_DIR} ${GLEW_INCLUDE_DIR} ../gtest ../volume/ ../positionSolver/)
 
 # ../gtest/gtest_main.cc
 ADD_EXECUTABLE(modelSampler
@@ -20,16 +20,17 @@ ADD_EXECUTABLE(modelSampler
 	depthSampler.h
 	colorAndDepthSampler.h
 	modelSampler.cpp 
-	grid.h
+	../volume/grid.h
 	eigenProjectionMatrices.h
 	../gtest/gtest-all.cc
 	)
 
 ADD_EXECUTABLE(modelSamplerTests
 	${GLEW_SOURCE_FILE}
+	depthSampler.h
+	colorAndDepthSampler.h
 	depthSamplerTests.cpp
-	samplerTests.cpp
-	gridTests.cpp
+	samplerTests.cpp	
 	shearMatrixTests.cpp
 	../gtest/gtest_main.cc
 	../gtest/gtest-all.cc

@@ -89,7 +89,7 @@ void main() {
 	debugScene.end();
 
 	//Grid grid( Vector3i( 4, 8, 16 ), Vector3f( 0.0, 0.0, 0.0 ), 0.25 );
-	SimpleOrientedGrid grid = OrientedGrid_from( Vector3i(7, 7, 7), Vector3f(-3, -3, -3), 1.0 );
+	SimpleIndexMapping3 grid = createIndexMapping( Vector3i(7, 7, 7), Vector3f(-3, -3, -3), 1.0 );
 
 	VolumeSampler<> sampler;
 	Samples samples;
