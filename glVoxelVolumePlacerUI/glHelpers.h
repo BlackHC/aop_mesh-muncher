@@ -3,6 +3,8 @@
 #include <GL/glew.h>
 #include <string>
 #include <fstream>
+#include <vector>
+#include <iostream>
 
 struct glShaderBuilder {
 	std::vector< const char * > sourceBuffers;

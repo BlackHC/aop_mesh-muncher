@@ -20,6 +20,8 @@ ADD_EXECUTABLE(glVoxelizer
 	../glVoxelVolumePlacerUI/glHelpers.h
 	../volume/gridStorage.h
 	../volume/grid.h
+	voxelizer.h
+	voxelizer.cpp
 	glVoxelizer.cpp 
 	eigenProjectionMatrices.h
 	../gtest/gtest-all.cc

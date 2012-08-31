@@ -1,5 +1,6 @@
 #pragma once
 
+#include <boost/noncopyable.hpp>
 #include <Eigen/Eigen>
 
 inline Eigen::Vector3i ceil( const Eigen::Vector3f &v ) {
