@@ -159,14 +159,22 @@ struct Shader {
 	std::string source;
 	
 	bool hasGeometryShader;
+	bool hasFragmentShader;
+	bool hasVertexShader;
 
 	GLuint program;
 
+	Shader() : program( 0 ), hasGeometryShader( false  ), hasFragmentShader( true ), hasVertexShader( true ) {}
+	~Shader() {
+		if( program ) {
+			glDeleteProgram( program );
+		}
+	}
+
 	virtual void setLocations() {}
 
-	void init( const char *filename, const char *include = "", bool hasGeometryShader = false ) {
+	void init( const char *filename, const char *include = "" ) {
 		this->filename = filename;
-		this->hasGeometryShader = hasGeometryShader;
 		this->include = include;
 
 		// load the shader
@@ -218,10 +226,6 @@ struct Shader {
 				addSource( source.c_str() ).
 				compile();
 
-			programBuilder.
-				attachShader( vertexShader.handle ).
-				attachShader( fragmentShader.handle );
-
 			glShaderBuilder geometryShader( GL_GEOMETRY_SHADER );
 
 			geometryShader.
@@ -235,6 +239,14 @@ struct Shader {
 				).				
 				addSource( source.c_str() ).
 				compile();
+			
+			if( hasVertexShader ) {
+				programBuilder.attachShader( vertexShader.handle );
+			}
+
+			if( hasFragmentShader ) {
+				programBuilder.attachShader( fragmentShader.handle );
+			}
 
 			if( hasGeometryShader ) {
 				programBuilder.attachShader( geometryShader.handle );

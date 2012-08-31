@@ -14,10 +14,10 @@ public:
 	}
 
 	// move constructor
-	GridStorage( GridStorage &&other ) : mapping( std::move( other.grid ) ), data( std::move( other.data ) ) {}
+	GridStorage( GridStorage &&other ) : mapping( std::move( other.mapping ) ), data( std::move( other.data ) ) {}
 
 	GridStorage & operator = ( GridStorage &&other ) {
-		mapping = std::move( other.grid );
+		mapping = std::move( other.mapping );
 		data = std::move( other.data );
 
 		return *this;

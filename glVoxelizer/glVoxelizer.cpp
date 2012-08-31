@@ -33,8 +33,16 @@ using namespace Eigen;
 
 #include "Debug.h"
 
+#include <boost/timer/timer.hpp>
+
 typedef GridStorage<Vector3f> ColorGridStorage;
 typedef GridStorage<unsigned __int32> HitCountGrid;
+
+struct Color4ub {
+	unsigned char r,g,b,a;
+};
+
+typedef GridStorage<Color4ub> ColorGrid;
 
 // wrap_nonallocated_shared?
 template<typename T>
@@ -98,17 +106,33 @@ struct BoolVariableControl : EventHandler {
 	}
 };
 
+void visualizeColorGrid( const ColorGrid &grid, DebugRender::CombinedCalls &dr ) {
+	const float size = grid.getMapping().getResolution();
+	dr.begin();
+	for( auto iterator = grid.getIterator() ; iterator.hasMore() ; ++iterator ) {
+		const auto &color = grid[ *iterator ];
+
+		if( color.a != 0 ) {
+			dr.setPosition( grid.getMapping().getPosition( iterator.getIndex3() ) );		
+			glColor3ub( color.r, color.g, color.b );
+			//dr.drawAbstractSphere( size );
+			dr.drawBox( Vector3f::Constant( size ), false );
+		}
+	}
+	dr.end();
+}
 void visualizeHitCountGrid( const HitCountGrid &hitCountGrid, DebugRender::CombinedCalls &dr ) {
-	const float size = 0.25f * hitCountGrid.getMapping().getResolution();
+	const float size = hitCountGrid.getMapping().getResolution();
 	dr.begin();
 	for( auto iterator = hitCountGrid.getIterator() ; iterator.hasMore() ; ++iterator ) {
 		const unsigned int &hitCount = hitCountGrid[ *iterator ];
-		if( !hitCount ) {
-			continue;
+		
+		if( hitCount ) {
+			dr.setPosition( hitCountGrid.getMapping().getPosition( iterator.getIndex3() ) );		
+			dr.setColor( Vector3f(1.0, 0.0, 0.0) * (0.2f + hitCount / 6.0f ) + Vector3f(0.0, 1.0, 0.0) * hitCount / 25.0f + Vector3f(0.0, 0.0, 1.0) * hitCount / 125.0f );
+			//dr.drawAbstractSphere( size );
+			dr.drawBox( Vector3f::Constant( size ), false );
 		}
-		dr.setPosition( hitCountGrid.getMapping().getPosition( iterator.getIndex3() ) );
-		dr.setColor( Vector3f(1.0, 0.0, 0.0) * (0.2f + hitCount / 6.0f ) + Vector3f(0.0, 1.0, 0.0) * hitCount / 25.0f + Vector3f(0.0, 0.0, 1.0) * hitCount / 125.0f );
-		dr.drawAbstractSphere( size );
 	}
 	dr.end();
 }
@@ -202,15 +226,19 @@ struct SimpleVisualizationWindowManager {
 
 struct SplatShader : Shader {
 	void init() {
-		Shader::init( "voxelizer.glsl", "#define SPLAT_PROGRAM\n", true );
+		hasGeometryShader = true;
+		Shader::init( "voxelizer.glsl", "#define SPLAT_PROGRAM\n" );
 	}
 
 	GLuint mainAxisProjection[3];
+	GLuint mainAxisPermutation[3];
+
 	GLuint volumeChannels[4];
 
 	void setLocations() {
 		for( int i = 0 ; i < 3 ; ++i ) {
 			mainAxisProjection[i] = glGetUniformLocation( program, boost::str( boost::format( "mainAxisProjection[%i]" ) % i ).c_str() );
+			mainAxisPermutation[i] = glGetUniformLocation( program, boost::str( boost::format( "mainAxisPermutation[%i]" ) % i ).c_str() );
 		}
 		for( int i = 0 ; i < 4 ; ++i ) {
 			volumeChannels[i] = glGetUniformLocation( program, boost::str( boost::format( "volumeChannels[%i]" ) % i ).c_str() );
@@ -218,26 +246,46 @@ struct SplatShader : Shader {
 	}
 };
 
-void voxelizeScene( const SimpleOrientedIndexMapping3 &indexMapping3 ) {
+struct MuxerShader : Shader {
+	void init() {
+		hasFragmentShader = false;
+		Shader::init( "voxelizer.glsl", "#define MUXER_PROGRAM\n" );
+	}
+
+	GLuint volumeChannels[4], volume, sizeHelper;
+
+	void setLocations() {
+		for( int i = 0 ; i < 4 ; ++i ) {
+			volumeChannels[i] = glGetUniformLocation( program, boost::str( boost::format( "volumeChannels[%i]" ) % i ).c_str() );
+		}
+		volume = glGetUniformLocation( program, "volume" );
+		sizeHelper = glGetUniformLocation( program, "sizeHelper" );
+	}
+};
+
+void voxelizeScene( const SimpleOrientedIndexMapping3 &indexMapping3, ColorGrid &grid ) {
+	boost::timer::auto_cpu_timer timer;
+
 	glPushAttrib( GL_ALL_ATTRIB_BITS );
+	glPushClientAttrib( GL_CLIENT_ALL_ATTRIB_BITS );
 
 	glPixelStorei( GL_PACK_ALIGNMENT, 1 );
 
 	SplatShader splatShader;
 	splatShader.init();
 
-	unsigned __int32 *volumeBuffer[4];
-
+	unsigned __int32 *volumeChannelsData[4];
+	
 	splatShader.apply();
 
 	GLuint volumeChannels[4];
 	glGenTextures( 4, volumeChannels );
 	for( int i = 0 ; i < 4 ; ++i ) {
-		volumeBuffer[i] = new unsigned __int32[ indexMapping3.count ];
-		memset( volumeBuffer[i], 0, sizeof( __int32 ) * indexMapping3.count );
+		volumeChannelsData[i] = new unsigned __int32[ indexMapping3.count ];
+		memset( volumeChannelsData[i], 0, sizeof( __int32 ) * indexMapping3.count );
 
 		glBindTexture( GL_TEXTURE_3D, volumeChannels[i] );
-		glTexImage3D( GL_TEXTURE_3D, 0, GL_R32UI, indexMapping3.getSize().x(), indexMapping3.getSize().y(), indexMapping3.getSize().z(), 0, GL_RED_INTEGER, GL_UNSIGNED_INT, volumeBuffer[i] );
+		glTexImage3D( GL_TEXTURE_3D, 0, GL_R32UI, indexMapping3.getSize().x(), indexMapping3.getSize().y(), indexMapping3.getSize().z(), 0, GL_RED_INTEGER, GL_UNSIGNED_INT, volumeChannelsData[i] );
 
 		glBindImageTexture( i, volumeChannels[i], 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32UI );
 		
@@ -266,12 +314,13 @@ void voxelizeScene( const SimpleOrientedIndexMapping3 &indexMapping3 ) {
 	glDepthMask( GL_FALSE );
 
 	// GL_PROJECTION is not needed
-	int permutations[3][3] = { {2,1,0}, {2,0,1}, {0,1,2} };
+	int permutations[3][3] = { {1,2,0}, {2,0,1}, {0,1,2} };
 	for( int i = 0 ; i < 3 ; ++i ) {
 		int *permutation = permutations[i];
 		const Vector3i permutedSize = permute( indexMapping3.getSize(), permutation );
-		auto projection = Eigen::createOrthoProjectionMatrixLH( Vector2f::Constant( -0.5 ), permutedSize.head<2>().cast<float>() + Vector2f::Constant( -0.5 ), 0, permutedSize.z() ) * unpermutedToPermutedMatrix( permutation ); 
+		auto projection = Eigen::createOrthoProjectionMatrixLH( Vector2f::Constant( -0.5 ), permutedSize.head<2>().cast<float>() + Vector2f::Constant( -0.5 ), 0, permutedSize.z() ); 
 		glUniform( splatShader.mainAxisProjection[i], projection );
+		glUniform( splatShader.mainAxisPermutation[i], unpermutedToPermutedMatrix( permutation ).topLeftCorner<3,3>().matrix() );
 
 		glViewportIndexedf( i, 0, 0, permutedSize.x(), permutedSize.y() );
 	}
@@ -281,26 +330,57 @@ void voxelizeScene( const SimpleOrientedIndexMapping3 &indexMapping3 ) {
 	
 	debugScene.render();
 	
-	glUseProgram( 0 );
+	MuxerShader muxerShader;
+	muxerShader.init();
 
-	glBindTexture( GL_TEXTURE_3D, volumeChannels[3] );
-	glGetTexImage( GL_TEXTURE_3D, 0, GL_RED_INTEGER, GL_UNSIGNED_INT, volumeBuffer[3] );
+	muxerShader.apply();
 
+	Color4ub *volumeData;
+	GLuint volume;
+	glGenTextures( 1, &volume );
+
+	volumeData = new Color4ub[ indexMapping3.count ];
+	glBindTexture( GL_TEXTURE_3D, volume );
+	glTexStorage3D( GL_TEXTURE_3D, 1, GL_RGBA8, indexMapping3.getSize().x(), indexMapping3.getSize().y(), indexMapping3.getSize().z() );
+	
+	for( int i = 0 ; i < 4 ; ++i ) {
+		glBindImageTexture( i, volumeChannels[i], 0, GL_TRUE, 0, GL_READ_ONLY, GL_R32UI );
+		glUniform1i( muxerShader.volumeChannels[i], i );
+	}
+	glBindImageTexture( 4, volume, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA8 );
+	glUniform1i( muxerShader.volume, 4 );
+
+	glUniform3i( muxerShader.sizeHelper, indexMapping3.getSize().x(), indexMapping3.getSize().y(), indexMapping3.getSize().x() * indexMapping3.getSize().y() );
+
+	glEnableClientState( GL_VERTEX_ARRAY );
+	float zero[3] = {0.0, 0.0, 0.0};
+	glVertexPointer( 3, GL_FLOAT, 0, &zero );
+
+	//glEnable( GL_RASTERIZER_DISCARD );
+	glDrawArraysInstanced( GL_POINTS, 0, 1, indexMapping3.count );
+
+	glGetTexImage( GL_TEXTURE_3D, 0, GL_RGBA, GL_UNSIGNED_BYTE, volumeData );
+
+	glBindTexture( GL_TEXTURE_3D, 0 );
 	glBindFramebuffer( GL_FRAMEBUFFER, 0 );
 
+	glUseProgram( 0 );
+
+	glPopClientAttrib();
 	glPopAttrib();
 
-	HitCountGrid hitGrid( indexMapping3, volumeBuffer[3] );
-	visualizeHitCountGrid( hitGrid, hitVisualization );
-
-	delete[] volumeBuffer[0];
-	delete[] volumeBuffer[1];
-	delete[] volumeBuffer[2];
+	delete[] volumeChannelsData[0];
+	delete[] volumeChannelsData[1];
+	delete[] volumeChannelsData[2];
+	delete[] volumeChannelsData[3];
 
 	glDeleteTextures( 4, volumeChannels );
+	glDeleteTextures( 1, &volume );
 
 	glDeleteFramebuffers( 1, &fbo );
 	glDeleteRenderbuffers( 1, &renderbuffer );
+	
+	grid = ColorGrid( indexMapping3, volumeData );
 }
 
 void main() {
@@ -316,6 +396,9 @@ void main() {
 	camera.perspectiveProjectionParameters.zFar = 500.0;
 	//camera.position.z() = 5;
 
+	bool drawScene = true, drawVoxels = true;
+	BoolVariableControl sceneToggle( drawScene, sf::Keyboard::C ), voxelToggle( drawVoxels, sf::Keyboard::V );
+
 	CameraInputControl cameraInputControl;
 	cameraInputControl.init( make_nonallocated_shared(camera), make_nonallocated_shared(window) );
 
@@ -329,18 +412,23 @@ void main() {
 	glClearDepth(1.f);
 
 	debugScene.begin();
-	debugScene.drawBox( Vector3f( 8, 8, 8 ), false, true );
-	//debugScene.drawSolidSphere( 8.0 );
+	//debugScene.drawBox( Vector3f( 8, 8, 8 ), false, true );
+	debugScene.drawSolidSphere( 8.0 );
 	debugScene.end();
 
-	SimpleOrientedIndexMapping3 indexMapping = createOrientedIndexMapping( Vector3i::Constant( 32 ), Vector3f::Constant( -8.0f ), 0.5f );
-	voxelizeScene( indexMapping );
+	SimpleOrientedIndexMapping3 indexMapping = createOrientedIndexMapping( Vector3i::Constant( 8 * 16 ), Vector3f::Constant( -8.0f ), 0.125f );
+
+	ColorGrid colorGrid;
+	voxelizeScene( indexMapping, colorGrid );
+	visualizeColorGrid( colorGrid, hitVisualization );
 
 	// The main loop - ends as soon as the window is closed
 	sf::Clock frameClock, clock;
 
 	EventDispatcher eventDispatcher;
 	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( cameraInputControl ) );
+	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( sceneToggle ) );
+	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( voxelToggle ) );
 	while (window.isOpen())
 	{
 		visManager.update();
@@ -358,6 +446,11 @@ void main() {
 				glViewport( 0, 0, event.size.width, event.size.height );
 			}
 
+			if( event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::R ) {
+				voxelizeScene( indexMapping, colorGrid );
+				visualizeColorGrid( colorGrid, hitVisualization );
+			}
+
 			eventDispatcher.handleEvent( event );
 		}
 
@@ -368,6 +461,8 @@ void main() {
 
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+		//voxelizeScene( indexMapping );
+
 		// OpenGL drawing commands go here...
 		glMatrixMode( GL_PROJECTION );
 		glLoadMatrix( camera.getProjectionMatrix() );
@@ -375,9 +470,11 @@ void main() {
 		glMatrixMode( GL_MODELVIEW );
 		glLoadMatrix( camera.getViewTransformation().matrix() );		
 
-		debugScene.render();
+		if( drawScene )
+			debugScene.render();
 
-		hitVisualization.render();
+		if( drawVoxels )
+			hitVisualization.render();
 		
 		// End the current frame and display its contents on screen
 		window.display();
