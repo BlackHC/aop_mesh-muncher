@@ -48,6 +48,7 @@ ADD_SUBDIRECTORY(glVoxelVolumePlacerUI)
 ADD_SUBDIRECTORY(shaderTest)
 
 ADD_SUBDIRECTORY(cielab)
+ADD_SUBDIRECTORY(volume)
 
 ADD_SUBDIRECTORY(glVoxelizer)
 

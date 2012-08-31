@@ -35,7 +35,7 @@ struct Camera {
 	Camera() : position( Eigen::Vector3f::Zero() ), forward( -Eigen::Vector3f::UnitZ() ), right( Eigen::Vector3f::UnitX() ) {}
 
 	void yaw( float degrees ) {
-		auto rotation = Eigen::AngleAxisf( -degrees * Math::PI / 180.0, Eigen::Vector3f::UnitY() );
+		auto rotation = Eigen::AngleAxisf( -degrees * float(Math::PI) / 180.0f, Eigen::Vector3f::UnitY() );
 		forward = rotation._transformVector( forward );
 		right = rotation._transformVector( right );
 
@@ -44,7 +44,7 @@ struct Camera {
 	}
 
 	void pitch( float degrees ) {
-		auto rotation = Eigen::AngleAxisf( -degrees * Math::PI / 180.0, right );
+		auto rotation = Eigen::AngleAxisf( -degrees * float(Math::PI) / 180.0f, right );
 		forward = rotation._transformVector( forward );
 		forward.normalize();
 	}

@@ -345,56 +345,25 @@ public:
 	}
 };
 
-struct IndexMapping3 : SimpleIndexer3 {
-	Eigen::Vector3f offset;
-	float resolution;
-
-	IndexMapping3( const Eigen::Vector3i &size = Eigen::Vector3i::Zero(), const Eigen::Vector3f &offset = Eigen::Vector3f::Zero(), float resolution = 0.0f ) : SimpleIndexer3( size ), offset( offset ), resolution( resolution ) {
-	}
-
-	void init( const Eigen::Vector3i &size, const Eigen::Vector3f &offset, float resolution ) {
-		SimpleIndexer3::init( size );
-		this->offset = offset;
-		this->resolution = resolution;
-	}
-
-	Eigen::Vector3f getPosition( const Eigen::Vector3i &index3 ) const {
-		return offset + index3.cast<float>() * resolution;
-	}
-
-	Eigen::Vector3f getIndexDirection( const Eigen::Vector3f &direction ) const {
-		return direction / resolution;
-	}
-
-	Eigen::Vector3f getIndex3( const Eigen::Vector3f &position ) const {
-		return (position - offset) / resolution;
-	}
-
-	// TODO: take a cube as parameter...
-	// TODO: remove this again... very weird behavior...
-	IndexMapping3 getSubGrid( const Eigen::Vector3i &offsetIndex, const Eigen::Vector3i &subSize, int subResolution ) const {
-		return IndexMapping3( subSize / subResolution + Eigen::Vector3i::Constant(1), getPosition( offsetIndex ), resolution * subResolution );
-	}
-};
-
+// maps a scene position to an index3
 template< typename conceptIndexer3 = SimpleIndexer3 >
-struct OrientedIndexMapping3 : conceptIndexer3 {
+struct IndexMapping3 : conceptIndexer3 {
 	typedef conceptIndexer3 Indexer3;
 
 	Eigen::Affine3f indexToPosition;
 	Eigen::Affine3f positionToIndex;
 
-	OrientedIndexMapping3() {}
+	IndexMapping3() {}
 
-	OrientedIndexMapping3( const Indexer3 &indexer, const Eigen::Affine3f &indexToPosition ) : conceptIndexer3( indexer ), indexToPosition( indexToPosition ), positionToIndex( indexToPosition.inverse() ) {
+	IndexMapping3( const Indexer3 &indexer, const Eigen::Affine3f &indexToPosition ) : conceptIndexer3( indexer ), indexToPosition( indexToPosition ), positionToIndex( indexToPosition.inverse() ) {
 	}
 
 	// spans the same volume but with permuted coordinates
 	// permutation specifies the source index ie permutedVector = vector[permutation[0]], vector[permutation[1]], vector[permutation[2]]
-	OrientedIndexMapping3 permuted( const int permutation[3] ) const {
+	IndexMapping3 permuted( const int permutation[3] ) const {
 		const Eigen::Matrix4f permutedIndexToPosition = indexToPosition * /* permutedIndexToIndex */
 			(Eigen::Matrix4f() << Eigen::Vector3f::Unit( permutation[0] ), Eigen::Vector3f::Unit( permutation[1] ), Eigen::Vector3f::Unit( permutation[2] ), Eigen::Vector3f::Zero(), 0,0,0,1.0 ).finished();
-		return OrientedIndexMapping3( Indexer3::permuted( permutation ), Eigen::Affine3f( permutedIndexToPosition ) );
+		return IndexMapping3( Indexer3::permuted( permutation ), Eigen::Affine3f( permutedIndexToPosition ) );
 	}
 
 	Eigen::Vector3f getPosition( const Eigen::Vector3i &index3 ) const {
@@ -430,31 +399,27 @@ struct OrientedIndexMapping3 : conceptIndexer3 {
 		return indexToPosition(0,0);
 	}
 
-	OrientedIndexMapping3<SubIndexer3> createSubMapping( const Eigen::Vector3i &beginCornerIndex, const Eigen::Vector3i &endCornerIndex ) const {
-		return OrientedIndexMapping3<SubIndexer3>( SubIndexer3( beginCornerIndex, endCornerIndex ), indexToPosition );
+	IndexMapping3<SubIndexer3> createSubMapping( const Eigen::Vector3i &beginCornerIndex, const Eigen::Vector3i &endCornerIndex ) const {
+		return IndexMapping3<SubIndexer3>( SubIndexer3( beginCornerIndex, endCornerIndex ), indexToPosition );
 	}
 
-	OrientedIndexMapping3<SubIndexer3> createExpandedMapping( const float expansion ) const {
+	IndexMapping3<SubIndexer3> createExpandedMapping( const float expansion ) const {
 		Eigen::Vector3i cellExpansion = ceil( getIndexDirection( Eigen::Vector3f::Constant( expansion ) ) );
 		return createSubMapping( -cellExpansion, Indexer3::getEndCorner() + cellExpansion );
 	}
 
-	OrientedIndexMapping3<> withBeginCornerAtOrigin() const {
-		return OrientedIndexMapping3<SimpleIndexer3>( SimpleIndexer3( getSize() ), indexToPosition * Eigen::Translation3f( getBeginCorner().cast<float>() ) );
+	IndexMapping3<> withBeginCornerAtOrigin() const {
+		return IndexMapping3<SimpleIndexer3>( SimpleIndexer3( getSize() ), indexToPosition * Eigen::Translation3f( getBeginCorner().cast<float>() ) );
 	}
 };
 
-inline OrientedIndexMapping3<> createOrientedIndexMapping( const Eigen::Vector3i &size, const Eigen::Vector3f &offset, const float resolution ) {
+inline IndexMapping3<> createIndexMapping( const Eigen::Vector3i &size, const Eigen::Vector3f &offset, const float resolution ) {
 	Eigen::Affine3f indexToPosition = Eigen::Translation3f( offset ) * Eigen::Scaling( resolution );
-	return OrientedIndexMapping3<>( SimpleIndexer3( size ) , indexToPosition );
+	return IndexMapping3<>( SimpleIndexer3( size ) , indexToPosition );
 }
 
-inline OrientedIndexMapping3<> createOrientedIndexMapping( const IndexMapping3 &grid ) {
-	return createOrientedIndexMapping( grid.size, grid.offset, grid.resolution );
-}
-
-typedef OrientedIndexMapping3<> SimpleOrientedIndexMapping3;
-typedef OrientedIndexMapping3<SubIndexer3> SubOrientedIndexMapping;
+typedef IndexMapping3<> SimpleIndexMapping3;
+typedef IndexMapping3<SubIndexer3> SubIndexMapping;
 
 #ifdef GRID_GTEST_UNIT_TESTS
 #include "gtest.h"
@@ -469,8 +434,8 @@ static std::ostream & operator << (std::ostream & s, const Vector3f & m) {
 	return Eigen::operator<<( s, m );
 }
 
-TEST( OrientedIndexMapping3, fromIdentity) {
-	OrientedIndexMapping3<> grid = createOrientedIndexMapping( Vector3i::Constant(4), Vector3f::Zero(), 1.0 );
+TEST( IndexMapping3, fromIdentity) {
+	IndexMapping3<> grid = createIndexMapping( Vector3i::Constant(4), Vector3f::Zero(), 1.0 );
 	EXPECT_EQ( grid.indexToPosition.matrix(), Matrix4f::Identity() );
 	EXPECT_EQ( grid.getPosition( Vector3i::Zero() ), Vector3f::Zero() );
 	EXPECT_EQ( grid.getPosition( Vector3i::UnitX() ), Vector3f::UnitX() );
@@ -478,29 +443,29 @@ TEST( OrientedIndexMapping3, fromIdentity) {
 	EXPECT_EQ( grid.getPosition( Vector3i::UnitZ() ), Vector3f::UnitZ() );
 }
 
-TEST( OrientedIndexMapping3, fromIdentityWithOffset) {
+TEST( IndexMapping3, fromIdentityWithOffset) {
 	const Vector3f offset = Vector3f::Constant(1.0);
-	const OrientedIndexMapping3<> grid = createOrientedIndexMapping( Vector3i::Constant(4), offset, 1.0 );
+	const IndexMapping3<> grid = createIndexMapping( Vector3i::Constant(4), offset, 1.0 );
 	EXPECT_EQ( grid.getPosition( Vector3i::Zero() ), offset );
 	EXPECT_EQ( grid.getPosition( Vector3i::UnitX() ), offset + Vector3f::UnitX() );
 	EXPECT_EQ( grid.getPosition( Vector3i::UnitY() ), offset + Vector3f::UnitY() );
 	EXPECT_EQ( grid.getPosition( Vector3i::UnitZ() ), offset + Vector3f::UnitZ() );
 }
 
-TEST( OrientedIndexMapping3, fromOffsetAndResolution) {
+TEST( IndexMapping3, fromOffsetAndResolution) {
 	const Vector3f offset = Vector3f::Constant(1.0);
-	const OrientedIndexMapping3<> grid = createOrientedIndexMapping( Vector3i::Constant(4), offset, 2.0 );
+	const IndexMapping3<> grid = createIndexMapping( Vector3i::Constant(4), offset, 2.0 );
 	EXPECT_EQ( grid.getPosition( Vector3i::Zero() ), offset );
 	EXPECT_EQ( grid.getPosition( Vector3i::UnitX() ), offset + Vector3f::UnitX() * 2 );
 	EXPECT_EQ( grid.getPosition( Vector3i::UnitY() ), offset + Vector3f::UnitY() * 2 );
 	EXPECT_EQ( grid.getPosition( Vector3i::UnitZ() ), offset + Vector3f::UnitZ() * 2 );
 }
 
-TEST( OrientedIndexMapping3, permuted ) {
+TEST( IndexMapping3, permuted ) {
 	const int permutation[] = {1,2,0};
 	const Vector3f offset = Vector3f::Constant(1.0);
-	const OrientedIndexMapping3<> grid = createOrientedIndexMapping( Vector3i::Constant(4), offset, 2.0 );
-	const OrientedIndexMapping3<> permutedGrid = grid.permuted( permutation );
+	const IndexMapping3<> grid = createIndexMapping( Vector3i::Constant(4), offset, 2.0 );
+	const IndexMapping3<> permutedGrid = grid.permuted( permutation );
 
 	EXPECT_EQ( permutedGrid.getPosition( Vector3i::Zero() ), offset );
 	EXPECT_EQ( permutedGrid.getPosition( Vector3i::UnitZ() ), offset + Vector3f::UnitX() * 2 );
@@ -512,11 +477,11 @@ static Vector4f h( const Vector3f &v ) {
 	return (Vector4f() << v, 1.0).finished();
 }
 
-TEST( OrientedIndexMapping3, permuted_inverse ) {
+TEST( IndexMapping3, permuted_inverse ) {
 	const int permutation[] = {1,2,0};
 	const Vector3f offset = Vector3f::Constant(1.0);
-	const OrientedIndexMapping3<> grid = createOrientedIndexMapping( Vector3i::Constant(4), offset, 2.0 );
-	const OrientedIndexMapping3<> permutedGrid = grid.permuted( permutation );
+	const IndexMapping3<> grid = createIndexMapping( Vector3i::Constant(4), offset, 2.0 );
+	const IndexMapping3<> permutedGrid = grid.permuted( permutation );
 
 	const Matrix4f inv = permutedGrid.positionToIndex.matrix();
 	EXPECT_EQ( h( Vector3f::Zero() ), inv * h(offset) );
@@ -525,16 +490,16 @@ TEST( OrientedIndexMapping3, permuted_inverse ) {
 	EXPECT_EQ( h( Vector3f::UnitY() ), inv * h(offset + Vector3f::UnitZ() * 2) );
 }
 
-TEST( OrientedIndexMapping3, subGridSimple ) {
-	const OrientedIndexMapping3<> grid = createOrientedIndexMapping( Vector3i::Constant(4), Vector3f::Zero(), 2.0 );
+TEST( IndexMapping3, subGridSimple ) {
+	const IndexMapping3<> grid = createIndexMapping( Vector3i::Constant(4), Vector3f::Zero(), 2.0 );
 	const auto expandedGrid = grid.createSubMapping( Vector3i::Constant( -2 ), Vector3i::Constant(6) );
 
 	EXPECT_EQ( expandedGrid.getPosition( Vector3i::Zero() ), Vector3f::Zero() );
 	EXPECT_EQ( expandedGrid.getPosition( Vector3i::Constant( -2 ) ), Vector3f::Constant( -4.0f ) );
 }
 
-TEST( OrientedIndexMapping3, expandGridSimple ) {
-	const OrientedIndexMapping3<> grid = createOrientedIndexMapping( Vector3i::Constant(4), Vector3f::Zero(), 2.0 );
+TEST( IndexMapping3, expandGridSimple ) {
+	const IndexMapping3<> grid = createIndexMapping( Vector3i::Constant(4), Vector3f::Zero(), 2.0 );
 	const auto expandedGrid = grid.createExpandedMapping( 3.0 );
 
 	EXPECT_EQ( expandedGrid.size, Vector3i::Constant( 8 ) );

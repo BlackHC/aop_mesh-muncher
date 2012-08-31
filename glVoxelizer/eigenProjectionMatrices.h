@@ -17,7 +17,7 @@ namespace Math {
 	const double SQRT1_2 = 0.707106781186547524401;
 
 	inline float cotf( float radians ) {
-		return std::tanf( PI_2 - radians );
+		return std::tanf( float(PI_2) - radians );
 	}
 }
 
@@ -75,7 +75,7 @@ namespace Eigen {
 
 	typedef float Degrees;
 	static Matrix4f createPerspectiveProjectionMatrix( const Degrees FoV_y, const float aspectRatio, const float zNear, const float zFar ) {
-		const float f = Math::cotf( FoV_y * Math::PI / 180 / 2 );
+		const float f = Math::cotf( FoV_y * float(Math::PI) / 180 / 2 );
 		const float depth = zFar - zNear;
 
 		return (Matrix4f() <<

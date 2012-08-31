@@ -6,7 +6,7 @@
 
 struct glShaderBuilder {
 	std::vector< const char * > sourceBuffers;
-	std::vector< int > sourceBufferLengths;
+	std::vector< GLint > sourceBufferLengths;
 
 	GLenum type;
 	GLuint handle;
@@ -22,13 +22,13 @@ struct glShaderBuilder {
 
 	glShaderBuilder & addSource( const char *buffer, int length ) {
 		sourceBuffers.push_back( buffer );
-		sourceBufferLengths.push_back( length );
+		sourceBufferLengths.push_back( (GLint) length );
 		return *this;
 	}
 
 	glShaderBuilder & addSource( const char *buffer ) {
 		sourceBuffers.push_back( buffer );
-		sourceBufferLengths.push_back( strlen( buffer ) );
+		sourceBufferLengths.push_back( (GLint) strlen( buffer ) );
 		return *this;
 	}
 
@@ -39,7 +39,7 @@ struct glShaderBuilder {
 		}
 
 		// set sources
-		glShaderSource( handle, sourceBuffers.size(), &sourceBuffers.front(), &sourceBufferLengths.front() );
+		glShaderSource( handle, (GLsizei) sourceBuffers.size(), &sourceBuffers.front(), &sourceBufferLengths.front() );
 
 		glCompileShader( handle );
 

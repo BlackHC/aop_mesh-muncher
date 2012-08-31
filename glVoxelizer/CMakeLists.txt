@@ -8,7 +8,7 @@ ADD_OPENMP_FLAGS()
 FIND_PACKAGE(OpenGL)
 
 # Must link both against niven and Boost
-INCLUDE_DIRECTORIES(${ANTTWEAKBAR_INCLUDE_DIR} ${NIVEN_INCLUDE_DIR} ${SFML_INCLUDE_DIR} ${EIGEN3_INCLUDE_DIR} ${OPENGL_INCLUDE_DIR} ${Boost_INCLUDE_DIR} ${GLEW_INCLUDE_DIR} ../gtest/ ../positionSolver/ ../glVoxelVolumePlacerUI/ ../glutil/)
+INCLUDE_DIRECTORIES(${ANTTWEAKBAR_INCLUDE_DIR} ${NIVEN_INCLUDE_DIR} ${SFML_INCLUDE_DIR} ${EIGEN3_INCLUDE_DIR} ${OPENGL_INCLUDE_DIR} ${Boost_INCLUDE_DIR} ${GLEW_INCLUDE_DIR} ../volume/ ../positionSolver/ ../glVoxelVolumePlacerUI/ ../glutil/)
 
 # ../gtest/gtest_main.cc
 ADD_EXECUTABLE(glVoxelizer
@@ -18,9 +18,9 @@ ADD_EXECUTABLE(glVoxelizer
 	../positionSolver/camera.h
 	../positionSolver/eventHandling.h
 	../glVoxelVolumePlacerUI/glHelpers.h
-	gridStorage.h
+	../volume/gridStorage.h
+	../volume/grid.h
 	glVoxelizer.cpp 
-	grid.h
 	eigenProjectionMatrices.h
 	../gtest/gtest-all.cc
 	../build/voxelizer.glsl
@@ -28,20 +28,20 @@ ADD_EXECUTABLE(glVoxelizer
 	../glutil/Debug.h
 	)
 
-ADD_EXECUTABLE(glVoxelizerTests
-	${GLEW_SOURCE_FILE}
-	gridTests.cpp
-	../gtest/gtest_main.cc
-	../gtest/gtest-all.cc
-	)
+#ADD_EXECUTABLE(glVoxelizerTests
+#	${GLEW_SOURCE_FILE}
+#	gridTests.cpp
+	#../gtest/gtest_main.cc
+	#../gtest/gtest-all.cc
+	#)
 
 # The test application uses niven core, so link against it
 TARGET_LINK_LIBRARIES(glVoxelizer ${ANTTWEAKBAR_LIBRARY})
 TARGET_LINK_LIBRARIES(glVoxelizer ${SFML_LIBRARIES})
 TARGET_LINK_LIBRARIES(glVoxelizer ${OPENGL_LIBRARIES})
 
-TARGET_LINK_LIBRARIES(glVoxelizerTests ${SFML_LIBRARIES})
-TARGET_LINK_LIBRARIES(glVoxelizerTests ${OPENGL_LIBRARIES})
+#TARGET_LINK_LIBRARIES(glVoxelizerTests ${SFML_LIBRARIES})
+#TARGET_LINK_LIBRARIES(glVoxelizerTests ${OPENGL_LIBRARIES})
 
 TARGET_LINK_LIBRARIES(glVoxelizer ${Boost_LIBRARIES})
-TARGET_LINK_LIBRARIES(glVoxelizerTests ${Boost_LIBRARIES})
+#TARGET_LINK_LIBRARIES(glVoxelizerTests ${Boost_LIBRARIES})

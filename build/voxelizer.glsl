@@ -14,10 +14,14 @@
 	layout( triangles ) in;
 	layout( triangle_strip, max_vertices=3 ) out;
 
-	out vec3 worldPosition, viewPosition;
+	out vec3 viewPosition;
+	flat out int mainAxis;
+
+#ifdef CONSERVATIVE
 	out BoundingBox {
 		vec2 min, max;
 	} boundingBox;
+#endif
 
 	int determineMainAxis( const vec3 faceNormal ) {
 		const vec3 axisDot = abs( faceNormal );
@@ -78,7 +82,7 @@
 		// calculate the face normal
 		const vec3 faceNormal = cross( edgeA, edgeB );
 
-		const int mainAxis = determineMainAxis( faceNormal );
+		/*const int*/ mainAxis = determineMainAxis( faceNormal );
 
 		// we use different viewports depending on the main axis, because the grid volume doesn't have to be a unit cube
 		gl_ViewportIndex = mainAxis;
@@ -95,6 +99,8 @@
 		for( int i = 0 ; i < 3 ; i++ ) {
 			corners[i] = permutationMatrix * gl_in[i].gl_Position.xyz;		
 		}
+
+#ifdef CONSERVATIVE
 		// permute the face normal
 		const vec3 permutedFaceNormal = permutationMatrix * faceNormal;
 
@@ -106,16 +112,16 @@
 		const vec2 planeEdges[3] = { corners[1].xy - corners[0].xy, corners[2].xy - corners[1].xy, corners[0].xy - corners[2].xy };
 
 		// expand the corners
+
 		corners[0] = expandCorner( corners[0], permutedFaceNormal, planeEdges[0], planeEdges[2], halfPixelSize );
 		corners[1] = expandCorner( corners[1], permutedFaceNormal, planeEdges[1], planeEdges[0], halfPixelSize );
 		corners[2] = expandCorner( corners[2], permutedFaceNormal, planeEdges[2], planeEdges[1], halfPixelSize );
-		
+#endif 
 		for( int i = 0 ; i < gl_in.length() ; i++ )
 		{
 			gl_FrontColor = gl_in[i].gl_FrontColor;
 	
 			// store the expanded corners in the original world coords (multiply with the transposed permutation matrix)
-			worldPosition = corners[i] * permutationMatrix;
 			viewPosition = corners[i];
 
 			// transform the view position into the unit cube
@@ -127,29 +133,41 @@
 #endif
 
 #if FRAGMENT_SHADER
-	//uniform mat3 mainAxisPermutation[3];
+	uniform mat3 mainAxisPermutation[3];
 
 	uniform volatile layout(r32ui) uimage3D volumeChannels[4]; // rgb hit
 
-	in vec3 worldPosition, viewPosition;
+	flat in int mainAxis;
+	in vec3 viewPosition;
+
+#ifdef CONSERVATIVE
 	in BoundingBox {
 		vec2 min, max;
 	} boundingBox;
+#endif
 
 	void main() {
+#ifdef CONSERVATIVE
 		if( any( lessThan( viewPosition.xy, boundingBox.min ) ) || any( greaterThan( viewPosition.xy, boundingBox.max ) ) ) {
 			discard;
 		}
+#endif
 
 		// for now only store only one voxel
 		uvec3 ucolor = uvec3( gl_Color * 255.0 );
 
-		ivec3 voxelPosition = ivec3( worldPosition + vec3( 0.5, 0.5, 0.5 ) );
+		float deltaZ = 0.5 * fwidth( viewPosition.z );
+		int minZ = int( viewPosition.z - deltaZ );
+		int maxZ = int( ceil( viewPosition.z + deltaZ ) );
 
-		imageAtomicAdd( volumeChannels[0], voxelPosition, ucolor.r );
-		imageAtomicAdd( volumeChannels[1], voxelPosition, ucolor.g );
-		imageAtomicAdd( volumeChannels[2], voxelPosition, ucolor.b );
-		imageAtomicAdd( volumeChannels[3], voxelPosition, 1u );
+		for( int z = minZ ; z <= maxZ ; ++z ) {
+			ivec3 voxelPosition = ivec3( vec3( viewPosition.xy, z ) * mainAxisPermutation[ mainAxis ] );
+			
+			imageAtomicAdd( volumeChannels[0], voxelPosition, ucolor.r );
+			imageAtomicAdd( volumeChannels[1], voxelPosition, ucolor.g );
+			imageAtomicAdd( volumeChannels[2], voxelPosition, ucolor.b );
+			imageAtomicAdd( volumeChannels[3], voxelPosition, 1u );
+		}
 
 		//gl_FragColor = vec4( vec3(worldPosition) / 32.0, 1.0 );
 	}

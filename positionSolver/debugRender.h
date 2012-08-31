@@ -118,7 +118,7 @@ namespace DebugRender {
 		}
 
 		void drawEllipse( float radius, bool wireframe = true, int n = 20, const Eigen::Vector3f &axis1 = Eigen::Vector3f::UnitX(), const Eigen::Vector3f &axis2 = Eigen::Vector3f::UnitY() ) {
-			const float step = 2 * M_PI / n;
+			const float step = float( 2 * M_PI / n );
 			glBegin( wireframe ? GL_LINE_LOOP : GL_TRIANGLE_FAN );
 			for( int i = 0 ; i < n ; i++ ) {
 				Eigen::glVertex( radius * (axis1 * cos(step * i) + axis2 * sin(step * i)) );

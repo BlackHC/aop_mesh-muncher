@@ -129,7 +129,7 @@ void visualizeHitCountGrid( const HitCountGrid &hitCountGrid, DebugRender::Combi
 		
 		if( hitCount ) {
 			dr.setPosition( hitCountGrid.getMapping().getPosition( iterator.getIndex3() ) );		
-			dr.setColor( Vector3f(1.0, 0.0, 0.0) * (0.2f + hitCount / 6.0f ) + Vector3f(0.0, 1.0, 0.0) * hitCount / 25.0f + Vector3f(0.0, 0.0, 1.0) * hitCount / 125.0f );
+			dr.setColor( Vector3f(1.0, 0.0, 0.0) * (0.2f + (float) hitCount / 6.0f ) + Vector3f(0.0, 1.0, 0.0) * (float) hitCount / 25.0f + Vector3f(0.0, 0.0, 1.0) * (float) hitCount / 125.0f );
 			//dr.drawAbstractSphere( size );
 			dr.drawBox( Vector3f::Constant( size ), false );
 		}
@@ -263,7 +263,7 @@ struct MuxerShader : Shader {
 	}
 };
 
-void voxelizeScene( const SimpleOrientedIndexMapping3 &indexMapping3, ColorGrid &grid ) {
+void voxelizeScene( const SimpleIndexMapping3 &indexMapping3, ColorGrid &grid ) {
 	boost::timer::auto_cpu_timer timer;
 
 	glPushAttrib( GL_ALL_ATTRIB_BITS );
@@ -318,11 +318,11 @@ void voxelizeScene( const SimpleOrientedIndexMapping3 &indexMapping3, ColorGrid 
 	for( int i = 0 ; i < 3 ; ++i ) {
 		int *permutation = permutations[i];
 		const Vector3i permutedSize = permute( indexMapping3.getSize(), permutation );
-		auto projection = Eigen::createOrthoProjectionMatrixLH( Vector2f::Constant( -0.5 ), permutedSize.head<2>().cast<float>() + Vector2f::Constant( -0.5 ), 0, permutedSize.z() ); 
+		auto projection = Eigen::createOrthoProjectionMatrixLH( Vector2f::Zero(), permutedSize.head<2>().cast<float>(), 0.0f, (float) permutedSize.z() ); 
 		glUniform( splatShader.mainAxisProjection[i], projection );
 		glUniform( splatShader.mainAxisPermutation[i], unpermutedToPermutedMatrix( permutation ).topLeftCorner<3,3>().matrix() );
 
-		glViewportIndexedf( i, 0, 0, permutedSize.x(), permutedSize.y() );
+		glViewportIndexedf( i, 0, 0, (float) permutedSize.x(), (float) permutedSize.y() );
 	}
 
 	glMatrixMode( GL_MODELVIEW );
@@ -356,8 +356,9 @@ void voxelizeScene( const SimpleOrientedIndexMapping3 &indexMapping3, ColorGrid 
 	float zero[3] = {0.0, 0.0, 0.0};
 	glVertexPointer( 3, GL_FLOAT, 0, &zero );
 
-	//glEnable( GL_RASTERIZER_DISCARD );
+	glEnable( GL_RASTERIZER_DISCARD );
 	glDrawArraysInstanced( GL_POINTS, 0, 1, indexMapping3.count );
+	glDisable( GL_RASTERIZER_DISCARD );
 
 	glGetTexImage( GL_TEXTURE_3D, 0, GL_RGBA, GL_UNSIGNED_BYTE, volumeData );
 
@@ -390,7 +391,7 @@ void main() {
 	glutil::RegisterDebugOutput( glutil::STD_OUT );
 
 	Camera camera;
-	camera.perspectiveProjectionParameters.aspect = 640.0 / 480.0;
+	camera.perspectiveProjectionParameters.aspect = 640.0f / 480.0f;
 	camera.perspectiveProjectionParameters.FoV_y = 75.0;
 	camera.perspectiveProjectionParameters.zNear = 1.0;
 	camera.perspectiveProjectionParameters.zFar = 500.0;
@@ -416,7 +417,7 @@ void main() {
 	debugScene.drawSolidSphere( 8.0 );
 	debugScene.end();
 
-	SimpleOrientedIndexMapping3 indexMapping = createOrientedIndexMapping( Vector3i::Constant( 8 * 16 ), Vector3f::Constant( -8.0f ), 0.125f );
+	SimpleIndexMapping3 indexMapping = createIndexMapping( Vector3i::Constant( 8 * 16 + 1 ), Vector3f::Constant( -8.0f ), 0.125f );
 
 	ColorGrid colorGrid;
 	voxelizeScene( indexMapping, colorGrid );

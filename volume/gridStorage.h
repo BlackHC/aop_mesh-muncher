@@ -1,15 +1,16 @@
 #pragma once
 #include "grid.h"
 
-template< typename Data, typename OrientedIndexMapping3 = SimpleOrientedIndexMapping3 >
+template< typename Data, typename IndexMapping3 = SimpleIndexMapping3 >
 class GridStorage : public boost::noncopyable {
-	OrientedIndexMapping3 mapping;
+	IndexMapping3 mapping;
 	std::unique_ptr<Data[]> data;
 
 public:
 	GridStorage() {}
 
-	GridStorage( const OrientedIndexMapping3 &mapping, Data *data ) : mapping( mapping ) {
+	// GridStorage will 'own' the data memory (and delete it on destruction)
+	GridStorage( const IndexMapping3 &mapping, Data *data ) : mapping( mapping ) {
 		this->data.reset( data );
 	}
 
@@ -23,21 +24,21 @@ public:
 		return *this;
 	}
 
-	GridStorage( const OrientedIndexMapping3 &mapping ) {
+	GridStorage( const IndexMapping3 &mapping ) {
 		reset( mapping );
 	}
 
-	void reset( const OrientedIndexMapping3 &mapping ) {
+	void reset( const IndexMapping3 &mapping ) {
 		this->mapping = mapping;
 		data.reset( new Data[ mapping.count ] );
 	}
 
-	const OrientedIndexMapping3 & getMapping() const {
+	const IndexMapping3 & getMapping() const {
 		return mapping;
 	}
 
-	typename OrientedIndexMapping3::Iterator getIterator() const {
-		return OrientedIndexMapping3::Iterator( mapping );
+	typename IndexMapping3::Iterator getIterator() const {
+		return IndexMapping3::Iterator( mapping );
 	}
 
 	Data & operator[] ( const int index ) {
