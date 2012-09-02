@@ -7,8 +7,7 @@
 #include <iostream>
 
 struct glShaderBuilder {
-	std::vector< const char * > sourceBuffers;
-	std::vector< GLint > sourceBufferLengths;
+	std::string source;
 
 	GLenum type;
 	GLuint handle;
@@ -23,14 +22,12 @@ struct glShaderBuilder {
 	}
 
 	glShaderBuilder & addSource( const char *buffer, int length ) {
-		sourceBuffers.push_back( buffer );
-		sourceBufferLengths.push_back( (GLint) length );
+		source.append( buffer, length );
 		return *this;
 	}
 
 	glShaderBuilder & addSource( const char *buffer ) {
-		sourceBuffers.push_back( buffer );
-		sourceBufferLengths.push_back( (GLint) strlen( buffer ) );
+		source.append( buffer );
 		return *this;
 	}
 
@@ -41,7 +38,8 @@ struct glShaderBuilder {
 		}
 
 		// set sources
-		glShaderSource( handle, (GLsizei) sourceBuffers.size(), &sourceBuffers.front(), &sourceBufferLengths.front() );
+		const char *sourcePointer = source.c_str();
+		glShaderSource( handle, (GLsizei) 1, &sourcePointer, nullptr );
 
 		glCompileShader( handle );
 

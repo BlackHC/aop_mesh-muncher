@@ -125,6 +125,10 @@ namespace LeanTextProcessing {
 			return !atEof() && peek() == c;
 		}
 
+		bool checkNot( const char c ) const {
+			return !atEof() && peek() != c;
+		}
+
 		bool checkAny( const char *set ) {
 			if( atEof() ) {
 				return false;
@@ -151,13 +155,17 @@ namespace LeanTextProcessing {
 			return true;
 		}
 
+		// read a full line
+		// always contains a new line at the end
 		std::string readLine() {
 			std::string text;
 
-			do {
-				text.push_back( peek() ); 
+			while( checkNot( '\n' ) ) {
+				text.push_back( read() ); 
 			}
-			while( read() != '\n' );
+
+			tryMatch( '\n' );
+			text.push_back( '\n' );
 
 			return text;
 		}

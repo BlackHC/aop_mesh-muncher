@@ -245,7 +245,7 @@ namespace wml {
 				}
 
 				// remove the last newline
-				if( text.back() == '\n' ) {
+				if( !text.empty() ) {
 					text.pop_back();
 				}
 				

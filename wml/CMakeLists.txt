@@ -14,4 +14,10 @@ ADD_EXECUTABLE(wmlTest
 	../gtest/gtest-all.cc
 	)
 
+ADD_EXECUTABLE(reemitter
+	wml.h
+	leanTextProcessing.h
+	reemitter.cpp
+	)
+
 TARGET_LINK_LIBRARIES(wmlTest ${Boost_LIBRARIES})

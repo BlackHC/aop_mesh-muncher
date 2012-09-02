@@ -11,10 +11,154 @@ using namespace Eigen;
 
 #include "eigenProjectionMatrices.h"
 
-struct SplatShader : Shader {
+#include <yaml-cpp/yaml.h>
+
+struct MyShader {
+	std::string filename;
+	std::string programName;
+
+	YAML::Node definition;
+
+	GLuint program;
+
+	MyShader() : program( 0 ) {}
+	~MyShader() {
+		if( program ) {
+			glDeleteProgram( program );
+		}
+	}
+
+	virtual void setLocations() {}
+
+	void init( const char *filename, const char *programName = "" ) {
+		this->filename = filename;
+		this->programName = programName;
+
+		// load the shader
+		reload();
+	}
+
+	void reload() {
+		glProgramBuilder programBuilder;
+
+		while( true ) {
+			while( true ) {
+				try {
+					definition = YAML::LoadFile( filename );
+					if( !programName.empty() ) {
+						definition = definition[ programName ];
+					}
+					break;
+				}
+				catch(const YAML::Exception& e) {
+					std::cerr << e.what() << "\n";
+					__debugbreak();
+				}
+			}
+			
+			const char *versionText = "#version 420 compatibility\n";
+
+			glShaderBuilder vertexShader( GL_VERTEX_SHADER );
+
+			vertexShader.	
+				addSource( versionText ).
+				addSource( 
+				"#define VERTEX_SHADER 1\n"
+				"#define FRAGMENT_SHADER 0\n"
+				"#define GEOMETRY_SHADER 0\n"
+				"#line 1\n"
+				);
+
+			glShaderBuilder fragmentShader( GL_FRAGMENT_SHADER );
+
+			fragmentShader.
+				addSource( versionText ).
+				addSource( 
+				"#define VERTEX_SHADER 0\n"
+				"#define FRAGMENT_SHADER 1\n"
+				"#define GEOMETRY_SHADER 0\n"
+				"#line 1\n"
+				);
+
+			glShaderBuilder geometryShader( GL_GEOMETRY_SHADER );
+
+			geometryShader.
+				addSource( versionText ).
+				addSource( 
+				"#define VERTEX_SHADER 0\n"
+				"#define FRAGMENT_SHADER 0\n"
+				"#define GEOMETRY_SHADER 1\n"
+				"#line 1\n"
+				);
+
+			bool hasVertexShader = false, hasFragmentShader = false, hasGeometryShader = false;
+
+			for( auto entry = definition.begin() ; entry != definition.end() ; ++entry ) {
+				const std::string sourceType = entry->first.as<std::string>();
+				const std::string source = entry->second.as<std::string>();
+				if( sourceType == "global" ) {
+					fragmentShader.addSource( source.c_str() );
+					geometryShader.addSource( source.c_str() );
+					vertexShader.addSource( source.c_str() );
+				}
+				else if( sourceType == "fragment" ) {
+					hasFragmentShader = true;
+					if( !source.empty() )
+						fragmentShader.addSource( source.c_str() );
+				}
+				else if( sourceType == "vertex" ) {
+					hasVertexShader = true;
+					if( !source.empty() )
+						vertexShader.addSource( source.c_str() );
+				}
+				else if( sourceType == "geometry" ) {
+					hasGeometryShader = true;
+					if( !source.empty() )
+						geometryShader.addSource( source.c_str() );
+				}
+			}
+			
+			fragmentShader.compile();
+			geometryShader.compile();
+			vertexShader.compile();
+
+			if( hasVertexShader ) {
+				programBuilder.attachShader( vertexShader.handle );
+			}
+
+			if( hasFragmentShader ) {
+				programBuilder.attachShader( fragmentShader.handle );
+			}
+
+			if( hasGeometryShader ) {
+				programBuilder.attachShader( geometryShader.handle );
+			}
+
+			programBuilder.
+				link().
+				deleteShaders().
+				dumpInfoLog( std::cout );
+
+			if( !programBuilder.fail ) {
+				break;
+			}
+			else {
+				__debugbreak();
+			}
+		}
+
+		program = programBuilder.program;
+		setLocations();
+	}
+
+	void apply() {
+		glUseProgram( program );
+	}
+};
+
+struct SplatShader : MyShader {
 	void init() {
-		hasGeometryShader = true;
-		Shader::init( "voxelizer.glsl", "#define SPLAT_PROGRAM\n" );
+		MyShader::init( "voxelizer.glsl", "splat" );
 	}
 
 	GLuint mainAxisProjection[3];
@@ -33,10 +177,9 @@ struct SplatShader : Shader {
 	}
 };
 
-struct MuxerShader : Shader {
-	void init() {
-		hasFragmentShader = false;
-		Shader::init( "voxelizer.glsl", "#define MUXER_PROGRAM\n" );
+struct MuxerShader : MyShader {
+	void init() {		
+		MyShader::init( "voxelizer.glsl", "muxer" );
 	}
 
 	GLuint volumeChannels[4], volume, sizeHelper;

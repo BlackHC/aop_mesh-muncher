@@ -1,4 +1,4 @@
-Whitespace Markup Language:
+'Whitespace Markup Language':
 
 	Aims::
 		* very simple
@@ -11,7 +11,8 @@ Whitespace Markup Language:
 
 	Example:
 
-		title 		"test"
+		title 		"test\t\t1"
+		path		'c:\unescaped.txt'
 		version 	1
 
 		content::
