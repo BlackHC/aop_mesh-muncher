@@ -10,7 +10,8 @@ FIND_PACKAGE(Boost REQUIRED COMPONENTS chrono timer system)
 FIND_PACKAGE(Niven REQUIRED COMPONENTS Core)
 FIND_PACKAGE(Eigen3)
 FIND_PACKAGE(GLEW)
-FIND_PACKAGE( OpenMP REQUIRED)
+FIND_PACKAGE(yaml-cpp)
+FIND_PACKAGE(OpenMP REQUIRED)
 
 FUNCTION(ADD_OPENMP_FLAGS)
 	IF(OPENMP_FOUND)
@@ -49,6 +50,8 @@ ADD_SUBDIRECTORY(cielab)
 ADD_SUBDIRECTORY(volume)
 
 ADD_SUBDIRECTORY(glVoxelizer)
+
+ADD_SUBDIRECTORY(wml)
 
 # Adds a new build target which copies the niven binaries to
 # the output folder
