@@ -48,13 +48,30 @@
 
 
 	Grammar::
-		root := map
-
-		IDENT, DEIDENT are virtual tokens that control the identation level		
+		INDENT, DEINDENT are virtual tokens that control the indentation level		
 		NEWLINE is a line break
 
-		value := number | identifier | string
+		Indentation is done with tabs only at the moment.
 
-		key := value
+		Here is a rough EBNF syntax for WML:
 
-		map := (key value+ NEWLINE | key ':' ( ':' NEWLINE IDENT textblock DEIDENT | NEWLINE IDENT non-empty map DEIDENT ))*
+		root: map
+
+		value: identifier | unescaped_string | escaped_string
+
+		identifier: (!whitespace)+
+		unescaped_string: '\'' (!'\'')* '\''
+		escaped_string: '"' (!"'")* '"' with support for \t, \n, \\, \', and \"
+
+		key: value
+
+		map: map_entry*
+
+		map_entry: inline_entry | block_entry
+
+		inline_entry: key value+ NEWLINE
+		block_entry: key ':' ( ':' NEWLINE INDENT textblock DEINDENT 
+								| NEWLINE INDENT non-empty map DEINDENT )
+
+	Note::
+		This file is itself a WML file and root["Whitespace Markup Language"]["Example"].data() is the example WML node
