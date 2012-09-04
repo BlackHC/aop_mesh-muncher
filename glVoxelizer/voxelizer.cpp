@@ -11,13 +11,13 @@ using namespace Eigen;
 
 #include "eigenProjectionMatrices.h"
 
-#include <yaml-cpp/yaml.h>
+#include "wml.h"
 
 struct MyShader {
 	std::string filename;
 	std::string programName;
 
-	YAML::Node definition;
+	wml::Node definition;
 
 	GLuint program;
 
@@ -44,13 +44,13 @@ struct MyShader {
 		while( true ) {
 			while( true ) {
 				try {
-					definition = YAML::LoadFile( filename );
+					definition = wml::parseFile( filename );
 					if( !programName.empty() ) {
-						definition = definition[ programName ];
+						definition = wml::Node( definition[ programName ] );
 					}
 					break;
 				}
-				catch(const YAML::Exception& e) {
+				catch(const std::exception& e) {
 					std::cerr << e.what() << "\n";
 					__debugbreak();
 				}
@@ -94,8 +94,8 @@ struct MyShader {
 			bool hasVertexShader = false, hasFragmentShader = false, hasGeometryShader = false;
 
 			for( auto entry = definition.begin() ; entry != definition.end() ; ++entry ) {
-				const std::string sourceType = entry->first.as<std::string>();
-				const std::string source = entry->second.as<std::string>();
+				const std::string &sourceType = entry->key();
+				const std::string &source = entry->data().content;
 				if( sourceType == "global" ) {
 					fragmentShader.addSource( source.c_str() );
 					geometryShader.addSource( source.c_str() );

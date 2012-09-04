@@ -1,11 +1,14 @@
 splat:
-	vertex: |
+	global::
+		//#define CONSERVATIVE
+
+	vertex::
 		void main() {
 			gl_FrontColor = gl_Color;	
 			gl_Position = gl_ModelViewMatrix * gl_Vertex; 
 		}
 
-	geometry: |
+	geometry::
 			uniform mat4 mainAxisProjection[3];
 			uniform mat3 mainAxisPermutation[3];
 
@@ -130,7 +133,7 @@ splat:
 				}
 			}
 
-	fragment: |
+	fragment::
 			uniform mat3 mainAxisPermutation[3];
 
 			uniform volatile layout(r32ui) uimage3D volumeChannels[4]; // rgb hit
@@ -184,7 +187,7 @@ splat:
 			}
 	
 muxer: 	
-	vertex: |
+	vertex::
 		// TODO: using a geometry shader to create full screen quads and the fragment shader for the actual operation might be better throughput wise?
 		uniform restrict readonly layout(r32ui) uimage3D volumeChannels[4]; // rgb hit
 		uniform restrict writeonly layout(rgba8) image3D volume;
@@ -207,4 +210,3 @@ muxer:
 			color.a = rgb_hit[3] > 0 ? 1.0 : 0.0;
 			imageStore( volume, index3, color );
 		}
-	

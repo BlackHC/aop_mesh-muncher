@@ -16,8 +16,8 @@ INCLUDE_DIRECTORIES(
 	${OPENGL_INCLUDE_DIR}
 	${Boost_INCLUDE_DIR}
 	${GLEW_INCLUDE_DIR} 
-	${YAMLCPP_INCLUDE_DIR}
 	../volume/ ../positionSolver/ ../glVoxelVolumePlacerUI/ ../glutil/
+	../wml
 	)
 
 # ../gtest/gtest_main.cc
@@ -30,6 +30,7 @@ ADD_EXECUTABLE(glVoxelizer
 	../glVoxelVolumePlacerUI/glHelpers.h
 	../volume/gridStorage.h
 	../volume/grid.h
+	../wml/wml.h
 	voxelizer.h
 	voxelizer.cpp
 	glVoxelizer.cpp 
@@ -53,4 +54,3 @@ TARGET_LINK_LIBRARIES(glVoxelizer ${SFML_LIBRARIES})
 TARGET_LINK_LIBRARIES(glVoxelizer ${OPENGL_LIBRARIES})
 
 TARGET_LINK_LIBRARIES(glVoxelizer ${Boost_LIBRARIES})
-TARGET_LINK_LIBRARIES(glVoxelizer ${YAMLCPP_LIBRARY})

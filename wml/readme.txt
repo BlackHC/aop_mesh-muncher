@@ -70,8 +70,7 @@
 		map_entry: inline_entry | block_entry
 
 		inline_entry: key value+ NEWLINE
-		block_entry: key ':' ( ':' NEWLINE INDENT textblock DEINDENT 
-								| NEWLINE INDENT non-empty map DEINDENT )
+		block_entry: key ':' ( ':' NEWLINE INDENT textblock DEINDENT | NEWLINE INDENT non-empty map DEINDENT )
 
 	Note::
 		This file is itself a WML file and root["Whitespace Markup Language"]["Example"].data() is the example WML node

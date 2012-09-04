@@ -14,9 +14,9 @@ TEST( Parser, oneKey ) {
 	Node root = parse( "key value" );
 
 	ASSERT_FALSE( root.empty() );
-	ASSERT_EQ( 1, root.items.size() );
+	ASSERT_EQ( 1, root.nodes.size() );
 	ASSERT_EQ( "key", root[0].key() );
-	ASSERT_EQ( "value", root[0].data().value );
+	ASSERT_EQ( "value", root[0].data().content );
 }
 
 
@@ -24,11 +24,11 @@ TEST( Parser, oneKey_multipleValues ) {
 	Node root = parse( "key valueA valueB" );
 
 	ASSERT_FALSE( root.empty() );
-	ASSERT_EQ( 1, root.items.size() );
-	ASSERT_EQ( 2, root[0].items.size() );
+	ASSERT_EQ( 1, root.nodes.size() );
+	ASSERT_EQ( 2, root[0].nodes.size() );
 	ASSERT_EQ( "key", root[0].key() );
-	ASSERT_EQ( "valueA", root[0][0].value );
-	ASSERT_EQ( "valueB", root[0][1].value );
+	ASSERT_EQ( "valueA", root[0][0].content );
+	ASSERT_EQ( "valueB", root[0][1].content );
 }
 
 TEST( Parser, multipleKey_multipleValues ) {
@@ -38,15 +38,15 @@ TEST( Parser, multipleKey_multipleValues ) {
 		);
 
 	ASSERT_FALSE( root.empty() );
-	ASSERT_EQ( 2, root.items.size() );
-	ASSERT_EQ( 2, root[0].items.size() );
-	ASSERT_EQ( 2, root[1].items.size() );
+	ASSERT_EQ( 2, root.nodes.size() );
+	ASSERT_EQ( 2, root[0].nodes.size() );
+	ASSERT_EQ( 2, root[1].nodes.size() );
 	ASSERT_EQ( "keyA", root[0].key() );
-	ASSERT_EQ( "valueA", root[0][0].value );
-	ASSERT_EQ( "valueB", root[0][1].value );
+	ASSERT_EQ( "valueA", root[0][0].content );
+	ASSERT_EQ( "valueB", root[0][1].content );
 	ASSERT_EQ( "keyB", root[1].key() );
-	ASSERT_EQ( "valueA", root[1][0].value );
-	ASSERT_EQ( "valueB", root[1][1].value );
+	ASSERT_EQ( "valueA", root[1][0].content );
+	ASSERT_EQ( "valueB", root[1][1].content );
 }
 
 TEST( Parser, multipleKey_multipleValues_keyApi ) {
@@ -56,15 +56,15 @@ TEST( Parser, multipleKey_multipleValues_keyApi ) {
 		);
 
 	ASSERT_FALSE( root.empty() );
-	ASSERT_EQ( 2, root.items.size() );
-	ASSERT_EQ( 2, root[0].items.size() );
-	ASSERT_EQ( 2, root[1].items.size() );
+	ASSERT_EQ( 2, root.nodes.size() );
+	ASSERT_EQ( 2, root[0].nodes.size() );
+	ASSERT_EQ( 2, root[1].nodes.size() );
 	ASSERT_EQ( "keyA", root["keyA"].key() );
-	ASSERT_EQ( "valueA", root["keyA"][0].value );
-	ASSERT_EQ( "valueB", root["keyA"][1].value );
+	ASSERT_EQ( "valueA", root["keyA"][0].content );
+	ASSERT_EQ( "valueB", root["keyA"][1].content );
 	ASSERT_EQ( "keyB", root["keyB"].key() );
-	ASSERT_EQ( "valueA", root["keyB"][0].value );
-	ASSERT_EQ( "valueB", root["keyB"][1].value );
+	ASSERT_EQ( "valueA", root["keyB"][0].content );
+	ASSERT_EQ( "valueB", root["keyB"][1].content );
 }
 
 TEST( Parser, multipleKey_multipleValues_withEmptyLines ) {
@@ -77,15 +77,15 @@ TEST( Parser, multipleKey_multipleValues_withEmptyLines ) {
 		);
 
 	ASSERT_FALSE( root.empty() );
-	ASSERT_EQ( 2, root.items.size() );
-	ASSERT_EQ( 2, root[0].items.size() );
-	ASSERT_EQ( 2, root[1].items.size() );
+	ASSERT_EQ( 2, root.nodes.size() );
+	ASSERT_EQ( 2, root[0].nodes.size() );
+	ASSERT_EQ( 2, root[1].nodes.size() );
 	ASSERT_EQ( "keyA", root[0].key() );
-	ASSERT_EQ( "valueA", root[0][0].value );
-	ASSERT_EQ( "valueB", root[0][1].value );
+	ASSERT_EQ( "valueA", root[0][0].content );
+	ASSERT_EQ( "valueB", root[0][1].content );
 	ASSERT_EQ( "keyB", root[1].key() );
-	ASSERT_EQ( "valueA", root[1][0].value );
-	ASSERT_EQ( "valueB", root[1][1].value );
+	ASSERT_EQ( "valueA", root[1][0].content );
+	ASSERT_EQ( "valueB", root[1][1].content );
 }
 
 TEST( Parser, nestedMaps ) {
@@ -96,10 +96,10 @@ TEST( Parser, nestedMaps ) {
 		);
 
 	ASSERT_FALSE( root.empty() );
-	ASSERT_EQ( 1, root.items.size() );
-	ASSERT_EQ( 2, root["keyA"].items.size() );
-	ASSERT_EQ( 1, root["keyA"]["keyB"].items.size() );
-	ASSERT_EQ( 2, root["keyA"]["keyC"].items.size() );
+	ASSERT_EQ( 1, root.nodes.size() );
+	ASSERT_EQ( 2, root["keyA"].nodes.size() );
+	ASSERT_EQ( 1, root["keyA"]["keyB"].nodes.size() );
+	ASSERT_EQ( 2, root["keyA"]["keyC"].nodes.size() );
 }
 
 TEST( Parser, nestedMaps_withEmptyLines ) {
@@ -113,10 +113,10 @@ TEST( Parser, nestedMaps_withEmptyLines ) {
 		);
 
 	ASSERT_FALSE( root.empty() );
-	ASSERT_EQ( 1, root.items.size() );
-	ASSERT_EQ( 2, root["keyA"].items.size() );
-	ASSERT_EQ( 1, root["keyA"]["keyB"].items.size() );
-	ASSERT_EQ( 2, root["keyA"]["keyC"].items.size() );
+	ASSERT_EQ( 1, root.nodes.size() );
+	ASSERT_EQ( 2, root["keyA"].nodes.size() );
+	ASSERT_EQ( 1, root["keyA"]["keyB"].nodes.size() );
+	ASSERT_EQ( 2, root["keyA"]["keyC"].nodes.size() );
 	ASSERT_TRUE( root["keyA"]["keyB"]["value"].empty() );
 	ASSERT_TRUE( root["keyA"]["keyC"]["valueA"].empty() );
 	ASSERT_TRUE( root["keyA"]["keyC"]["valueB"].empty() );
@@ -136,12 +136,12 @@ TEST( Parser, nestedNestedMaps_withEmptyLines ) {
 		);
 
 	ASSERT_FALSE( root.empty() );
-	ASSERT_EQ( 1, root.items.size() );
-	ASSERT_EQ( 4, root["keyA"].items.size() );
-	ASSERT_EQ( 1, root["keyA"]["keyB"].items.size() );
-	ASSERT_EQ( 2, root["keyA"]["keyC"].items.size() );
-	ASSERT_EQ( 1, root["keyA"]["keyD"].items.size() );
-	ASSERT_EQ( 1, root["keyA"]["keyD"]["keyE"].items.size() );
+	ASSERT_EQ( 1, root.nodes.size() );
+	ASSERT_EQ( 4, root["keyA"].nodes.size() );
+	ASSERT_EQ( 1, root["keyA"]["keyB"].nodes.size() );
+	ASSERT_EQ( 2, root["keyA"]["keyC"].nodes.size() );
+	ASSERT_EQ( 1, root["keyA"]["keyD"].nodes.size() );
+	ASSERT_EQ( 1, root["keyA"]["keyD"]["keyE"].nodes.size() );
 	ASSERT_TRUE( root["keyA"]["keyB"]["value"].empty() );
 	ASSERT_TRUE( root["keyA"]["keyC"]["valueA"].empty() );
 	ASSERT_TRUE( root["keyA"]["keyC"]["valueB"].empty() );
@@ -157,10 +157,10 @@ TEST( Parser, nestedMaps_indentedText ) {
 		);
 
 	ASSERT_FALSE( root.empty() );
-	ASSERT_EQ( 1, root.items.size() );
-	ASSERT_EQ( 1, root["keyA"].items.size() );
-	ASSERT_EQ( 1, root["keyA"]["keyB"].items.size() );
-	ASSERT_EQ( "some text\nthen some more", root["keyA"]["keyB"].data().value );
+	ASSERT_EQ( 1, root.nodes.size() );
+	ASSERT_EQ( 1, root["keyA"].nodes.size() );
+	ASSERT_EQ( 1, root["keyA"]["keyB"].nodes.size() );
+	ASSERT_EQ( "some text\nthen some more", root["keyA"]["keyB"].data().content );
 }
 
 TEST( Parser, nestedMaps_indentedText_withEmptyLines ) {
@@ -175,10 +175,10 @@ TEST( Parser, nestedMaps_indentedText_withEmptyLines ) {
 		);
 
 	ASSERT_FALSE( root.empty() );
-	ASSERT_EQ( 1, root.items.size() );
-	ASSERT_EQ( 1, root["keyA"].items.size() );
-	ASSERT_EQ( 1, root["keyA"]["keyB"].items.size() );
-	ASSERT_EQ( "\nsome text\n\nthen some more\n", root["keyA"]["keyB"].data().value );
+	ASSERT_EQ( 1, root.nodes.size() );
+	ASSERT_EQ( 1, root["keyA"].nodes.size() );
+	ASSERT_EQ( 1, root["keyA"]["keyB"].nodes.size() );
+	ASSERT_EQ( "\nsome text\n\nthen some more\n", root["keyA"]["keyB"].data().content );
 }
 
 TEST( Parser, nestedMaps_indentedText__withEmptyLines_embedded ) {
@@ -194,10 +194,10 @@ TEST( Parser, nestedMaps_indentedText__withEmptyLines_embedded ) {
 		);
 
 	ASSERT_FALSE( root.empty() );
-	ASSERT_EQ( 1, root.items.size() );
-	ASSERT_EQ( 2, root["keyA"].items.size() );
-	ASSERT_EQ( 1, root["keyA"]["keyB"].items.size() );
-	ASSERT_EQ( "\nsome text\n\nthen some more\n", root["keyA"]["keyB"].data().value );
+	ASSERT_EQ( 1, root.nodes.size() );
+	ASSERT_EQ( 2, root["keyA"].nodes.size() );
+	ASSERT_EQ( 1, root["keyA"]["keyB"].nodes.size() );
+	ASSERT_EQ( "\nsome text\n\nthen some more\n", root["keyA"]["keyB"].data().content );
 	ASSERT_TRUE( root["keyA"]["keyC"].empty() );
 }
 

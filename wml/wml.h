@@ -2,55 +2,132 @@
 
 #include <vector>
 #include <utility>
+// for parseFile and parse (stream overload)
+#include <istream>
+// for emitFile
+#include <fstream>
 
 #include "leanTextProcessing.h"
 
 namespace wml {
 	struct Node {
-		std::string value;			
-		std::vector< Node > items;
+		typedef std::vector< Node > NodeContainer;
+		typedef NodeContainer::iterator iterator;
+		typedef NodeContainer::const_iterator const_iterator;
+
+		std::string content;			
+		NodeContainer nodes;
 
 		Node & data() {
-			return items[0];
+			return nodes[0];
+		}
+
+		const Node & data() const {
+			return nodes[0];
 		}
 
 		template< typename T >
 		T as() const {
-			return boost::lexical_cast<T>( value );
+			return boost::lexical_cast<T>( content );
 		}
 
 		const std::string & key() const {
-			return value;
+			return content;
+		}
+
+		template< typename T >
+		T & get( const std::string &key ) {
+			return (*this)[ key ].as<T>();
+		}
+
+		template< typename T >
+		T & getOr( const std::string &key, const T &defaultValue ) {
+			auto node = find( key );
+
+			if( node ) {
+				return node->as<T>();
+			}
+
+			return defaultValue;
+		}
+
+		template< typename T >
+		const T & get( const std::string &key ) const {
+			return (*this)[ key ].as<T>();
+		}
+
+		template< typename T >
+		const T & getOr( const std::string &key, const T &defaultValue ) const {
+			auto node = find( key );
+
+			if( node ) {
+				return node->as<T>();
+			}
+
+			return defaultValue;
+		}
+
+		iterator find(  const std::string &key ) {
+			for( auto node = nodes.begin() ; node != nodes.end() ; ++node ) {
+				if( node->content == key ) {
+					return node;
+				}
+			}
+			return nodes.end();
+		}
+
+		const_iterator find(  const std::string &key ) const {
+			for( auto node = nodes.begin() ; node != nodes.end() ; ++node ) {
+				if( node->content == key ) {
+					return node;
+				}
+			}
+			return nodes.end();
+		}
+
+		iterator begin() {
+			return nodes.begin();
+		}
+
+		iterator end() {
+			return nodes.end();
+		}
+
+		const_iterator cbegin() const {
+			return nodes.cbegin();
+		}
+
+		const_iterator cend() const {
+			return nodes.cend();
 		}
 
 		Node & operator[] ( const std::string &key ) {
-			for( auto item = items.begin() ; item != items.end() ; ++item ) {
-				if( item->value == key ) {
+			for( auto item = nodes.begin() ; item != nodes.end() ; ++item ) {
+				if( item->content == key ) {
 					return *item;
 				}
 			}
 
-			// TODO: throw an exception
 			throw std::out_of_range( boost::str( boost::format( "key '%s' not found!" ) % key ) );
 		}
 
 		Node & operator[] ( int i ) {
-			return items[ i ];
+			return nodes[ i ];
 		}
 
 		size_t size() const {
-			return items.size();
+			return nodes.size();
 		}
 
 		bool empty() const {
-			return items.empty();
+			return nodes.empty();
 		}
 
 		std::vector< Node * > getAll( const std::string &key ) {
 			std::vector< Node * > results;
 
-			for( auto item = items.begin() ; item != items.end() ; ++item ) {
-				if( item->value == key ) {
+			for( auto item = nodes.begin() ; item != nodes.end() ; ++item ) {
+				if( item->content == key ) {
 					results.push_back( &*item );
 				}
 			}
@@ -59,13 +136,13 @@ namespace wml {
 		}
 
 		Node() {}
-		Node( const std::string &value ) : value( value ) {}
+		Node( const std::string &content ) : content( content ) {}
 
-		Node( Node &&node ) : value( std::move( node.value ) ), items( std::move( node.items ) ) {}
+		Node( Node &&node ) : content( std::move( node.content ) ), nodes( std::move( node.nodes ) ) {}
 
 		Node & operator == ( Node &&node ) {
-			value = std::move( node.value );
-			items = std::move( node.items );
+			content = std::move( node.content );
+			nodes = std::move( node.nodes );
 		}
 	};
 
@@ -299,7 +376,7 @@ namespace wml {
 							std::string indentedText = parseIndentedText();
 							indentLevel--;
 
-							childNode.items.push_back( Node( indentedText ) );
+							childNode.nodes.push_back( Node( indentedText ) );
 						}
 						else {
 							expectNewline();
@@ -313,9 +390,9 @@ namespace wml {
 						parseInlineValues( childNode );
 					}
 
-					node.items.push_back( std::move( childNode ) );
+					node.nodes.push_back( std::move( childNode ) );
 				}
-				if( node.items.empty() && !allowEmpty ) {
+				if( node.nodes.empty() && !allowEmpty ) {
 					textIterator.error( "expected non-empty map" );
 				}
 			}
@@ -324,7 +401,7 @@ namespace wml {
 				while( !textIterator.atEof() && !textIterator.tryMatch( '\n' ) ) {
 					std::string value = parseValue();
 
-					node.items.push_back( Node( value ) );
+					node.nodes.push_back( Node( value ) );
 
 					skipWhitespace();
 				}
@@ -333,8 +410,8 @@ namespace wml {
 			Parser( const TextContainer &textContainer ) : indentLevel( 0 ), textIterator( textContainer, TextPosition() ) {}
 		};
 
-		inline Node parse( const std::string &text, const std::string &textIdentifier ) {
-			TextContainer textContainer( text, textIdentifier );
+		inline Node parse( const std::string &content, const std::string &sourceIdentifier ) {
+			TextContainer textContainer( content, sourceIdentifier );
 
 			Parser parser( textContainer );
 
@@ -445,7 +522,7 @@ namespace wml {
 			}
 
 			static bool isMap( const Node &node ) {
-				for( auto item = node.items.begin() ; item != node.items.end() ; ++item ) {
+				for( auto item = node.nodes.begin() ; item != node.nodes.end() ; ++item ) {
 					if( !item->empty() ) {
 						return true;
 					}
@@ -454,23 +531,23 @@ namespace wml {
 			}
 
 			static bool isTextBlock( const Node &node ) {
-				return node.size() == 1 && determineType( node.items[0].value ) == VT_TEXT;
+				return node.size() == 1 && determineType( node.nodes[0].content ) == VT_TEXT;
 			}
 
 			void emitInlineValues( const Node &node ) {
-				for( auto item = node.items.begin() ; item != node.items.end() ; ++item ) {
+				for( auto item = node.nodes.begin() ; item != node.nodes.end() ; ++item ) {
 					text.push_back( ' ' );
 
-					emitValue( item->value, true );
+					emitValue( item->content, true );
 				}
 				text.push_back( '\n' );
 			}
 
 			void emitMap( const Node &node ) {
-				for( auto item = node.items.begin() ; item != node.items.end() ; ++item ) {
+				for( auto item = node.nodes.begin() ; item != node.nodes.end() ; ++item ) {
 					emitTabs();
 					// emit the key
-					emitValue( item->value, true );
+					emitValue( item->content, true );
 
 					if( isMap( *item ) ) {
 						text.append( ":\n" );
@@ -479,7 +556,7 @@ namespace wml {
 						--indentLevel;
 					}
 					else if( isTextBlock( *item ) ) {
-						emitValue( item->items[0].value, false );
+						emitValue( item->data().content, false );
 					}
 					else {
 						emitInlineValues( *item );
@@ -495,11 +572,24 @@ namespace wml {
 		}
 	}
 
-	Node parse( const std::string &text, const std::string &textIdentifier = "" ) {
-		return detail::parse( text, textIdentifier );		
+	Node parse( const std::string &content, const std::string &sourceIdentifier = "" ) {
+		return detail::parse( content, sourceIdentifier );		
+	}
+
+	Node parse( std::istream &stream, const std::string &sourceIdentifier = "" ) {
+		std::string content = std::string( std::istreambuf_iterator<char>( stream ), std::istreambuf_iterator<char>() );
+		return detail::parse( content, sourceIdentifier );
+	}
+
+	Node parseFile( const std::string &filename ) {
+		return parse( std::ifstream( filename ) );
 	}
 
 	std::string emit( const Node &node ) {
 		return detail::emit( node );
+	}
+
+	void emitFile( const std::string &filename, const Node &node ) {
+		std::ofstream( filename ) << emit( node );
 	}
 }
