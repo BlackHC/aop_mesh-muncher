@@ -51,6 +51,7 @@ ADD_SUBDIRECTORY(volume)
 ADD_SUBDIRECTORY(glVoxelizer)
 
 ADD_SUBDIRECTORY(wml)
+ADD_SUBDIRECTORY(serializer)
 
 # Adds a new build target which copies the niven binaries to
 # the output folder

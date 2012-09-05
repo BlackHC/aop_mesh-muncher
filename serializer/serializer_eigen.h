@@ -5,36 +5,59 @@
 #include <Eigen/Eigen>
 
 namespace Serializer {
-	template< typename Reader, typename Scalar >
-	void read( Reader &reader, Eigen::Matrix< Scalar, 3, 1 > &value ) {
-		typedef Scalar (*ArrayPointer)[3];
-		ArrayPointer array = (ArrayPointer) &value[0];
+	namespace detail {
+		template<typename T> 
+		struct EigenMatrixTraits {
+		};
+
+		template< typename _Scalar, int _Rows, int _Cols >
+		struct EigenMatrixTraits< Eigen::Matrix< _Scalar, _Rows, _Cols > > {
+			typedef void isEigenType;
+
+			typedef _Scalar (*ArrayPointer)[ _Rows * _Cols ];
+		};
+
+		template<typename T>
+		struct EigenAlignedBox {
+		};
+
+		template< typename _Scalar, int _Dim >
+		struct EigenAlignedBox< Eigen::AlignedBox< _Scalar, _Dim > > {
+			typedef void isEigenType;
+		};
+	}
+
+	template< typename Reader, typename X >
+	typename detail::EigenMatrixTraits<X>::isEigenType read( Reader &reader, X &value ) {
+		typedef detail::EigenMatrixTraits<X>::ArrayPointer ArrayPointer;
+		ArrayPointer array = (ArrayPointer) value.data();
 		read( reader, *array );
 	}
 
-	template< typename Emitter, typename Scalar >
-	void write( Emitter &emitter, const Eigen::Matrix<Scalar, 3, 1> &value ) {
-		typedef const Scalar (*ArrayPointer)[3];
-		ArrayPointer array = (ArrayPointer) &value[0];
-		write( emitter, *array );
+	template< typename Writer, typename X >
+	typename detail::EigenMatrixTraits<X>::isEigenType write( Writer &writer, const X &value ) {
+		typedef detail::EigenMatrixTraits<X>::ArrayPointer ArrayPointer;
+		ArrayPointer array = (ArrayPointer) value.data();
+		write( writer, *array );
 	}
 
-	template< typename Reader >
-	void read( Reader &reader, Eigen::AlignedBox3f &value ) {
+// TODO: add error/warning
+#ifdef min 
+#	undef min
+#endif
+#ifdef max
+#	undef max
+#endif
+	
+	template< typename Reader, typename X >
+	typename detail::EigenAlignedBox<X>::isEigenType read( Reader &reader, X &value ) {
 		get( reader, "min", value.min() );
 		get( reader, "max", value.max() );
 	}
 
-	template< typename Emitter >
-	void write( Emitter &emitter, const Eigen::AlignedBox3f &value ) {
-		put( emitter, "min", value.min() );
-		put( emitter, "max", value.max() );
+	template< typename Writer, typename X >
+	typename detail::EigenAlignedBox<X>::isEigenType write( Writer &writer, const X &value ) {
+		put( writer, "min", value.min() );
+		put( writer, "max", value.max() );
 	}
-
-	// instantiate for Vector2f
-	template void write< TextEmitter, float >( TextEmitter &, const Eigen::Matrix< float, 2, 1 > & );
-	// instantiate for Vector3f
-	template void write< TextEmitter, float >( TextEmitter &, const Eigen::Matrix< float, 3, 1 > & );
-	// instantiate for Vector4f
-	template void write< TextEmitter, float >( TextEmitter &, const Eigen::Matrix< float, 4, 1 > & );
 }

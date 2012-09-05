@@ -4,15 +4,31 @@
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/lexical_cast.hpp>
 
-/* custom reader
+// for helper macros
+#include <boost/preprocessor/seq/for_each.hpp>
+
+/* custom type serialization I
+
 namespace Serializer {
 template< typename Reader >
 void read( Reader &reader, X &value ) {
 }
 
-template< typename Emitter >
-void write( Emitter &emitter, const X &value ) {
+template< typename Writer >
+void write( Writer &writer, const X &value ) {
 }
+*/
+
+/* custom type serialization II
+
+class ... {
+	template< typename Reader >
+		void serializer_read( Reader &reader ) {
+	}
+
+	template< typename Writer >
+	void serializer_write( Writer &writer ) {
+	}
 }
 */
 
@@ -21,14 +37,13 @@ void read( Reader &reader, Eigen::Matrix< Scalar, N, 1 > &value ) {
 	read( reader, static_cast<Scalar[N]>(&value[0]) );
 }
 
-template< typename Emitter, typename Scalar, int N >
-void write( Emitter &emitter, const Eigen::Matrix<Scalar, N, 1> &value ) {
-	write( emitter, static_cast<const Scalar[N]>(&value[0]) );
+template< typename Writer, typename Scalar, int N >
+void write( Writer &writer, const Eigen::Matrix<Scalar, N, 1> &value ) {
+	write( writer, static_cast<const Scalar[N]>(&value[0]) );
 }*/
 
-
 /*
-serialize pointers using helper objects and an object id/type map.. 
+serialize pointers using helper objects and an object id/type map..
 OR:
 
 using an interval set
@@ -59,16 +74,15 @@ struct ptree_static_dispatch {
 };
 
 struct ptree_static_construction {
-
 };*/
 
 namespace Serializer {
 	typedef boost::property_tree::ptree ptree;
-	struct BinaryEmitter : boost::noncopyable {
+	struct BinaryWriter : boost::noncopyable {
 		FILE *handle;
 
-		BinaryEmitter( const char *filename ) : handle( fopen( filename , "wb" ) ) {}
-		~BinaryEmitter() {
+		BinaryWriter( const char *filename ) : handle( fopen( filename , "wb" ) ) {}
+		~BinaryWriter() {
 			if( handle ) {
 				fclose( handle );
 			}
@@ -86,19 +100,19 @@ namespace Serializer {
 		}
 	};
 
-	struct TextEmitter : boost::noncopyable {
+	struct TextWriter : boost::noncopyable {
 		ptree root, *current;
 
 		std::string filename;
 
-		TextEmitter( const char *filename ) : filename( filename ), current( &root ) {}
-		~TextEmitter() {
+		TextWriter( const char *filename ) : filename( filename ), current( &root ) {}
+		~TextWriter() {
 			boost::property_tree::json_parser::write_json( filename, root );
 		}
 	};
 
 	struct TextReader : boost::noncopyable {
-		ptree root, *current;		
+		ptree root, *current;
 
 		TextReader( const char *filename ) : current( &root ) {
 			boost::property_tree::json_parser::read_json( filename, root );
@@ -106,16 +120,16 @@ namespace Serializer {
 	};
 
 	template< typename Value >
-	void put( BinaryEmitter &emitter, const char *key, const Value &value ) {
-		write( emitter, value );
+	void put( BinaryWriter &writer, const char *key, const Value &value ) {
+		write( writer, value );
 	}
 
 	template< typename Value >
-	void put( TextEmitter &emitter, const char *key, const Value &value ) {
-		ptree *parent = emitter.current;
-		emitter.current = &parent->push_back( std::make_pair( key, ptree() ) )->second;
-		write( emitter, value );
-		emitter.current = parent;
+	void put( TextWriter &writer, const char *key, const Value &value ) {
+		ptree *parent = writer.current;
+		writer.current = &parent->push_back( std::make_pair( key, ptree() ) )->second;
+		write( writer, value );
+		writer.current = parent;
 	}
 
 	template< typename Value >
@@ -126,7 +140,7 @@ namespace Serializer {
 	template< typename Value >
 	void get( TextReader &reader, const char *key, Value &value, const Value &defaultValue = Value() ) {
 		auto it = reader.current->find( key );
-		
+
 		if( it != reader.current->not_found() ) {
 			ptree *parent = reader.current;
 			reader.current = &it->second;
@@ -136,6 +150,17 @@ namespace Serializer {
 		else {
 			value = defaultValue;
 		}
+	}
+
+	// use class methods if they exist
+	template< typename Reader, typename X >
+	auto read( Reader &reader, X &value ) -> decltype( value.serializer_read( reader ), void() ) {
+		value.serializer_read( reader );
+	}
+
+	template< typename Writer, typename X >
+	auto write( Writer &writer, const X &value ) -> decltype( value.serializer_write( writer ), void() ) {
+		value.serializer_write( writer );
 	}
 
 	// arithmetic types
@@ -153,23 +178,23 @@ namespace Serializer {
 
 	template< typename Value >
 	typename boost::enable_if< boost::is_arithmetic< Value > >::type
-		write( BinaryEmitter &emitter, const Value &value ) {
-			fwrite( &value, sizeof( Value ), 1, emitter.handle );
+		write( BinaryWriter &writer, const Value &value ) {
+			fwrite( &value, sizeof( Value ), 1, writer.handle );
 	}
 
 	template< typename Value >
 	typename boost::enable_if< boost::is_arithmetic< Value > >::type
-		write( TextEmitter &emitter, const Value &value ) {
-		emitter.current->put_value( value );
+		write( TextWriter &writer, const Value &value ) {
+			writer.current->put_value( value );
 	}
 
 	// enums
-	/*template<typename E> 
+	/*template<typename E>
 	struct EnumSimpleReflection {
 		//static const char* labels[0];
 	};*/
 
-	template<typename E> 
+	template<typename E>
 	struct EnumReflection {
 		//static const std::pair<const char*, E> labelValuePairs[0];
 	};
@@ -218,92 +243,45 @@ namespace Serializer {
 
 	template< typename Value >
 	typename boost::enable_if< boost::is_enum< Value > >::type
-		write( BinaryEmitter &emitter, const Value &value ) {
-			fwrite( &value, sizeof( Value ), 1, emitter.handle );
+		write( BinaryWriter &writer, const Value &value ) {
+			fwrite( &value, sizeof( Value ), 1, writer.handle );
 	}
 
 	template< typename Value >
 	typename boost::enable_if< boost::is_enum< Value > /* && sizeof( EnumReflection<Value>::labels ) */>::type
-		write( TextEmitter &emitter, const Value &value ) {
+		write( TextWriter &writer, const Value &value ) {
 		for( int i = 0 ; i < boost::size( EnumReflection<Value>::labelValuePairs ) ; ++i ) {
 			if( value == EnumReflection<Value>::labelValuePairs[i].value ) {
-				emitter.current->put_value( EnumReflection<Value>::labelValuePairs[i].label );
+				writer.current->put_value( EnumReflection<Value>::labelValuePairs[i].label );
 				return;
 			}
 		}
-		emitter.current->put_value<int>( value );
+		writer.current->put_value<int>( value );
 	}
 
 	/*template< typename Value >
 	typename boost::enable_if_c< boost::is_enum< Value >::value && sizeof( EnumSimpleReflection<Value>::labels[0] ) != 0 >::type
-		write( TextEmitter &emitter, const Value &value ) {
+		write( TextWriter &writer, const Value &value ) {
 		if( value >= 0 && value < boost::size( EnumSimpleReflection<Value>::labels ) ) {
-			emitter.current->put_value( EnumSimpleReflection<Value>::labels[value] );
+			writer.current->put_value( EnumSimpleReflection<Value>::labels[value] );
 		}
 		else {
-			emitter.current->put_value<int>( value );
-		}		
+			writer.current->put_value<int>( value );
+		}
 	}*/
-
-	// std::vector
-	template< typename Value >
-	void write( BinaryEmitter &emitter, const std::vector<Value> &collection ) {
-		size_t size = collection.size();
-		write( emitter, size );
-		for( auto it = collection.begin() ; it != collection.end() ; ++it ) {
-			write( emitter, *it );
-		}
-	}
-
-	template< typename Value >
-	void write( TextEmitter &emitter, const std::vector<Value> &collection ) {
-		for( auto it = collection.begin() ; it != collection.end() ; ++it ) {
-			put( emitter, "", *it );
-		}
-	}
-
-	template< typename Value >
-	void read( BinaryReader &reader, std::vector<Value> &collection ) {
-		size_t size;
-		read( reader, size );
-		collection.reserve( collection.size() + size );
-		for( int i = 0 ; i < size ; ++i ) {
-			Value value;
-			read( reader, value );
-			collection.push_back( std::move( value ) );
-		}
-	}
-
-	template< typename Value >
-	void read( TextReader &reader, std::vector<Value> &collection ) {
-		size_t size = reader.current->size();
-		collection.reserve( collection.size() + size );
-
-		ptree *parent = reader.current;
-
-		auto end = reader.current->end();
-		for( auto it = reader.current->begin() ; it != end ; ++it ) {
-			reader.current = &it->second;
-			Value value;
-			read( reader, value );
-			collection.push_back( std::move( value ) );
-		}
-
-		reader.current = parent;
-	}
 
 	// static array
 	template< typename Value, int N >
-	void write( BinaryEmitter &emitter, const Value (&array)[N] ) {
+	void write( BinaryWriter &writer, const Value (&array)[N] ) {
 		for( int i = 0 ; i < N ; ++i ) {
-			write( emitter, array[i] );
+			write( writer, array[i] );
 		}
 	}
 
 	template< typename Value, int N >
-	void write( TextEmitter &emitter, const Value (&array)[N] ) {
+	void write( TextWriter &writer, const Value (&array)[N] ) {
 		for( int i = 0 ; i < N ; ++i ) {
-			put( emitter, "", array[i] );
+			put( writer, "", array[i] );
 		}
 	}
 
@@ -328,25 +306,74 @@ namespace Serializer {
 		reader.current = parent;
 	}
 
-	// std::string
-	void read( BinaryReader &reader, std::string &value ) {
-		size_t size;
-		read( reader, size );
-		value.resize( size + 1 );
-		fread( &value[0], size, 1, reader.handle );
+	// raw serialization
+	template< typename X >
+	struct RawMode {
+		enum Value {
+			value = false
+		};
+	};
+
+#define SERIALIZER_ENABLE_RAWMODE( type ) \
+	template<> \
+	struct ::Serializer::RawMode< type > { \
+		enum Value { \
+			value = true \
+		}; \
 	}
 
-	void read( TextReader &reader, std::string &value ) {
-		value = reader.current->get_value<std::string>();
+	template< typename X >
+	typename boost::enable_if< RawMode< X > >::type read( TextReader &reader, X &value ) {
+		std::string data = reader.current->get_value<std::string>();
+		value = *reinterpret_cast<X*>( &data.front() );
 	}
 
-	void write( BinaryEmitter &emitter, const std::string &value ) {
-		size_t size = value.size();
-		fwrite( &value[0], size, 1, emitter.handle );
+	template< typename X >
+	typename boost::enable_if< RawMode< X > >::type read( BinaryReader &reader, X &value ) {
+		fread( &value, sizeof( X ), 1, reader.handle );
 	}
 
-	void write( TextEmitter &emitter, const std::string &value ) {
-		emitter.current->put_value( value );
+	template< typename X >
+	typename boost::enable_if< RawMode< X > >::type write( TextWriter &writer, const X &value ) {
+		writer.current->put_value( std::string( (const char*) &value, (const char*) &value + sizeof( X ) ) );
+	}
+
+	template< typename X >
+	typename boost::enable_if< RawMode< X > >::type write( BinaryWriter &writer, const X &value ) {
+		fwrite( &value, sizeof( X ), 1, writer.handle );
+	}
+
+	// member helpers
+#define SERIALIZER_GET_VARIABLE( reader, field ) \
+	Serializer::get( reader, #field, field )
+
+#define SERIALIZER_PUT_VARIABLE( writer, field ) \
+	Serializer::put( writer, #field, field )
+
+	// standard helpers
+#define _SERIALIZER_STD_GET( r, data, field ) Serializer::get( reader, #field, field );
+#define _SERIALIZER_STD_PUT( r, data, field ) Serializer::put( writer, #field, field );
+#define SERIALIZER_DEFAULT_IMPL( fieldSeq ) \
+	template< typename Reader > \
+	void serializer_read( Reader &reader ) { \
+		BOOST_PP_SEQ_FOR_EACH( _SERIALIZER_STD_GET, BOOST_PP_NIL, fieldSeq ) \
+	} \
+	template< typename Writer > \
+	void serializer_write( Writer &writer ) const { \
+		BOOST_PP_SEQ_FOR_EACH( _SERIALIZER_STD_PUT, BOOST_PP_NIL, fieldSeq ) \
+	}
+
+#define _SERIALIZER_STD_EXTERN_GET( r, data, field )  Serializer::get( reader, #field, value. field );
+#define _SERIALIZER_STD_EXTERN_PUT( r, data, field ) Serializer::put( writer, #field, value. field );
+#define SERIALIZER_DEFAULT_EXTERN_IMPL( type, fieldSeq ) \
+	namespace Serializer { \
+		template< typename Reader > \
+		void read( Reader &reader, type &value ) { \
+			BOOST_PP_SEQ_FOR_EACH( _SERIALIZER_STD_EXTERN_GET, BOOST_PP_NIL, fieldSeq ) \
+		} \
+		template< typename Writer > \
+		void write( Writer &writer, const type &value ) { \
+			BOOST_PP_SEQ_FOR_EACH( _SERIALIZER_STD_EXTERN_PUT, BOOST_PP_NIL, fieldSeq ) \
+		} \
 	}
 }
-
