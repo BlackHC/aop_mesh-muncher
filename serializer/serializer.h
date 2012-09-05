@@ -28,7 +28,7 @@ void write( Writer &writer, const X &value ) {
 
 class ... {
 	template< typename Reader >
-		void serializer_read( Reader &reader ) {
+	void serializer_read( Reader &reader ) {
 	}
 
 	template< typename Writer >
@@ -314,12 +314,26 @@ namespace Serializer {
 	// raw serialization
 	template< typename X >
 	struct RawMode {
-		enum Value {
-			value = false
-		};
+		// Types "yes" and "no" are guaranteed to have different sizes,
+		// specifically sizeof(yes) == 1 and sizeof(no) == 2.
+		typedef char yes[1];
+		typedef char no[2];
+
+		template <typename C>
+		static yes& test(typename C::serializer_use_raw_mode *);
+
+		template <typename>
+		static no& test(...);
+
+		// If the "sizeof" the result of calling test<T>(0) would be equal to the sizeof(yes),
+		// the first overload worked and T has a nested type named foobar.
+		static const bool value = sizeof(test<X>(0)) == sizeof(yes);
 	};
 
-#define SERIALIZER_ENABLE_RAW_MODE( type ) \
+#define SERIALIZER_ENABLE_RAW_MODE() \
+	typedef void serializer_use_raw_mode;
+
+#define SERIALIZER_ENABLE_RAW_MODE_EXTERN( type ) \
 	template<> \
 	struct ::Serializer::RawMode< type > { \
 		enum Value { \

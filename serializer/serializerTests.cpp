@@ -480,9 +480,9 @@ TextBinaryTest( StdMap );
 struct RawStruct {
 	char c;
 	int x;
-};
 
-SERIALIZER_ENABLE_RAW_MODE( RawStruct );
+	SERIALIZER_ENABLE_RAW_MODE();
+};
 
 template< typename Reader, typename Writer >
 void RawMode() {
@@ -506,6 +506,35 @@ void RawMode() {
 
 TextBinaryTest( RawMode );
 
+struct RawStructExtern {
+	char c;
+	int x;
+};
+
+SERIALIZER_ENABLE_RAW_MODE_EXTERN( RawStructExtern );
+
+template< typename Reader, typename Writer >
+void RawModeExtern() {
+	{
+		Writer writer( scratchFilename );
+
+		RawStructExtern s = { 'a', 10 };
+		SERIALIZER_PUT_VARIABLE( writer, s );
+	}
+
+	{
+		Reader reader( scratchFilename );
+
+		RawStructExtern s;
+		SERIALIZER_GET_VARIABLE( reader, s );
+
+		EXPECT_EQ( 'a', s.c );
+		EXPECT_EQ( 10, s.x );
+	}
+}
+
+TextBinaryTest( RawModeExtern );
+
 struct RawNonFundamental {
 	int x;
 
@@ -521,7 +550,7 @@ void write( Serializer::BinaryWriter &writer, const RawNonFundamental &rnf ) {
 	FAIL();
 }
 
-SERIALIZER_ENABLE_RAW_MODE( RawNonFundamental );
+SERIALIZER_ENABLE_RAW_MODE_EXTERN( RawNonFundamental );
 
 TEST( StdVector, RawNonFundamental ) {
 	{

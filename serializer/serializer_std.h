@@ -12,7 +12,7 @@ namespace Serializer {
 	// std::vector
 	template< typename Value >
 	void write( BinaryWriter &writer, const std::vector<Value> &collection ) {
-		unsigned int size = collection.size();
+		unsigned int size = (unsigned int) collection.size();
 		write( writer, size );
 
 		if( !boost::is_fundamental< Value >::value && !RawMode< Value >::value ) {
@@ -38,11 +38,11 @@ namespace Serializer {
 		unsigned int size;
 		read( reader, size );
 
-		unsigned int startIndex = collection.size();
+		unsigned int startIndex = (unsigned int) collection.size();
 		collection.reserve( startIndex + size );
 
 		if( !boost::is_fundamental< Value >::value && !RawMode< Value >::value ) {
-			for( int i = 0 ; i < size ; ++i ) {
+			for( unsigned int i = 0 ; i < size ; ++i ) {
 				Value value;
 				read( reader, value );
 				collection.push_back( std::move( value ) );
@@ -57,7 +57,7 @@ namespace Serializer {
 
 	template< typename Value >
 	void read( TextReader &reader, std::vector<Value> &collection ) {
-		unsigned int size = reader.current->size();
+		unsigned int size = (unsigned int) reader.current->size();
 		collection.reserve( collection.size() + size );
 
 		ptree *parent = reader.current;
@@ -86,7 +86,7 @@ namespace Serializer {
 	}
 
 	void write( BinaryWriter &writer, const std::string &value ) {
-		unsigned int size = value.size();
+		unsigned int size = (unsigned int)  value.size();
 		fwrite( &size, sizeof( unsigned int ), 1, writer.handle );
 		fwrite( &value[0], size, 1, writer.handle );
 	}
@@ -111,7 +111,7 @@ namespace Serializer {
 	// std::map
 	template< typename Key, typename Value >
 	void write( BinaryWriter &writer, const std::map< Key, Value > &collection ) {
-		unsigned int size = collection.size();
+		unsigned int size = (unsigned int) collection.size();
 		write( writer, size );
 		for( auto it = collection.begin() ; it != collection.end() ; ++it ) {
 			write( writer, *it );
@@ -130,7 +130,7 @@ namespace Serializer {
 		unsigned int size;
 		read( reader, size );
 
-		for( int i = 0 ; i < size ; ++i ) {
+		for( unsigned int i = 0 ; i < size ; ++i ) {
 			std::pair< Key, Value > pair;
 			read( reader, pair );
 			collection.insert( std::move( pair ) );
@@ -139,7 +139,7 @@ namespace Serializer {
 
 	template< typename Key, typename Value >
 	void read( TextReader &reader, std::map< Key, Value > &collection ) {
-		unsigned int size = reader.current->size();
+		unsigned int size = (unsigned int) reader.current->size();
 
 		ptree *parent = reader.current;
 
