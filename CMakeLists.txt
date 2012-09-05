@@ -53,7 +53,9 @@ ADD_SUBDIRECTORY(glVoxelizer)
 ADD_SUBDIRECTORY(wml)
 ADD_SUBDIRECTORY(serializer)
 
+ADD_SUBDIRECTORY(sgsScene)
+
 # Adds a new build target which copies the niven binaries to
 # the output folder
 NIVEN_COPY_BINARIES(${CMAKE_BINARY_DIR})
-ANTTWEAKBAR_COPY_BINARIES()	
+ANTTWEAKBAR_COPY_BINARIES()

@@ -39,6 +39,10 @@ int TW_CALL TwEventSFML20(const sf::Event *event);
 #include <boost/utility/enable_if.hpp>
 #include <boost/range/numeric.hpp>
 
+#define GLSCENE_SUPPORT_RENDER
+#include "sgsScene.h"
+#include "sgsSceneRender.h"
+
 using namespace Eigen;
 
 AlignedBox3f AlignedBox3f_fromMinSize( const Vector3f &min, const Vector3f &size ) {
@@ -63,37 +67,10 @@ struct AntTweakBarEventHandler : EventHandler {
 
 #include "contextHelper.h"
 
+#define SERIALIZER_SUPPORT_STL
+#define SERIALIZER_SUPPORT_EIGEN
 #include "serializer.h"
-
-namespace Serializer {
-	template< typename Reader, typename Scalar >
-	void read( Reader &reader, Eigen::Matrix< Scalar, 3, 1 > &value ) {
-		typedef Scalar (*ArrayPointer)[3];
-		ArrayPointer array = (ArrayPointer) &value[0];
-		read( reader, *array );
-	}
-
-	template< typename Emitter, typename Scalar >
-	void write( Emitter &emitter, const Eigen::Matrix<Scalar, 3, 1> &value ) {
-		typedef const Scalar (*ArrayPointer)[3];
-		ArrayPointer array = (ArrayPointer) &value[0];
-		write( emitter, *array );
-	}
-
-	template< typename Reader >
-	void read( Reader &reader, AlignedBox3f &value ) {
-		get( reader, "min", value.min() );
-		get( reader, "max", value.max() );
-	}
-
-	template< typename Emitter >
-	void write( Emitter &emitter, const AlignedBox3f &value ) {
-		put( emitter, "min", value.min() );
-		put( emitter, "max", value.max() );
-	}
-
-	template void write< TextEmitter, float >( TextEmitter &, const Eigen::Matrix< float, 3, 1 > & );
-}
+#include "serializer_eigen.h"
 
 struct RenderContext : AsExecutionContext<RenderContext> {
 	bool solidObjects;
@@ -146,11 +123,11 @@ namespace Serializer {
 		GET_MEMBER( reader, value, color );
 	}
 
-	template< typename Emitter >
-	void write( Emitter &emitter, const ObjectTemplate &value ) {
-		PUT_MEMBER( emitter, value, id );
-		PUT_MEMBER( emitter, value, bbSize );
-		PUT_MEMBER( emitter, value, color );
+	template< typename Writer >
+	void write( Writer &writer, const ObjectTemplate &value ) {
+		PUT_MEMBER( writer, value, id );
+		PUT_MEMBER( writer, value, bbSize );
+		PUT_MEMBER( writer, value, color );
 	}
 }
 
@@ -184,10 +161,10 @@ namespace Serializer {
 		GET_MEMBER( reader, value, position );		
 	}
 
-	template< typename Emitter >
-	void write( Emitter &emitter, const ObjectInstance &value ) {
-		PUT_MEMBER( emitter, value, templateId );
-		PUT_MEMBER( emitter, value, position );
+	template< typename Writer >
+	void write( Writer &writer, const ObjectInstance &value ) {
+		PUT_MEMBER( writer, value, templateId );
+		PUT_MEMBER( writer, value, position );
 	}
 }
 
@@ -206,10 +183,10 @@ namespace Serializer {
 		get( reader, "direction", value.direction );
 	}
 
-	template< typename Emitter >
-	void write( Emitter &emitter, const CameraPosition &value ) {
-		put( emitter, "position", value.position );
-		put( emitter, "direction", value.direction );
+	template< typename Writer >
+	void write( Writer &writer, const CameraPosition &value ) {
+		put( writer, "position", value.position );
+		put( writer, "direction", value.direction );
 	}
 }
 
@@ -219,9 +196,9 @@ namespace Serializer {
 		read( reader, value.value );
 	}
 
-	template< typename Emitter >
-	void write( Emitter &emitter, const AntTWBarLabel &value ) {
-		write( emitter, value.value );
+	template< typename Writer >
+	void write( Writer &writer, const AntTWBarLabel &value ) {
+		write( writer, value.value );
 	}
 }
 
@@ -249,7 +226,7 @@ namespace Serializer {
 		{"all_objects", MASK_ALL_OBJECTS}
 	};
 
-	//template boost::enable_if_c< boost::is_enum< ProbeMask >::value && sizeof( EnumSimpleReflection<ProbeMask>::labels[0] ) != 0 >::type write( TextEmitter &emitter, const ProbeMask &value );
+	//template boost::enable_if_c< boost::is_enum< ProbeMask >::value && sizeof( EnumSimpleReflection<ProbeMask>::labels[0] ) != 0 >::type write( TextWriter &writer, const ProbeMask &value );
 }
 
 #define ANTTWBARGROUPTYPES_DEFINE_CUSTOM_TYPE( globalType ) \
@@ -376,6 +353,7 @@ struct SceneShader : Shader {
 
 struct Application {
 	ObjSceneGL objScene;
+	SGSSceneRenderer renderGLScene;
 	SceneShader sceneShader;
 
 	Camera camera;
@@ -460,6 +438,16 @@ struct Application {
 
 		initCamera();
 
+		{
+			SGSScene glScene;
+			
+			Serializer::BinaryReader reader( "P:\\sgs\\sg_and_sgs_source\\survivor\\__GameData\\Editor\\Save\\Survivor_original_mission_editorfiles\\test\\scene.glscene" );
+			
+			Serializer::read( reader, glScene );
+
+			renderGLScene.processScene( glScene );
+		}
+
 		// input camera input control
 		cameraInputControl.init( make_nonallocated_shared(camera), make_nonallocated_shared(window) );
 		eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( cameraInputControl ) );
@@ -526,6 +514,8 @@ struct Application {
 		// reset the database
 		probeDatabase_ = ProbeDatabase();
 
+		return;
+
 		RenderContext renderContext;
 		renderContext.solidObjects = true;
 		if( probeMask == MASK_ALL_OBJECTS ) {
@@ -586,6 +576,8 @@ struct Application {
 
 		objScene.Draw();
 
+		renderGLScene.render();
+
 		RenderContext renderContext;
 		if( !renderContext.disableObjects ) {
 			if( !renderContext.solidObjects ) {
@@ -598,7 +590,7 @@ struct Application {
 
 				objectInstances_.items[i].draw();
 			}
-		}
+		}		
 
 		glUseProgram( 0 );
 	}
@@ -856,33 +848,33 @@ struct Application {
 	void writeState() {
 		using namespace Serializer;
 
-		TextEmitter emitter( "state.json" );
+		TextWriter writer( "state.json" );
 
-		put( emitter, "gridResolution", gridResolution_ );
-		put( emitter, "maxDistance", maxDistance_ );
+		put( writer, "gridResolution", gridResolution_ );
+		put( writer, "maxDistance", maxDistance_ );
 
-		put( emitter, "solidObjects", solidObjects );
+		put( writer, "solidObjects", solidObjects );
 		
-		put( emitter, "probeMask", probeMask );
-		put( emitter, "maskAllObjectsOnFind", maskAllObjectsOnFind );
+		put( writer, "probeMask", probeMask );
+		put( writer, "maskAllObjectsOnFind", maskAllObjectsOnFind );
 
-		put( emitter, "targetCube", targetCube_ );
-		put( emitter, "showProbes", showProbes );
-		put( emitter, "showMatchedProbes", showMatchedProbes );
-		put( emitter, "showCandidatePositionVolumes", showCandidatePositionVolumes );
-		put( emitter, "showCandidateSuggestions", showCandidateSuggestions );
+		put( writer, "targetCube", targetCube_ );
+		put( writer, "showProbes", showProbes );
+		put( writer, "showMatchedProbes", showMatchedProbes );
+		put( writer, "showCandidatePositionVolumes", showCandidatePositionVolumes );
+		put( writer, "showCandidateSuggestions", showCandidateSuggestions );
 
-		put( emitter, "dontUnfocus", dontUnfocus );
-		put( emitter, "showPrototype", showPrototype );
+		put( writer, "dontUnfocus", dontUnfocus );
+		put( writer, "showPrototype", showPrototype );
 		
-		put( emitter, "cameraPosition", camera.getPosition() );
-		put( emitter, "cameraDirection", camera.getDirection() );
+		put( writer, "cameraPosition", camera.getPosition() );
+		put( writer, "cameraDirection", camera.getDirection() );
 
-		put( emitter, "cameraPositions", cameraPositions_.collection );
-		put( emitter, "cameraPositionLabels", cameraPositions_.collectionLabels );
+		put( writer, "cameraPositions", cameraPositions_.collection );
+		put( writer, "cameraPositionLabels", cameraPositions_.collectionLabels );
 
-		put( emitter, "targetVolumes", targetVolumes_.collection );
-		put( emitter, "targetVolumeLabels", targetVolumes_.collectionLabels );
+		put( writer, "targetVolumes", targetVolumes_.collection );
+		put( writer, "targetVolumeLabels", targetVolumes_.collectionLabels );
 	}
 
 	void readObjects() {
@@ -895,11 +887,11 @@ struct Application {
 	}
 
 	void writeObjects() {
-		Serializer::TextEmitter emitter( "objects.json" );
+		Serializer::TextWriter writer( "objects.json" );
 
-		Serializer::put( emitter, "objectTemplates", objectTemplates_ );
-		Serializer::put( emitter, "objectInstances", objectInstances_.items );
-		Serializer::put( emitter, "objectPrototype", objectInstances_.prototype );
+		Serializer::put( writer, "objectTemplates", objectTemplates_ );
+		Serializer::put( writer, "objectInstances", objectInstances_.items );
+		Serializer::put( writer, "objectPrototype", objectInstances_.prototype );
 	}
 
 	void Do_findCandidates() {

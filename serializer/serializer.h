@@ -7,6 +7,9 @@
 // for helper macros
 #include <boost/preprocessor/seq/for_each.hpp>
 
+//#define SERIALIZER_SUPPORT_STL
+//#define SERIALIZER_SUPPORT_EIGEN
+
 //#define SERIALIZER_TEXT_ALLOW_RAW_DATA
 
 /* custom type serialization I
@@ -29,7 +32,7 @@ class ... {
 	}
 
 	template< typename Writer >
-	void serializer_write( Writer &writer ) {
+	void serializer_write( Writer &writer ) const {
 	}
 }
 */
@@ -358,6 +361,12 @@ namespace Serializer {
 #define SERIALIZER_PUT_VARIABLE( writer, field ) \
 	Serializer::put( writer, #field, field )
 
+#define SERIALIZER_GET_FIELD( reader, object, field ) \
+	Serializer::get( reader, #field, (object).field )
+
+#define SERIALIZER_PUT_FIELD( writer, object, field ) \
+	Serializer::put( writer, #field, (object).field )
+
 	// standard helpers
 #define _SERIALIZER_STD_GET( r, data, field ) Serializer::get( reader, BOOST_PP_STRINGIZE( field ), field );
 #define _SERIALIZER_STD_PUT( r, data, field ) Serializer::put( writer, BOOST_PP_STRINGIZE( field ), field );
@@ -372,7 +381,7 @@ namespace Serializer {
 	}
 
 #define _SERIALIZER_STD_EXTERN_GET( r, data, field )  Serializer::get( reader, BOOST_PP_STRINGIZE( field ), value. field );
-#define _SERIALIZER_STD_EXTERN_PUT( r, data, field ) Serializer::put( writer, BOOST_PP_STRINGIZE( field, value. field );
+#define _SERIALIZER_STD_EXTERN_PUT( r, data, field ) Serializer::put( writer, BOOST_PP_STRINGIZE( field ), value. field );
 #define SERIALIZER_DEFAULT_EXTERN_IMPL( type, fieldSeq ) \
 	namespace Serializer { \
 		template< typename Reader > \
@@ -385,3 +394,10 @@ namespace Serializer {
 		} \
 	}
 }
+
+#ifdef SERIALIZER_SUPPORT_STL
+#	include "serializer_std.h"
+#endif
+#ifdef SERIALIZER_SUPPORT_EIGEN
+#	include "serializer_eigen.h"
+#endif

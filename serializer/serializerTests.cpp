@@ -342,7 +342,7 @@ void StdString() {
 TextBinaryTest( StdString );
 
 template< typename Reader, typename Writer >
-void StdVector() {
+void StdVector_Fundamental() {
 	{
 		Writer writer( scratchFilename );
 
@@ -366,7 +366,64 @@ void StdVector() {
 	}
 }
 
-TextBinaryTest( StdVector );
+TextBinaryTest( StdVector_Fundamental );
+
+static int StdVector_NonFundamental_readCounter = 0;
+static int StdVector_NonFundamental_writeCounter = 0;
+
+struct NonFundamental {
+	int x;
+
+	NonFundamental() {}
+	NonFundamental( int x ) : x( x ) {} 
+
+	template< typename Reader >
+	void serializer_read( Reader &reader ) {
+		SERIALIZER_GET_VARIABLE( reader, x );
+		StdVector_NonFundamental_readCounter++;
+	}
+
+	template< typename Writer >
+	void serializer_write( Writer &writer ) const {
+		SERIALIZER_PUT_VARIABLE( writer, x );
+		StdVector_NonFundamental_writeCounter++;
+	}
+};
+
+template< typename Reader, typename Writer >
+void StdVector_NonFundamental() {
+	StdVector_NonFundamental_readCounter = StdVector_NonFundamental_writeCounter = 0;
+
+	{
+		Writer writer( scratchFilename );
+
+		std::vector<NonFundamental> seq;
+
+		for( int i = 0 ; i < 100 ; i++ )
+			seq.push_back( i );
+
+		SERIALIZER_PUT_VARIABLE( writer, seq );
+
+		ASSERT_EQ( 100, StdVector_NonFundamental_writeCounter );
+		ASSERT_EQ( 0, StdVector_NonFundamental_readCounter );
+	}
+
+	{
+		Reader reader( scratchFilename );
+
+		std::vector<NonFundamental> seq;
+
+		SERIALIZER_GET_VARIABLE( reader, seq );	
+
+		for( int i = 0 ; i < 100 ; i++ )
+			ASSERT_EQ( i, seq[i].x );
+
+		ASSERT_EQ( 100, StdVector_NonFundamental_writeCounter );
+		ASSERT_EQ( 100, StdVector_NonFundamental_readCounter );
+	}
+}
+
+TextBinaryTest( StdVector_NonFundamental );
 
 template< typename Reader, typename Writer >
 void StdPair() {
@@ -448,6 +505,47 @@ void RawMode() {
 }
 
 TextBinaryTest( RawMode );
+
+struct RawNonFundamental {
+	int x;
+
+	RawNonFundamental() {}
+	RawNonFundamental( int x ) : x( x ) {} 
+};
+
+void read( Serializer::BinaryReader &reader, RawNonFundamental &rnf ) {
+	FAIL();
+}
+
+void write( Serializer::BinaryWriter &writer, const RawNonFundamental &rnf ) {
+	FAIL();
+}
+
+SERIALIZER_ENABLE_RAW_MODE( RawNonFundamental );
+
+TEST( StdVector, RawNonFundamental ) {
+	{
+		Serializer::BinaryWriter writer( scratchFilename );
+
+		std::vector<RawNonFundamental> seq;
+
+		for( int i = 0 ; i < 100 ; i++ )
+			seq.push_back( i );
+
+		EXPECT_NO_FATAL_FAILURE( SERIALIZER_PUT_VARIABLE( writer, seq ) );
+	}
+
+	{
+		Serializer::BinaryReader reader( scratchFilename );
+
+		std::vector<RawNonFundamental> seq;
+
+		EXPECT_NO_FATAL_FAILURE( SERIALIZER_GET_VARIABLE( reader, seq ) );	
+
+		for( int i = 0 ; i < 100 ; i++ )
+			ASSERT_EQ( i, seq[i].x );
+	}
+}
 
 // eigen library support
 #include "serializer_eigen.h"

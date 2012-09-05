@@ -22,6 +22,8 @@ INCLUDE_DIRECTORIES(
 	../objScene
 	../cielab
 	../volume
+	../serializer
+	../sgsScene
 	)
 
 # ../gtest/gtest_main.cc
@@ -29,7 +31,6 @@ ADD_EXECUTABLE(glVolumePlacerUI
 	${GLEW_SOURCE_FILE}
 	make_nonallocated_shared.h
 	antTweakBarEventHandler.h
-	serializer.h
 	anttwbarcollection.h
 	contextHelper.h
 	glVolumePlacerUI.cpp 
@@ -39,6 +40,11 @@ ADD_EXECUTABLE(glVolumePlacerUI
 	twEventSFML20.cpp
 	glHelpers.h
 	ui.h
+	../sgsScene/sgsScene.h
+	../sgsScene/sgsSceneRender.h
+	../serializer/serializer.h
+	../serializer/serializer_std.h
+	../serializer/serializer_eigen.h
 	../modelSampler/colorAndDepthSampler.h
 	../modelSampler/eigenProjectionMatrices.h
 	../volume/grid.h

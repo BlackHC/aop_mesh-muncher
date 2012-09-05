@@ -6,14 +6,23 @@
 #include <map>
 #include <string>
 
+#include <boost/type_traits/is_fundamental.hpp>
+
 namespace Serializer {
 	// std::vector
 	template< typename Value >
 	void write( BinaryWriter &writer, const std::vector<Value> &collection ) {
-		size_t size = collection.size();
+		unsigned int size = collection.size();
 		write( writer, size );
-		for( auto it = collection.begin() ; it != collection.end() ; ++it ) {
-			write( writer, *it );
+
+		if( !boost::is_fundamental< Value >::value && !RawMode< Value >::value ) {
+			for( auto it = collection.begin() ; it != collection.end() ; ++it ) {
+				write( writer, *it );
+			}
+		}
+		else {
+			// speed up fundamental types or raw types :)
+			fwrite( &collection.front(), sizeof( Value ), size, writer.handle );
 		}
 	}
 
@@ -26,19 +35,29 @@ namespace Serializer {
 
 	template< typename Value >
 	void read( BinaryReader &reader, std::vector<Value> &collection ) {
-		size_t size;
+		unsigned int size;
 		read( reader, size );
-		collection.reserve( collection.size() + size );
-		for( int i = 0 ; i < size ; ++i ) {
-			Value value;
-			read( reader, value );
-			collection.push_back( std::move( value ) );
+
+		unsigned int startIndex = collection.size();
+		collection.reserve( startIndex + size );
+
+		if( !boost::is_fundamental< Value >::value && !RawMode< Value >::value ) {
+			for( int i = 0 ; i < size ; ++i ) {
+				Value value;
+				read( reader, value );
+				collection.push_back( std::move( value ) );
+			}
+		}
+		else {		
+			// speed up pods :)
+			collection.resize( startIndex + size );
+			fread( &collection[startIndex], sizeof( Value ), size, reader.handle );
 		}
 	}
 
 	template< typename Value >
 	void read( TextReader &reader, std::vector<Value> &collection ) {
-		size_t size = reader.current->size();
+		unsigned int size = reader.current->size();
 		collection.reserve( collection.size() + size );
 
 		ptree *parent = reader.current;
@@ -56,7 +75,7 @@ namespace Serializer {
 
 	// std::string
 	void read( BinaryReader &reader, std::string &value ) {
-		size_t size;
+		unsigned int size;
 		read( reader, size );
 		value.resize( size );
 		fread( &value[0], size, 1, reader.handle );
@@ -67,8 +86,8 @@ namespace Serializer {
 	}
 
 	void write( BinaryWriter &writer, const std::string &value ) {
-		size_t size = value.size();
-		fwrite( &size, sizeof( size_t ), 1, writer.handle );
+		unsigned int size = value.size();
+		fwrite( &size, sizeof( unsigned int ), 1, writer.handle );
 		fwrite( &value[0], size, 1, writer.handle );
 	}
 
@@ -92,7 +111,7 @@ namespace Serializer {
 	// std::map
 	template< typename Key, typename Value >
 	void write( BinaryWriter &writer, const std::map< Key, Value > &collection ) {
-		size_t size = collection.size();
+		unsigned int size = collection.size();
 		write( writer, size );
 		for( auto it = collection.begin() ; it != collection.end() ; ++it ) {
 			write( writer, *it );
@@ -108,7 +127,7 @@ namespace Serializer {
 
 	template< typename Key,typename Value >
 	void read( BinaryReader &reader, std::map< Key, Value > &collection ) {
-		size_t size;
+		unsigned int size;
 		read( reader, size );
 
 		for( int i = 0 ; i < size ; ++i ) {
@@ -120,7 +139,7 @@ namespace Serializer {
 
 	template< typename Key, typename Value >
 	void read( TextReader &reader, std::map< Key, Value > &collection ) {
-		size_t size = reader.current->size();
+		unsigned int size = reader.current->size();
 
 		ptree *parent = reader.current;
 
