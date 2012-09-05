@@ -7,6 +7,8 @@
 // for helper macros
 #include <boost/preprocessor/seq/for_each.hpp>
 
+//#define SERIALIZER_TEXT_ALLOW_RAW_DATA
+
 /* custom type serialization I
 
 namespace Serializer {
@@ -314,7 +316,7 @@ namespace Serializer {
 		};
 	};
 
-#define SERIALIZER_ENABLE_RAWMODE( type ) \
+#define SERIALIZER_ENABLE_RAW_MODE( type ) \
 	template<> \
 	struct ::Serializer::RawMode< type > { \
 		enum Value { \
@@ -324,8 +326,12 @@ namespace Serializer {
 
 	template< typename X >
 	typename boost::enable_if< RawMode< X > >::type read( TextReader &reader, X &value ) {
+#ifdef SERIALIZER_TEXT_ALLOW_RAW_DATA
 		std::string data = reader.current->get_value<std::string>();
 		value = *reinterpret_cast<X*>( &data.front() );
+#else
+		throw std::invalid_argument( "raw data not allowed!" );
+#endif
 	}
 
 	template< typename X >
@@ -335,7 +341,9 @@ namespace Serializer {
 
 	template< typename X >
 	typename boost::enable_if< RawMode< X > >::type write( TextWriter &writer, const X &value ) {
+#ifdef SERIALIZER_TEXT_ALLOW_RAW_DATA
 		writer.current->put_value( std::string( (const char*) &value, (const char*) &value + sizeof( X ) ) );
+#endif
 	}
 
 	template< typename X >
@@ -351,8 +359,8 @@ namespace Serializer {
 	Serializer::put( writer, #field, field )
 
 	// standard helpers
-#define _SERIALIZER_STD_GET( r, data, field ) Serializer::get( reader, #field, field );
-#define _SERIALIZER_STD_PUT( r, data, field ) Serializer::put( writer, #field, field );
+#define _SERIALIZER_STD_GET( r, data, field ) Serializer::get( reader, BOOST_PP_STRINGIZE( field ), field );
+#define _SERIALIZER_STD_PUT( r, data, field ) Serializer::put( writer, BOOST_PP_STRINGIZE( field ), field );
 #define SERIALIZER_DEFAULT_IMPL( fieldSeq ) \
 	template< typename Reader > \
 	void serializer_read( Reader &reader ) { \
@@ -363,8 +371,8 @@ namespace Serializer {
 		BOOST_PP_SEQ_FOR_EACH( _SERIALIZER_STD_PUT, BOOST_PP_NIL, fieldSeq ) \
 	}
 
-#define _SERIALIZER_STD_EXTERN_GET( r, data, field )  Serializer::get( reader, #field, value. field );
-#define _SERIALIZER_STD_EXTERN_PUT( r, data, field ) Serializer::put( writer, #field, value. field );
+#define _SERIALIZER_STD_EXTERN_GET( r, data, field )  Serializer::get( reader, BOOST_PP_STRINGIZE( field ), value. field );
+#define _SERIALIZER_STD_EXTERN_PUT( r, data, field ) Serializer::put( writer, BOOST_PP_STRINGIZE( field, value. field );
 #define SERIALIZER_DEFAULT_EXTERN_IMPL( type, fieldSeq ) \
 	namespace Serializer { \
 		template< typename Reader > \

@@ -1,5 +1,6 @@
 #include "gtest.h"
 
+#define SERIALIZER_TEXT_ALLOW_RAW_DATA
 #include "serializer.h"
 
 // pure tests
@@ -424,7 +425,7 @@ struct RawStruct {
 	int x;
 };
 
-SERIALIZER_ENABLE_RAWMODE( RawStruct );
+SERIALIZER_ENABLE_RAW_MODE( RawStruct );
 
 template< typename Reader, typename Writer >
 void RawMode() {
