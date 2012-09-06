@@ -60,11 +60,11 @@ namespace Serializer {
 		unsigned int size = (unsigned int) reader.current->size();
 		collection.reserve( collection.size() + size );
 
-		ptree *parent = reader.current;
+		wml::Node *parent = reader.current;
 
 		auto end = reader.current->end();
 		for( auto it = reader.current->begin() ; it != end ; ++it ) {
-			reader.current = &it->second;
+			reader.current = &*it;
 			Value value;
 			read( reader, value );
 			collection.push_back( std::move( value ) );
@@ -82,7 +82,7 @@ namespace Serializer {
 	}
 
 	void read( TextReader &reader, std::string &value ) {
-		value = reader.current->get_value<std::string>();
+		value = reader.current->data().content;
 	}
 
 	void write( BinaryWriter &writer, const std::string &value ) {
@@ -92,7 +92,7 @@ namespace Serializer {
 	}
 
 	void write( TextWriter &writer, const std::string &value ) {
-		writer.current->put_value( value );
+		writer.current->push_back( value );
 	}
 
 	// std::pair
@@ -141,11 +141,11 @@ namespace Serializer {
 	void read( TextReader &reader, std::map< Key, Value > &collection ) {
 		unsigned int size = (unsigned int) reader.current->size();
 
-		ptree *parent = reader.current;
+		wml::Node *parent = reader.current;
 
 		auto end = reader.current->end();
 		for( auto it = reader.current->begin() ; it != end ; ++it ) {
-			reader.current = &it->second;
+			reader.current = &*it;
 			std::pair< Key, Value > pair;
 			read( reader, pair );
 			collection.insert( std::move( pair ) );

@@ -3,6 +3,31 @@
 #define SERIALIZER_TEXT_ALLOW_RAW_DATA
 #include "serializer.h"
 
+const char *scratchFilename = "testScratch";
+
+/*
+template< typename Reader, typename Writer >
+void genericTest() {
+	{
+		Writer writer( scratchFilename );
+	}
+
+	{
+		Reader reader( scratchFilename );
+	}
+}*/
+
+#define TextBinaryTestEx( test, name ) \
+	TEST( name, TextSerialization ) { \
+		test < Serializer::TextReader, Serializer::TextWriter >(); \
+	} \
+	 \
+	TEST( name, BinarySerialization ) { \
+		test < Serializer::BinaryReader, Serializer::BinaryWriter >(); \
+	}
+
+#define TextBinaryTest( test ) TextBinaryTestEx( test, test )
+
 // pure tests
 
 const char *textFilename = "textTestExchange.txt";
@@ -87,6 +112,33 @@ TEST( BinarySerialization, arithmeticSerializations ) {
 		EXPECT_EQ( 'a', c );
 	}
 }
+
+template< typename Reader, typename Writer >
+void StaticArray() {
+	{
+		Writer writer( scratchFilename );
+
+		int array[100];
+
+		for( int i = 0 ; i < 100 ; i++ )
+			array[i] = i;
+
+		SERIALIZER_PUT_VARIABLE( writer, array );
+	}
+
+	{
+		Reader reader( scratchFilename );
+
+		int array[100];
+
+		SERIALIZER_GET_VARIABLE( reader, array );
+
+		for( int i = 0 ; i < 100 ; i++ )
+			ASSERT_EQ( i, array[i] );
+	}
+}
+
+TextBinaryTest( StaticArray );
 
 // custom type with global serializer functions
 struct GlobalStruct {
@@ -295,31 +347,6 @@ TEST( BinarySerialization, ExternMacroTest ) {
 
 #include "serializer_std.h"
 
-const char *scratchFilename = "testScratch";
-
-/*
-template< typename Reader, typename Writer >
-void genericTest() {
-	{
-		Writer writer( scratchFilename );
-	}
-
-	{
-		Reader reader( scratchFilename );
-	}
-}*/
-
-#define TextBinaryTestEx( test, name ) \
-	TEST( name, TextSerialization ) { \
-		test < Serializer::TextReader, Serializer::TextWriter >(); \
-	} \
-	 \
-	TEST( name, BinarySerialization ) { \
-		test < Serializer::BinaryReader, Serializer::BinaryWriter >(); \
-	}
-
-#define TextBinaryTest( test ) TextBinaryTestEx( test, test )
-
 template< typename Reader, typename Writer >
 void StdString() {
 	{		
@@ -490,17 +517,22 @@ void RawMode() {
 		Writer writer( scratchFilename );
 
 		RawStruct s = { 'a', 10 };
+		RawStruct zero = { 0, 0 };
 		SERIALIZER_PUT_VARIABLE( writer, s );
+		SERIALIZER_PUT_VARIABLE( writer, zero );
 	}
 
 	{
 		Reader reader( scratchFilename );
 
-		RawStruct s;
+		RawStruct s, zero;
 		SERIALIZER_GET_VARIABLE( reader, s );
+		SERIALIZER_GET_VARIABLE( reader, zero );
 
 		EXPECT_EQ( 'a', s.c );
 		EXPECT_EQ( 10, s.x );
+		EXPECT_EQ( 0, zero.c );
+		EXPECT_EQ( 0, zero.x );
 	}
 }
 
