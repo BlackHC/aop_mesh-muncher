@@ -305,3 +305,8 @@ TEST( Emitter, simple ) {
 TEST( Emitter, weirdValues ) {
 	emitTest( "'key asd' \"\t\ta\t\" b\\ c d e");
 }
+
+TEST( Emitter, emptyContent ) {
+	emitTest( "key ''");
+	emitTest( "'' ''");
+}

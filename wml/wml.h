@@ -7,6 +7,8 @@
 // for emitFile
 #include <fstream>
 
+#include <boost/lexical_cast.hpp>
+
 #include "leanTextProcessing.h"
 
 namespace wml {
@@ -76,6 +78,10 @@ namespace wml {
 			return nodes.end();
 		}
 
+		iterator not_found() {
+			return nodes.end();
+		}
+
 		const_iterator find(  const std::string &key ) const {
 			for( auto node = nodes.begin() ; node != nodes.end() ; ++node ) {
 				if( node->content == key ) {
@@ -133,6 +139,26 @@ namespace wml {
 			}
 
 			return results;
+		}
+
+		Node &push_back( Node &&node ) {
+			nodes.push_back( node );
+			return nodes.back();
+		}
+
+		Node &push_back( const Node &node ) {
+			nodes.push_back( node );
+			return nodes.back();
+		}
+
+		template< typename T>
+		Node &push_back_value( const T &value ) {
+			push_back( Node() ).set( value );
+		} 
+
+		template< typename T >
+		void set( const T &value ) {
+			content = boost::lexical_cast< std::string >( value );
 		}
 
 		Node() {}
@@ -444,6 +470,10 @@ namespace wml {
 
 			static ValueType determineType( const std::string &value ) {
 				int numLines = 1;
+
+				if( value.empty() ) {
+					return VT_UNESCAPED_STRING;
+				}
 
 				// null characters => VT_ESCAPED_STRING
 				for( auto c = value.cbegin() ; c != value.cend() ; ++c ) {
