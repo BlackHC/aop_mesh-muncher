@@ -19,6 +19,33 @@ TEST( Parser, oneKey ) {
 	ASSERT_EQ( "value", root[0].data().content );
 }
 
+TEST( Parser, oneKey_withUnescapedString ) {
+	Node root = parse( "'key \\ \"' 'value \\ \"'" );
+
+	ASSERT_FALSE( root.empty() );
+	ASSERT_EQ( 1, root.nodes.size() );
+	ASSERT_EQ( "key \\ \"", root[0].key() );
+	ASSERT_EQ( "value \\ \"", root[0].data().content );
+}
+
+TEST( Parser, oneKey_withEscapedString ) {
+	Node root = parse( "\"key \\\\ \\\"\" \"value \\\\ \\\"\"" );
+
+	ASSERT_FALSE( root.empty() );
+	ASSERT_EQ( 1, root.nodes.size() );
+	ASSERT_EQ( "key \\ \"", root[0].key() );
+	ASSERT_EQ( "value \\ \"", root[0].data().content );
+}
+
+TEST( Parser, oneKey_withNullEscapedString ) {
+	Node root = parse( std::string( "\"key \0 here\" \"value \0 here\"", 27 ) );
+
+	ASSERT_FALSE( root.empty() );
+	ASSERT_EQ( 1, root.nodes.size() );
+	ASSERT_EQ( std::string( "key \0 here", 10 ), root[0].key() );
+	ASSERT_EQ( std::string( "value \0 here", 12 ), root[0].data().content );
+}
+
 
 TEST( Parser, oneKey_multipleValues ) {
 	Node root = parse( "key valueA valueB" );

@@ -222,6 +222,9 @@ namespace wml {
 						case 'n':
 							text.push_back( '\n' );
 							break;
+						case '0':
+							text.push_back( '\0' );
+							break;
 						default:
 							textIterator.error( boost::str( boost::format( "unknown escape control character '%c'!" ) % control  ) );
 						}
@@ -442,10 +445,17 @@ namespace wml {
 			static ValueType determineType( const std::string &value ) {
 				int numLines = 1;
 
+				// null characters => VT_ESCAPED_STRING
+				for( auto c = value.cbegin() ; c != value.cend() ; ++c ) {
+					if( *c == 0 ) {
+						return VT_ESCAPED_STRING;				
+					}
+				}
+
 				for( auto c = value.cbegin() ; c != value.cend() ; ++c ) {
 					if( *c == '\n' ) {
 						numLines++;						
-					}					
+					}			
 				}
 
 				if( numLines > 2 ) {
@@ -511,6 +521,9 @@ namespace wml {
 						}
 						else if( *c == '\n' ) {
 							text.append( "\\n" );
+						}
+						else if( *c == '\0' ) {
+							text.append( "\\0" );
 						}
 						else {
 							text.push_back( *c );
