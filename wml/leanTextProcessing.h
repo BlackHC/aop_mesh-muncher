@@ -5,7 +5,7 @@
 #include <exception>
 
 namespace LeanTextProcessing {
-		struct TextPosition {
+	struct TextPosition {
 		int line;
 		int column;
 
