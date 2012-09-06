@@ -173,17 +173,36 @@ namespace LeanTextProcessing {
 		void error( const std::string &error );
 	};
 
-	struct TextException : std::exception {
+	struct TextContext {
 		std::string textIdentifier;
-		std::string text;
 		TextPosition position;
+		std::string surroundingText;
 
+		TextContext() {}
+
+		TextContext( const TextIterator &iterator, int contextWidth = 30 ) 
+			: textIdentifier( iterator.textContainer.textIdentifier ), 
+				position( iterator.current ),
+				surroundingText( iterator.textContainer.text.substr( std::max( 0, position.index - contextWidth ), contextWidth * 2 ) )
+			{}
+	};
+
+	struct TextException : std::exception {
+		TextContext context;
 		std::string error;
 
 		std::string message;
 
-		TextException( const TextIterator &iterator, const std::string &error ) : textIdentifier( iterator.textContainer.textIdentifier ), text( iterator.textContainer.text ), position( iterator.current ), error( error ) {
-			message = boost::str( boost::format( "%s(%i:%i (%i)): %s" ) % textIdentifier % position.line % position.column % position.index % error );
+		TextException( const TextContext &context, const std::string &error ) : context( context ), error( error ) {
+			message = boost::str( 
+				boost::format( "%s(%i:%i (%i)): %s\n\t%s" ) 
+					% context.textIdentifier 
+					% context.position.line 
+					% context.position.column 
+					% context.position.index 
+					% error 
+					% context.surroundingText
+				);
 		}
 
 		virtual const char * what() const {
@@ -192,6 +211,6 @@ namespace LeanTextProcessing {
 	};
 
 	void TextIterator::error( const std::string &error ) {
-		throw TextException( *this, error );
+		throw TextException( TextContext( *this ), error );
 	}
 }

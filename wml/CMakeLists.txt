@@ -8,6 +8,9 @@ INCLUDE_DIRECTORIES(
 
 ADD_EXECUTABLE(wmlTest
 	wml.h
+	wml_node.h
+	wml_detail_parser.h
+	wml_detail_emitter.h
 	leanTextProcessing.h
 	wmlTest.cpp
 	../gtest/gtest_main.cc
@@ -16,6 +19,9 @@ ADD_EXECUTABLE(wmlTest
 
 ADD_EXECUTABLE(reemitter
 	wml.h
+	wml_node.h
+	wml_detail_parser.h
+	wml_detail_emitter.h
 	leanTextProcessing.h
 	reemitter.cpp
 	)
