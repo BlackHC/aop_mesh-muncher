@@ -29,7 +29,7 @@ namespace Serializer {
 	template< typename Value >
 	void write( TextWriter &writer, const std::vector<Value> &collection ) {
 		for( auto it = collection.begin() ; it != collection.end() ; ++it ) {
-			put( writer, "", *it );
+			put( writer, *it );
 		}
 	}
 
@@ -57,20 +57,14 @@ namespace Serializer {
 
 	template< typename Value >
 	void read( TextReader &reader, std::vector<Value> &collection ) {
-		unsigned int size = (unsigned int) reader.current->size();
+		unsigned int size = (unsigned int) reader.mapNode->size();
 		collection.reserve( collection.size() + size );
 
-		wml::Node *parent = reader.current;
-
-		auto end = reader.current->end();
-		for( auto it = reader.current->begin() ; it != end ; ++it ) {
-			reader.current = &*it;
+		for( int i = 0 ; i < size ; ++i ) {
 			Value value;
-			read( reader, value );
+			get( reader, i, value );
 			collection.push_back( std::move( value ) );
 		}
-
-		reader.current = parent;
 	}	
 
 	// std::string
@@ -82,7 +76,7 @@ namespace Serializer {
 	}
 
 	void read( TextReader &reader, std::string &value ) {
-		value = reader.current->data().content;
+		value = reader.readNode->content;
 	}
 
 	void write( BinaryWriter &writer, const std::string &value ) {
@@ -92,20 +86,20 @@ namespace Serializer {
 	}
 
 	void write( TextWriter &writer, const std::string &value ) {
-		writer.current->push_back( value );
+		writer.writeNode->content = value;
 	}
 
 	// std::pair
 	template< typename Writer, typename First, typename Second >
 	void write( Writer &writer, const std::pair< First, Second > &pair ) {
-		put( writer, "first", pair.first );
-		put( writer, "second", pair.second );
+		put( writer, pair.first );
+		put( writer, pair.second );
 	}
 
 	template< typename Reader, typename First, typename Second >
 	void read( Reader &reader, std::pair< First, Second > &pair ) {
-		get( reader, "first", pair.first );
-		get( reader, "second", pair.second );
+		get( reader, 0, pair.first );
+		get( reader, 1, pair.second );
 	}
 	
 	// std::map
@@ -121,7 +115,7 @@ namespace Serializer {
 	template< typename Key, typename Value >
 	void write( TextWriter &writer, const std::map< Key, Value > &collection ) {
 		for( auto it = collection.begin() ; it != collection.end() ; ++it ) {
-			put( writer, "", *it );
+			put( writer, *it );
 		}
 	}
 
@@ -139,19 +133,13 @@ namespace Serializer {
 
 	template< typename Key, typename Value >
 	void read( TextReader &reader, std::map< Key, Value > &collection ) {
-		unsigned int size = (unsigned int) reader.current->size();
+		unsigned int size = (unsigned int) reader.mapNode->size();
 
-		wml::Node *parent = reader.current;
-
-		auto end = reader.current->end();
-		for( auto it = reader.current->begin() ; it != end ; ++it ) {
-			reader.current = &*it;
+		for( int i = 0 ; i < size ; ++i ) {
 			std::pair< Key, Value > pair;
-			read( reader, pair );
+			get( reader, i, pair );
 			collection.insert( std::move( pair ) );
 		}
-
-		reader.current = parent;
 	}
 
 }

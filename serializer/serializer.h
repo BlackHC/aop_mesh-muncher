@@ -84,9 +84,6 @@ struct ptree_static_construction {
 };*/
 
 namespace Serializer {
-	struct Exception : std::exception {
-
-	};
 	struct BinaryWriter : boost::noncopyable {
 		FILE *handle;
 
@@ -110,39 +107,143 @@ namespace Serializer {
 	};
 
 	struct TextWriter : boost::noncopyable {
-		wml::Node root, *current;
-
 		std::string filename;
 
-		TextWriter( const char *filename ) : filename( filename ), current( &root ) {}
+		wml::Node root;
+
+		wml::Node *mapNode;
+		wml::Node *writeNode;
+	
+		bool firstKeyAllowed;
+
+		TextWriter( const char *filename ) : filename( filename ), mapNode( &root ), writeNode( mapNode ), firstKeyAllowed( true ) {}
 		~TextWriter() {
 			wml::emitFile( filename, root );
 		}
+
+		struct Scope {
+			TextWriter &writer;
+			wml::Node *mapNode;
+			bool firstKeyAllowed;
+
+			Scope( TextWriter &writer, wml::Node *newMapNode, bool newFirstKeyAllowed = false ) : writer( writer ), mapNode( writer.mapNode ), firstKeyAllowed( writer.firstKeyAllowed ) {
+				writer.mapNode = newMapNode;
+				writer.firstKeyAllowed = newFirstKeyAllowed;
+			}
+			~Scope() {
+				writer.mapNode = mapNode;
+				writer.firstKeyAllowed = firstKeyAllowed;
+			}
+		};
 	};
 
 	struct TextReader : boost::noncopyable {
-		wml::Node root, *current;
+		wml::Node root;
 
-		TextReader( const char *filename ) : current( &root ) {
+		wml::Node *mapNode;
+		wml::Node *readNode;
+
+		bool firstKeyAllowed;
+
+		TextReader( const char *filename ) : mapNode( &root ), readNode( mapNode ), firstKeyAllowed( true ) {
 			root = wml::parseFile( filename );
 		}
+
+		struct Scope {
+			TextReader &reader;
+			wml::Node *mapNode;
+			bool firstKeyAllowed;
+
+			Scope( TextReader &reader, wml::Node *newMapNode, bool newFirstKeyAllowed = false ) : reader( reader ), mapNode( reader.mapNode ), firstKeyAllowed( reader.firstKeyAllowed ) {
+				reader.mapNode = newMapNode;
+				reader.firstKeyAllowed = newFirstKeyAllowed;
+			}
+			~Scope() {
+				reader.mapNode = mapNode;
+				reader.firstKeyAllowed = firstKeyAllowed;
+			}
+		};
 	};
+
+	// put an unnamed value
+	template< typename Value >
+	void put( BinaryWriter &writer, const Value &value ) {
+		write( writer, value );
+	}
 
 	template< typename Value >
 	void put( BinaryWriter &writer, const char *key, const Value &value ) {
 		write( writer, value );
 	}
 
+	// pass through in binary mode
 	template< typename Value >
-	void put( TextWriter &writer, const char *key, const Value &value ) {
-		wml::Node *parent = writer.current;
-		writer.current = &parent->push_back( key );
+	void putAsKey( BinaryWriter &writer, const char *key, const Value &value ) {
 		write( writer, value );
-		writer.current = parent;
 	}
 
 	template< typename Value >
+	void put( TextWriter &writer, const char *key, const Value &value ) {
+		TextWriter::Scope scope( writer, &writer.mapNode->push_back( key ) );
+
+		wml::Node writeNode;
+		writer.writeNode = &writeNode;
+
+		write( writer, value );
+
+		if( !writeNode.empty() || !writeNode.content.empty() ) {
+			writer.mapNode->push_back( std::move( writeNode ) );
+		}
+	}
+
+	template< typename Value >
+	void putAsKey( TextWriter &writer, const char *key, const Value &value ) {
+		if( !writer.firstKeyAllowed ) {
+			put( writer, key, value );
+		}
+		else {
+			writer.firstKeyAllowed = false;
+
+			// make sure we dont add children by accident (ie bad first key)
+			int size = writer.mapNode->size();
+
+			writer.writeNode = writer.mapNode;
+			write( writer, value );
+
+			writer.firstKeyAllowed = false;
+
+			BOOST_ASSERT( size == writer.mapNode->size() );
+		}
+	}
+
+	// unnamed put
+	template< typename Value >
+	void put( TextWriter &writer, Value &value ) {
+		TextWriter::Scope scope( writer, &writer.mapNode->push_back( "-" ) );
+
+		writer.firstKeyAllowed = true;
+		writer.writeNode = writer.mapNode;
+		write( writer, value );
+	}
+
+	template< typename Value >
+	void get( BinaryReader &reader, int i, Value &value ) {
+		read( reader, value );
+	}
+		
+	template< typename Value >
 	void get( BinaryReader &reader, const char *key, Value &value ) {
+		read( reader, value );
+	}
+
+	template< typename Value >
+	void getAsKey( BinaryReader &reader, const char *key, Value &value ) {
+		read( reader, value );
+	}
+
+	// default value does not matter in the binary version
+	template< typename Value >
+	void get( BinaryReader &reader, const char *key, Value &value, const Value & ) {
 		read( reader, value );
 	}
 
@@ -172,54 +273,69 @@ namespace Serializer {
 		public:
 			enum { value = sizeof( sfinae<T>(0) ) == sizeof(yes) };
 		};
+
+		template< typename Value >
+		bool tryGet( TextReader &reader, const char *key, Value &value ) {
+			auto it = reader.mapNode->find( key );
+
+			if( it == reader.mapNode->not_found() ) {
+				return false;
+			}
+
+			TextReader::Scope scope( reader, &*it );
+			reader.readNode = &reader.mapNode->data();
+			if( !reader.readNode ) {
+				return false;
+			}
+			Serializer::read( reader, value );
+
+			return true;
+		}
+	}
+
+	template< typename Value >
+	void get( TextReader &reader, const char *key, Value &value, const Value &defaultValue ) {
+		if( !detail::tryGet( reader, key, value ) ) {
+			value = defaultValue;
+		}
+	}
+	
+	template< typename Value >
+	typename boost::enable_if_c< !detail::is_default_constructible< Value >::value >::type 
+	get( TextReader &reader, const char *key, Value &value ) {
+		if( !detail::tryGet( reader, key, value ) ) {
+			reader.mapNode->error( boost::str( boost::format( "'%s' not found!") % key ) );
+		}
 	}
 
 	template< typename Value >
 	typename boost::enable_if< detail::is_default_constructible< Value > >::type 
-	get( TextReader &reader, const char *key, Value &value, const Value &defaultValue = Value() ) {
-		auto it = reader.current->find( key );
-
-		if( it != reader.current->not_found() ) {
-			wml::Node *parent = reader.current;
-			reader.current = &*it;
-			read( reader, value );
-			reader.current = parent;
-		}
-		else {
-			value = defaultValue;
-		}
-	}
-
-	template< typename Value >
-	typename boost::enable_if_c< !detail::is_default_constructible< Value >::value >::type 
-	get( TextReader &reader, const char *key, Value &value, const Value &defaultValue ) {
-		auto it = reader.current->find( key );
-
-		if( it != reader.current->not_found() ) {
-			wml::Node *parent = reader.current;
-			reader.current = &*it;
-			read( reader, value );
-			reader.current = parent;
-		}
-		else {
-			value = defaultValue;
-		}
-	}
-
-	template< typename Value >
-	typename boost::enable_if_c< !detail::is_default_constructible< Value >::value >::type 
 	get( TextReader &reader, const char *key, Value &value ) {
-		auto it = reader.current->find( key );
+		if( !detail::tryGet( reader, key, value ) ) {
+			value = Value();
+		}
+	}
 
-		if( it != reader.current->not_found() ) {
-			wml::Node *parent = reader.current;
-			reader.current = &*it;
-			read( reader, value );
-			reader.current = parent;
+	template< typename Value >
+	void getAsKey( TextReader &reader, const char *key, Value &value ) {
+		if( !reader.firstKeyAllowed ) {
+			get( reader, key, value );
 		}
 		else {
-			reader.current->error( boost::str( boost::format( "'%s' not found!") % key ) );
+			reader.firstKeyAllowed = false;
+			reader.readNode = reader.mapNode;
+			read( reader, value );
+			reader.firstKeyAllowed = false;
 		}
+	}
+
+	template< typename Value >
+	void get( TextReader &reader, int i, Value &value ) {
+		reader.firstKeyAllowed = true;
+		TextReader::Scope scope( reader, &reader.mapNode->nodes[i] );
+		reader.readNode = reader.mapNode;
+		read( reader, value );
+		reader.firstKeyAllowed = false;
 	}
 
 	// use class methods if they exist
@@ -243,7 +359,7 @@ namespace Serializer {
 	template< typename Value >
 	typename boost::enable_if< boost::is_arithmetic< Value > >::type
 	read( TextReader &reader, Value &value ) {
-		value = reader.current->data().as<Value>();
+		value = reader.readNode->as<Value>();
 	}
 
 	template< typename Value >
@@ -255,7 +371,7 @@ namespace Serializer {
 	template< typename Value >
 	typename boost::enable_if< boost::is_arithmetic< Value > >::type
 	write( TextWriter &writer, const Value &value ) {
-		writer.current->push_back( value );
+		writer.writeNode->set( value );
 	}
 
 	// enums
@@ -279,8 +395,7 @@ namespace Serializer {
 	template< typename Value >
 	typename boost::enable_if< boost::is_enum< Value > /*&& sizeof( EnumReflection<Value>::labels )*/  >::type
 	read( TextReader &reader, Value &value ) {
-		std::string label;
-		label = reader.current->data().content;
+		const std::string &label = reader.readNode->content;
 
 		for( int i = 0 ; i < boost::size( EnumReflection<Value>::labelValuePairs ) ; ++i ) {
 			if( label == EnumReflection<Value>::labelValuePairs[i].label ) {
@@ -290,7 +405,7 @@ namespace Serializer {
 		}
 
 		// try it as int
-		value = (Value) reader.current->data().as<int>();
+		value = (Value) reader.readNode->as<int>();
 	}
 
 	// using labels
@@ -322,11 +437,11 @@ namespace Serializer {
 	write( TextWriter &writer, const Value &value ) {
 		for( int i = 0 ; i < boost::size( EnumReflection<Value>::labelValuePairs ) ; ++i ) {
 			if( value == EnumReflection<Value>::labelValuePairs[i].value ) {
-				writer.current->push_back( EnumReflection<Value>::labelValuePairs[i].label );
+				writer.writeNode->content = EnumReflection<Value>::labelValuePairs[i].label;
 				return;
 			}
 		}
-		writer.current->push_back<int>( value );
+		writer.writeNode->set( (int) value );
 	}
 
 	/*template< typename Value >
@@ -349,13 +464,6 @@ namespace Serializer {
 	}
 
 	template< typename Value, int N >
-	void write( TextWriter &writer, const Value (&array)[N] ) {
-		for( int i = 0 ; i < N ; ++i ) {
-			put( writer, "-", array[i] );
-		}
-	}
-
-	template< typename Value, int N >
 	void read( BinaryReader &reader, Value (&array)[N] ) {
 		for( int i = 0 ; i < N ; ++i ) {
 			read( reader, array[i] );
@@ -363,20 +471,21 @@ namespace Serializer {
 	}
 
 	template< typename Value, int N >
+	void write( TextWriter &writer, const Value (&array)[N] ) {
+		for( int i = 0 ; i < N ; ++i ) {
+			put( writer, array[i] );
+		}
+	}
+
+	template< typename Value, int N >
 	void read( TextReader &reader, Value (&array)[N] ) {
-		wml::Node *parent = reader.current;
-
-		auto end = reader.current->end();
-		int i = 0;
-		for( auto it = reader.current->begin() ; it != end ; ++it, ++i ) {
-			reader.current = &*it;
-			read( reader, array[i] );
+		int numChildren = reader.mapNode->size();
+		for( int i = 0 ; i < numChildren ; ++i ) {
+			get( reader, i, array[i] );
 		}
-		if( i != N ) {
-			parent->error( boost::str( boost::format( "expected %i array elements - only found %i!" % N % i ) ) );
+		if( numChildren != N ) {
+			reader.mapNode->error( boost::str( boost::format( "expected %i array elements - only found %i!" ) % N % numChildren ) );
 		}
-
-		reader.current = parent;
 	}
 
 	// raw serialization
@@ -412,7 +521,7 @@ namespace Serializer {
 	template< typename X >
 	typename boost::enable_if< RawMode< X > >::type read( TextReader &reader, X &value ) {
 #ifdef SERIALIZER_TEXT_ALLOW_RAW_DATA
-		const std::string &data = reader.current->data().content;
+		const std::string &data = reader.readNode->content;
 		value = *reinterpret_cast<const X*>( &data.front() );
 #else
 		throw std::invalid_argument( "raw data not allowed!" );
@@ -427,7 +536,7 @@ namespace Serializer {
 	template< typename X >
 	typename boost::enable_if< RawMode< X > >::type write( TextWriter &writer, const X &value ) {
 #ifdef SERIALIZER_TEXT_ALLOW_RAW_DATA
-		writer.current->push_back( std::string( (const char*) &value, (const char*) &value + sizeof( X ) ) );
+		writer.writeNode->content = std::string( (const char*) &value, (const char*) &value + sizeof( X ) );
 #endif
 	}
 
@@ -460,6 +569,18 @@ namespace Serializer {
 	template< typename Writer > \
 	void serializer_write( Writer &writer ) const { \
 		BOOST_PP_SEQ_FOR_EACH( _SERIALIZER_STD_PUT, BOOST_PP_NIL, fieldSeq ) \
+	}
+
+#define SERIALIZER_FIRST_KEY_IMPL( fieldSeq ) \
+	template< typename Reader > \
+	void serializer_read( Reader &reader ) { \
+		Serializer::getAsKey( reader, BOOST_PP_STRINGIZE( BOOST_PP_SEQ_HEAD( fieldSeq) ), BOOST_PP_SEQ_HEAD( fieldSeq) ); \
+		BOOST_PP_SEQ_FOR_EACH( _SERIALIZER_STD_GET, BOOST_PP_NIL, BOOST_PP_SEQ_TAIL( fieldSeq ) ) \
+	} \
+	template< typename Writer > \
+	void serializer_write( Writer &writer ) const { \
+		Serializer::putAsKey( writer, BOOST_PP_STRINGIZE( BOOST_PP_SEQ_HEAD( fieldSeq) ), BOOST_PP_SEQ_HEAD( fieldSeq) ); \
+		BOOST_PP_SEQ_FOR_EACH( _SERIALIZER_STD_PUT, BOOST_PP_NIL, BOOST_PP_SEQ_TAIL( fieldSeq ) ) \
 	}
 
 #define _SERIALIZER_STD_EXTERN_GET( r, data, field )  Serializer::get( reader, BOOST_PP_STRINGIZE( field ), value. field );

@@ -3,27 +3,25 @@
 #define SERIALIZER_TEXT_ALLOW_RAW_DATA
 #include "serializer.h"
 
-const char *scratchFilename = "testScratch";
-
 /*
 template< typename Reader, typename Writer >
-void genericTest() {
+void genericTest( const char *filename ) {
 	{
-		Writer writer( scratchFilename );
+		Writer writer( filename );
 	}
 
 	{
-		Reader reader( scratchFilename );
+		Reader reader( filename );
 	}
 }*/
 
 #define TextBinaryTestEx( test, name ) \
 	TEST( name, TextSerialization ) { \
-		test < Serializer::TextReader, Serializer::TextWriter >(); \
+		test < Serializer::TextReader, Serializer::TextWriter >( "Text_" #name ); \
 	} \
 	 \
 	TEST( name, BinarySerialization ) { \
-		test < Serializer::BinaryReader, Serializer::BinaryWriter >(); \
+		test < Serializer::BinaryReader, Serializer::BinaryWriter >( "Binary_" #name ); \
 	}
 
 #define TextBinaryTest( test ) TextBinaryTestEx( test, test )
@@ -114,9 +112,9 @@ TEST( BinarySerialization, arithmeticSerializations ) {
 }
 
 template< typename Reader, typename Writer >
-void StaticArray() {
+void StaticArray( const char *filename ) {
 	{
-		Writer writer( scratchFilename );
+		Writer writer( filename );
 
 		int array[100];
 
@@ -127,7 +125,7 @@ void StaticArray() {
 	}
 
 	{
-		Reader reader( scratchFilename );
+		Reader reader( filename );
 
 		int array[100];
 
@@ -343,21 +341,52 @@ TEST( BinarySerialization, ExternMacroTest ) {
 	}
 }
 
+// first key intern impl
+
+struct FirstKey {
+	int x;
+	int y;
+
+	SERIALIZER_FIRST_KEY_IMPL( (x)(y) );
+};
+
+template< typename Reader, typename Writer >
+void MacroFirstKeyIntern( const char *filename ) {	
+	{
+		Writer writer( filename );
+
+		FirstKey t = {1,2};
+		SERIALIZER_PUT_VARIABLE( writer, t );
+	}
+
+	{
+		Reader reader( filename );
+
+		FirstKey t;
+		SERIALIZER_GET_VARIABLE( reader, t);
+
+		EXPECT_EQ( 1, t.x );
+		EXPECT_EQ( 2, t.y );
+	}
+}
+
+TextBinaryTest( MacroFirstKeyIntern );
+
 // std tests
 
 #include "serializer_std.h"
 
 template< typename Reader, typename Writer >
-void StdString() {
+void StdString( const char *filename  ) {
 	{		
-		Writer writer( scratchFilename );
+		Writer writer( filename );
 
 		std::string text = "hello world\nhallo welt";
 		SERIALIZER_PUT_VARIABLE( writer, text );
 	}
 
 	{	
-		Reader reader( scratchFilename );
+		Reader reader( filename );
 
 		std::string text;
 		SERIALIZER_GET_VARIABLE( reader, text );
@@ -369,9 +398,9 @@ void StdString() {
 TextBinaryTest( StdString );
 
 template< typename Reader, typename Writer >
-void StdVector_Fundamental() {
+void StdVector_Fundamental( const char *filename ) {
 	{
-		Writer writer( scratchFilename );
+		Writer writer( filename );
 
 		std::vector<int> seq;
 
@@ -382,7 +411,7 @@ void StdVector_Fundamental() {
 	}
 
 	{
-		Reader reader( scratchFilename );
+		Reader reader( filename );
 
 		std::vector<int> seq;
 
@@ -418,11 +447,11 @@ struct NonFundamental {
 };
 
 template< typename Reader, typename Writer >
-void StdVector_NonFundamental() {
+void StdVector_NonFundamental( const char *filename  ) {
 	StdVector_NonFundamental_readCounter = StdVector_NonFundamental_writeCounter = 0;
 
 	{
-		Writer writer( scratchFilename );
+		Writer writer( filename );
 
 		std::vector<NonFundamental> seq;
 
@@ -436,7 +465,7 @@ void StdVector_NonFundamental() {
 	}
 
 	{
-		Reader reader( scratchFilename );
+		Reader reader( filename );
 
 		std::vector<NonFundamental> seq;
 
@@ -453,16 +482,16 @@ void StdVector_NonFundamental() {
 TextBinaryTest( StdVector_NonFundamental );
 
 template< typename Reader, typename Writer >
-void StdPair() {
+void StdPair( const char *filename  ) {
 	{
-		Writer writer( scratchFilename );
+		Writer writer( filename );
 
 		std::pair< int, int > pair( 10, 100 );
 		SERIALIZER_PUT_VARIABLE( writer, pair );
 	}
 
 	{
-		Reader reader( scratchFilename );
+		Reader reader( filename );
 		
 		std::pair< int, int > pair( 10, 100 );
 		SERIALIZER_GET_VARIABLE( reader, pair );
@@ -475,9 +504,9 @@ void StdPair() {
 TextBinaryTest( StdPair );
 
 template< typename Reader, typename Writer >
-void StdMap() {
+void StdMap( const char *filename  ) {
 	{
-		Writer writer( scratchFilename );
+		Writer writer( filename );
 
 		std::map< int, int > map;
 		for( int i = 0 ; i < 100 ; ++i ) {
@@ -488,7 +517,7 @@ void StdMap() {
 	}
 
 	{
-		Reader reader( scratchFilename );
+		Reader reader( filename );
 
 		std::map< int, int > map;
 
@@ -512,9 +541,9 @@ struct RawStruct {
 };
 
 template< typename Reader, typename Writer >
-void RawMode() {
+void RawMode( const char *filename  ) {
 	{
-		Writer writer( scratchFilename );
+		Writer writer( filename );
 
 		RawStruct s = { 'a', 10 };
 		RawStruct zero = { 0, 0 };
@@ -523,7 +552,7 @@ void RawMode() {
 	}
 
 	{
-		Reader reader( scratchFilename );
+		Reader reader( filename );
 
 		RawStruct s, zero;
 		SERIALIZER_GET_VARIABLE( reader, s );
@@ -546,16 +575,16 @@ struct RawStructExtern {
 SERIALIZER_ENABLE_RAW_MODE_EXTERN( RawStructExtern );
 
 template< typename Reader, typename Writer >
-void RawModeExtern() {
+void RawModeExtern( const char *filename  ) {
 	{
-		Writer writer( scratchFilename );
+		Writer writer( filename );
 
 		RawStructExtern s = { 'a', 10 };
 		SERIALIZER_PUT_VARIABLE( writer, s );
 	}
 
 	{
-		Reader reader( scratchFilename );
+		Reader reader( filename );
 
 		RawStructExtern s;
 		SERIALIZER_GET_VARIABLE( reader, s );
@@ -584,9 +613,10 @@ void write( Serializer::BinaryWriter &writer, const RawNonFundamental &rnf ) {
 
 SERIALIZER_ENABLE_RAW_MODE_EXTERN( RawNonFundamental );
 
-TEST( StdVector, RawNonFundamental ) {
+template< typename Reader, typename Writer >
+void StdVector_RawNonFundamental( const char *filename ) {
 	{
-		Serializer::BinaryWriter writer( scratchFilename );
+		Writer writer( filename );
 
 		std::vector<RawNonFundamental> seq;
 
@@ -597,7 +627,7 @@ TEST( StdVector, RawNonFundamental ) {
 	}
 
 	{
-		Serializer::BinaryReader reader( scratchFilename );
+		Reader reader( filename );
 
 		std::vector<RawNonFundamental> seq;
 
@@ -608,18 +638,20 @@ TEST( StdVector, RawNonFundamental ) {
 	}
 }
 
+TextBinaryTest( StdVector_RawNonFundamental );
+
 // eigen library support
 #include "serializer_eigen.h"
 
 template< typename EigenType >
 struct GenericEigenMatrixTest {
 	template< typename Reader, typename Writer >
-	static void Test() {
+	static void Test( const char *filename  ) {
 		EigenType w;
 		w.setRandom();
 
 		{
-			Writer writer( scratchFilename );
+			Writer writer( filename );
 
 			EigenType v = w;
 		
@@ -627,7 +659,7 @@ struct GenericEigenMatrixTest {
 		}
 
 		{
-			Reader reader( scratchFilename );
+			Reader reader( filename );
 
 			EigenType v;
 			SERIALIZER_GET_VARIABLE( reader, v );
@@ -666,14 +698,14 @@ TextBinaryTest_EigenMatrix( RowVector4d );
 template< typename EigenType >
 struct GenericEigenAlignedBoxTest {
 	template< typename Reader, typename Writer >
-	static void Test() {
+	static void Test( const char *filename  ) {
 		EigenType ref;
 
 		ref.min().setRandom();
 		ref.max().setRandom();
 
 		{
-			Writer writer( scratchFilename );
+			Writer writer( filename );
 
 			EigenType box = ref;
 
@@ -681,7 +713,7 @@ struct GenericEigenAlignedBoxTest {
 		}
 
 		{
-			Reader reader( scratchFilename );
+			Reader reader( filename );
 
 			EigenType box;
 			SERIALIZER_GET_VARIABLE( reader, box );
