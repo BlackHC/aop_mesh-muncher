@@ -6,7 +6,7 @@
 
 namespace wml {
 	Node parse( const std::string &content, const std::string &sourceIdentifier = "" ) {
-		return detail::parse( content, sourceIdentifier );		
+		return detail::parse( content, sourceIdentifier );
 	}
 
 	Node parse( std::istream &stream, const std::string &sourceIdentifier = "" ) {
@@ -15,7 +15,7 @@ namespace wml {
 	}
 
 	Node parseFile( const std::string &filename ) {
-		return parse( std::ifstream( filename ) );
+		return parse( std::ifstream( filename, std::ios_base::binary ) );
 	}
 
 	std::string emit( const Node &node ) {

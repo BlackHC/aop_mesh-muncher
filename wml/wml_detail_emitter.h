@@ -31,15 +31,15 @@ namespace wml {
 
 				// null characters => VT_ESCAPED_STRING
 				for( auto c = value.cbegin() ; c != value.cend() ; ++c ) {
-					if( *c == 0 ) {
-						return VT_ESCAPED_STRING;				
+					if( *c == 0 || *c == '\r' ) {
+						return VT_ESCAPED_STRING;
 					}
 				}
 
 				for( auto c = value.cbegin() ; c != value.cend() ; ++c ) {
 					if( *c == '\n' ) {
-						numLines++;						
-					}			
+						numLines++;
+					}
 				}
 
 				if( numLines > 2 ) {
@@ -48,7 +48,7 @@ namespace wml {
 
 				for( auto c = value.cbegin() ; c != value.cend() ; ++c ) {
 					if( *c == '\n' || *c == '\t' || *c == '\'' ) {
-						return VT_ESCAPED_STRING;				
+						return VT_ESCAPED_STRING;
 					}
 				}
 
@@ -105,6 +105,9 @@ namespace wml {
 						}
 						else if( *c == '\n' ) {
 							text.append( "\\n" );
+						}
+						else if( *c == '\r' ) {
+							text.append( "\\r" );
 						}
 						else if( *c == '\0' ) {
 							text.append( "\\0" );

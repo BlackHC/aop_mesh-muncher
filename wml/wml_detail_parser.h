@@ -78,6 +78,9 @@ namespace wml {
 						case 'n':
 							text.push_back( '\n' );
 							break;
+						case 'r':
+							text.push_back( '\r' );
+							break;
 						case '0':
 							text.push_back( '\0' );
 							break;

@@ -19,6 +19,13 @@ TEST( Parser, oneKey ) {
 	ASSERT_EQ( "value", root[0].data().content );
 }
 
+TEST( Parser, weirdChars ) {
+	Node root = parse( "\x19key" );
+	ASSERT_FALSE( root.empty() );
+	ASSERT_EQ( 1, root.nodes.size() );
+	ASSERT_EQ( "\x19key", root[0].key() );
+}
+
 TEST( Parser, oneKey_withUnescapedString ) {
 	Node root = parse( "'key \\ \"' 'value \\ \"'" );
 
@@ -251,10 +258,10 @@ TEST( Parser, map_withWrongIndentation ) {
 TEST( API, keyAccess ) {
 	Node root = parse( "keyA value\nkeyB" );
 
-	ASSERT_THROW( root[ "KeyB" ], std::out_of_range );
-	ASSERT_THROW( root[ "keyC" ], std::out_of_range );
+	ASSERT_THROW( root[ "KeyB" ], LeanTextProcessing::TextException );
+	ASSERT_THROW( root[ "keyC" ], LeanTextProcessing::TextException );
 	ASSERT_NO_THROW( root[ "keyA" ][ "value" ] );
-	ASSERT_THROW( root[ "keyA" ][ "valueX" ], std::out_of_range );
+	ASSERT_THROW( root[ "keyA" ][ "valueX" ], LeanTextProcessing::TextException );
 	ASSERT_NO_THROW( root[ "keyB" ] );
 }
 
