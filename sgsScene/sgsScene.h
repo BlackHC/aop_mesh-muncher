@@ -88,15 +88,16 @@ struct SGSScene {
 
 		static const int BLOCK_SIZE = 8;
 		int mapSize[2];
+		int layerSize[2];
 
 		std::vector<Vertex> vertices;
 		std::vector<unsigned int> indices;
 		
-		/*std::vector< Layer > layers;
+		std::vector< Layer > layers;
 
-		std::vector< unsigned int > blockLayerMask;*/
+		//std::vector< unsigned int > blockLayerMask;
 
-		SERIALIZER_DEFAULT_IMPL( (mapSize)(vertices)(indices) );
+		SERIALIZER_DEFAULT_IMPL( (mapSize)(layerSize)(vertices)(indices)(layers) );
 	};
 
 	std::vector<Vertex> vertices;
