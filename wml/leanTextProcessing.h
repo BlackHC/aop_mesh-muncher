@@ -44,11 +44,23 @@ namespace LeanTextProcessing {
 
 		char peek() const {
 			// assert !atEof()
-			return textContainer.text[ current.index ];
+			const char c = textContainer.text[ current.index ];
+			if( c == '\r' ) {
+				return '\n';
+			}
+			return c;
 		}
 
 		void next() {
-			current.increment( peek() == '\n' );
+			bool newLine = false;
+			if( textContainer.text[ current.index ] == '\r' ) {
+				newLine = true;
+
+				if( textContainer.text[ current.index + 1 ] == '\n' ) {
+					++current.index;
+				}
+			}
+			current.increment( newLine );
 		}
 
 		// helper class
@@ -210,7 +222,7 @@ namespace LeanTextProcessing {
 		}
 	};
 
-	void TextIterator::error( const std::string &error ) {
+	inline void TextIterator::error( const std::string &error ) {
 		throw TextException( TextContext( *this ), error );
 	}
 }
