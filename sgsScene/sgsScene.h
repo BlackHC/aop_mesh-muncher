@@ -69,6 +69,36 @@ struct SGSScene {
 		SERIALIZER_DEFAULT_IMPL( (modelId)(startSubObject)(numSubObjects) );
 	};
 
+	struct Terrain {
+		struct Vertex {
+			float position[3];
+			float normal[3];
+			float blendUV[2];
+
+			SERIALIZER_ENABLE_RAW_MODE();
+		};
+
+		struct Layer {
+			int textureIndex;
+
+			std::vector<unsigned char> weights;
+
+			SERIALIZER_DEFAULT_IMPL( (textureIndex)(weights) );
+		};
+
+		static const int BLOCK_SIZE = 8;
+		int mapSize[2];
+
+		std::vector<Vertex> vertices;
+		std::vector<unsigned int> indices;
+		
+		/*std::vector< Layer > layers;
+
+		std::vector< unsigned int > blockLayerMask;*/
+
+		SERIALIZER_DEFAULT_IMPL( (mapSize)(vertices)(indices) );
+	};
+
 	std::vector<Vertex> vertices;
 	std::vector<unsigned> indices;
 
@@ -78,7 +108,9 @@ struct SGSScene {
 	
 	std::vector<Texture> textures;
 
-	SERIALIZER_DEFAULT_IMPL( (modelNames)(objects)(subObjects)(textures)(vertices)(indices) );
+	Terrain terrain;
+
+	SERIALIZER_DEFAULT_IMPL( (modelNames)(objects)(subObjects)(textures)(vertices)(indices)(terrain) );
 
 	SGSScene() {}
 };

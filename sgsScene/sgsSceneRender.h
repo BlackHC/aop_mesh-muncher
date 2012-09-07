@@ -34,30 +34,46 @@ struct SGSSceneRenderer {
 			
 		glPushAttrib( GL_ALL_ATTRIB_BITS );
 
-		auto &firstVertex = scene.vertices[0];
-		glVertexPointer( 3, GL_FLOAT, sizeof( SGSScene::Vertex ), firstVertex.position );
-		glNormalPointer( GL_FLOAT, sizeof( SGSScene::Vertex ), firstVertex.normal );
-		glTexCoordPointer( 2, GL_FLOAT, sizeof( SGSScene::Vertex ), firstVertex.uv[0] );
+		{
+			auto &firstVertex = scene.vertices[0];
+			glVertexPointer( 3, GL_FLOAT, sizeof( SGSScene::Vertex ), firstVertex.position );
+			glNormalPointer( GL_FLOAT, sizeof( SGSScene::Vertex ), firstVertex.normal );
+			glTexCoordPointer( 2, GL_FLOAT, sizeof( SGSScene::Vertex ), firstVertex.uv[0] );
 		
-		//glDrawElements( GL_TRIANGLES, scene.indices.size(), GL_UNSIGNED_INT, &scene.indices.front() );
+			//glDrawElements( GL_TRIANGLES, scene.indices.size(), GL_UNSIGNED_INT, &scene.indices.front() );
 
-		glEnable( GL_TEXTURE_2D );
+			glEnable( GL_TEXTURE_2D );
 
-		for( auto subObjectIterator = scene.subObjects.begin() ; subObjectIterator != scene.subObjects.end() ; ++subObjectIterator ) {
-			const SGSScene::SubObject &subObject = *subObjectIterator;
+			for( auto subObjectIterator = scene.subObjects.begin() ; subObjectIterator != scene.subObjects.end() ; ++subObjectIterator ) {
+				const SGSScene::SubObject &subObject = *subObjectIterator;
 
-			// apply the material
-			const auto &material = subObject.material;
-			glColor3ubv( &material.diffuse.r );
+				// apply the material
+				const auto &material = subObject.material;
+				glColor3ubv( &material.diffuse.r );
 			
-			if( material.textureIndex[0] != SGSScene::NO_TEXTURE ) {
-				glBindTexture( GL_TEXTURE_2D, textureHandles[ material.textureIndex[0] ] );
-			}
-			else {
-				glBindTexture( GL_TEXTURE_2D, 0 );
-			}
+				if( material.textureIndex[0] != SGSScene::NO_TEXTURE ) {
+					glBindTexture( GL_TEXTURE_2D, textureHandles[ material.textureIndex[0] ] );
+				}
+				else {
+					glBindTexture( GL_TEXTURE_2D, 0 );
+				}
 
-			glDrawElements( GL_TRIANGLES, subObject.numIndices, GL_UNSIGNED_INT, &scene.indices.front() + subObject.startIndex );
+				glDrawElements( GL_TRIANGLES, subObject.numIndices, GL_UNSIGNED_INT, &scene.indices.front() + subObject.startIndex );
+			}
+		}
+
+		// render terrain
+		{
+			auto &firstVertex = scene.terrain.vertices[0];
+			glVertexPointer( 3, GL_FLOAT, sizeof( SGSScene::Terrain::Vertex ), firstVertex.position );
+			glNormalPointer( GL_FLOAT, sizeof( SGSScene::Terrain::Vertex ), firstVertex.normal );
+			glTexCoordPointer( 2, GL_FLOAT, sizeof( SGSScene::Terrain::Vertex ), firstVertex.blendUV );
+
+			glBindTexture( GL_TEXTURE_2D, 0 );
+			glDisable( GL_TEXTURE_2D );
+
+			glColor3f( 0.5, 0.5, 0.5 );
+			glDrawElements( GL_TRIANGLES, scene.terrain.indices.size(), GL_UNSIGNED_INT, &scene.terrain.indices.front() );
 		}
 
 		glPopAttrib();
