@@ -75,6 +75,10 @@ struct Texture2D {
 	static void disable() {
 		glDisable( GL_TEXTURE_2D );
 	}
+
+	static void generateMipmap() {
+		glGenerateMipmap( GL_TEXTURE_2D );
+	}
 };
 
 template< class SpecializedTexture = Texture >
@@ -213,7 +217,7 @@ struct SGSSceneRenderer {
 		Eigen::Vector2i bakeSize = mapSize * detailFactor;
 
 		bakedTexture.bind();
-		bakedTexture.immutable( 1, GL_RGBA8, bakeSize.x(), bakeSize.y() );
+		bakedTexture.load( 0, GL_RGBA8, bakeSize.x(), bakeSize.y(), 0, GL_RGBA, GL_UNSIGNED_BYTE );
 		
 		fbo.attach( bakedTexture, GL_COLOR_ATTACHMENT0 );
 
@@ -284,6 +288,10 @@ struct SGSSceneRenderer {
 		fbo.unbind();
 
 		glPopAttrib();
+
+		bakedTexture.bind();
+		bakedTexture.generateMipmap();
+		bakedTexture.unbind();
 
 		return bakedTexture.publish();
 	}

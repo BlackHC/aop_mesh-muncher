@@ -531,6 +531,75 @@ void StdMap( const char *filename  ) {
 
 TextBinaryTest( StdMap );
 
+namespace StdMapTests {
+struct NonFundamental {
+	int x;
+	NonFundamental( int x = 0 ) : x( x ) {}
+
+	SERIALIZER_DEFAULT_IMPL( (x) );
+
+	friend bool operator <( const NonFundamental &a, const NonFundamental &b ) {
+		return a.x < b.x;
+	}
+};
+
+template< typename Reader, typename Writer >
+void StdMap_ComplexKey( const char *filename  ) {
+	{
+		Writer writer( filename );
+
+		std::map< NonFundamental, int > map;
+		for( int i = 0 ; i < 2 ; ++i ) {
+			map[ NonFundamental( i ) ] = 2*i;
+		}
+
+		SERIALIZER_PUT_VARIABLE( writer, map );
+	}
+
+	{
+		Reader reader( filename );
+
+		std::map< NonFundamental, int > map;
+
+		SERIALIZER_GET_VARIABLE( reader, map );
+
+		for( int i = 0 ; i < 2 ; ++i ) {
+			EXPECT_EQ( 2*i, map[ i ] );
+		}
+	}
+}
+
+TextBinaryTest( StdMap_ComplexKey );
+
+template< typename Reader, typename Writer >
+void StdMap_ComplexValue( const char *filename  ) {
+	{
+		Writer writer( filename );
+
+		std::map< int, NonFundamental > map;
+		for( int i = 0 ; i < 2 ; ++i ) {
+			map[ i ] = 2*i;
+		}
+
+		SERIALIZER_PUT_VARIABLE( writer, map );
+	}
+
+	{
+		Reader reader( filename );
+
+		std::map< int, NonFundamental > map;
+
+		SERIALIZER_GET_VARIABLE( reader, map );
+
+		for( int i = 0 ; i < 2 ; ++i ) {
+			EXPECT_EQ( 2*i, map[ i ].x );
+		}
+	}
+}
+
+TextBinaryTest( StdMap_ComplexValue );
+}
+
 // test raw mode
 
 struct RawStruct {

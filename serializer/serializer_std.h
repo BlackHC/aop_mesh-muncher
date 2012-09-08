@@ -15,7 +15,7 @@ namespace Serializer {
 		unsigned int size = (unsigned int) collection.size();
 		write( writer, size );
 
-		if( !boost::is_fundamental< Value >::value && !RawMode< Value >::value ) {
+		if( !detail::can_be_key<Value>::value ) {
 			for( auto it = collection.begin() ; it != collection.end() ; ++it ) {
 				write( writer, *it );
 			}
@@ -41,14 +41,14 @@ namespace Serializer {
 		unsigned int startIndex = (unsigned int) collection.size();
 		collection.reserve( startIndex + size );
 
-		if( !boost::is_fundamental< Value >::value && !RawMode< Value >::value ) {
+		if( !detail::can_be_key<Value>::value ) {
 			for( unsigned int i = 0 ; i < size ; ++i ) {
 				Value value;
 				read( reader, value );
 				collection.push_back( std::move( value ) );
 			}
 		}
-		else {		
+		else {
 			// speed up pods :)
 			collection.resize( startIndex + size );
 			fread( &collection[startIndex], sizeof( Value ), size, reader.handle );
@@ -57,12 +57,12 @@ namespace Serializer {
 
 	template< typename Value >
 	void read( TextReader &reader, std::vector<Value> &collection ) {
-		unsigned int size = (unsigned int) reader.mapNode->size();
+		int size = (int) reader.mapNode->size();
 		collection.reserve( collection.size() + size );
 
 		for( int i = 0 ; i < size ; ++i ) {
 			Value value;
-			get( reader, i, value );
+			get( reader, value );
 			collection.push_back( std::move( value ) );
 		}
 	}	
@@ -98,8 +98,8 @@ namespace Serializer {
 
 	template< typename Reader, typename First, typename Second >
 	void read( Reader &reader, std::pair< First, Second > &pair ) {
-		get( reader, 0, pair.first );
-		get( reader, 1, pair.second );
+		get( reader, pair.first );
+		get( reader, pair.second );
 	}
 	
 	// std::map
@@ -133,13 +133,12 @@ namespace Serializer {
 
 	template< typename Key, typename Value >
 	void read( TextReader &reader, std::map< Key, Value > &collection ) {
-		unsigned int size = (unsigned int) reader.mapNode->size();
+		int size = (int) reader.mapNode->size();
 
 		for( int i = 0 ; i < size ; ++i ) {
 			std::pair< Key, Value > pair;
-			get( reader, i, pair );
+			get( reader, pair );
 			collection.insert( std::move( pair ) );
 		}
 	}
-
 }

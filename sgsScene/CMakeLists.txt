@@ -34,6 +34,7 @@ ADD_EXECUTABLE(sgsSceneViewer
 	../glutil/Debug.h
 	../wml/wml.h
 	../wml/leanTextProcessing.h
+	glslPipeline.h
 	sgsScene.h
 	sgsSceneRender.h
 	sgsSceneViewer.cpp

@@ -56,6 +56,8 @@ ADD_SUBDIRECTORY(serializer)
 
 ADD_SUBDIRECTORY(sgsScene)
 
+ADD_SUBDIRECTORY(ctp)
+
 # Adds a new build target which copies the niven binaries to
 # the output folder
 NIVEN_COPY_BINARIES(${CMAKE_BINARY_DIR})

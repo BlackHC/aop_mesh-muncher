@@ -126,7 +126,11 @@ namespace Serializer {
 			wml::Node *mapNode;
 			bool firstKeyAllowed;
 
-			Scope( TextWriter &writer, wml::Node *newMapNode, bool newFirstKeyAllowed = false ) : writer( writer ), mapNode( writer.mapNode ), firstKeyAllowed( writer.firstKeyAllowed ) {
+			Scope( TextWriter &writer, wml::Node *newMapNode, bool newFirstKeyAllowed = false ) 
+				: writer( writer ),
+					mapNode( writer.mapNode ),
+					firstKeyAllowed( writer.firstKeyAllowed )
+			{
 				writer.mapNode = newMapNode;
 				writer.firstKeyAllowed = newFirstKeyAllowed;
 			}
@@ -144,8 +148,9 @@ namespace Serializer {
 		wml::Node *readNode;
 
 		bool firstKeyAllowed;
+		int unnamedCounter;
 
-		TextReader( const char *filename ) : mapNode( &root ), readNode( mapNode ), firstKeyAllowed( true ) {
+		TextReader( const char *filename ) : mapNode( &root ), readNode( mapNode ), firstKeyAllowed( true ), unnamedCounter( 0 ) {
 			root = wml::parseFile( filename );
 		}
 
@@ -153,24 +158,26 @@ namespace Serializer {
 			TextReader &reader;
 			wml::Node *mapNode;
 			bool firstKeyAllowed;
+			int unnamedCounter;
 
-			Scope( TextReader &reader, wml::Node *newMapNode, bool newFirstKeyAllowed = false ) : reader( reader ), mapNode( reader.mapNode ), firstKeyAllowed( reader.firstKeyAllowed ) {
+			Scope( TextReader &reader, wml::Node *newMapNode, bool newFirstKeyAllowed = false ) 
+				: reader( reader ),
+					mapNode( reader.mapNode ),
+					firstKeyAllowed( reader.firstKeyAllowed ),
+					unnamedCounter( reader.unnamedCounter ) 
+			{
 				reader.mapNode = newMapNode;
 				reader.firstKeyAllowed = newFirstKeyAllowed;
+				reader.unnamedCounter = 0;
 			}
 			~Scope() {
 				reader.mapNode = mapNode;
 				reader.firstKeyAllowed = firstKeyAllowed;
+				reader.unnamedCounter = unnamedCounter;
 			}
 		};
 	};
-
-	// put an unnamed value
-	template< typename Value >
-	void put( BinaryWriter &writer, const Value &value ) {
-		write( writer, value );
-	}
-
+		
 	template< typename Value >
 	void put( BinaryWriter &writer, const char *key, const Value &value ) {
 		write( writer, value );
@@ -205,7 +212,7 @@ namespace Serializer {
 			writer.firstKeyAllowed = false;
 
 			// make sure we dont add children by accident (ie bad first key)
-			int size = writer.mapNode->size();
+			int size = (int) writer.mapNode->size();
 
 			writer.writeNode = writer.mapNode;
 			write( writer, value );
@@ -214,21 +221,6 @@ namespace Serializer {
 
 			BOOST_ASSERT( size == writer.mapNode->size() );
 		}
-	}
-
-	// unnamed put
-	template< typename Value >
-	void put( TextWriter &writer, Value &value ) {
-		TextWriter::Scope scope( writer, &writer.mapNode->push_back( "-" ) );
-
-		writer.firstKeyAllowed = true;
-		writer.writeNode = writer.mapNode;
-		write( writer, value );
-	}
-
-	template< typename Value >
-	void get( BinaryReader &reader, int i, Value &value ) {
-		read( reader, value );
 	}
 		
 	template< typename Value >
@@ -327,15 +319,6 @@ namespace Serializer {
 			read( reader, value );
 			reader.firstKeyAllowed = false;
 		}
-	}
-
-	template< typename Value >
-	void get( TextReader &reader, int i, Value &value ) {
-		reader.firstKeyAllowed = true;
-		TextReader::Scope scope( reader, &reader.mapNode->nodes[i] );
-		reader.readNode = reader.mapNode;
-		read( reader, value );
-		reader.firstKeyAllowed = false;
 	}
 
 	// use class methods if they exist
@@ -479,9 +462,9 @@ namespace Serializer {
 
 	template< typename Value, int N >
 	void read( TextReader &reader, Value (&array)[N] ) {
-		int numChildren = reader.mapNode->size();
+		int numChildren = (int) reader.mapNode->size();
 		for( int i = 0 ; i < numChildren ; ++i ) {
-			get( reader, i, array[i] );
+			get( reader, array[i] );
 		}
 		if( numChildren != N ) {
 			reader.mapNode->error( boost::str( boost::format( "expected %i array elements - only found %i!" ) % N % numChildren ) );
@@ -543,6 +526,63 @@ namespace Serializer {
 	template< typename X >
 	typename boost::enable_if< RawMode< X > >::type write( BinaryWriter &writer, const X &value ) {
 		fwrite( &value, sizeof( X ), 1, writer.handle );
+	}
+
+	// unnamed put/get
+	namespace detail {
+		template< typename Value >
+		struct can_be_key {
+			static const bool value = boost::is_fundamental< Value >::value || RawMode< Value >::value;
+		};
+
+		template<>
+		struct can_be_key< std::string > {
+			static const bool value = true;
+		};
+	}
+
+	template< typename Value >
+	void put( TextWriter &writer, Value &value ) {
+		if( !writer.firstKeyAllowed || !detail::can_be_key< Value >::value ) {
+			TextWriter::Scope scope( writer, &writer.mapNode->push_back( "-" ) );
+
+			writer.firstKeyAllowed = true;
+			writer.writeNode = writer.mapNode;
+			write( writer, value );
+		}
+		else {
+			putAsKey( writer, "", value );
+		}
+		writer.firstKeyAllowed = false;
+	}
+
+	template< typename Value >
+	void get( TextReader &reader, Value &value ) {
+		if( !reader.firstKeyAllowed || !detail::can_be_key< Value >::value ) {
+			{
+				TextReader::Scope scope( reader, &reader.mapNode->nodes[reader.unnamedCounter] );
+
+				reader.firstKeyAllowed = true;
+				reader.readNode = reader.mapNode;
+				read( reader, value );
+			}
+			reader.unnamedCounter++;
+		}
+		else {
+			getAsKey( reader, "", value );
+		}
+		reader.firstKeyAllowed = false;
+	}
+
+	// binary passthrough
+	template< typename Value >
+	void put( BinaryWriter &writer, const Value &value ) {
+		write( writer, value );
+	}
+
+	template< typename Value >
+	void get( BinaryReader &reader, Value &value ) {
+		read( reader, value );
 	}
 
 	// member helpers
