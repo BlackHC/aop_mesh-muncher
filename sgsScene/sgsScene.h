@@ -31,6 +31,13 @@ struct SGSScene {
 		SERIALIZER_ENABLE_RAW_MODE();
 	};
 
+	struct BoundingSphere {
+		float center[3];
+		float radius;
+
+		SERIALIZER_ENABLE_RAW_MODE();
+	};
+
 	struct Material {
 		int textureIndex[2];
 
@@ -69,7 +76,10 @@ struct SGSScene {
 		int startIndex;
 		int numIndices;
 
-		SERIALIZER_DEFAULT_IMPL( (subModelName)(startIndex)(numIndices)(material) );
+		// bounding sphere
+		BoundingSphere boundingSphere;
+
+		SERIALIZER_DEFAULT_IMPL( (subModelName)(startIndex)(numIndices)(material)(boundingSphere) );
 	};
 
 	struct Object {

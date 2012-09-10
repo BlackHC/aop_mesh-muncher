@@ -6,6 +6,8 @@
 
 #include "SOIL.h"
 
+#include "glslPipeline.h"
+
 struct Renderbuffer {
 	GLuint handle;
 
@@ -223,6 +225,9 @@ struct SGSSceneRenderer {
 
 	std::vector<GLuint> textureHandles;
 
+	ShaderCollection shaders;
+	Program terrainProgram;
+
 	Texture2D bakeTerrainTexture( int detailFactor, float textureDetailFactor ) {
 		glPushAttrib( GL_ALL_ATTRIB_BITS );
 		
@@ -326,6 +331,22 @@ struct SGSSceneRenderer {
 		return bakedTexture.publish();
 	}
 
+	void init() {
+		while( true ) {
+			shaders.shaders.clear();
+
+			loadShaderCollection( shaders, "sgsScene.shaders" );
+
+			terrainProgram.surfaceShader = shaders[ "terrain" ];
+			terrainProgram.meshShader = shaders[ "sgsMesh" ];
+			if( terrainProgram.build() ) {
+				break;
+			}
+
+			__debugbreak();
+		}
+	}
+
 	void processScene( const std::shared_ptr<SGSScene> &scene ) {
 		this->scene = scene;
 
@@ -365,11 +386,13 @@ struct SGSSceneRenderer {
 			glVertexPointer( 3, GL_FLOAT, sizeof( SGSScene::Vertex ), firstVertex.position );
 			glNormalPointer( GL_FLOAT, sizeof( SGSScene::Vertex ), firstVertex.normal );
 			glTexCoordPointer( 2, GL_FLOAT, sizeof( SGSScene::Vertex ), firstVertex.uv[0] );
-		
+
 			for( int subObjectIndex = 0 ; subObjectIndex < scene->subObjects.size() ; ++subObjectIndex ) {
 				const SGSScene::SubObject &subObject = scene->subObjects[ subObjectIndex ];
 
 				glNewList( subObjects_disptlayListBase + subObjectIndex, GL_COMPILE );
+
+				Program::useFixed();
 
 				glEnable( GL_TEXTURE_2D );
 
@@ -472,6 +495,8 @@ struct SGSSceneRenderer {
 
 			glDepthMask( GL_TRUE );
 
+			terrainProgram.use();
+
 			auto &firstVertex = scene->terrain.vertices[0];
 			glVertexPointer( 3, GL_FLOAT, sizeof( SGSScene::Terrain::Vertex ), firstVertex.position );
 			glNormalPointer( GL_FLOAT, sizeof( SGSScene::Terrain::Vertex ), firstVertex.normal );
@@ -480,7 +505,6 @@ struct SGSSceneRenderer {
 			bakedTerrainTexture.bind();
 			bakedTerrainTexture.enable();
 
-			glColor3f( 1.0, 1.0, 1.0 );
 			glDrawElements( GL_TRIANGLES, scene->terrain.indices.size(), GL_UNSIGNED_INT, &scene->terrain.indices.front() );
 		}
 		glEndList();

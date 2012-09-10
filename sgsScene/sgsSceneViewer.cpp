@@ -87,6 +87,7 @@ void main() {
 	SGSSceneRenderer sgsSceneRenderer;
 	SGSScene sgsScene;
 
+	sgsSceneRenderer.init();
 	{
 		boost::timer::auto_cpu_timer loadTimer;
 

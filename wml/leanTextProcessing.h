@@ -192,10 +192,17 @@ namespace LeanTextProcessing {
 
 		TextContext() {}
 
+		TextContext( TextContext &&context ) 
+			: 
+				textIdentifier( std::move( context.textIdentifier ) ), 
+				position( std::move( context.position ) ),
+				surroundingText( std::move( context.surroundingText ) ) 
+		{}
+
 		TextContext( const TextIterator &iterator, int contextWidth = 30 ) 
 			: textIdentifier( iterator.textContainer.textIdentifier ), 
 				position( iterator.current ),
-				surroundingText( iterator.textContainer.text.substr( std::max( 0, position.index - contextWidth ), contextWidth * 2 ) )
+				surroundingText( iterator.textContainer.text.substr( std::max( 0, position.index - contextWidth ), contextWidth ) + "*HERE*" + iterator.textContainer.text.substr( std::max( 0, position.index ), contextWidth ))
 			{}
 	};
 
@@ -207,7 +214,7 @@ namespace LeanTextProcessing {
 
 		TextException( const TextContext &context, const std::string &error ) : context( context ), error( error ) {
 			message = boost::str( 
-				boost::format( "%s(%i:%i (%i)): %s\n\t%s" ) 
+				boost::format( "%s(%i:%i (%i)): %s\n\t%s\n" ) 
 					% context.textIdentifier 
 					% context.position.line 
 					% context.position.column 

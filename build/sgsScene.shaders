@@ -1,0 +1,26 @@
+terrain:
+	surfaceShader
+	inputs:
+		worldPosition vec3
+
+	uniforms:
+		terrainTexture 'layout( binding = 0 ) sampler2D'
+
+	code::
+		vec4 surfaceShader() {
+			return texture( terrainTexture, gl_TexCoord[0].st );
+		}
+sgsMesh:
+	meshShader
+	outputs:
+		worldPosition vec3
+
+	code::
+		Output meshShader() {
+			Output transformed;
+
+			transformed.worldPosition = gl_Vertex.xyz;
+			transformed.position = ftransform();
+
+			return result;
+		}

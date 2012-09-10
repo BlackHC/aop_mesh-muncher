@@ -19,13 +19,19 @@ namespace wml {
 			if( nodes.empty() ) {
 				error( "expected data at node!" );
 			}
-			
+			else if( nodes.size() > 1 ) {
+				error( "expected data at node, found array/map!" );
+			}
+
 			return nodes[0];
 		}
 
 		const Node & data() const {
 			if( nodes.empty() ) {
 				error( "expected data at node!" );
+			}
+			else if( nodes.size() > 1 ) {
+				error( "expected data at node, found array/map!" );
 			}
 
 			return nodes[0];
@@ -165,20 +171,27 @@ namespace wml {
 			return nodes.back();
 		} 
 
+		Node &push_back( std::string &&value ) {
+			push_back( Node( std::move( value ) ) );
+			return nodes.back();
+		} 
+
 		template< typename T >
 		void set( const T &value ) {
 			content = boost::lexical_cast< std::string >( value );
 		}
 
 		Node() {}
+		Node( std::string &&content ) : content( std::move( content ) ) {}
 		Node( const std::string &content ) : content( content ) {}
 		Node( const std::string &content, const LeanTextProcessing::TextContext &context ) : content( content ), context( context ) {}
 
-		Node( Node &&node ) : content( std::move( node.content ) ), nodes( std::move( node.nodes ) ) {}
+		Node( Node &&node ) : content( std::move( node.content ) ), nodes( std::move( node.nodes ) ), context( std::move( node.context ) ) {}
 
 		Node & operator == ( Node &&node ) {
 			content = std::move( node.content );
 			nodes = std::move( node.nodes );
+			context = std::move( node.context );
 		}
 
 		void error( const std::string &message ) const {

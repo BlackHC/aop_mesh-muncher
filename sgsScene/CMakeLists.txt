@@ -32,12 +32,14 @@ ADD_EXECUTABLE(sgsSceneViewer
 	../framework/eigenProjectionMatrices.h
 	../glutil/Debug.cpp
 	../glutil/Debug.h
+	../glutil/shaderPrograms.h
 	../wml/wml.h
 	../wml/leanTextProcessing.h
 	glslPipeline.h
 	sgsScene.h
 	sgsSceneRender.h
 	sgsSceneViewer.cpp
+	../build/sgsScene.shaders
 	)
 
 # The test application uses niven core, so link against it

@@ -428,6 +428,7 @@ namespace Serializer {
 		wml::Node keyNode;
 		// we move the content, because it is either meaningful or useless
 		keyNode.push_back( std::move( itemNode.content ) );
+		keyNode.context = itemNode.context;
 
 		if( detail::is_simple< Value >::value ) {
 			TextReader::Environment environment( reader, &keyNode );
@@ -523,9 +524,9 @@ namespace Serializer {
 		};
 	};
 
-#define _SERIALIZER_STD_REFLECTION_PAIR( r, data, labelValueTuple ) \
+#define _SERIALIZER_STD_REFLECTION_PAIR( r, data, labelValueSeq ) \
 	if( !index-- ) { \
-		return std::make_pair( BOOST_PP_SEQ_ELEM( 0, labelValueTuple ), BOOST_PP_SEQ_ELEM( 1, labelValueTuple ) ); \
+		return std::make_pair labelValueSeq ; \
 	}
 
 #define SERIALIZER_REFLECTION( Value, labelValueSeqSeq ) \
@@ -535,7 +536,7 @@ namespace Serializer {
 			BOOST_PP_SEQ_FOR_EACH( _SERIALIZER_STD_REFLECTION_PAIR, BOOST_PP_NIL, labelValueSeqSeq ) \
 			return std::make_pair( nullptr, Value() ); \
 		} \
-	}; 
+	};
 	
 	// using serializer_reflection
 	template< typename Value >

@@ -15,7 +15,11 @@ namespace wml {
 	}
 
 	Node parseFile( const std::string &filename ) {
-		return parse( std::ifstream( filename, std::ios_base::binary ) );
+		std::ifstream file( filename, std::ios_base::binary );
+		if( file.is_open() ) {
+			return parse( file );
+		}
+		return Node();
 	}
 
 	std::string emit( const Node &node ) {
