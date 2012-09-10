@@ -6,7 +6,6 @@
 #include "leanTextProcessing.h"
 
 namespace wml {
-
 	struct Node {
 		typedef std::vector< Node > NodeContainer;
 		typedef NodeContainer::iterator iterator;
@@ -17,10 +16,18 @@ namespace wml {
 		NodeContainer nodes;
 
 		Node & data() {
+			if( nodes.empty() ) {
+				error( "expected data at node!" );
+			}
+			
 			return nodes[0];
 		}
 
 		const Node & data() const {
+			if( nodes.empty() ) {
+				error( "expected data at node!" );
+			}
+
 			return nodes[0];
 		}
 
@@ -174,7 +181,7 @@ namespace wml {
 			nodes = std::move( node.nodes );
 		}
 
-		void error( const std::string &message ) {
+		void error( const std::string &message ) const {
 			throw LeanTextProcessing::TextException( context, message );
 		}
 	};

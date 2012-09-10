@@ -13,7 +13,8 @@ void genericTest( const char *filename ) {
 	{
 		Reader reader( filename );
 	}
-}*/
+}
+*/
 
 #define TextBinaryTestEx( test, name ) \
 	TEST( name, TextSerialization ) { \
@@ -28,40 +29,14 @@ void genericTest( const char *filename ) {
 
 // pure tests
 
-const char *textFilename = "textTestExchange.txt";
-const char *binaryFilename = "binaryTestExchange.bin";
-/*
-template:
-
-TEST( TextSerialization,  ) {
-	{
-		Serializer::TextWriter writer( textFilename );
-	}
-
-	{
-		Serializer::TextReader reader( textFilename );
-	}
-}
-
-TEST( BinarySerialization,  ) {
-	{
-		Serializer::BinaryWriter writer( binaryFilename );
-	}
-
-	{
-		Serializer::BinaryReader reader( binaryFilename );
-	}
-}
-
-*/
-
-TEST( TextSerialization, arithmeticSerializations ) {
+template< typename Reader, typename Writer >
+void ArrithmeticSerializations( const char *filename ) {
 	{
 		int i = 10;
 		float f = 3.1415;
 		char c = 'a';
 
-		Serializer::TextWriter writer( textFilename );
+		Writer writer( filename );
 		SERIALIZER_PUT_VARIABLE( writer, i );
 		SERIALIZER_PUT_VARIABLE( writer, f );
 		SERIALIZER_PUT_VARIABLE( writer, c );
@@ -72,7 +47,7 @@ TEST( TextSerialization, arithmeticSerializations ) {
 		float f;
 		char c;
 
-		Serializer::TextReader reader( textFilename );
+		Reader reader( filename );
 		SERIALIZER_GET_VARIABLE( reader, i );
 		SERIALIZER_GET_VARIABLE( reader, f );
 		SERIALIZER_GET_VARIABLE( reader, c );
@@ -83,33 +58,7 @@ TEST( TextSerialization, arithmeticSerializations ) {
 	}
 }
 
-TEST( BinarySerialization, arithmeticSerializations ) {
-	{
-		int i = 10;
-		float f = 3.1415;
-		char c = 'a';
-
-		Serializer::BinaryWriter writer( binaryFilename );
-		SERIALIZER_PUT_VARIABLE( writer, i );
-		SERIALIZER_PUT_VARIABLE( writer, f );
-		SERIALIZER_PUT_VARIABLE( writer, c );
-	}
-
-	{
-		int i;
-		float f;
-		char c;
-
-		Serializer::BinaryReader reader( binaryFilename );
-		SERIALIZER_GET_VARIABLE( reader, i );
-		SERIALIZER_GET_VARIABLE( reader, f );
-		SERIALIZER_GET_VARIABLE( reader, c );
-
-		EXPECT_EQ( 10, i );
-		EXPECT_FLOAT_EQ( 3.1415, f );
-		EXPECT_EQ( 'a', c );
-	}
-}
+TextBinaryTest( ArrithmeticSerializations );
 
 template< typename Reader, typename Writer >
 void StaticArray( const char *filename ) {
@@ -158,16 +107,17 @@ namespace Serializer {
 	}
 }
 
-TEST( TextSerialization, GlobalStruct ) {
+template< typename Reader, typename Writer >
+void GlobalStructPut( const char *filename ) {
 	{
-		Serializer::TextWriter writer( textFilename );
+		Writer writer( filename );
 
 		GlobalStruct x = { 10, 100 };
 		Serializer::put( writer, "x", x );
 	}
 
 	{
-		Serializer::TextReader reader( textFilename );
+		Reader reader( filename );
 
 		GlobalStruct x;
 		Serializer::get( reader, "x", x );
@@ -177,24 +127,7 @@ TEST( TextSerialization, GlobalStruct ) {
 	}
 }
 
-TEST( BinarySerialization, GlobalStruct ) {
-	{
-		Serializer::BinaryWriter writer( binaryFilename );
-
-		GlobalStruct x = { 10, 100 };
-		Serializer::put( writer, "x", x );
-	}
-
-	{
-		Serializer::BinaryReader reader( binaryFilename );
-
-		GlobalStruct x;
-		Serializer::get( reader, "x", x );
-
-		EXPECT_EQ( 10, x.x );
-		EXPECT_EQ( 100, x.y );
-	}
-}
+TextBinaryTest( GlobalStructPut );
 
 // custom type with method serialization
 struct MemberStruct {
@@ -214,16 +147,17 @@ struct MemberStruct {
 	}
 };
 
-TEST( TextSerialization, MemberStruct ) {
+template< typename Reader, typename Writer >
+void MemberStructTest( const char *filename ) {
 	{
-		Serializer::TextWriter writer( textFilename );
+		Writer writer( filename );
 
 		MemberStruct x = { 10, 100 };
 		Serializer::put( writer, "x", x );
 	}
 
 	{
-		Serializer::TextReader reader( textFilename );
+		Reader reader( filename );
 
 		MemberStruct x;
 		Serializer::get( reader, "x", x );
@@ -233,44 +167,28 @@ TEST( TextSerialization, MemberStruct ) {
 	}
 }
 
-TEST( BinarySerialization, MemberStruct ) {
-	{
-		Serializer::BinaryWriter writer( binaryFilename );
-
-		MemberStruct x = { 10, 100 };
-		Serializer::put( writer, "x", x );
-	}
-
-	{
-		Serializer::BinaryReader reader( binaryFilename );
-
-		MemberStruct x;
-		Serializer::get( reader, "x", x );
-
-		EXPECT_EQ( 10, x.x );
-		EXPECT_EQ( 100, x.y );
-	}
-}
+TextBinaryTest( MemberStructTest );
 
 // macro test
-struct MacroTest {
+struct MacroTestStruct {
 	int x, y;
 
 	SERIALIZER_DEFAULT_IMPL( (x)(y) )
 };
 
-TEST( TextSerialization, MacroTest ) {
+template< typename Reader, typename Writer >
+void MacroTest( const char *filename ) {
 	{
-		Serializer::TextWriter writer( textFilename );
+		Writer writer( filename );
 
-		MacroTest x = { 10, 100 };
+		MacroTestStruct x = { 10, 100 };
 		Serializer::put( writer, "x", x );
 	}
 
 	{
-		Serializer::TextReader reader( textFilename );
-
-		MacroTest x;
+		Reader reader( filename );
+	
+		MacroTestStruct x;
 		Serializer::get( reader, "x", x );
 
 		EXPECT_EQ( 10, x.x );
@@ -278,43 +196,27 @@ TEST( TextSerialization, MacroTest ) {
 	}
 }
 
-TEST( BinarySerialization, MacroTest ) {
-	{
-		Serializer::BinaryWriter writer( binaryFilename );
+TextBinaryTest( MacroTest );
 
-		MacroTest x = { 10, 100 };
-		Serializer::put( writer, "x", x );
-	}
-
-	{
-		Serializer::BinaryReader reader( binaryFilename );
-
-		MacroTest x;
-		Serializer::get( reader, "x", x );
-
-		EXPECT_EQ( 10, x.x );
-		EXPECT_EQ( 100, x.y );
-	}
-}
-
-struct ExternMacroTest {
+struct ExternMacroStruct {
 	int x, y;
 };
 
-SERIALIZER_DEFAULT_EXTERN_IMPL( ExternMacroTest, (x)(y) )
+SERIALIZER_DEFAULT_EXTERN_IMPL( ExternMacroStruct, (x)(y) );
 
-TEST( TextSerialization, ExternMacroTest ) {
+template< typename Reader, typename Writer >
+void ExternMacroTest( const char *filename ) {
 	{
-		Serializer::TextWriter writer( textFilename );
+		Writer writer( filename );
 
-		ExternMacroTest x = { 10, 100 };
+		ExternMacroStruct x = { 10, 100 };
 		Serializer::put( writer, "x", x );
 	}
 
 	{
-		Serializer::TextReader reader( textFilename );
+		Reader reader( filename );
 
-		ExternMacroTest x;
+		ExternMacroStruct x;
 		Serializer::get( reader, "x", x );
 
 		EXPECT_EQ( 10, x.x );
@@ -322,24 +224,7 @@ TEST( TextSerialization, ExternMacroTest ) {
 	}
 }
 
-TEST( BinarySerialization, ExternMacroTest ) {
-	{
-		Serializer::BinaryWriter writer( binaryFilename );
-
-		ExternMacroTest x = { 10, 100 };
-		Serializer::put( writer, "x", x );
-	}
-
-	{
-		Serializer::BinaryReader reader( binaryFilename );
-
-		ExternMacroTest x;
-		Serializer::get( reader, "x", x );
-
-		EXPECT_EQ( 10, x.x );
-		EXPECT_EQ( 100, x.y );
-	}
-}
+TextBinaryTest( ExternMacroTest );
 
 // first key intern impl
 

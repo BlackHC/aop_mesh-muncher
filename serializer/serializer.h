@@ -84,6 +84,32 @@ struct ptree_static_construction {
 };*/
 
 namespace Serializer {
+	namespace detail {
+		// check whether X::serializer_use_raw_mode exists
+		template< typename X >
+		struct has_serializer_use_raw_mode {
+			// Types "yes" and "no" are guaranteed to have different sizes,
+			// specifically sizeof(yes) == 1 and sizeof(no) == 2.
+			typedef char yes[1];
+			typedef char no[2];
+
+			template <typename C>
+			static yes& test(typename C::serializer_use_raw_mode *);
+
+			template <typename>
+			static no& test(...);
+
+			// If the "sizeof" the result of calling test<T>(0) would be equal to the sizeof(yes),
+			// the first overload worked and T has a nested type named foobar.
+			static const bool value = sizeof(test<X>(0)) == sizeof(yes);
+		};
+	}
+
+	template< typename X >
+	struct RawMode {
+		static const bool value = detail::has_serializer_use_raw_mode<X>::value;
+	};
+
 	struct BinaryWriter : boost::noncopyable {
 		FILE *handle;
 
@@ -106,123 +132,102 @@ namespace Serializer {
 		}
 	};
 
-	struct TextWriter : boost::noncopyable {
+	namespace detail {
+		// shared base class by TextWriter and TextReader
+		struct TextBase : boost::noncopyable {
+			wml::Node root;
+
+			wml::Node *mapNode;
+
+			// there are cases when we have to use a dummy key '-', eg when serializing arrays or std::pairs
+			// if keyNode is set, putAsKey and getAsKey will write to it instead of creating a sub key in mapNode
+			wml::Node *keyNode;
+
+			TextBase() : mapNode( &root ), keyNode( nullptr ) {}
+
+			// this class can be used to create a new environment for processing a certain node
+			template< class Base >
+			struct Environment {
+				Base &base;
+
+				wml::Node *mapNode;
+				wml::Node *keyNode;
+
+				Environment( Base &base, wml::Node *newMapNode, wml::Node *newKeyNode = nullptr ) 
+					: base( base ),
+					mapNode( base.mapNode ),
+					keyNode( base.keyNode )
+				{
+					base.mapNode = newMapNode;
+					base.keyNode = newKeyNode;
+				}
+
+				~Environment() {
+					base.mapNode = mapNode;
+					base.keyNode = keyNode;
+				}
+			};
+		};
+	}
+
+	struct TextWriter : detail::TextBase {
 		std::string filename;
 
-		wml::Node root;
-
-		wml::Node *mapNode;
-		wml::Node *writeNode;
-	
-		bool firstKeyAllowed;
-
-		TextWriter( const char *filename ) : filename( filename ), mapNode( &root ), writeNode( mapNode ), firstKeyAllowed( true ) {}
+		TextWriter( const char *filename ) : filename( filename ) {}
 		~TextWriter() {
 			wml::emitFile( filename, root );
 		}
 
-		struct Scope {
-			TextWriter &writer;
-			wml::Node *mapNode;
-			bool firstKeyAllowed;
-
-			Scope( TextWriter &writer, wml::Node *newMapNode, bool newFirstKeyAllowed = false ) 
-				: writer( writer ),
-					mapNode( writer.mapNode ),
-					firstKeyAllowed( writer.firstKeyAllowed )
-			{
-				writer.mapNode = newMapNode;
-				writer.firstKeyAllowed = newFirstKeyAllowed;
-			}
-			~Scope() {
-				writer.mapNode = mapNode;
-				writer.firstKeyAllowed = firstKeyAllowed;
-			}
-		};
+		typedef detail::TextBase::Environment< TextWriter > Environment;
 	};
 
-	struct TextReader : boost::noncopyable {
-		wml::Node root;
-
-		wml::Node *mapNode;
-		wml::Node *readNode;
-
-		bool firstKeyAllowed;
+	struct TextReader : detail::TextBase {
+		// node counter for unnamed gets (so we can iterate over all sub nodes of mapNode)
 		int unnamedCounter;
 
-		TextReader( const char *filename ) : mapNode( &root ), readNode( mapNode ), firstKeyAllowed( true ), unnamedCounter( 0 ) {
+		TextReader( const char *filename ) : unnamedCounter( 0 ) {
 			root = wml::parseFile( filename );
 		}
 
-		struct Scope {
-			TextReader &reader;
-			wml::Node *mapNode;
-			bool firstKeyAllowed;
+		struct Environment : detail::TextBase::Environment< TextReader > {
+			typedef detail::TextBase::Environment< TextReader > super;
 			int unnamedCounter;
 
-			Scope( TextReader &reader, wml::Node *newMapNode, bool newFirstKeyAllowed = false ) 
-				: reader( reader ),
-					mapNode( reader.mapNode ),
-					firstKeyAllowed( reader.firstKeyAllowed ),
-					unnamedCounter( reader.unnamedCounter ) 
+			Environment( TextReader &reader, wml::Node *newMapNode, wml::Node *newKeyNode = nullptr )
+				: super( reader, newMapNode, newKeyNode ), unnamedCounter( reader.unnamedCounter )
 			{
-				reader.mapNode = newMapNode;
-				reader.firstKeyAllowed = newFirstKeyAllowed;
 				reader.unnamedCounter = 0;
 			}
-			~Scope() {
-				reader.mapNode = mapNode;
-				reader.firstKeyAllowed = firstKeyAllowed;
-				reader.unnamedCounter = unnamedCounter;
+
+			~Environment() {
+				base.unnamedCounter = unnamedCounter;
 			}
 		};
 	};
-		
+	
+	//////////////////////////////////////////////////////////////////////////
+	// binary mode passthrough
+	
+	template< typename Value >
+	void put( BinaryWriter &writer, const Value &value ) {
+		write( writer, value );
+	}
+
 	template< typename Value >
 	void put( BinaryWriter &writer, const char *key, const Value &value ) {
 		write( writer, value );
 	}
-
-	// pass through in binary mode
+		
 	template< typename Value >
 	void putAsKey( BinaryWriter &writer, const char *key, const Value &value ) {
 		write( writer, value );
 	}
-
+	
 	template< typename Value >
-	void put( TextWriter &writer, const char *key, const Value &value ) {
-		TextWriter::Scope scope( writer, &writer.mapNode->push_back( key ) );
-
-		wml::Node writeNode;
-		writer.writeNode = &writeNode;
-
-		write( writer, value );
-
-		if( !writeNode.empty() || !writeNode.content.empty() ) {
-			writer.mapNode->push_back( std::move( writeNode ) );
-		}
+	void get( BinaryReader &reader, Value &value ) {
+		read( reader, value );
 	}
 
-	template< typename Value >
-	void putAsKey( TextWriter &writer, const char *key, const Value &value ) {
-		if( !writer.firstKeyAllowed ) {
-			put( writer, key, value );
-		}
-		else {
-			writer.firstKeyAllowed = false;
-
-			// make sure we dont add children by accident (ie bad first key)
-			int size = (int) writer.mapNode->size();
-
-			writer.writeNode = writer.mapNode;
-			write( writer, value );
-
-			writer.firstKeyAllowed = false;
-
-			BOOST_ASSERT( size == writer.mapNode->size() );
-		}
-	}
-		
 	template< typename Value >
 	void get( BinaryReader &reader, const char *key, Value &value ) {
 		read( reader, value );
@@ -239,7 +244,41 @@ namespace Serializer {
 		read( reader, value );
 	}
 
+	//////////////////////////////////////////////////////////////////////////
+	// text mode
+
+	// invariants:
+	//  put creates the key node, get reads the key node - both sets mapNode accordingly to it
+	//  write pushes a value into mapNode (ie a value subnode), reads from data()
+
+	template< typename Value >
+	void put( TextWriter &writer, const char *key, const Value &value ) {
+		TextWriter::Environment environment( writer, &writer.mapNode->push_back( key ) );
+		write( writer, value );
+	}
+
+	// either adds value using key as key or, if possible, sets value as primary key of the whole object
+	template< typename Value >
+	void putAsKey( TextWriter &writer, const char *key, const Value &value ) {
+		if( !writer.keyNode ) {
+			put( writer, key, value );
+		}
+		else {
+			{
+				TextWriter::Environment environment( writer, writer.keyNode );
+
+				write( writer, value );				
+			}
+			
+			// keyNode has been used - additional putAsKey will be simple puts
+			writer.keyNode = nullptr;
+		}
+	}
+
 	namespace detail {
+		// this class can be used to check whether a type is default constructible, ie whether T() works
+		// it takes into account that VS, at least, for T=int[N], interprets T() as int
+		//
 		// this is better than what is around on the internet
 		// see http://stackoverflow.com/questions/2733377/is-there-a-way-to-test-whether-a-c-class-has-a-default-constructor-other-than
 		template< class T >
@@ -247,17 +286,11 @@ namespace Serializer {
 			typedef int yes;
 			typedef char no;
 
-			template<int x>
-			class receive_size{
-			};
-
-			template<>
-			class receive_size<0> {
-				typedef void type;
-			};
+			template<int x> class is_zero {};
+			template<> class is_zero<0> { typedef void type; };
 
 			template< class U >
-			static yes sfinae( typename receive_size< int( sizeof( U() ) ) - int( sizeof( U ) ) >::type * );
+			static yes sfinae( typename is_zero< int( sizeof( U() ) ) - int( sizeof( U ) ) >::type * );
 
 			template< class U >
 			static no sfinae( ... );
@@ -274,11 +307,7 @@ namespace Serializer {
 				return false;
 			}
 
-			TextReader::Scope scope( reader, &*it );
-			reader.readNode = &reader.mapNode->data();
-			if( !reader.readNode ) {
-				return false;
-			}
+			TextReader::Environment environment( reader, &*it );
 			Serializer::read( reader, value );
 
 			return true;
@@ -292,14 +321,7 @@ namespace Serializer {
 		}
 	}
 	
-	template< typename Value >
-	typename boost::enable_if_c< !detail::is_default_constructible< Value >::value >::type 
-	get( TextReader &reader, const char *key, Value &value ) {
-		if( !detail::tryGet( reader, key, value ) ) {
-			reader.mapNode->error( boost::str( boost::format( "'%s' not found!") % key ) );
-		}
-	}
-
+	// if we don't pass a default value, we either construct a default value, if possible
 	template< typename Value >
 	typename boost::enable_if< detail::is_default_constructible< Value > >::type 
 	get( TextReader &reader, const char *key, Value &value ) {
@@ -308,18 +330,106 @@ namespace Serializer {
 		}
 	}
 
+	// or we fail, if there is no default constructor
+	template< typename Value >
+	typename boost::enable_if_c< !detail::is_default_constructible< Value >::value >::type 
+	get( TextReader &reader, const char *key, Value &value ) {
+			if( !detail::tryGet( reader, key, value ) ) {
+				reader.mapNode->error( boost::str( boost::format( "'%s' not found!") % key ) );
+			}
+	}
+
+	// get value from the object name, if possible, or from a key-value pair
 	template< typename Value >
 	void getAsKey( TextReader &reader, const char *key, Value &value ) {
-		if( !reader.firstKeyAllowed ) {
+		if( !reader.keyNode ) {
 			get( reader, key, value );
 		}
 		else {
-			reader.firstKeyAllowed = false;
-			reader.readNode = reader.mapNode;
-			read( reader, value );
-			reader.firstKeyAllowed = false;
+			{
+				TextReader::Environment environment( reader, reader.keyNode );
+			
+				read( reader, value );
+			}
+			
+			// keyNode has been used - additional getAsKey will be gets
+			reader.keyNode = nullptr;
 		}
 	}
+
+	// unnamed put/get
+	// the IsSimple type trait is for types that want to use only one read/write call instead of gets/puts to look like a fundamental type
+	template<typename Value>
+	struct IsSimple {
+		static const bool value = false;
+	};
+
+	namespace detail {
+		// helper trait to determine whether a type is 'simple'
+		// ie whether it can be written as one value (and no sub keys)
+		template< typename Value >
+		struct is_simple_wo_cv {
+			static const bool value = boost::is_fundamental< Value >::value || RawMode< Value >::value || IsSimple< Value >::value;
+		};
+
+		template<>
+		struct is_simple_wo_cv< std::string > {
+			static const bool value = true;
+		};
+
+		template< typename Value >
+		struct is_simple {
+			static const bool value = is_simple_wo_cv< typename boost::remove_cv< Value >::type >::value;
+		};
+	}
+
+	template< typename Value >
+	void put( TextWriter &writer, const Value &value ) {
+		wml::Node keyNode;
+
+		TextWriter::Environment environment( writer, &writer.mapNode->push_back( "-" ), &keyNode );
+
+		write( writer, value );
+
+		// is the key a simple value?
+		if( detail::is_simple< Value >::value ) {
+			// move the content up
+			writer.mapNode->content = std::move( writer.mapNode->data().content );
+			writer.mapNode->nodes.clear();
+		}
+		else 
+		// has the keyNode been 'used'?
+		if( !writer.keyNode ) {		
+			// verify there is only one data node
+			BOOST_ASSERT( keyNode.size() == 1 );
+
+			// move the contents into mapNode
+			writer.mapNode->content = std::move( keyNode.data().content );
+		}
+
+	}
+
+	template< typename Value >
+	void get( TextReader &reader, Value &value ) {
+		wml::Node &itemNode = reader.mapNode->nodes[ reader.unnamedCounter++ ];
+
+		// TODO: on demand keyNode creation would be better
+		wml::Node keyNode;
+		// we move the content, because it is either meaningful or useless
+		keyNode.push_back( std::move( itemNode.content ) );
+
+		if( detail::is_simple< Value >::value ) {
+			TextReader::Environment environment( reader, &keyNode );
+			read( reader, value );
+		}
+		else {
+			TextReader::Environment environment( reader, &itemNode, &keyNode );
+			read( reader, value );
+		}
+	}
+
+	//////////////////////////////////////////////////////////////////////////
+	// read and write methods
 
 	// use class methods if they exist
 	template< typename Reader, typename X >
@@ -341,102 +451,86 @@ namespace Serializer {
 
 	template< typename Value >
 	typename boost::enable_if< boost::is_arithmetic< Value > >::type
-	read( TextReader &reader, Value &value ) {
-		value = reader.readNode->as<Value>();
-	}
-
-	template< typename Value >
-	typename boost::enable_if< boost::is_arithmetic< Value > >::type
 	write( BinaryWriter &writer, const Value &value ) {
 		fwrite( &value, sizeof( Value ), 1, writer.handle );
 	}
 
 	template< typename Value >
 	typename boost::enable_if< boost::is_arithmetic< Value > >::type
-	write( TextWriter &writer, const Value &value ) {
-		writer.writeNode->set( value );
+	read( TextReader &reader, Value &value ) {
+		// TODO: add checks and error to data() if there is none [9/9/2012 Andreas]
+		value = reader.mapNode->data().as<Value>();
 	}
 
-	// enums
-	/*template<typename E>
-	struct EnumSimpleReflection {
-		//static const char* labels[0];
-	};*/
+	template< typename Value >
+	typename boost::enable_if< boost::is_arithmetic< Value > >::type
+	write( TextWriter &writer, const Value &value ) {
+		writer.mapNode->push_back( value );
+	}
 
-	template<typename E>
-	struct EnumReflection {
-		//static const std::pair<const char*, E> labelValuePairs[0];
-	};
+	//////////////////////////////////////////////////////////////////////////
+	// enums
+	
+	template< typename Value >
+	typename boost::enable_if< boost::is_enum< Value > >::type
+		read( BinaryReader &reader, Value &value ) {
+			fread( &value, sizeof( Value ), 1, reader.handle );
+	}
 
 	template< typename Value >
 	typename boost::enable_if< boost::is_enum< Value > >::type
-	read( BinaryReader &reader, Value &value ) {
-		fread( &value, sizeof( Value ), 1, reader.handle );
+		write( BinaryWriter &writer, const Value &value ) {
+			fwrite( &value, sizeof( Value ), 1, writer.handle );
+	}
+
+	namespace Enums {
+		template< typename Enum >
+		struct LabelValuePair {
+			const char *label;
+			Enum value;
+		};
+
+		// specialize this for your enumeration
+		template< typename Enum >
+		struct Reflection {
+			static const LabelValuePair<Enum> labelValuePairs[0];
+		};		
 	}
 
 	// using labelValuePairs
 	template< typename Value >
-	typename boost::enable_if< boost::is_enum< Value > /*&& sizeof( EnumReflection<Value>::labels )*/  >::type
+	typename boost::enable_if< boost::is_enum< Value > >::type
 	read( TextReader &reader, Value &value ) {
-		const std::string &label = reader.readNode->content;
+		typedef Enums::Reflection<Value> EnumReflection;
 
-		for( int i = 0 ; i < boost::size( EnumReflection<Value>::labelValuePairs ) ; ++i ) {
-			if( label == EnumReflection<Value>::labelValuePairs[i].label ) {
-				value = EnumReflection<Value>::labelValuePairs[i].value;
+		const std::string &label = reader.readNode->data().content;
+
+		for( int i = 0 ; i < boost::size( EnumReflection::labelValuePairs ) ; ++i ) {
+			if( label == EnumReflection::labelValuePairs[i].label ) {
+				value = EnumReflection::labelValuePairs[i].value;
 				return;
 			}
 		}
 
-		// try it as int
-		value = (Value) reader.readNode->as<int>();
+		// read it as int
+		value = (Value) reader.mapNode->data().as<int>();
 	}
-
-	// using labels
-	/*template< typename Value >
-	typename boost::enable_if_c< boost::is_enum< Value >::value && sizeof( EnumSimpleReflection<Value>::labels ) >::type
-		read( TextReader &reader, Value &value ) {
-		std::string label;
-		label = reader.current->get_value<std::string>();
-
-		for( int i = 0 ; i < boost::size( EnumSimpleReflection<Value>::labels ) ; ++i ) {
-			if( label == EnumSimpleReflection<Value>::labels[i] ) {
-				value = (E) i;
-				return;
-			}
-		}
-
-		// try it as int
-		value = (E) reader.current->get_value<int>();
-	}*/
 
 	template< typename Value >
 	typename boost::enable_if< boost::is_enum< Value > >::type
-	write( BinaryWriter &writer, const Value &value ) {
-		fwrite( &value, sizeof( Value ), 1, writer.handle );
-	}
-
-	template< typename Value >
-	typename boost::enable_if< boost::is_enum< Value > /* && sizeof( EnumReflection<Value>::labels ) */>::type
 	write( TextWriter &writer, const Value &value ) {
-		for( int i = 0 ; i < boost::size( EnumReflection<Value>::labelValuePairs ) ; ++i ) {
-			if( value == EnumReflection<Value>::labelValuePairs[i].value ) {
-				writer.writeNode->content = EnumReflection<Value>::labelValuePairs[i].label;
+		typedef Enums::Reflection<Value> EnumReflection;
+
+		for( int i = 0 ; i < boost::size( EnumReflection::labelValuePairs ) ; ++i ) {
+			if( value == EnumReflection::labelValuePairs[i].value ) {
+				writer.mapNode->push_back( EnumReflection::labelValuePairs[i].label );
 				return;
 			}
 		}
-		writer.writeNode->set( (int) value );
-	}
 
-	/*template< typename Value >
-	typename boost::enable_if_c< boost::is_enum< Value >::value && sizeof( EnumSimpleReflection<Value>::labels[0] ) != 0 >::type
-		write( TextWriter &writer, const Value &value ) {
-		if( value >= 0 && value < boost::size( EnumSimpleReflection<Value>::labels ) ) {
-			writer.current->put_value( EnumSimpleReflection<Value>::labels[value] );
-		}
-		else {
-			writer.current->put_value<int>( value );
-		}
-	}*/
+		// write is int
+		writer.mapNode->push_back( (int) value );
+	}
 
 	// static array
 	template< typename Value, int N >
@@ -472,23 +566,6 @@ namespace Serializer {
 	}
 
 	// raw serialization
-	template< typename X >
-	struct RawMode {
-		// Types "yes" and "no" are guaranteed to have different sizes,
-		// specifically sizeof(yes) == 1 and sizeof(no) == 2.
-		typedef char yes[1];
-		typedef char no[2];
-
-		template <typename C>
-		static yes& test(typename C::serializer_use_raw_mode *);
-
-		template <typename>
-		static no& test(...);
-
-		// If the "sizeof" the result of calling test<T>(0) would be equal to the sizeof(yes),
-		// the first overload worked and T has a nested type named foobar.
-		static const bool value = sizeof(test<X>(0)) == sizeof(yes);
-	};
 
 #define SERIALIZER_ENABLE_RAW_MODE() \
 	typedef void serializer_use_raw_mode;
@@ -496,19 +573,7 @@ namespace Serializer {
 #define SERIALIZER_ENABLE_RAW_MODE_EXTERN( type ) \
 	template<> \
 	struct ::Serializer::RawMode< type > { \
-		enum Value { \
-			value = true \
-		}; \
-	}
-
-	template< typename X >
-	typename boost::enable_if< RawMode< X > >::type read( TextReader &reader, X &value ) {
-#ifdef SERIALIZER_TEXT_ALLOW_RAW_DATA
-		const std::string &data = reader.readNode->content;
-		value = *reinterpret_cast<const X*>( &data.front() );
-#else
-		throw std::invalid_argument( "raw data not allowed!" );
-#endif
+		const static bool value = true; \
 	}
 
 	template< typename X >
@@ -517,80 +582,39 @@ namespace Serializer {
 	}
 
 	template< typename X >
-	typename boost::enable_if< RawMode< X > >::type write( TextWriter &writer, const X &value ) {
-#ifdef SERIALIZER_TEXT_ALLOW_RAW_DATA
-		writer.writeNode->content = std::string( (const char*) &value, (const char*) &value + sizeof( X ) );
-#endif
-	}
-
-	template< typename X >
 	typename boost::enable_if< RawMode< X > >::type write( BinaryWriter &writer, const X &value ) {
 		fwrite( &value, sizeof( X ), 1, writer.handle );
 	}
 
-	// unnamed put/get
-	namespace detail {
-		template< typename Value >
-		struct can_be_key {
-			static const bool value = boost::is_fundamental< Value >::value || RawMode< Value >::value;
-		};
-
-		template<>
-		struct can_be_key< std::string > {
-			static const bool value = true;
-		};
+	template< typename X >
+	typename boost::enable_if< RawMode< X > >::type read( TextReader &reader, X &value ) {
+#ifdef SERIALIZER_TEXT_ALLOW_RAW_DATA
+		const std::string &data = reader.mapNode->data().content;
+		value = *reinterpret_cast<const X*>( &data.front() );
+#else
+		reader.mapNode->error( "raw data not allowed! #define SERIALIZER_TEXT_ALLOW_RAW_DATA to allow!")
+#endif
 	}
 
-	template< typename Value >
-	void put( TextWriter &writer, Value &value ) {
-		if( !writer.firstKeyAllowed || !detail::can_be_key< Value >::value ) {
-			TextWriter::Scope scope( writer, &writer.mapNode->push_back( "-" ) );
-
-			writer.firstKeyAllowed = true;
-			writer.writeNode = writer.mapNode;
-			write( writer, value );
-		}
-		else {
-			putAsKey( writer, "", value );
-		}
-		writer.firstKeyAllowed = false;
-	}
-
-	template< typename Value >
-	void get( TextReader &reader, Value &value ) {
-		if( !reader.firstKeyAllowed || !detail::can_be_key< Value >::value ) {
-			{
-				TextReader::Scope scope( reader, &reader.mapNode->nodes[reader.unnamedCounter] );
-
-				reader.firstKeyAllowed = true;
-				reader.readNode = reader.mapNode;
-				read( reader, value );
-			}
-			reader.unnamedCounter++;
-		}
-		else {
-			getAsKey( reader, "", value );
-		}
-		reader.firstKeyAllowed = false;
-	}
-
-	// binary passthrough
-	template< typename Value >
-	void put( BinaryWriter &writer, const Value &value ) {
-		write( writer, value );
-	}
-
-	template< typename Value >
-	void get( BinaryReader &reader, Value &value ) {
-		read( reader, value );
+	template< typename X >
+	typename boost::enable_if< RawMode< X > >::type write( TextWriter &writer, const X &value ) {
+#ifdef SERIALIZER_TEXT_ALLOW_RAW_DATA
+		writer.mapNode->push_back( std::string( (const char*) &value, (const char*) &value + sizeof( X ) ) );
+#endif
 	}
 
 	// member helpers
-#define SERIALIZER_GET_VARIABLE( reader, field ) \
-	Serializer::get( reader, #field, field )
+#define SERIALIZER_GET_VARIABLE( reader, variable ) \
+	Serializer::get( reader, #variable, variable )
 
-#define SERIALIZER_PUT_VARIABLE( writer, field ) \
-	Serializer::put( writer, #field, field )
+#define SERIALIZER_PUT_VARIABLE( writer, variable ) \
+	Serializer::put( writer, #variable, variable )
+
+#define SERIALIZER_GET_KEY( reader, variable ) \
+	Serializer::getAsKey( reader, #variable, variable )
+
+#define SERIALIZER_PUT_KEY( writer, variable ) \
+	Serializer::putAsKey( writer, #variable, variable )
 
 #define SERIALIZER_GET_FIELD( reader, object, field ) \
 	Serializer::get( reader, #field, (object).field )
@@ -611,6 +635,7 @@ namespace Serializer {
 		BOOST_PP_SEQ_FOR_EACH( _SERIALIZER_STD_PUT, BOOST_PP_NIL, fieldSeq ) \
 	}
 
+	// TODO: rename to SERIALIZER_FIRST_AS_KEY_IMPL
 #define SERIALIZER_FIRST_KEY_IMPL( fieldSeq ) \
 	template< typename Reader > \
 	void serializer_read( Reader &reader ) { \

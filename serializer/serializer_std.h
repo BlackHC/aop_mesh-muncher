@@ -15,7 +15,7 @@ namespace Serializer {
 		unsigned int size = (unsigned int) collection.size();
 		write( writer, size );
 
-		if( !detail::can_be_key<Value>::value ) {
+		if( !detail::is_simple<Value>::value ) {
 			for( auto it = collection.begin() ; it != collection.end() ; ++it ) {
 				write( writer, *it );
 			}
@@ -27,13 +27,6 @@ namespace Serializer {
 	}
 
 	template< typename Value >
-	void write( TextWriter &writer, const std::vector<Value> &collection ) {
-		for( auto it = collection.begin() ; it != collection.end() ; ++it ) {
-			put( writer, *it );
-		}
-	}
-
-	template< typename Value >
 	void read( BinaryReader &reader, std::vector<Value> &collection ) {
 		unsigned int size;
 		read( reader, size );
@@ -41,7 +34,7 @@ namespace Serializer {
 		unsigned int startIndex = (unsigned int) collection.size();
 		collection.reserve( startIndex + size );
 
-		if( !detail::can_be_key<Value>::value ) {
+		if( !detail::is_simple<Value>::value ) {
 			for( unsigned int i = 0 ; i < size ; ++i ) {
 				Value value;
 				read( reader, value );
@@ -52,6 +45,13 @@ namespace Serializer {
 			// speed up pods :)
 			collection.resize( startIndex + size );
 			fread( &collection[startIndex], sizeof( Value ), size, reader.handle );
+		}
+	}
+
+	template< typename Value >
+	void write( TextWriter &writer, const std::vector<Value> &collection ) {
+		for( auto it = collection.begin() ; it != collection.end() ; ++it ) {
+			put( writer, *it );
 		}
 	}
 
@@ -75,31 +75,57 @@ namespace Serializer {
 		fread( &value[0], size, 1, reader.handle );
 	}
 
-	void read( TextReader &reader, std::string &value ) {
-		value = reader.readNode->content;
-	}
-
 	void write( BinaryWriter &writer, const std::string &value ) {
 		unsigned int size = (unsigned int)  value.size();
 		fwrite( &size, sizeof( unsigned int ), 1, writer.handle );
 		fwrite( &value[0], size, 1, writer.handle );
 	}
 
+	void read( TextReader &reader, std::string &value ) {
+		value = reader.mapNode->data().content;
+	}
+
 	void write( TextWriter &writer, const std::string &value ) {
-		writer.writeNode->content = value;
+		writer.mapNode->push_back( value );
 	}
 
 	// std::pair
-	template< typename Writer, typename First, typename Second >
-	void write( Writer &writer, const std::pair< First, Second > &pair ) {
+	template< typename First, typename Second >
+	void write( BinaryWriter &writer, const std::pair< First, Second > &pair ) {
 		put( writer, pair.first );
 		put( writer, pair.second );
 	}
 
-	template< typename Reader, typename First, typename Second >
-	void read( Reader &reader, std::pair< First, Second > &pair ) {
+	template< typename First, typename Second >
+	void read( BinaryReader &reader, std::pair< First, Second > &pair ) {
 		get( reader, pair.first );
 		get( reader, pair.second );
+	}
+
+	template< typename First, typename Second >
+	void write( TextWriter &writer, const std::pair< First, Second > &pair ) {
+		if( !detail::is_simple< First >::value || !writer.keyNode ) {
+			put( writer, pair.first );
+			put( writer, pair.second );
+		}
+		else {
+			putAsKey( writer, "", pair.first );
+
+			write( writer, pair.second );
+		}
+	}
+
+	template< typename First, typename Second >
+	void read( TextReader &reader, std::pair< First, Second > &pair ) {
+		if( !detail::is_simple< First >::value || !reader.keyNode ) {
+			get( reader, pair.first );
+			get( reader, pair.second );
+		}
+		else {
+			getAsKey( reader, "", pair.first );
+
+			read( reader, pair.second );
+		}
 	}
 	
 	// std::map
@@ -112,13 +138,6 @@ namespace Serializer {
 		}
 	}
 
-	template< typename Key, typename Value >
-	void write( TextWriter &writer, const std::map< Key, Value > &collection ) {
-		for( auto it = collection.begin() ; it != collection.end() ; ++it ) {
-			put( writer, *it );
-		}
-	}
-
 	template< typename Key,typename Value >
 	void read( BinaryReader &reader, std::map< Key, Value > &collection ) {
 		unsigned int size;
@@ -128,6 +147,13 @@ namespace Serializer {
 			std::pair< Key, Value > pair;
 			read( reader, pair );
 			collection.insert( std::move( pair ) );
+		}
+	}
+
+	template< typename Key, typename Value >
+	void write( TextWriter &writer, const std::map< Key, Value > &collection ) {
+		for( auto it = collection.begin() ; it != collection.end() ; ++it ) {
+			put( writer, *it );
 		}
 	}
 
