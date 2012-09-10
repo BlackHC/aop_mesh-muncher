@@ -44,14 +44,26 @@ struct SGSScene {
 		bool doubleSided;
 		bool wireFrame;
 
-		SERIALIZER_DEFAULT_IMPL( (textureIndex)(doubleSided)(wireFrame)(ambient)(diffuse)(specular)(alpha)(specularSharpness) )
+		enum AlphaType {
+			AT_NONE,
+			AT_MATERIAL, // material only alpha
+			AT_TEXTURE, // texture * material 
+			AT_ADDITIVE, // additive
+			AT_MULTIPLY,
+			AT_MULTIPLY_2,
+			AT_ALPHATEST // like AT_TEXTURE
+		};
+
+		AlphaType alphaType;
+
+		SERIALIZER_DEFAULT_IMPL( (alphaType)(textureIndex)(doubleSided)(wireFrame)(ambient)(diffuse)(specular)(alpha)(specularSharpness) )
 		//SERIALIZER_ENABLE_RAW_MODE();
 	};
 
 	struct SubObject {
 		std::string subModelName;
 
-		Material material;		
+		Material material;
 
 		// for rendering
 		int startIndex;

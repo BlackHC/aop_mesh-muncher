@@ -48,24 +48,39 @@ struct ScopedTexture : SpecializedTexture {
 };
 
 struct Texture2D {
+	static GLuint currentHandle;
+
 	GLuint handle;
 
 	Texture2D( GLuint handle ) : handle( handle ) {}
 
 	void bind() {
-		glBindTexture( GL_TEXTURE_2D, handle );
+		if( currentHandle != handle ) {
+			currentHandle = handle;
+			glBindTexture( GL_TEXTURE_2D, handle );
+		}
 	}
 
 	static void unbind() {
-		glBindTexture( GL_TEXTURE_2D, 0 );
+		if( currentHandle ) {
+			glBindTexture( GL_TEXTURE_2D, 0 );
+			currentHandle = 0;
+		}
 	}
 
-	static void load( GLint level, GLint internalformat, GLsizei width, GLsizei height, GLint border, GLenum format, GLenum type, const GLvoid *pixels = nullptr ) {
-		glTexImage2D( GL_TEXTURE_2D, level, internalformat, width, height, border, format, type, pixels );
+	void load( GLint level, GLint internalformat, GLsizei width, GLsizei height, GLint border, GLenum format, GLenum type, const GLvoid *pixels = nullptr ) {
+		glTextureImage2DEXT( handle, GL_TEXTURE_2D, level, internalformat, width, height, border, format, type, pixels );
 	}
 
-	static void immutable( int numLevels, GLenum internalFormat, GLsizei width, GLsizei height ) {
-		glTexStorage2D( GL_TEXTURE_2D, numLevels, internalFormat, width, height );
+	void immutable( int numLevels, GLenum internalFormat, GLsizei width, GLsizei height ) {
+		if( handle != currentHandle ) {
+			glBindTexture( GL_TEXTURE_2D, handle );
+			glTexStorage2D( GL_TEXTURE_2D, numLevels, internalFormat, width, height );
+			glBindTexture( GL_TEXTURE_2D, currentHandle );
+		}
+		else {
+			glTexStorage2D( GL_TEXTURE_2D, numLevels, internalFormat, width, height );
+		}
 	}
 
 	static void enable() {
@@ -76,10 +91,21 @@ struct Texture2D {
 		glDisable( GL_TEXTURE_2D );
 	}
 
-	static void generateMipmap() {
-		glGenerateMipmap( GL_TEXTURE_2D );
+	void generateMipmap() {
+		glGenerateTextureMipmapEXT( handle, GL_TEXTURE_2D );
+	}
+
+	static void bindExtern( GLuint handle ) {
+		if( handle == currentHandle ) {
+			return;
+		}
+
+		currentHandle = handle;
+		glBindTexture( GL_TEXTURE_2D, handle );
 	}
 };
+
+GLuint Texture2D::currentHandle = 0;
 
 template< class SpecializedTexture = Texture >
 struct Textures {
@@ -187,13 +213,20 @@ struct Framebuffer {
 };
 
 struct SGSSceneRenderer {
-	GLuint displayListBase;
+	std::shared_ptr<SGSScene> scene;
+
+	GLuint subObjects_disptlayListBase;
+	GLuint terrain_displayListBase;
+
+	std::vector<GLuint> solidLists;
+	std::vector<GLuint> alphaLists;
+
 	std::vector<GLuint> textureHandles;
 
-	Texture2D bakeTerrainTexture( const SGSScene &scene, int detailFactor, float textureDetailFactor ) {
+	Texture2D bakeTerrainTexture( int detailFactor, float textureDetailFactor ) {
 		glPushAttrib( GL_ALL_ATTRIB_BITS );
 		
-		int numLayers = scene.terrain.layers.size();
+		int numLayers = scene->terrain.layers.size();
 
 		// create and load weight textures
 		ScopedTextures2D weightTextures( numLayers );
@@ -203,7 +236,7 @@ struct SGSSceneRenderer {
 		for( int layer = 0 ; layer < numLayers ; ++layer ) {
 			auto weightTexture = weightTextures.get( layer );
 			weightTexture.bind();
-			weightTexture.load( 0, GL_INTENSITY, scene.terrain.layerSize[0], scene.terrain.layerSize[1], 0, GL_RED, GL_UNSIGNED_BYTE, &scene.terrain.layers[ layer ].weights.front() );
+			weightTexture.load( 0, GL_INTENSITY, scene->terrain.layerSize[0], scene->terrain.layerSize[1], 0, GL_RED, GL_UNSIGNED_BYTE, &scene->terrain.layers[ layer ].weights.front() );
 			glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT );
 			glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT );
 			glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
@@ -213,10 +246,9 @@ struct SGSSceneRenderer {
 		Framebuffer fbo;
 		ScopedTexture2D bakedTexture;
 
-		Eigen::Vector2i mapSize( scene.terrain.mapSize[0], scene.terrain.mapSize[1] );
+		Eigen::Vector2i mapSize( scene->terrain.mapSize[0], scene->terrain.mapSize[1] );
 		Eigen::Vector2i bakeSize = mapSize * detailFactor;
 
-		bakedTexture.bind();
 		bakedTexture.load( 0, GL_RGBA8, bakeSize.x(), bakeSize.y(), 0, GL_RGBA, GL_UNSIGNED_BYTE );
 		
 		fbo.attach( bakedTexture, GL_COLOR_ATTACHMENT0 );
@@ -260,7 +292,7 @@ struct SGSSceneRenderer {
 			
 			// bind the terrain texture
 			glActiveTexture( GL_TEXTURE1 );
-			Texture2D terrainTexture( textureHandles[ scene.terrain.layers[ layerIndex ].textureIndex ] );
+			Texture2D terrainTexture( textureHandles[ scene->terrain.layers[ layerIndex ].textureIndex ] );
 			terrainTexture.bind();
 			terrainTexture.enable();
 			
@@ -289,29 +321,34 @@ struct SGSSceneRenderer {
 
 		glPopAttrib();
 
-		bakedTexture.bind();
 		bakedTexture.generateMipmap();
-		bakedTexture.unbind();
 
 		return bakedTexture.publish();
 	}
 
-	void processScene( const SGSScene &scene ) {
+	void processScene( const std::shared_ptr<SGSScene> &scene ) {
+		this->scene = scene;
+
 		// load textures
-		int numTextures = scene.textures.size();
+		int numTextures = scene->textures.size();
 		textureHandles.resize( numTextures );
 		glGenTextures( numTextures, &textureHandles.front() );
 
 		for( int textureIndex = 0 ; textureIndex < numTextures ; ++textureIndex ) {
-			const auto &rawContent = scene.textures[ textureIndex ].rawContent;
+			const auto &rawContent = scene->textures[ textureIndex ].rawContent;
 			SOIL_load_OGL_texture_from_memory( &rawContent.front(), rawContent.size(), 0, textureHandles[ textureIndex ], SOIL_FLAG_DDS_LOAD_DIRECT | SOIL_FLAG_MIPMAPS | SOIL_FLAG_TEXTURE_REPEATS );
 			glBindTexture( GL_TEXTURE_2D, textureHandles[ textureIndex ] );
 		}
 
-		Texture2D bakedTerrainTexture = bakeTerrainTexture( scene, 32, 1 / 8.0 );
+		Texture2D bakedTerrainTexture = bakeTerrainTexture( 32, 1 / 8.0 );
 
 		// render everything into display lists
-		displayListBase = glGenLists( 1 );
+		subObjects_disptlayListBase = glGenLists( scene->subObjects.size() );
+
+		terrain_displayListBase = glGenLists( 1 );
+
+		solidLists.reserve( scene->subObjects.size() );
+		alphaLists.reserve( scene->subObjects.size() );
 		
 		glPushClientAttrib( GL_CLIENT_ALL_ATTRIB_BITS );
 
@@ -319,27 +356,26 @@ struct SGSSceneRenderer {
 		glEnableClientState( GL_NORMAL_ARRAY );
 		glEnableClientState( GL_TEXTURE_COORD_ARRAY );
 
-		glNewList( displayListBase, GL_COMPILE );
-			
 		glPushAttrib( GL_ALL_ATTRIB_BITS );
 
+		solidLists.push_back( terrain_displayListBase );
+
 		{
-			auto &firstVertex = scene.vertices[0];
+			auto &firstVertex = scene->vertices[0];
 			glVertexPointer( 3, GL_FLOAT, sizeof( SGSScene::Vertex ), firstVertex.position );
 			glNormalPointer( GL_FLOAT, sizeof( SGSScene::Vertex ), firstVertex.normal );
 			glTexCoordPointer( 2, GL_FLOAT, sizeof( SGSScene::Vertex ), firstVertex.uv[0] );
 		
-			//glDrawElements( GL_TRIANGLES, scene.indices.size(), GL_UNSIGNED_INT, &scene.indices.front() );
+			for( int subObjectIndex = 0 ; subObjectIndex < scene->subObjects.size() ; ++subObjectIndex ) {
+				const SGSScene::SubObject &subObject = scene->subObjects[ subObjectIndex ];
 
-			glEnable( GL_TEXTURE_2D );
+				glNewList( subObjects_disptlayListBase + subObjectIndex, GL_COMPILE );
 
-			for( auto subObjectIterator = scene.subObjects.begin() ; subObjectIterator != scene.subObjects.end() ; ++subObjectIterator ) {
-				const SGSScene::SubObject &subObject = *subObjectIterator;
+				glEnable( GL_TEXTURE_2D );
 
 				// apply the material
 				const auto &material = subObject.material;
-				glColor3ubv( &material.diffuse.r );
-			
+				
 				if( material.textureIndex[0] != SGSScene::NO_TEXTURE ) {
 					glBindTexture( GL_TEXTURE_2D, textureHandles[ material.textureIndex[0] ] );
 				}
@@ -347,13 +383,96 @@ struct SGSSceneRenderer {
 					glBindTexture( GL_TEXTURE_2D, 0 );
 				}
 
-				glDrawElements( GL_TRIANGLES, subObject.numIndices, GL_UNSIGNED_INT, &scene.indices.front() + subObject.startIndex );
+				unsigned char alpha = 255;
+
+				switch( material.alphaType ) {
+				default:
+				case SGSScene::Material::AT_NONE:
+					glDisable( GL_BLEND );
+					glDisable( GL_ALPHA_TEST );
+
+					glDepthMask( GL_TRUE ); 
+					
+					break;
+				case SGSScene::Material::AT_ADDITIVE:
+					glDepthMask( GL_FALSE );
+					glEnable( GL_BLEND );
+					glDisable( GL_ALPHA_TEST );
+
+					glBlendFunc( GL_SRC_ALPHA, GL_ONE );
+
+					break;
+				case SGSScene::Material::AT_TEXTURE:
+				case SGSScene::Material::AT_ALPHATEST:
+					glDepthMask( GL_FALSE );
+					glEnable( GL_ALPHA_TEST );
+					glAlphaFunc( GL_GREATER, 0 );
+
+					glEnable( GL_BLEND );
+					glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
+
+					alpha = material.alpha;
+
+					break;
+				case SGSScene::Material::AT_MATERIAL:
+					if( material.alpha == 255 ) {
+						glDisable( GL_BLEND );
+						glDisable( GL_ALPHA_TEST );
+
+						glDepthMask( GL_TRUE ); 
+					}
+					else {
+						glDepthMask( GL_FALSE );
+						glDisable( GL_ALPHA_TEST );
+
+						glEnable( GL_BLEND );
+						glBlendFunc( GL_CONSTANT_ALPHA, GL_ONE_MINUS_CONSTANT_ALPHA );
+
+						glBlendColor( 1.0, 1.0, 1.0, material.alpha / 255.0 );
+					}
+					break;
+				case SGSScene::Material::AT_MULTIPLY:
+					glDepthMask( GL_FALSE );
+					glDisable( GL_ALPHA_TEST );
+					
+					glEnable( GL_BLEND );
+					glBlendFunc( GL_ZERO, GL_SRC_COLOR );
+
+					break;
+				case SGSScene::Material::AT_MULTIPLY_2:
+					glDepthMask( GL_FALSE );
+					glDisable( GL_ALPHA_TEST );
+
+					glEnable( GL_BLEND );
+					glBlendFunc( GL_DST_COLOR, GL_SRC_COLOR );
+
+					break;
+				}
+
+				glColor4ub( material.diffuse.r, material.diffuse.g, material.diffuse.b, alpha );
+
+				glDrawElements( GL_TRIANGLES, subObject.numIndices, GL_UNSIGNED_INT, &scene->indices.front() + subObject.startIndex );
+
+				glEndList();
+
+				if( material.alphaType == SGSScene::Material::AT_NONE ) {
+					solidLists.push_back( subObjects_disptlayListBase + subObjectIndex );
+				} 
+				else {
+					alphaLists.push_back( subObjects_disptlayListBase + subObjectIndex );
+				}
 			}
 		}
 
 		// render terrain
+		glNewList( terrain_displayListBase, GL_COMPILE );
 		{
-			auto &firstVertex = scene.terrain.vertices[0];
+			glDisable( GL_BLEND );
+			glDisable( GL_ALPHA_TEST );
+
+			glDepthMask( GL_TRUE );
+
+			auto &firstVertex = scene->terrain.vertices[0];
 			glVertexPointer( 3, GL_FLOAT, sizeof( SGSScene::Terrain::Vertex ), firstVertex.position );
 			glNormalPointer( GL_FLOAT, sizeof( SGSScene::Terrain::Vertex ), firstVertex.normal );
 			glTexCoordPointer( 2, GL_FLOAT, sizeof( SGSScene::Terrain::Vertex ), firstVertex.blendUV );
@@ -362,23 +481,32 @@ struct SGSSceneRenderer {
 			bakedTerrainTexture.enable();
 
 			glColor3f( 1.0, 1.0, 1.0 );
-			glDrawElements( GL_TRIANGLES, scene.terrain.indices.size(), GL_UNSIGNED_INT, &scene.terrain.indices.front() );
+			glDrawElements( GL_TRIANGLES, scene->terrain.indices.size(), GL_UNSIGNED_INT, &scene->terrain.indices.front() );
 		}
+		glEndList();
 
 		glPopAttrib();
 		
-		glEndList();
-
 		glPopClientAttrib();
 	}
 
 	void render() {
-		glCallList( displayListBase );
+		if( !solidLists.empty() )
+			glCallLists( solidLists.size(), GL_UNSIGNED_INT, &solidLists.front() );
+		if( !alphaLists.empty() )
+			glCallLists( alphaLists.size(), GL_UNSIGNED_INT, &alphaLists.front() );
+
+		glDepthMask( GL_TRUE );
 	}
 
-	SGSSceneRenderer() : displayListBase( 0 ) {}
+	SGSSceneRenderer() : subObjects_disptlayListBase( 0 ), terrain_displayListBase( 0 ) {}
+
 	~SGSSceneRenderer() {
-		if( displayListBase )
-			glDeleteLists( displayListBase, 1 );
+		if( subObjects_disptlayListBase ) {
+			glDeleteLists( subObjects_disptlayListBase, scene->subObjects.size() );
+		}
+		if( terrain_displayListBase ) {
+			glDeleteLists( terrain_displayListBase, scene->subObjects.size() );
+		}
 	}
 };

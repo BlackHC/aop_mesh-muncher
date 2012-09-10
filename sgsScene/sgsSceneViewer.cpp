@@ -94,7 +94,7 @@ void main() {
 
 		Serializer::read( reader, sgsScene );
 
-		sgsSceneRenderer.processScene( sgsScene );
+		sgsSceneRenderer.processScene( shared_from_stack( sgsScene ) );
 	}
 
 	EventDispatcher eventDispatcher;
