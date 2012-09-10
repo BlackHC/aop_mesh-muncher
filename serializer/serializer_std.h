@@ -15,7 +15,7 @@ namespace Serializer {
 		unsigned int size = (unsigned int) collection.size();
 		write( writer, size );
 
-		if( !detail::is_simple<Value>::value ) {
+		if( !detail::can_be_dumped<Value>::value ) {
 			for( auto it = collection.begin() ; it != collection.end() ; ++it ) {
 				write( writer, *it );
 			}
@@ -34,7 +34,7 @@ namespace Serializer {
 		unsigned int startIndex = (unsigned int) collection.size();
 		collection.reserve( startIndex + size );
 
-		if( !detail::is_simple<Value>::value ) {
+		if( !detail::can_be_dumped<Value>::value ) {
 			for( unsigned int i = 0 ; i < size ; ++i ) {
 				Value value;
 				read( reader, value );

@@ -309,6 +309,34 @@ void StdVector_Fundamental( const char *filename ) {
 
 TextBinaryTest( StdVector_Fundamental );
 
+template< typename Reader, typename Writer >
+void StdVector_String( const char *filename ) {
+	std::vector<std::string> ref;
+	{
+		Writer writer( filename );
+
+		std::vector<std::string> &seq = ref;
+
+		for( int i = 0 ; i < 100 ; i++ )
+			seq.push_back( boost::str( boost::format( "hello %s" ) % i ) );
+
+		SERIALIZER_PUT_VARIABLE( writer, seq );
+	}
+
+	{
+		Reader reader( filename );
+
+		std::vector<std::string> seq;
+
+		SERIALIZER_GET_VARIABLE( reader, seq );
+
+		for( int i = 0 ; i < 100 ; i++ )
+			ASSERT_EQ( ref[i], seq[i] );
+	}
+}
+
+TextBinaryTest( StdVector_String );
+
 static int StdVector_NonFundamental_readCounter = 0;
 static int StdVector_NonFundamental_writeCounter = 0;
 

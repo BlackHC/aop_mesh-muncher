@@ -381,6 +381,17 @@ namespace Serializer {
 		struct is_simple {
 			static const bool value = is_simple_wo_cv< typename boost::remove_cv< Value >::type >::value;
 		};
+
+		// helper trait to determine whether we can Value (in binary mode)
+		template< typename Value >
+		struct can_be_dumped_wo_cv {
+			static const bool value = boost::is_fundamental< Value >::value || RawMode< Value >::value;
+		};
+
+		template< typename Value >
+		struct can_be_dumped {
+			static const bool value = can_be_dumped_wo_cv< typename boost::remove_cv< Value >::type >::value;
+		};
 	}
 
 	template< typename Value >
