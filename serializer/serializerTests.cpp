@@ -265,7 +265,7 @@ enum EnumC {
 	EC_C
 };
 
-SERIALIZER_REFLECTION( EnumC, (("eca")(EC_A))(("ecb")(EC_B))(("ecc")(EC_C)) );
+SERIALIZER_REFLECTION( EnumC, (("eca", EC_A))(("ecb", EC_B))(("ecc",EC_C)) );
 
 struct ImplMacroTestStruct {
 	int x, y;
@@ -371,6 +371,8 @@ namespace Enum {
 		EA_C
 	};
 
+	BOOST_STATIC_ASSERT( !Serializer::detail::has_reflection< Enum::EnumA >::value );
+
 	template< typename Reader, typename Writer >
 	void Enum_Simple( const char *filename ) {
 		{
@@ -408,7 +410,6 @@ namespace Enum {
 		EB_C
 	};
 }
-
 
 template<> 
 struct Serializer::Reflection<Enum::EnumB> {
@@ -467,7 +468,7 @@ namespace Enum {
 	};
 }
 
-SERIALIZER_REFLECTION( Enum::EnumC, (("eca")(Enum::EC_A))(("ecb")(Enum::EC_B))(("ecc")(Enum::EC_C)) );
+SERIALIZER_REFLECTION( Enum::EnumC, (("eca",Enum::EC_A))(("ecb",Enum::EC_B))(("ecc",Enum::EC_C)) );
 
 BOOST_STATIC_ASSERT( Serializer::detail::has_reflection< Enum::EnumC >::value );
 
@@ -1021,3 +1022,18 @@ TextBinaryTest_EigenAlignedBox( AlignedBox4f );
 TextBinaryTest_EigenAlignedBox( AlignedBox2d );
 TextBinaryTest_EigenAlignedBox( AlignedBox3d );
 TextBinaryTest_EigenAlignedBox( AlignedBox4d );
+
+//////////////////////////////////////////////////////////////////////////
+// detail tests
+
+BOOST_STATIC_ASSERT( Serializer::detail::is_default_constructible<int>::value );
+BOOST_STATIC_ASSERT( Serializer::detail::is_default_constructible<bool>::value );
+BOOST_STATIC_ASSERT( Serializer::detail::is_default_constructible<std::string>::value );
+BOOST_STATIC_ASSERT( !Serializer::detail::is_default_constructible<int[100]>::value );
+
+struct NotDefaultConstructible {
+	const int x;
+	NotDefaultConstructible( int a ) : x(a) {}
+};
+
+BOOST_STATIC_ASSERT( !Serializer::detail::is_default_constructible<NotDefaultConstructible>::value );
