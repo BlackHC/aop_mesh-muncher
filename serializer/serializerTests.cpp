@@ -257,6 +257,112 @@ void MacroFirstKeyIntern( const char *filename ) {
 
 TextBinaryTest( MacroFirstKeyIntern );
 
+// impl test
+
+enum EnumC {
+	EC_A,
+	EC_B,
+	EC_C
+};
+
+SERIALIZER_REFLECTION( EnumC, (("eca")(EC_A))(("ecb")(EC_B))(("ecc")(EC_C)) );
+
+struct ImplMacroTestStruct {
+	int x, y;
+	int key;
+	EnumC c;
+
+	SERIALIZER_IMPL( key, (x)(y), (c) )
+};
+
+template< typename Reader, typename Writer >
+void ImplMacroTest( const char *filename ) {
+	{
+		Writer writer( filename );
+
+		ImplMacroTestStruct x = { 10, 100, 5, EC_B };
+		Serializer::put( writer, "x", x );
+	}
+
+	{
+		Reader reader( filename );
+
+		ImplMacroTestStruct x;
+		Serializer::get( reader, "x", x );
+
+		EXPECT_EQ( 10, x.x );
+		EXPECT_EQ( 100, x.y );
+		EXPECT_EQ( 5, x.key );
+		EXPECT_EQ( EC_B, x.c );
+	}
+}
+
+TextBinaryTest( ImplMacroTest );
+
+struct PairMacroTestStruct {
+	int x, y;
+
+	SERIALIZER_PAIR_IMPL( x, y );
+};
+
+template< typename Reader, typename Writer >
+void PairMacroTest( const char *filename ) {
+	{
+		Writer writer( filename );
+
+		PairMacroTestStruct x = { 10, 100 };
+		Serializer::put( writer, "x", x );
+	}
+
+	{
+		Reader reader( filename );
+
+		PairMacroTestStruct x;
+		Serializer::get( reader, "x", x );
+
+		EXPECT_EQ( 10, x.x );
+		EXPECT_EQ( 100, x.y );
+	}
+}
+
+TextBinaryTest( PairMacroTest );
+
+
+struct PairVectorMacroTestStruct {
+	int x;
+
+	std::vector<int> y;
+
+	SERIALIZER_PAIR_IMPL( x, y );
+};
+
+template< typename Reader, typename Writer >
+void PairVectorMacroTest( const char *filename ) {
+	{
+		Writer writer( filename );
+
+		PairVectorMacroTestStruct x;
+		x.x = 10;
+		x.y.push_back( 100 );
+		x.y.push_back( 1000 );
+		Serializer::put( writer, x );
+	}
+
+	{
+		Reader reader( filename );
+
+		PairVectorMacroTestStruct x;
+		Serializer::get( reader, x );
+
+		EXPECT_EQ( 10, x.x );
+		ASSERT_EQ( 2, x.y.size() );
+		EXPECT_EQ( 100, x.y[ 0 ] );
+		EXPECT_EQ( 1000, x.y[ 1 ] );
+	}
+}
+
+TextBinaryTest( PairVectorMacroTest );
+
 // enum tests
 namespace Enum {
 	enum EnumA {
@@ -792,6 +898,37 @@ void StdVector_RawNonFundamental( const char *filename ) {
 
 TextBinaryTest( StdVector_RawNonFundamental );
 
+// std::list
+template< typename Reader, typename Writer >
+void StdList( const char *filename ) {
+	{
+		Writer writer( filename );
+
+		std::list<int> seq;
+
+		for( int i = 0 ; i < 100 ; i++ )
+			seq.push_back( i );
+
+		SERIALIZER_PUT_VARIABLE( writer, seq );
+	}
+
+	{
+		Reader reader( filename );
+
+		std::list<int> seq;
+
+		SERIALIZER_GET_VARIABLE( reader, seq );
+
+		for( int i = 0 ; i < 100 ; i++ ) {
+			ASSERT_EQ( i, seq.front() );
+			seq.pop_front();
+		}
+	}
+}
+
+TextBinaryTest( StdList );
+
+//////////////////////////////////////////////////////////////////////////
 // eigen library support
 #include "serializer_eigen.h"
 

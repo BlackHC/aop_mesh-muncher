@@ -743,6 +743,19 @@ namespace Serializer {
 	Serializer::put( writer, #field, (object).field )
 
 	// standard helpers
+#define SERIALIZER_PAIR_IMPL( firstVar, secondVar ) \
+	template< typename Reader > \
+	void serializer_read( Reader &reader ) { \
+		std::pair< decltype( firstVar ), decltype( secondVar ) > pair; \
+		Serializer::read( reader, pair ); \
+		firstVar = std::move( pair.first ); \
+		secondVar = std::move( pair.second ); \
+	} \
+	template< typename Writer > \
+	void serializer_write( Writer &writer ) const { \
+		Serializer::write( writer, std::make_pair( firstVar, secondVar ) ); \
+	}
+
 #define _SERIALIZER_STD_GET( r, data, field ) Serializer::get( reader, BOOST_PP_STRINGIZE( field ), field );
 #define _SERIALIZER_STD_PUT( r, data, field ) Serializer::put( writer, BOOST_PP_STRINGIZE( field ), field );
 #define SERIALIZER_DEFAULT_IMPL( fieldSeq ) \
@@ -766,6 +779,22 @@ namespace Serializer {
 	void serializer_write( Writer &writer ) const { \
 		Serializer::putAsKey( writer, BOOST_PP_STRINGIZE( BOOST_PP_SEQ_HEAD( fieldSeq) ), BOOST_PP_SEQ_HEAD( fieldSeq) ); \
 		BOOST_PP_SEQ_FOR_EACH( _SERIALIZER_STD_PUT, BOOST_PP_NIL, BOOST_PP_SEQ_TAIL( fieldSeq ) ) \
+	}
+
+#define _SERIALIZER_STD_GET_GLOBAL( r, data, field ) Serializer::getGlobalEnum( reader, field );
+#define _SERIALIZER_STD_PUT_GLOBAL( r, data, field ) Serializer::putGlobalEnum( writer, field );
+#define SERIALIZER_IMPL( primaryKey, fieldSeq, globalEnumSeq ) \
+	template< typename Reader > \
+	void serializer_read( Reader &reader ) { \
+		Serializer::getAsKey( reader, BOOST_PP_STRINGIZE( primaryKey ), primaryKey ); \
+		BOOST_PP_SEQ_FOR_EACH( _SERIALIZER_STD_GET, BOOST_PP_NIL, fieldSeq ) \
+		BOOST_PP_SEQ_FOR_EACH( _SERIALIZER_STD_GET_GLOBAL, BOOST_PP_NIL, globalEnumSeq ) \
+	} \
+	template< typename Writer > \
+	void serializer_write( Writer &writer ) const { \
+		Serializer::putAsKey( writer, BOOST_PP_STRINGIZE( primaryKey ), primaryKey ); \
+		BOOST_PP_SEQ_FOR_EACH( _SERIALIZER_STD_PUT, BOOST_PP_NIL, fieldSeq ) \
+		BOOST_PP_SEQ_FOR_EACH( _SERIALIZER_STD_PUT_GLOBAL, BOOST_PP_NIL, globalEnumSeq ) \
 	}
 
 #define _SERIALIZER_STD_EXTERN_GET( r, data, field )  Serializer::get( reader, BOOST_PP_STRINGIZE( field ), value. field );
