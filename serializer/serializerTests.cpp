@@ -257,6 +257,176 @@ void MacroFirstKeyIntern( const char *filename ) {
 
 TextBinaryTest( MacroFirstKeyIntern );
 
+// enum tests
+namespace Enum {
+	enum EnumA {
+		EA_A,
+		EA_B,
+		EA_C
+	};
+
+	template< typename Reader, typename Writer >
+	void Enum_Simple( const char *filename ) {
+		{
+			Writer writer( filename );
+
+			EnumA a,b,c;
+			a = EA_A;
+			b = EA_B;
+			c = EA_C;
+
+			SERIALIZER_PUT_VARIABLE( writer, a );
+			SERIALIZER_PUT_VARIABLE( writer, b );
+			SERIALIZER_PUT_VARIABLE( writer, c );
+		}
+
+		{
+			Reader reader( filename );
+
+			EnumA a,b,c;
+			SERIALIZER_GET_VARIABLE( reader, a );
+			SERIALIZER_GET_VARIABLE( reader, b );
+			SERIALIZER_GET_VARIABLE( reader, c );
+
+			EXPECT_EQ( EA_A, a );
+			EXPECT_EQ( EA_B, b );
+			EXPECT_EQ( EA_C, c );
+		}
+	}
+
+	TextBinaryTest( Enum_Simple );
+
+	enum EnumB {
+		EB_A,
+		EB_B,
+		EB_C
+	};
+}
+
+
+template<> 
+struct Serializer::Reflection<Enum::EnumB> {
+	static std::pair< const char *, Enum::EnumB > get( int index ) {
+		if( !index-- ) {
+			return std::make_pair( "eb a", Enum::EB_A ); 
+		}
+		if( !index-- ) {
+			return std::make_pair( "eb b", Enum::EB_B ); 
+		}
+		if( !index-- ) {
+			return std::make_pair( "eb c", Enum::EB_C ); 
+		}
+		return std::make_pair( nullptr, Enum::EnumB() ); 
+	}
+};
+
+BOOST_STATIC_ASSERT( Serializer::detail::has_reflection< Enum::EnumB >::value );
+
+namespace Enum {
+	template< typename Reader, typename Writer >
+	void Enum_Value( const char *filename ) {
+		{
+			Writer writer( filename );
+
+			EnumB a,b,c;
+			a = EB_A;
+			b = EB_B;
+			c = EB_C;
+
+			SERIALIZER_PUT_VARIABLE( writer, a );
+			SERIALIZER_PUT_VARIABLE( writer, b );
+			SERIALIZER_PUT_VARIABLE( writer, c );
+		}
+
+		{
+			Reader reader( filename );
+
+			EnumB a,b,c;
+			SERIALIZER_GET_VARIABLE( reader, a );
+			SERIALIZER_GET_VARIABLE( reader, b );
+			SERIALIZER_GET_VARIABLE( reader, c );
+
+			EXPECT_EQ( EB_A, a );
+			EXPECT_EQ( EB_B, b );
+			EXPECT_EQ( EB_C, c );
+		}
+	}
+
+	TextBinaryTest( Enum_Value );
+
+	enum EnumC {
+		EC_A,
+		EC_B,
+		EC_C
+	};
+}
+
+SERIALIZER_REFLECTION( Enum::EnumC, (("eca")(Enum::EC_A))(("ecb")(Enum::EC_B))(("ecc")(Enum::EC_C)) );
+
+BOOST_STATIC_ASSERT( Serializer::detail::has_reflection< Enum::EnumC >::value );
+
+namespace Enum {
+	template< typename Reader, typename Writer >
+	void Enum_Macro( const char *filename ) {
+		{
+			Writer writer( filename );
+
+			EnumC a,b,c;
+			a = EC_A;
+			b = EC_B;
+			c = EC_C;
+
+			SERIALIZER_PUT_VARIABLE( writer, a );
+			SERIALIZER_PUT_VARIABLE( writer, b );
+			SERIALIZER_PUT_VARIABLE( writer, c );
+		}
+
+		{
+			Reader reader( filename );
+
+			EnumC a,b,c;
+			SERIALIZER_GET_VARIABLE( reader, a );
+			SERIALIZER_GET_VARIABLE( reader, b );
+			SERIALIZER_GET_VARIABLE( reader, c );
+
+			EXPECT_EQ( EC_A, a );
+			EXPECT_EQ( EC_B, b );
+			EXPECT_EQ( EC_C, c );
+		}
+	}
+
+	TextBinaryTest( Enum_Macro );
+
+	template< typename Reader, typename Writer >
+	void Enum_Global( const char *filename ) {
+		{
+			Writer writer( filename );
+
+			EnumC a;
+			a = EC_A;
+
+			int x = 10;
+
+			SERIALIZER_PUT_VARIABLE( writer, x );
+			Serializer::putGlobalEnum( writer, a );
+		}
+
+		{
+			Reader reader( filename );
+
+			EnumC a;
+			int x;
+			SERIALIZER_GET_VARIABLE( reader, x );
+			Serializer::getGlobalEnum( reader, a );
+
+			EXPECT_EQ( 10, x );
+			EXPECT_EQ( EC_A, a );
+		}
+	}
+
+	TextBinaryTest( Enum_Global );
+}
+
 // std tests
 
 #include "serializer_std.h"

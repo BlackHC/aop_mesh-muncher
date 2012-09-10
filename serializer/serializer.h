@@ -494,53 +494,162 @@ namespace Serializer {
 			fwrite( &value, sizeof( Value ), 1, writer.handle );
 	}
 
-	namespace Enums {
-		template< typename Enum >
-		struct LabelValuePair {
-			const char *label;
-			Enum value;
-		};
+	template< typename Value >
+	struct Reflection {
+		/*
+		static std::pair< const char *, Value > get( int index ) {
+			return std::make_pair( nullptr, Value() ); 
+		}
+		}*/
+	};
 
-		// specialize this for your enumeration
-		template< typename Enum >
-		struct Reflection {
-			static const LabelValuePair<Enum> labelValuePairs[0];
-		};		
+	namespace detail {
+		template< typename X >
+		struct has_reflection {
+			// Types "yes" and "no" are guaranteed to have different sizes,
+			// specifically sizeof(yes) == 1 and sizeof(no) == 2.
+			typedef char yes[1];
+			typedef char no[2];
+
+			template <typename C>
+			static yes& test( decltype( C::get(0), void() ) *);
+
+			template <typename>
+			static no& test(...);
+
+			// If the "sizeof" the result of calling test<T>(0) would be equal to the sizeof(yes),
+			// the first overload worked and T has a nested type named foobar.
+			static const bool value = sizeof(test<Serializer::Reflection<X>>(0)) == sizeof(yes);
+		};
+	};
+
+#define _SERIALIZER_STD_REFLECTION_PAIR( r, data, labelValueTuple ) \
+	if( !index-- ) { \
+		return std::make_pair( BOOST_PP_SEQ_ELEM( 0, labelValueTuple ), BOOST_PP_SEQ_ELEM( 1, labelValueTuple ) ); \
 	}
 
-	// using labelValuePairs
+#define SERIALIZER_REFLECTION( Value, labelValueSeqSeq ) \
+	template<> \
+	struct Serializer::Reflection<Value> { \
+		static std::pair< const char *, Value > get( int index ) { \
+			BOOST_PP_SEQ_FOR_EACH( _SERIALIZER_STD_REFLECTION_PAIR, BOOST_PP_NIL, labelValueSeqSeq ) \
+			return std::make_pair( nullptr, Value() ); \
+		} \
+	}; 
+	
+	// using serializer_reflection
 	template< typename Value >
-	typename boost::enable_if< boost::is_enum< Value > >::type
+	typename boost::enable_if< detail::has_reflection< Value > >::type
 	read( TextReader &reader, Value &value ) {
-		typedef Enums::Reflection<Value> EnumReflection;
+		const std::string &label = reader.mapNode->data().content;
 
-		const std::string &label = reader.readNode->data().content;
+		for( int index = 0 ; ; ++index ) {
+			std::pair< const char *, Value > labelValuePair = Reflection<Value>::get( index );
 
-		for( int i = 0 ; i < boost::size( EnumReflection::labelValuePairs ) ; ++i ) {
-			if( label == EnumReflection::labelValuePairs[i].label ) {
-				value = EnumReflection::labelValuePairs[i].value;
+			if( !labelValuePair.first ) {
+				break;
+			}
+
+			if( label == labelValuePair.first ) {
+				value = labelValuePair.second;
 				return;
 			}
 		}
 
-		// read it as int
+		// read it with lexical cast
 		value = (Value) reader.mapNode->data().as<int>();
 	}
 
 	template< typename Value >
-	typename boost::enable_if< boost::is_enum< Value > >::type
+	typename boost::enable_if< detail::has_reflection< Value > >::type
 	write( TextWriter &writer, const Value &value ) {
-		typedef Enums::Reflection<Value> EnumReflection;
+		for( int index = 0 ; ; ++index ) {
+			std::pair< const char *, Value > labelValuePair = Reflection<Value>::get( index );
 
-		for( int i = 0 ; i < boost::size( EnumReflection::labelValuePairs ) ; ++i ) {
-			if( value == EnumReflection::labelValuePairs[i].value ) {
-				writer.mapNode->push_back( EnumReflection::labelValuePairs[i].label );
+			if( !labelValuePair.first ) {
+				break;
+			}
+
+			if( value == labelValuePair.second ) {
+				writer.mapNode->push_back( labelValuePair.first );
 				return;
 			}
 		}
 
-		// write is int
+		// write as is
 		writer.mapNode->push_back( (int) value );
+	}
+
+	template< typename Value >
+	typename boost::enable_if_c< !detail::has_reflection< Value >::value && boost::is_enum< Value >::value >::type
+	read( TextReader &reader, Value &value ) {
+		int raw;
+		read( reader, raw );
+		value = (Value) raw;
+	}
+
+	template< typename Value >
+	typename boost::enable_if_c< !detail::has_reflection< Value >::value && boost::is_enum< Value >::value >::type
+	write( TextWriter &writer, const Value &value ) {
+		write( writer, (int) value );
+	}
+
+	// if there is only one enum of a type in an object, you can use put/getGlobalEnum
+	template< typename Value >
+	typename boost::enable_if< detail::has_reflection< typename boost::remove_cv< Value >::type > >::type
+	putGlobalEnum( BinaryWriter &writer, const Value &value ) {
+		write( writer, value );
+	}
+
+	template< typename Value >
+	typename boost::enable_if< detail::has_reflection< typename boost::remove_cv< Value >::type > >::type
+	getGlobalEnum( BinaryReader &reader, Value &value ) {
+		read( reader, value );
+	}
+
+	template< typename Value >
+	typename boost::enable_if< detail::has_reflection< typename boost::remove_cv< Value >::type > >::type
+	putGlobalEnum( TextWriter &writer, const Value &value ) {
+		write( writer, value );
+	}
+
+	template< typename Value >
+	typename boost::enable_if< detail::has_reflection< typename boost::remove_cv< Value >::type > >::type
+	getGlobalEnum( TextReader &reader, Value &value ) {
+		for( int index = 0 ; ; ++index ) {
+			std::pair< const char *, Value > labelValuePair = Reflection<Value>::get( index );
+
+			if( !labelValuePair.first ) {
+				break;
+			}
+
+			auto it = reader.mapNode->find( labelValuePair.first );
+
+			if( it != reader.mapNode->not_found() ) {
+				value = labelValuePair.second;
+				return;
+			}
+		}
+
+		// error otherwise
+		{
+			std::string values;
+			for( int index = 0 ; ; ++index ) {
+				std::pair< const char *, Value > labelValuePair = Reflection<Value>::get( index );
+
+				if( !labelValuePair.first ) {
+					break;
+				}
+
+				if( index ) {
+					values.push_back( ' ' );
+				}
+
+				values.append( labelValuePair.first );
+			}
+
+			reader.mapNode->error( boost::str( boost::format( "expected global enum with possible values: %s") % values ) );
+		}
 	}
 
 	// static array
