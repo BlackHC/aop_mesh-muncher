@@ -7,6 +7,8 @@
 #include "SOIL.h"
 
 #include "glslPipeline.h"
+#include <boost/range/algorithm/sort.hpp>
+#include <debugRender.h>
 
 struct Renderbuffer {
 	GLuint handle;
@@ -24,7 +26,7 @@ struct Renderbuffer {
 struct Texture {
 	GLuint handle;
 
-	Texture( GLuint handle ) : handle( handle ) {}
+	Texture( GLuint handle = 0 ) : handle( handle ) {}
 };
 
 template< class SpecializedTexture = Texture >
@@ -50,24 +52,16 @@ struct ScopedTexture : SpecializedTexture {
 };
 
 struct Texture2D {
-	static GLuint currentHandle;
-
 	GLuint handle;
 
-	Texture2D( GLuint handle ) : handle( handle ) {}
+	Texture2D( GLuint handle = 0 ) : handle( handle ) {}
 
 	void bind() {
-		if( currentHandle != handle ) {
-			currentHandle = handle;
-			glBindTexture( GL_TEXTURE_2D, handle );
-		}
+		glBindTexture( GL_TEXTURE_2D, handle );
 	}
 
 	static void unbind() {
-		if( currentHandle ) {
-			glBindTexture( GL_TEXTURE_2D, 0 );
-			currentHandle = 0;
-		}
+		glBindTexture( GL_TEXTURE_2D, 0 );
 	}
 
 	void load( GLint level, GLint internalformat, GLsizei width, GLsizei height, GLint border, GLenum format, GLenum type, const GLvoid *pixels = nullptr ) {
@@ -75,7 +69,9 @@ struct Texture2D {
 	}
 
 	void immutable( int numLevels, GLenum internalFormat, GLsizei width, GLsizei height ) {
-		if( handle != currentHandle ) {
+		throw std::logic_error( "broken" );
+#if 0	
+		{
 			glBindTexture( GL_TEXTURE_2D, handle );
 			glTexStorage2D( GL_TEXTURE_2D, numLevels, internalFormat, width, height );
 			glBindTexture( GL_TEXTURE_2D, currentHandle );
@@ -83,6 +79,7 @@ struct Texture2D {
 		else {
 			glTexStorage2D( GL_TEXTURE_2D, numLevels, internalFormat, width, height );
 		}
+#endif
 	}
 
 	static void enable() {
@@ -98,16 +95,9 @@ struct Texture2D {
 	}
 
 	static void bindExtern( GLuint handle ) {
-		if( handle == currentHandle ) {
-			return;
-		}
-
-		currentHandle = handle;
 		glBindTexture( GL_TEXTURE_2D, handle );
 	}
 };
-
-GLuint Texture2D::currentHandle = 0;
 
 template< class SpecializedTexture = Texture >
 struct Textures {
@@ -118,16 +108,34 @@ struct Textures {
 	SpecializedTexture get( int index ) {
 		return SpecializedTexture( handles[ index ] );
 	}
+
+	SpecializedTexture operator []( int index ) {
+		return get( index );
+	}
 };
 
 template< class SpecializedTexture = Texture >
 struct ScopedTextures : Textures< SpecializedTexture > {
-	ScopedTextures( int size ) : Textures( size ) { 
-		glGenTextures( size, &handles.front() );
+	ScopedTextures( int size = 0 ) : Textures( size ) { 
+		if( size ) {
+			glGenTextures( size, &handles.front() );
+		}
 	}
 
 	~ScopedTextures() {
-		glDeleteTextures( handles.size(), &handles.front() );
+		if( handles.size() ) {
+			glDeleteTextures( handles.size(), &handles.front() );
+		}
+	}
+
+	void resize( int size ) {
+		if( handles.empty() ) {
+			handles.resize( size );
+			glGenTextures( size, &handles.front() );
+		}
+		else {
+			throw std::logic_error( "ScopedTextures not zero!" );
+		}
 	}
 	
 	SpecializedTexture publish( int index ) {
@@ -147,6 +155,8 @@ struct ScopedTextures : Textures< SpecializedTexture > {
 
 typedef ScopedTexture< Texture2D > ScopedTexture2D;
 typedef ScopedTextures< Texture2D > ScopedTextures2D;
+
+typedef Textures< Texture2D > Textures2D;
 
 struct Framebuffer {
 	GLuint handle;
@@ -215,6 +225,20 @@ struct Framebuffer {
 };
 
 struct SGSSceneRenderer {
+	/*struct BoundingBox {
+		Eigen::Vector3f min, max;
+	};
+
+	struct BoundingSphere {
+		Eigen::Vector3f center;
+		float radius;
+	};
+
+	struct CullInfo {
+		BoundingBox boundingBox;
+		BoundingSphere boundingSphere;
+	};*/
+
 	std::shared_ptr<SGSScene> scene;
 
 	GLuint subObjects_disptlayListBase;
@@ -222,11 +246,34 @@ struct SGSSceneRenderer {
 
 	std::vector<GLuint> solidLists;
 	std::vector<GLuint> alphaLists;
+	std::vector<GLuint> terrainLists;
 
-	std::vector<GLuint> textureHandles;
+	ScopedTextures2D textures;
+
+	Texture2D bakedTerrainTexture;
 
 	ShaderCollection shaders;
-	Program terrainProgram;
+	Program terrainProgram, objectProgram;
+
+	struct Debug {
+		bool showBoundingSpheres, showTerrainBoundingSpheres;
+		DebugRender::CombinedCalls boundingSpheres, terrainBoundingSpheres;
+
+		bool updateRenderLists;
+
+		Debug() : showBoundingSpheres( false ), showTerrainBoundingSpheres( false ), updateRenderLists( true ) {}
+	} debug;
+
+	SGSSceneRenderer() : subObjects_disptlayListBase( 0 ), terrain_displayListBase( 0 ) {}
+
+	~SGSSceneRenderer() {
+		if( subObjects_disptlayListBase ) {
+			glDeleteLists( subObjects_disptlayListBase, scene->subObjects.size() );
+		}
+		if( terrain_displayListBase ) {
+			glDeleteLists( terrain_displayListBase, scene->subObjects.size() );
+		}
+	}
 
 	Texture2D bakeTerrainTexture( int detailFactor, float textureDetailFactor ) {
 		glPushAttrib( GL_ALL_ATTRIB_BITS );
@@ -250,7 +297,7 @@ struct SGSSceneRenderer {
 
 		Framebuffer fbo;
 		ScopedTexture2D bakedTexture;
-
+		
 		Eigen::Vector2i mapSize( scene->terrain.mapSize[0], scene->terrain.mapSize[1] );
 		Eigen::Vector2i bakeSize = mapSize * detailFactor;
 
@@ -297,7 +344,7 @@ struct SGSSceneRenderer {
 			
 			// bind the terrain texture
 			glActiveTexture( GL_TEXTURE1 );
-			Texture2D terrainTexture( textureHandles[ scene->terrain.layers[ layerIndex ].textureIndex ] );
+			Texture2D terrainTexture = textures[ scene->terrain.layers[ layerIndex ].textureIndex ];
 			terrainTexture.bind();
 			terrainTexture.enable();
 			
@@ -326,20 +373,29 @@ struct SGSSceneRenderer {
 
 		glPopAttrib();
 
+		bakedTexture.bind();
+		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
+		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR );
+		
 		bakedTexture.generateMipmap();
+		bakedTexture.unbind();
 
 		return bakedTexture.publish();
 	}
 
-	void init() {
+	void reloadShaders() {
 		while( true ) {
 			shaders.shaders.clear();
 
 			loadShaderCollection( shaders, "sgsScene.shaders" );
 
 			terrainProgram.surfaceShader = shaders[ "terrain" ];
-			terrainProgram.meshShader = shaders[ "sgsMesh" ];
-			if( terrainProgram.build() ) {
+			terrainProgram.vertexShader = shaders[ "sgsMesh" ];
+			
+			objectProgram.surfaceShader = shaders[ "object" ];
+			objectProgram.vertexShader = shaders[ "sgsMesh" ];
+
+			if( terrainProgram.build( shaders ) && objectProgram.build( shaders ) ) {
 				break;
 			}
 
@@ -352,25 +408,30 @@ struct SGSSceneRenderer {
 
 		// load textures
 		int numTextures = scene->textures.size();
-		textureHandles.resize( numTextures );
-		glGenTextures( numTextures, &textureHandles.front() );
+		textures.resize( numTextures );
 
 		for( int textureIndex = 0 ; textureIndex < numTextures ; ++textureIndex ) {
 			const auto &rawContent = scene->textures[ textureIndex ].rawContent;
-			SOIL_load_OGL_texture_from_memory( &rawContent.front(), rawContent.size(), 0, textureHandles[ textureIndex ], SOIL_FLAG_DDS_LOAD_DIRECT | SOIL_FLAG_MIPMAPS | SOIL_FLAG_TEXTURE_REPEATS );
-			glBindTexture( GL_TEXTURE_2D, textureHandles[ textureIndex ] );
+			SOIL_load_OGL_texture_from_memory( &rawContent.front(), rawContent.size(), 0, textures[ textureIndex ].handle, SOIL_FLAG_DDS_LOAD_DIRECT | SOIL_FLAG_MIPMAPS | SOIL_FLAG_TEXTURE_REPEATS );
 		}
 
-		Texture2D bakedTerrainTexture = bakeTerrainTexture( 32, 1 / 8.0 );
+		bakedTerrainTexture = bakeTerrainTexture( 32, 1 / 8.0 );
 
 		// render everything into display lists
 		subObjects_disptlayListBase = glGenLists( scene->subObjects.size() );
 
-		terrain_displayListBase = glGenLists( 1 );
+		terrain_displayListBase = glGenLists( scene->terrain.tiles.size() );
 
+		terrainLists.reserve( scene->terrain.tiles.size() );
 		solidLists.reserve( scene->subObjects.size() );
 		alphaLists.reserve( scene->subObjects.size() );
-		
+
+		prerender();
+	}
+
+
+	// prerender everything into display lists for easy drawing later
+	void prerender() {
 		glPushClientAttrib( GL_CLIENT_ALL_ATTRIB_BITS );
 
 		glEnableClientState( GL_VERTEX_ARRAY );
@@ -378,8 +439,6 @@ struct SGSSceneRenderer {
 		glEnableClientState( GL_TEXTURE_COORD_ARRAY );
 
 		glPushAttrib( GL_ALL_ATTRIB_BITS );
-
-		solidLists.push_back( terrain_displayListBase );
 
 		{
 			auto &firstVertex = scene->vertices[0];
@@ -392,7 +451,7 @@ struct SGSSceneRenderer {
 
 				glNewList( subObjects_disptlayListBase + subObjectIndex, GL_COMPILE );
 
-				Program::useFixed();
+				objectProgram.use();
 
 				glEnable( GL_TEXTURE_2D );
 
@@ -400,10 +459,10 @@ struct SGSSceneRenderer {
 				const auto &material = subObject.material;
 				
 				if( material.textureIndex[0] != SGSScene::NO_TEXTURE ) {
-					glBindTexture( GL_TEXTURE_2D, textureHandles[ material.textureIndex[0] ] );
+					textures[ material.textureIndex[0] ].bind();
 				}
 				else {
-					glBindTexture( GL_TEXTURE_2D, 0 );
+					Texture2D::unbind();
 				}
 
 				unsigned char alpha = 255;
@@ -478,59 +537,137 @@ struct SGSSceneRenderer {
 
 				glEndList();
 
-				if( material.alphaType == SGSScene::Material::AT_NONE ) {
-					solidLists.push_back( subObjects_disptlayListBase + subObjectIndex );
-				} 
-				else {
-					alphaLists.push_back( subObjects_disptlayListBase + subObjectIndex );
-				}
+				Texture2D::unbind();
 			}
 		}
 
 		// render terrain
-		glNewList( terrain_displayListBase, GL_COMPILE );
+		{
+			auto &firstVertex = scene->terrain.vertices[0];
+
+			glVertexPointer( 3, GL_FLOAT, sizeof( SGSScene::Terrain::Vertex ), firstVertex.position );
+			glNormalPointer( GL_FLOAT, sizeof( SGSScene::Terrain::Vertex ), firstVertex.normal );
+			glTexCoordPointer( 2, GL_FLOAT, sizeof( SGSScene::Terrain::Vertex ), firstVertex.blendUV );
+
+			for( int tileIndex = 0 ; tileIndex < scene->terrain.tiles.size() ; tileIndex++ ) {
+				const auto &tile = scene->terrain.tiles[ tileIndex ];
+
+				glNewList( terrain_displayListBase + tileIndex , GL_COMPILE );
+
+				glDrawElements( GL_TRIANGLES, tile.numIndices, GL_UNSIGNED_INT, &scene->terrain.indices.front() + tile.startIndex );
+				glEndList();
+
+				terrainLists.push_back( terrain_displayListBase + tileIndex );
+			}
+			//glDrawElements( GL_TRIANGLES, scene->terrain.indices.size(), GL_UNSIGNED_INT, &scene->terrain.indices.front() );
+		}
+		
+
+		glPopAttrib();
+		
+		glPopClientAttrib();
+
+		{
+			debug.boundingSpheres.begin();
+
+			for( int subObjectIndex = 0 ; subObjectIndex < scene->subObjects.size() ; ++subObjectIndex ) {
+				const SGSScene::BoundingSphere &boundingSphere = scene->subObjects[subObjectIndex].boundingSphere;
+
+				debug.boundingSpheres.setPosition( Eigen::Vector3f::Map( boundingSphere.center ) );
+				glColor3f( 0.0, 1.0, 1.0 );
+				debug.boundingSpheres.drawAbstractSphere( boundingSphere.radius, true, 5 );
+			}
+			debug.boundingSpheres.end();
+		}
+		{
+			debug.terrainBoundingSpheres.begin();
+			for( int tileIndex = 0 ; tileIndex < scene->terrain.tiles.size() ; tileIndex++ ) {
+				const SGSScene::BoundingSphere &boundingSphere = scene->terrain.tiles[tileIndex].bounding.sphere;
+
+				debug.boundingSpheres.setPosition( Eigen::Vector3f::Map( boundingSphere.center ) );
+				glColor3f( 1.0, 1.0, 0.0 );
+				debug.boundingSpheres.drawAbstractSphere( boundingSphere.radius, true, 5 );
+			}
+			debug.terrainBoundingSpheres.end();
+		}
+	}
+
+	void render( const Matrix4f &projectionView, const Eigen::Vector3f &worldViewerPosition ) {
+		Eigen::FrustumPlanesMatrixf frustumPlanes = Eigen::Frustum::normalize( Eigen::projectionToFrustumPlanes * projectionView );
+		
+		if( debug.updateRenderLists ) {
+			terrainLists.clear();
+			for( int tileIndex = 0 ; tileIndex < scene->terrain.tiles.size() ; tileIndex++ ) {
+				const SGSScene::BoundingSphere &boundingSphere = scene->terrain.tiles[tileIndex].bounding.sphere;
+				if( Eigen::Frustum::isInside( frustumPlanes, Eigen::Map< const Eigen::Vector3f>( boundingSphere.center ).eval(), -boundingSphere.radius ) ) {
+					terrainLists.push_back( terrain_displayListBase + tileIndex );
+				}
+			}
+
+			solidLists.clear();
+			alphaLists.clear();
+			for( int subObjectIndex = 0 ; subObjectIndex < scene->subObjects.size() ; ++subObjectIndex ) {
+				const SGSScene::BoundingSphere &boundingSphere = scene->subObjects[subObjectIndex].boundingSphere;
+				
+				if( Eigen::Frustum::isInside( frustumPlanes, Eigen::Vector3f::Map( boundingSphere.center ).eval(), -boundingSphere.radius ) ) {
+					if( scene->subObjects[subObjectIndex].material.alphaType == SGSScene::Material::AT_NONE ) {
+						solidLists.push_back( subObjects_disptlayListBase + subObjectIndex );
+					} 
+					else {
+						alphaLists.push_back( subObjects_disptlayListBase + subObjectIndex );
+					}
+				}
+			}
+		}
+		
+		// terrain rendering
 		{
 			glDisable( GL_BLEND );
 			glDisable( GL_ALPHA_TEST );
 
 			glDepthMask( GL_TRUE );
 
-			terrainProgram.use();
-
-			auto &firstVertex = scene->terrain.vertices[0];
-			glVertexPointer( 3, GL_FLOAT, sizeof( SGSScene::Terrain::Vertex ), firstVertex.position );
-			glNormalPointer( GL_FLOAT, sizeof( SGSScene::Terrain::Vertex ), firstVertex.normal );
-			glTexCoordPointer( 2, GL_FLOAT, sizeof( SGSScene::Terrain::Vertex ), firstVertex.blendUV );
-
 			bakedTerrainTexture.bind();
 			bakedTerrainTexture.enable();
+			terrainProgram.use();
 
-			glDrawElements( GL_TRIANGLES, scene->terrain.indices.size(), GL_UNSIGNED_INT, &scene->terrain.indices.front() );
+			if( !terrainLists.empty() ) {
+				glCallLists( terrainLists.size(), GL_UNSIGNED_INT, &terrainLists.front() );
+			}
 		}
-		glEndList();
-
-		glPopAttrib();
 		
-		glPopClientAttrib();
-	}
-
-	void render() {
+			
+		// object rendering
 		if( !solidLists.empty() )
 			glCallLists( solidLists.size(), GL_UNSIGNED_INT, &solidLists.front() );
+
+		// sort alpha list
+		boost::sort( alphaLists, [&, this] ( int indexA, int indexB ) {
+				return ( Eigen::Vector3f::Map( scene->subObjects[indexA - subObjects_disptlayListBase ].boundingSphere.center ) - worldViewerPosition).squaredNorm() <
+						( Eigen::Vector3f::Map( scene->subObjects[indexB - subObjects_disptlayListBase ].boundingSphere.center ) - worldViewerPosition).squaredNorm();
+			}
+			);
+
 		if( !alphaLists.empty() )
 			glCallLists( alphaLists.size(), GL_UNSIGNED_INT, &alphaLists.front() );
 
+		// make sure this is turned on again, otherwise glClear wont work correctly...
 		glDepthMask( GL_TRUE );
-	}
 
-	SGSSceneRenderer() : subObjects_disptlayListBase( 0 ), terrain_displayListBase( 0 ) {}
 
-	~SGSSceneRenderer() {
-		if( subObjects_disptlayListBase ) {
-			glDeleteLists( subObjects_disptlayListBase, scene->subObjects.size() );
+		// more state resets for debug rendering
+		glDisable( GL_BLEND );
+		glDisable( GL_ALPHA_TEST );
+
+		glDepthMask( GL_TRUE );
+		glDisable( GL_TEXTURE_2D );
+		Program::useFixed();
+
+		if( debug.showBoundingSpheres ) {
+			debug.boundingSpheres.render();
 		}
-		if( terrain_displayListBase ) {
-			glDeleteLists( terrain_displayListBase, scene->subObjects.size() );
+		if( debug.showTerrainBoundingSpheres ) {
+			debug.terrainBoundingSpheres.render();
 		}
 	}
 };

@@ -1,26 +1,85 @@
+lighting:
+	module
+
+	uniforms:
+		viewerPosition vec3
+
+	code::
+		float getDiffuseAttenuation( const vec3 normal, const vec3 lightDirection ) {
+			return abs( dot( normal, lightDirection ) );
+		}
+
+		float getSpecularAttenuation( const vec3 position, const vec3 normal, const vec3 lightDirection ) {
+			const vec3 viewerDirection = normalize( viewerPosition - position );
+			const vec3 halfVector = normalize( viewerDirection + lightDirection );
+
+			return abs( dot( halfVector, normal ) );			
+		}
+
+		vec4 lightFragment( const vec3 position, const vec3 normal, const vec4 diffuseColor ) {
+			// from position to light
+			const vec3 lightDirection = normalize( vec3( 0.0, 1.0, 1.0 ) );
+			const float diffuseAttenuation = getDiffuseAttenuation( normal, lightDirection );
+			const float specularAttenuation = getSpecularAttenuation( position, normal, lightDirection );
+
+			const float ambientAttenuation = 0.2;
+
+			return diffuseColor * (ambientAttenuation + (1.0 - ambientAttenuation) * (diffuseAttenuation + specularAttenuation));
+		}
+
 terrain:
 	surfaceShader
-	inputs:
-		worldPosition vec3
+
+	dependencies:
+		lighting
 
 	uniforms:
 		terrainTexture 'layout( binding = 0 ) sampler2D'
 
+	inputs:
+		worldPosition	vec3
+		worldNormal		vec3
+
 	code::
 		vec4 surfaceShader() {
-			return texture( terrainTexture, gl_TexCoord[0].st );
+			vec4 terrainColor = texture( terrainTexture, gl_TexCoord[0].st );
+
+			// add some very simple lighting
+			return lightFragment( worldPosition, worldNormal, terrainColor );
 		}
-sgsMesh:
-	meshShader
-	outputs:
-		worldPosition vec3
+
+object:
+	surfaceShader
+
+	dependencies:
+		lighting
+
+	inputs:
+		worldPosition	vec3
+		worldNormal		vec3
+
+	uniforms:
+		baseTetxture 'layout( binding = 0 ) sampler2D'
 
 	code::
-		Output meshShader() {
-			Output transformed;
+		vec4 surfaceShader() {
+			vec4 baseColor = texture( baseTetxture, gl_TexCoord[0].st );
 
-			transformed.worldPosition = gl_Vertex.xyz;
-			transformed.position = ftransform();
+			// add some very simple lighting
+			return lightFragment( worldPosition, worldNormal, baseColor );
+		}
 
-			return result;
+sgsMesh:
+	vertexShader
+
+	outputs:
+		worldPosition	vec3
+		worldNormal		vec3
+
+	code::
+		void meshShader() {
+			worldPosition = gl_Vertex.xyz;
+			worldNormal = gl_Normal;
+			gl_Position = ftransform();
+			gl_TexCoord[0] = gl_MultiTexCoord0;
 		}

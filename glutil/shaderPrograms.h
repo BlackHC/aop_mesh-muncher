@@ -33,6 +33,10 @@ struct glShaderBuilder {
 		source.append( buffer );
 		return *this;
 	}
+	glShaderBuilder & addSource( const std::string &code ) {
+		source.append( code );
+		return *this;
+	}
 
 	glShaderBuilder & compile() {
 		handle = glCreateShader( type );
@@ -67,6 +71,12 @@ struct glShaderBuilder {
 	glShaderBuilder & dumpInfoLog( std::ostream &out ) {
 		extractInfoLog();
 		out << infoLog;
+		return *this;
+	}
+
+	glShaderBuilder & alwaysKeep() {
+		fail = false;
+
 		return *this;
 	}
 

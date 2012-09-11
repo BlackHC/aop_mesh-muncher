@@ -38,6 +38,12 @@ struct SGSScene {
 		SERIALIZER_ENABLE_RAW_MODE();
 	};
 
+	struct BoundingBox {
+		float min[3], max[3];
+
+		SERIALIZER_ENABLE_RAW_MODE();
+	};
+
 	struct Material {
 		int textureIndex[2];
 
@@ -65,6 +71,13 @@ struct SGSScene {
 
 		SERIALIZER_DEFAULT_IMPL( (alphaType)(textureIndex)(doubleSided)(wireFrame)(ambient)(diffuse)(specular)(alpha)(specularSharpness) )
 		//SERIALIZER_ENABLE_RAW_MODE();
+	};
+
+	struct Bounding {
+		BoundingBox box;
+		BoundingSphere sphere;
+
+		SERIALIZER_ENABLE_RAW_MODE();
 	};
 
 	struct SubObject {
@@ -108,7 +121,22 @@ struct SGSScene {
 			SERIALIZER_DEFAULT_IMPL( (textureIndex)(weights) );
 		};
 
-		static const int BLOCK_SIZE = 8;
+		struct Tile {
+			Bounding bounding;
+
+			int startIndex;
+			int numIndices;
+
+			// both are raw
+			SERIALIZER_ENABLE_RAW_MODE();
+		};
+
+		static const int TILE_SIZE = 8;
+		static const int EDGES_PER_TILE = TILE_SIZE - 1;
+		static const int VERTICES_PER_TILE = TILE_SIZE * TILE_SIZE;
+		static const int TRIANGLES_PER_TILE = 2 * (TILE_SIZE - 1) * (TILE_SIZE - 1);
+		static const int INDICES_PER_TILE = 3 * TRIANGLES_PER_TILE;
+
 		int mapSize[2];
 		int layerSize[2];
 
@@ -117,9 +145,11 @@ struct SGSScene {
 		
 		std::vector< Layer > layers;
 
+		std::vector<Tile> tiles;
+
 		//std::vector< unsigned int > blockLayerMask;
 
-		SERIALIZER_DEFAULT_IMPL( (mapSize)(layerSize)(vertices)(indices)(layers) );
+		SERIALIZER_DEFAULT_IMPL( (mapSize)(layerSize)(vertices)(indices)(layers)(tiles) );
 	};
 
 	std::vector<Vertex> vertices;

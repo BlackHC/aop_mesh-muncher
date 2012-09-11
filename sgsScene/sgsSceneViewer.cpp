@@ -59,6 +59,42 @@ struct IntVariableControl : EventHandler {
 	}
 };
 
+struct KeyAction : EventHandler {
+	sf::Keyboard::Key key;
+	std::function<void()> action;
+
+	KeyAction( sf::Keyboard::Key key, const std::function<void()> &action) : key( key ), action( action ) {}
+
+	virtual bool handleEvent( const sf::Event &event ) {
+		if( event.type == sf::Event::KeyPressed && event.key.code == key ) {
+			action();
+			return true;
+		}
+		return false;
+	} 
+};
+
+struct BoolVariableControl : EventHandler {
+	sf::Keyboard::Key toggleKey, downKey;
+	bool &variable;
+
+	BoolVariableControl( bool &variable, sf::Keyboard::Key toggleKey = sf::Keyboard::T )
+		: variable( variable ), toggleKey( toggleKey ) {
+	}
+
+	virtual bool handleEvent( const sf::Event &event ) 
+	{
+		switch( event.type ) {
+		case sf::Event::KeyPressed:
+			if( event.key.code == toggleKey ) {
+				variable = !variable;
+				return true;
+			}
+		}
+		return false;
+	}
+};
+
 void main() {
 	sf::Window window( sf::VideoMode( 640, 480 ), "sgsSceneViewer", sf::Style::Default, sf::ContextSettings(24, 8, 0, 4, 2, false,true, false) );
 	glewInit();
@@ -87,7 +123,7 @@ void main() {
 	SGSSceneRenderer sgsSceneRenderer;
 	SGSScene sgsScene;
 
-	sgsSceneRenderer.init();
+	sgsSceneRenderer.reloadShaders();
 	{
 		boost::timer::auto_cpu_timer loadTimer;
 
@@ -100,6 +136,19 @@ void main() {
 
 	EventDispatcher eventDispatcher;
 	eventDispatcher.eventHandlers.push_back( shared_from_stack( cameraInputControl ) );
+
+	KeyAction reloadShadersAction( sf::Keyboard::R, [&] () { sgsSceneRenderer.reloadShaders(); } );
+	eventDispatcher.eventHandlers.push_back( shared_from_stack( reloadShadersAction ) );
+
+	BoolVariableControl showBoundingSpheresToggle( sgsSceneRenderer.debug.showBoundingSpheres, sf::Keyboard::B );
+	eventDispatcher.eventHandlers.push_back( shared_from_stack( showBoundingSpheresToggle ) );
+
+	BoolVariableControl showTerrainBoundingSpheresToggle( sgsSceneRenderer.debug.showTerrainBoundingSpheres, sf::Keyboard::N );
+	eventDispatcher.eventHandlers.push_back( shared_from_stack( showTerrainBoundingSpheresToggle ) );
+
+	BoolVariableControl updateRenderListsToggle( sgsSceneRenderer.debug.updateRenderLists, sf::Keyboard::C );
+	eventDispatcher.eventHandlers.push_back( shared_from_stack( updateRenderListsToggle ) );
+
 	while (window.isOpen())
 	{
 		// Event processing
@@ -132,7 +181,7 @@ void main() {
 		glMatrixMode( GL_MODELVIEW );
 		glLoadMatrix( camera.getViewTransformation().matrix() );
 
-		sgsSceneRenderer.render();
+		sgsSceneRenderer.render( camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() );
 
 		// End the current frame and display its contents on screen
 		window.display();

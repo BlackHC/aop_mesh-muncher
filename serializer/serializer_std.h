@@ -16,6 +16,10 @@ namespace Serializer {
 		unsigned int size = (unsigned int) collection.size();
 		write( writer, size );
 
+		if( !size ) {
+			return;
+		}
+
 		if( !detail::can_be_dumped<Value>::value ) {
 			for( auto it = collection.begin() ; it != collection.end() ; ++it ) {
 				write( writer, *it );
@@ -31,6 +35,10 @@ namespace Serializer {
 	void read( BinaryReader &reader, std::vector<Value> &collection ) {
 		unsigned int size;
 		read( reader, size );
+
+		if( !size ) {
+			return;
+		}
 
 		unsigned int startIndex = (unsigned int) collection.size();
 		collection.reserve( startIndex + size );

@@ -106,4 +106,62 @@ namespace Eigen {
 		
 		return (view * Translation3f( -position )).matrix();
 	}
+
+	// projection matrix to frustum planes
+	// the planes point inward, ie plane . (v 1) >= 0 for v inside the frustum
+	typedef Matrix< float, 6, 4, RowMajor > FrustumPlanesMatrixf;
+	const float projectionToFrustumPlanes_coeffs[] = {		
+		1.0, 0.0, 0.0, 1.0, // left
+		-1.0, 0.0, 0.0, 1.0, // right
+		0.0, 1.0, 0.0, 1.0, // bottom
+		0.0, -1.0, 0.0, 1.0, // top
+		0.0, 0.0, 0.0, 1.0, // near
+		0.0, 0.0, -1.0, 1.0  // far
+	};
+	enum FrustumPlaneIndices {
+		FDI_LEFT,
+		FDI_RIGHT,
+		FDI_BOTTOM,
+		FDI_TOP,
+		FDI_NEAR,
+		FDI_FAR
+	};
+	const Map< const FrustumPlanesMatrixf > projectionToFrustumPlanes( projectionToFrustumPlanes_coeffs );
+
+	namespace Plane {
+		RowVector4f parallelShift( const RowVector4f &plane, int distance ) {
+			return plane - RowVector4f::UnitW() * distance * plane.head<3>().norm(); 
+		}
+
+		RowVector4f normalize( const RowVector4f &plane ) {
+			return plane / plane.head<3>().norm(); 
+		}
+
+		RowVector4f parallelShiftNormalized( const RowVector4f &plane, int distance ) {
+			return plane - RowVector4f::UnitW() * distance; 
+		}
+	}
+
+	namespace Frustum {
+		// minDistance is only length invariant if the frustum planes are normalized
+		// minDistance > 0 makes the frustum smaller
+		// minDistance < 0 makes the frustum bigger
+		template< typename Derived >
+		bool isInside( const MatrixBase< Derived > &frustumPlanes, const Vector3f &point, float minDistance = 0.0f ) {
+			return ((frustumPlanes * point.homogeneous()).array() >= minDistance).all();
+		}
+
+		template< typename Derived >
+		bool isInside( const MatrixBase< Derived > &frustumPlanes, const Vector4f &point, float minDistance = 0.0f  ) {
+			return ((frustumPlanes * point).cwise() >= minDistance).all();
+		}
+
+		FrustumPlanesMatrixf normalize( const FrustumPlanesMatrixf &frustumPlanes ) {
+			FrustumPlanesMatrixf normalized;
+			for( int i = 0 ; i < 6 ; ++i ) {
+				normalized.row(i) = Plane::normalize( frustumPlanes.row(i) );	
+			}
+			return normalized;
+		}
+	}
 }

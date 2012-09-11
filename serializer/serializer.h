@@ -282,7 +282,6 @@ namespace Serializer {
 		class is_default_constructible {
 			typedef int yes;
 			typedef char no;
-
 		
 			// for fun: the other version, does not work... wtf?
 #if 1

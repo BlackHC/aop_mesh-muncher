@@ -23,7 +23,7 @@ namespace Math {
 
 namespace Eigen {
 	// like glFrustum
-	static Matrix4f createFrustumMatrix( const float left, const float right, const float bottom, const float top, const float near, const float far ) {
+	inline Matrix4f createFrustumMatrix( const float left, const float right, const float bottom, const float top, const float near, const float far ) {
 		const float width = right - left;
 		const float height = top - bottom;
 		const float depth = far - near;
@@ -36,7 +36,7 @@ namespace Eigen {
 	}
 
 	// like glOrtho
-	static Matrix4f createOrthoProjectionMatrix( const float left, const float right, const float bottom, const float top, const float near, const float far ) {
+	inline Matrix4f createOrthoProjectionMatrix( const float left, const float right, const float bottom, const float top, const float near, const float far ) {
 		const float width = right - left;
 		const float height = top - bottom;
 		const float depth = far - near;
@@ -49,7 +49,7 @@ namespace Eigen {
 	}
 
 
-	static Matrix4f createOrthoProjectionMatrix( const Vector2f &min, const Vector2f &max, const float zNear, const float zFar ) {
+	inline Matrix4f createOrthoProjectionMatrix( const Vector2f &min, const Vector2f &max, const float zNear, const float zFar ) {
 		const Vector2f center = (min + max) / 2.0;
 		const Vector2f halfSize = (max - min) / 2.0;
 		const float depth = zFar - zNear;
@@ -61,7 +61,7 @@ namespace Eigen {
 			0,						0,					0,					1.0f).finished();
 	}
 
-	static Matrix4f createOrthoProjectionMatrixLH( const Vector2f &min, const Vector2f &max, const float zNear, const float zFar ) {
+	inline Matrix4f createOrthoProjectionMatrixLH( const Vector2f &min, const Vector2f &max, const float zNear, const float zFar ) {
 		const Vector2f center = (min + max) / 2.0;
 		const Vector2f halfSize = (max - min) / 2.0;
 		const float depth = zFar - zNear;
@@ -74,7 +74,7 @@ namespace Eigen {
 	}
 
 	typedef float Degrees;
-	static Matrix4f createPerspectiveProjectionMatrix( const Degrees FoV_y, const float aspectRatio, const float zNear, const float zFar ) {
+	inline Matrix4f createPerspectiveProjectionMatrix( const Degrees FoV_y, const float aspectRatio, const float zNear, const float zFar ) {
 		const float f = Math::cotf( FoV_y * float(Math::PI) / 180 / 2 );
 		const float depth = zFar - zNear;
 
@@ -86,7 +86,7 @@ namespace Eigen {
 	}
 
 	// also looks down the negative Z axis!
-	static Matrix4f createShearProjectionMatrix( const Vector2f &min, const Vector2f &max, const float zNear, const float zFar, const Vector2f &zStep ) {
+	inline Matrix4f createShearProjectionMatrix( const Vector2f &min, const Vector2f &max, const float zNear, const float zFar, const Vector2f &zStep ) {
 		const Vector2f center = (min + max) / 2.0;
 		const Vector2f halfSize = (max - min) / 2.0;
 		const float depth = zFar - zNear;
@@ -109,7 +109,7 @@ namespace Eigen {
 		return (view * Translation3f( -position )).matrix();
 	}
 
-	static Matrix4f createLookAtMatrix( const Vector3f &position, const Vector3f &point, const Vector3f &up ) {
+	inline Matrix4f createLookAtMatrix( const Vector3f &position, const Vector3f &point, const Vector3f &up ) {
 		const RowVector3f forward = (point - position).normalized();
 		const RowVector3f right = forward.cross( up ).normalized();
 		const RowVector3f realUp = right.cross( forward );
