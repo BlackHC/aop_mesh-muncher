@@ -1031,9 +1031,19 @@ BOOST_STATIC_ASSERT( Serializer::detail::is_default_constructible<bool>::value )
 BOOST_STATIC_ASSERT( Serializer::detail::is_default_constructible<std::string>::value );
 BOOST_STATIC_ASSERT( !Serializer::detail::is_default_constructible<int[100]>::value );
 
+BOOST_STATIC_ASSERT( Serializer::detail::is_default_constructible<const std::string>::value );
+
 struct NotDefaultConstructible {
 	const int x;
 	NotDefaultConstructible( int a ) : x(a) {}
 };
 
 BOOST_STATIC_ASSERT( !Serializer::detail::is_default_constructible<NotDefaultConstructible>::value );
+
+struct DefaultConstructible {
+	const int x;
+
+	DefaultConstructible() : x(0) {}
+};
+
+BOOST_STATIC_ASSERT( Serializer::detail::is_default_constructible<DefaultConstructible>::value );

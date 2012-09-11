@@ -276,9 +276,6 @@ namespace Serializer {
 	}
 
 	namespace detail {
-		// this class can be used to check whether a type is default constructible, ie whether T() works
-		// it takes into account that VS, at least, for T=int[N], interprets T() as int
-		//
 		// this is better than what is around on the internet
 		// see http://stackoverflow.com/questions/2733377/is-there-a-way-to-test-whether-a-c-class-has-a-default-constructor-other-than
 		template< class T >
@@ -286,11 +283,20 @@ namespace Serializer {
 			typedef int yes;
 			typedef char no;
 
-			template<int x> class is_zero {};
-			template<> class is_zero<0> { typedef void type; };
+		
+			// for fun: the other version, does not work... wtf?
+#if 1
+			template<int x, int y> class is_equal {};
+			template<int x> class is_equal<x,x> { typedef void type; };
 
 			template< class U >
-			static yes sfinae( typename is_zero< int( sizeof( U() ) ) - int( sizeof( U ) ) >::type * );
+			static yes sfinae( typename is_equal< sizeof U(), sizeof U() >::type * );
+#else
+			template<int x> class is_okay { typedef void type; };
+			
+			template< class U >
+			static yes sfinae( typename is_okay< sizeof U() >::type * );
+#endif
 
 			template< class U >
 			static no sfinae( ... );
