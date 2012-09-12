@@ -134,7 +134,7 @@ struct Shader {
 
 	Shader() : currentProgram( nullptr ) {}
 
-	int uniform( const char *name );
+	int uniform( const char *name ) const;
 };
 
 SERIALIZER_REFLECTION( Shader::Type,
@@ -246,7 +246,7 @@ struct Program {
 		}
 	}
 
-	void mergeDependencies( std::vector< const Shader * > &merged, const std::vector< const Shader * > &source ) {
+	static void mergeDependencies( std::vector< const Shader * > &merged, const std::vector< const Shader * > &source ) {
 		int searchSize = merged.size();
 		for(int index = 0 ; index < source.size() ; index++ ) {
 			if( std::find( merged.begin(), merged.end() + searchSize, source[ index ] ) == merged.end() ) {
@@ -255,11 +255,20 @@ struct Program {
 		}
 	}
 
-	void error( const std::string &error ) {
-		throw std::logic_error( error );
+	void error( const std::string &error ) const {
+		std::string shaderNames;
+		if( surfaceShader ) {
+			shaderNames.append( surfaceShader->name );
+			shaderNames.push_back( ' ' );
+		}
+		if( vertexShader ) {
+			shaderNames.append( vertexShader->name );
+		}
+
+		throw std::logic_error( boost::str( boost::format( "Program %s: %s" ) % shaderNames % error ) );
 	}
 
-	std::string getDependencyCode( const std::vector< const Shader * > &dependencies ) {
+	static std::string getDependencyCode( const std::vector< const Shader * > &dependencies ) {
 		std::string out;
 		
 		out.append( "// dependencies\n\n" );
@@ -275,45 +284,65 @@ struct Program {
 		return out;
 	}
 
-	bool build( const ShaderCollection &collection ) {
-		GLuint fragmentShaderHandle = GLUtil::glShaderBuilder( GL_FRAGMENT_SHADER ).
-			addSource( "#version 420 compatibility\n\n" ).
-			addSource( getDependencyCode( collection.resolveDependencies( surfaceShader ) ) ).
-			addSource( surfaceShader->getUniformDecls() ).
-			addSource( "\n#line 1\n" ).
-			addSource( surfaceShader->getSimpleInputDecls() ).
-			addSource( surfaceShader->code ).
-			addSource( 
-					"\n"
-					"void main() {\n"
-					"\tgl_FragColor = surfaceShader();\n"
-					"}\n"
-				).
-			compile().
-			alwaysKeep().
-			handle;
+	void reset() {
+		if( program ) {
+			glDeleteProgram( program );
+			program = 0;
 
-		GLuint vertexShaderHandle = GLUtil::glShaderBuilder( GL_VERTEX_SHADER ).
-			addSource( "#version 420 compatibility\n\n" ).
-			addSource( getDependencyCode( collection.resolveDependencies( vertexShader ) ) ).
-			addSource( vertexShader->getUniformDecls() ).
-			addSource( "\n#line 1\n" ).
-			addSource( vertexShader->getSimpleInputDecls() ).
-			addSource( vertexShader->getSimpleOutputDecls() ).
-			addSource( vertexShader->code.c_str() ).			
-			addSource( 
-					"\n"
-					"void main() {\n"
-					"\tmeshShader();\n"
-					"}\n"
-				).
-			compile().
-			alwaysKeep().
-			handle;
+			uniformLocations.clear();
+		}
+
+	}
+
+	bool build( const ShaderCollection &collection ) {
+		reset();
 
 		GLUtil::glProgramBuilder programBuilder;
+
+		if( surfaceShader ) {
+			GLuint fragmentShaderHandle = GLUtil::glShaderBuilder( GL_FRAGMENT_SHADER ).
+				addSource( "#version 420 compatibility\n\n" ).
+				addSource( getDependencyCode( collection.resolveDependencies( surfaceShader ) ) ).
+				addSource( surfaceShader->getUniformDecls() ).
+				addSource( "\n#line 1\n" ).
+				addSource( surfaceShader->getSimpleInputDecls() ).
+				addSource( surfaceShader->code ).
+				addSource( 
+						"\n"
+						"void main() {\n"
+						"\tgl_FragColor = surfaceShader();\n"
+						"}\n"
+					).
+				compile().
+				alwaysKeep().
+				handle;
+
+			programBuilder.attachShader( fragmentShaderHandle );
+		}
+
+		if( vertexShader ) {
+			GLuint vertexShaderHandle = GLUtil::glShaderBuilder( GL_VERTEX_SHADER ).
+				addSource( "#version 420 compatibility\n\n" ).
+				addSource( getDependencyCode( collection.resolveDependencies( vertexShader ) ) ).
+				addSource( vertexShader->getUniformDecls() ).
+				addSource( "\n#line 1\n" ).
+				addSource( vertexShader->getSimpleInputDecls() ).
+				addSource( vertexShader->getSimpleOutputDecls() ).
+				addSource( vertexShader->code.c_str() ).			
+				addSource( 
+						"\n"
+						"void main() {\n"
+						"\tmeshShader();\n"
+						"}\n"
+					).
+				compile().
+				alwaysKeep().
+				handle;
+			
+			programBuilder.attachShader( vertexShaderHandle );
+		}		
 		
-		program = programBuilder.attachShader( fragmentShaderHandle ).attachShader( vertexShaderHandle ).link().dumpInfoLog( std::cout ).deleteShaders().program;
+		program = programBuilder.link().dumpInfoLog( std::cout ).deleteShaders().program;
 
 		if( programBuilder.fail ) {
 			return false;
@@ -356,7 +385,7 @@ struct Program {
 
 Program *Program::currentProgram = nullptr;
 
-int Shader::uniform( const char *name ) {
+int Shader::uniform( const char *name ) const {
 	if( !currentProgram ) {
 		return -1;
 	}

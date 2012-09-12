@@ -49,14 +49,15 @@ namespace Eigen {
 	}
 
 	// min_z = zNear, max_z = zFar
-	static Matrix4f createOrthoProjectionMatrix( const Vector3f &min, const Vector3f &max ) {
+	// looks along positive z
+	static Matrix4f createOrthoProjectionMatrixLH( const Vector3f &min, const Vector3f &max ) {
 		const Vector3f center = (min + max) / 2.0;
 		const Vector3f halfSize = (max - min) / 2.0;
 
 		return (Matrix4f() <<
 			1.0f / halfSize.x(),	0,					0,						-center.x() / halfSize.x(),
 			0,						1.0f / halfSize.y(),0,						-center.y() / halfSize.y(),
-			0,						0,					-1.0f / halfSize.z(),	-center.z() / halfSize.z(),
+			0,						0,					1.0f / halfSize.z(),	-center.z() / halfSize.z(),
 			0,						0,					0,						1.0f).finished();
 	}
 
@@ -72,6 +73,19 @@ namespace Eigen {
 			0,					0, -1.0,					0).finished();
 	}
 
+	// min_z = zNear, max_z = zFar
+	// looks along positive z
+	static Matrix4f createShearProjectionMatrixLH( const Vector3f &min, const Vector3f &max, const Vector2f &zDirection ) {
+		const Vector3f center = (min + max) / 2.0;
+		const Vector3f halfSize = (max - min) / 2.0;
+
+		return (Matrix4f() <<
+			1.0f / halfSize.x(),	0,					-zDirection.x() / halfSize.x(),	-center.x() / halfSize.x(),
+			0,						1.0f / halfSize.y(),-zDirection.y() / halfSize.y(),	-center.y() / halfSize.y(),
+			0,						0,					zDirection.z() / halfSize.z(), -center.z() / halfSize.z(),
+			0,						0,					0,							1.0f).finished();
+	}
+
 	// also looks down the negative Z axis!
 	static Matrix4f createShearProjectionMatrix( const Vector2f &min, const Vector2f &max, const float zNear, const float zFar, const Vector2f &zStep ) {
 		const Vector2f center = (min + max) / 2.0;
@@ -83,6 +97,16 @@ namespace Eigen {
 			0,						1.0f / halfSize.y(),zStep.y() / halfSize.y(),	-center.y() / halfSize.y(),
 			0,						0,					-2.0f / depth,				-(zFar + zNear) / depth,
 			0,						0,					0,							1.0f).finished();
+	}
+
+	static Matrix4f createViewerMatrixLH( const Vector3f &position, const Vector3f &forward, const Vector3f &up ) {
+		const RowVector3f right = forward.cross( up ).normalized();
+		const RowVector3f realUp = right.cross( forward );
+
+		Matrix3f view;
+		view << right, realUp, forward.transpose();
+
+		return (view * Translation3f( -position )).matrix();
 	}
 
 	// TODO: rename header to something more fitting.. eigenMatrixHelpers?
@@ -115,7 +139,7 @@ namespace Eigen {
 		-1.0, 0.0, 0.0, 1.0, // right
 		0.0, 1.0, 0.0, 1.0, // bottom
 		0.0, -1.0, 0.0, 1.0, // top
-		0.0, 0.0, 0.0, 1.0, // near
+		0.0, 0.0, 1.0, 1.0, // near
 		0.0, 0.0, -1.0, 1.0  // far
 	};
 	enum FrustumPlaneIndices {

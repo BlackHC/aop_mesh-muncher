@@ -2,7 +2,10 @@ lighting:
 	module
 
 	uniforms:
-		viewerPosition vec3
+		viewerPosition		vec3
+		sunShadowTexture	'layout( binding = 1 ) sampler2D'
+		sunShadowProjection mat4
+		sunDirection		vec3
 
 	code::
 		float getDiffuseAttenuation( const vec3 normal, const vec3 lightDirection ) {
@@ -16,15 +19,33 @@ lighting:
 			return abs( dot( halfVector, normal ) );			
 		}
 
+		float shadowMapLookUp( sampler2D shadowMap, const mat4 projectionMatrix, const vec3 position ) {
+			vec4 transformedPosition = projectionMatrix * vec4( position, 1.0 );
+
+			vec3 viewportCoords = transformedPosition.xyz / transformedPosition.w;
+			viewportCoords = (viewportCoords + 1) / 2;
+			viewportCoords.z *= 0.9995;
+
+			float refDepth = texture( shadowMap, viewportCoords.xy ).r;			
+			if( refDepth >= viewportCoords.z )
+				return 1.0;
+			else
+				return 0.0;
+			//return clamp( pow( 1.0 + refDepth - viewportCoords.z, 0.3 ), 0.0, 1.0 );			
+		}
+
 		vec4 lightFragment( const vec3 position, const vec3 normal, const vec4 diffuseColor ) {
+			//return vec4( ((sunShadowProjection * vec4( position, 1.0 )).xyz + 1) / 2, 1.0 );
+
 			// from position to light
 			const vec3 lightDirection = normalize( vec3( 0.0, 1.0, 1.0 ) );
-			const float diffuseAttenuation = getDiffuseAttenuation( normal, lightDirection );
-			const float specularAttenuation = getSpecularAttenuation( position, normal, lightDirection );
+			const float diffuseAttenuation = getDiffuseAttenuation( normal, lightDirection ) * 0.8;
+			const float specularAttenuation = pow( getSpecularAttenuation( position, normal, lightDirection ), 18 );
 
 			const float ambientAttenuation = 0.2;
+			const float shadowMapAttenuation = shadowMapLookUp( sunShadowTexture, sunShadowProjection, position );
 
-			return diffuseColor * (ambientAttenuation + (1.0 - ambientAttenuation) * (diffuseAttenuation + specularAttenuation));
+			return diffuseColor * (ambientAttenuation +  (1.0 - ambientAttenuation) * shadowMapAttenuation * (diffuseAttenuation + specularAttenuation));
 		}
 
 terrain:
@@ -72,6 +93,9 @@ object:
 sgsMesh:
 	vertexShader
 
+	dependencies:
+		lighting
+
 	outputs:
 		worldPosition	vec3
 		worldNormal		vec3
@@ -80,6 +104,16 @@ sgsMesh:
 		void meshShader() {
 			worldPosition = gl_Vertex.xyz;
 			worldNormal = gl_Normal;
+			//gl_Position = sunShadowProjection * gl_Vertex; 
 			gl_Position = ftransform();
 			gl_TexCoord[0] = gl_MultiTexCoord0;
 		}
+
+shadowMapMesh:
+	vertexShader
+
+	code::
+		void meshShader() {
+			gl_Position = ftransform();
+		}
+

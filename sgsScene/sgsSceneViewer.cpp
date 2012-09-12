@@ -172,6 +172,8 @@ void main() {
 		// Activate the window for OpenGL rendering
 		window.setActive();
 
+		sgsSceneRenderer.renderShadowmap();
+
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		// OpenGL drawing commands go here...
@@ -180,7 +182,7 @@ void main() {
 
 		glMatrixMode( GL_MODELVIEW );
 		glLoadMatrix( camera.getViewTransformation().matrix() );
-
+			
 		sgsSceneRenderer.render( camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() );
 
 		// End the current frame and display its contents on screen

@@ -90,9 +90,9 @@ struct SGSScene {
 		int numIndices;
 
 		// bounding sphere
-		BoundingSphere boundingSphere;
+		Bounding bounding;
 
-		SERIALIZER_DEFAULT_IMPL( (subModelName)(startIndex)(numIndices)(material)(boundingSphere) );
+		SERIALIZER_DEFAULT_IMPL( (subModelName)(startIndex)(numIndices)(material)(bounding) );
 	};
 
 	struct Object {

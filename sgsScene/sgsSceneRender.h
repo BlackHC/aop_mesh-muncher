@@ -10,6 +10,36 @@
 #include <boost/range/algorithm/sort.hpp>
 #include <debugRender.h>
 
+//////////////////////////////////////////////////////////////////////////
+// from grid.h
+// xyz -120-> yzx
+template< typename Vector >
+Vector permute( const Vector &v, const int *permutation ) {
+	return Vector( v[permutation[0]], v[permutation[1]], v[permutation[2]] );
+}
+
+// yzx -120->xyz
+template< typename Vector >
+Vector permute_reverse( const Vector &w, const int *permutation ) {
+	Vector v;
+	for( int i = 0 ; i < 3 ; ++i ) {
+		v[ permutation[i] ] = w[i];	
+	}
+	return v;
+}
+
+inline Eigen::Matrix4f permutedToUnpermutedMatrix( const int *permutation ) {
+	return (Eigen::Matrix4f() << Eigen::Vector3f::Unit( permutation[0] ), Eigen::Vector3f::Unit( permutation[1] ), Eigen::Vector3f::Unit( permutation[2] ), Eigen::Vector3f::Zero(), 0,0,0,1.0 ).finished();
+}
+
+inline Eigen::Matrix4f unpermutedToPermutedMatrix( const int *permutation ) {
+	return (Eigen::Matrix4f() << Eigen::RowVector3f::Unit( permutation[0] ), 0.0,
+		Eigen::RowVector3f::Unit( permutation[1] ), 0.0,
+		Eigen::RowVector3f::Unit( permutation[2] ), 0.0,
+		Eigen::RowVector4f::UnitW() ).finished();
+}
+//////////////////////////////////////////////////////////////////////////
+
 struct Renderbuffer {
 	GLuint handle;
 
@@ -56,7 +86,7 @@ struct Texture2D {
 
 	Texture2D( GLuint handle = 0 ) : handle( handle ) {}
 
-	void bind() {
+	void bind() const {
 		glBindTexture( GL_TEXTURE_2D, handle );
 	}
 
@@ -68,18 +98,9 @@ struct Texture2D {
 		glTextureImage2DEXT( handle, GL_TEXTURE_2D, level, internalformat, width, height, border, format, type, pixels );
 	}
 
-	void immutable( int numLevels, GLenum internalFormat, GLsizei width, GLsizei height ) {
-		throw std::logic_error( "broken" );
-#if 0	
-		{
-			glBindTexture( GL_TEXTURE_2D, handle );
-			glTexStorage2D( GL_TEXTURE_2D, numLevels, internalFormat, width, height );
-			glBindTexture( GL_TEXTURE_2D, currentHandle );
-		}
-		else {
-			glTexStorage2D( GL_TEXTURE_2D, numLevels, internalFormat, width, height );
-		}
-#endif
+	// there is no ext extension for it, so make it static instead
+	static void immutable( int numLevels, GLenum internalFormat, GLsizei width, GLsizei height ) {
+		glTexStorage2D( GL_TEXTURE_2D, numLevels, internalFormat, width, height );
 	}
 
 	static void enable() {
@@ -90,12 +111,28 @@ struct Texture2D {
 		glDisable( GL_TEXTURE_2D );
 	}
 
-	void generateMipmap() {
+	void generateMipmap() const {
 		glGenerateTextureMipmapEXT( handle, GL_TEXTURE_2D );
 	}
 
 	static void bindExtern( GLuint handle ) {
 		glBindTexture( GL_TEXTURE_2D, handle );
+	}
+
+	void parameter( GLenum pname, int param ) const {
+		glTextureParameteriEXT( handle, GL_TEXTURE_2D, pname, param );
+	}
+
+	void parameter( GLenum pname, float param ) const {
+		glTextureParameterfEXT( handle, GL_TEXTURE_2D, pname, param );
+	}
+
+	void parameter( GLenum pname, int *param ) const {
+		glTextureParameterivEXT( handle, GL_TEXTURE_2D, pname, param );
+	}
+
+	void parameter( GLenum pname, float *param ) const {
+		glTextureParameterfvEXT( handle, GL_TEXTURE_2D, pname, param );
 	}
 };
 
@@ -124,7 +161,7 @@ struct ScopedTextures : Textures< SpecializedTexture > {
 
 	~ScopedTextures() {
 		if( handles.size() ) {
-			glDeleteTextures( handles.size(), &handles.front() );
+			glDeleteTextures( (GLsizei) handles.size(), &handles.front() );
 		}
 	}
 
@@ -158,22 +195,22 @@ typedef ScopedTextures< Texture2D > ScopedTextures2D;
 
 typedef Textures< Texture2D > Textures2D;
 
-struct Framebuffer {
+struct ScopedFramebufferObject {
 	GLuint handle;
 	bool colorAttachment0;
 	bool depthAttachment;
 
-	Framebuffer() : handle( 0 ), depthAttachment( false ), colorAttachment0( false ) {
+	ScopedFramebufferObject() : depthAttachment( false ), colorAttachment0( false ) {
 		glGenFramebuffers( 1, &handle );
 	}
 
-	~Framebuffer() {
+	~ScopedFramebufferObject() {
 		if( handle ) {
 			glDeleteFramebuffers( 1, &handle );
 		}
 	}
 
-	void bind() {
+	void bind() const  {
 		glBindFramebuffer( GL_FRAMEBUFFER, handle );
 	}
 
@@ -207,7 +244,7 @@ struct Framebuffer {
 		}
 	}
 
-	void setDrawBuffers() {
+	void setDrawBuffers() const {
 		GLenum drawBuffers[1];
 		int i = 0;
 
@@ -222,7 +259,37 @@ struct Framebuffer {
 			glDrawBuffer( GL_NONE );
 		}
 	}
+
+	static void resetDrawBuffers() {
+		glDrawBuffer( GL_BACK );
+	}
 };
+
+/*struct BoundingBox {
+	Eigen::Vector3f minCorner, maxCorner;
+
+	BoundingBox() {
+		reset();
+	}
+
+	void reset() {
+		minCorner.setConstant( FLT_MAX );
+		maxCorner.setConstant( FLT_MIN );
+	}
+
+	void mergePoint( const Eigen::Vector3f &point ) {
+		minCorner = minCorner.cwiseMin( point );
+		maxCorner = maxCorner.cwiseMin( point );
+	}
+
+	Eigen::Vector3f 
+};
+
+struct OrthogonalShadowMapConstructor {
+	BoundingBox bbox;
+
+
+};*/
 
 struct SGSSceneRenderer {
 	/*struct BoundingBox {
@@ -253,7 +320,7 @@ struct SGSSceneRenderer {
 	Texture2D bakedTerrainTexture;
 
 	ShaderCollection shaders;
-	Program terrainProgram, objectProgram;
+	Program terrainProgram, objectProgram, shadowMapProgram;
 
 	struct Debug {
 		bool showBoundingSpheres, showTerrainBoundingSpheres;
@@ -295,7 +362,7 @@ struct SGSSceneRenderer {
 			glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
 		}
 
-		Framebuffer fbo;
+		ScopedFramebufferObject fbo;
 		ScopedTexture2D bakedTexture;
 		
 		Eigen::Vector2i mapSize( scene->terrain.mapSize[0], scene->terrain.mapSize[1] );
@@ -395,7 +462,9 @@ struct SGSSceneRenderer {
 			objectProgram.surfaceShader = shaders[ "object" ];
 			objectProgram.vertexShader = shaders[ "sgsMesh" ];
 
-			if( terrainProgram.build( shaders ) && objectProgram.build( shaders ) ) {
+			shadowMapProgram.vertexShader = shaders[ "shadowMapMesh" ];
+
+			if( terrainProgram.build( shaders ) && objectProgram.build( shaders ) && shadowMapProgram.build( shaders ) ) {
 				break;
 			}
 
@@ -450,8 +519,6 @@ struct SGSSceneRenderer {
 				const SGSScene::SubObject &subObject = scene->subObjects[ subObjectIndex ];
 
 				glNewList( subObjects_disptlayListBase + subObjectIndex, GL_COMPILE );
-
-				objectProgram.use();
 
 				glEnable( GL_TEXTURE_2D );
 
@@ -531,6 +598,13 @@ struct SGSSceneRenderer {
 					break;
 				}
 
+				/*if( material.doubleSided ) {
+					glDisable( GL_CULL_FACE );
+				}
+				else {
+					glEnable( GL_CULL_FACE );
+				}*/
+
 				glColor4ub( material.diffuse.r, material.diffuse.g, material.diffuse.b, alpha );
 
 				glDrawElements( GL_TRIANGLES, subObject.numIndices, GL_UNSIGNED_INT, &scene->indices.front() + subObject.startIndex );
@@ -571,7 +645,7 @@ struct SGSSceneRenderer {
 			debug.boundingSpheres.begin();
 
 			for( int subObjectIndex = 0 ; subObjectIndex < scene->subObjects.size() ; ++subObjectIndex ) {
-				const SGSScene::BoundingSphere &boundingSphere = scene->subObjects[subObjectIndex].boundingSphere;
+				const SGSScene::BoundingSphere &boundingSphere = scene->subObjects[subObjectIndex].bounding.sphere;
 
 				debug.boundingSpheres.setPosition( Eigen::Vector3f::Map( boundingSphere.center ) );
 				glColor3f( 0.0, 1.0, 1.0 );
@@ -592,9 +666,133 @@ struct SGSSceneRenderer {
 		}
 	}
 
-	void render( const Matrix4f &projectionView, const Eigen::Vector3f &worldViewerPosition ) {
-		Eigen::FrustumPlanesMatrixf frustumPlanes = Eigen::Frustum::normalize( Eigen::projectionToFrustumPlanes * projectionView );
+	ScopedTexture2D sunShadowMap;
+	Eigen::Matrix4f sunProjectionMatrix;
+	int sunShadowMapSize;
+
+	void initShadowMap() {
+		sunShadowMapSize = 8096;
+		sunShadowMap.load( 0, GL_DEPTH_COMPONENT32F, sunShadowMapSize, sunShadowMapSize, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, nullptr );
+		sunShadowMap.parameter( GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER );
+		sunShadowMap.parameter( GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER );
+
+		sunShadowMap.parameter( GL_DEPTH_TEXTURE_MODE, GL_LUMINANCE );
+		sunShadowMap.parameter( GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE );
+		sunShadowMap.parameter( GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL );
+		sunShadowMap.parameter( GL_TEXTURE_MAG_FILTER, GL_LINEAR );
+		sunShadowMap.parameter( GL_TEXTURE_MIN_FILTER, GL_LINEAR );
+	}
+
+	void initShadowMapProjectionMatrix( const Eigen::AlignedBox3f &boundingBox, const Eigen::Vector3f &direction ) {
+#if 0
+		// determine the main direction
+		int mainAxis;
+		{
+			auto weightedDirection = direction.cwiseProduct( boundingBox.sizes() );
+			weightedDirection.cwiseAbs().maxCoeff( &mainAxis );
+		}
+
+		int permutation[3] = { (mainAxis + 1) % 3, (mainAxis + 2) % 3, mainAxis };
+		auto permutedDirection = permute( direction, permutation );
+
+		Eigen::AlignedBox3f permutedBox;
+		permutedBox.extend( permute( boundingBox.min(), permutation ) );
+		permutedBox.extend( permute( boundingBox.max(), permutation ) );
 		
+		/*sunProjectionMatrix = Eigen::createShearProjectionMatrixLH( )
+			Eigen::createOrthoProjectionMatrixLH( permutedBox.min(), permutedBox.max() ) * unpermutedToPermutedMatrix( permutation );*/
+		sunProjectionMatrix = Eigen::createOrthoProjectionMatrixLH( permutedBox.min(), permutedBox.max() ) * unpermutedToPermutedMatrix( permutation );
+#else
+		using namespace Eigen;
+
+		Matrix4f lightRotation = Eigen::createViewerMatrixLH( Vector3f::Zero(), direction, Vector3f::UnitX() );
+		AlignedBox3f lightVolumeBox;
+		for( int cornerIndex = 0 ; cornerIndex < 8 ; ++cornerIndex ) {
+			lightVolumeBox.extend( (lightRotation * boundingBox.corner( AlignedBox3f::CornerType( cornerIndex ) ).homogeneous().eval()).hnormalized() );
+		}		
+
+		sunProjectionMatrix = Eigen::createOrthoProjectionMatrixLH( lightVolumeBox.min(), lightVolumeBox.max() ) * lightRotation;
+#endif
+	}
+
+	void renderShadowmap() {
+		using namespace Eigen;
+		initShadowMap();
+
+		// calculate bounding box
+		AlignedBox3f sceneBoundingBox;
+		for( int tileIndex = 0 ; tileIndex < scene->terrain.tiles.size() ; tileIndex++ ) {
+			const SGSScene::BoundingBox &boundingBox = scene->terrain.tiles[tileIndex].bounding.box;
+
+			sceneBoundingBox.extend( AlignedBox3f( Vector3f::Map( boundingBox.min ), Vector3f::Map( boundingBox.max ) ) );
+		}
+
+		for( int subObjectIndex = 0 ; subObjectIndex < scene->subObjects.size() ; ++subObjectIndex ) {
+			const SGSScene::BoundingBox &boundingBox = scene->subObjects[subObjectIndex].bounding.box;
+
+			sceneBoundingBox.extend( AlignedBox3f( Vector3f::Map( boundingBox.min ), Vector3f::Map( boundingBox.max ) ) );
+		}
+
+		initShadowMapProjectionMatrix( sceneBoundingBox, Vector3f( 0.0, -1.0, -1.0 ).normalized() );
+
+		ScopedFramebufferObject fbo;
+		fbo.attach( sunShadowMap, GL_DEPTH_ATTACHMENT, 0 );
+
+		fbo.bind();
+		fbo.setDrawBuffers();
+
+		glDisable( GL_CULL_FACE );
+		glCullFace( GL_FRONT );
+
+		glPushAttrib( GL_VIEWPORT_BIT );
+		glViewport( 0, 0, sunShadowMapSize, sunShadowMapSize );
+
+		glClear( GL_DEPTH_BUFFER_BIT );
+		glColorMask( GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE );
+
+		glMatrixMode( GL_PROJECTION );
+		glLoadMatrix( sunProjectionMatrix );
+
+		glMatrixMode( GL_MODELVIEW );
+		glLoadIdentity();
+
+		// add terrain tiles to draw list
+		terrainLists.clear();
+		for( int tileIndex = 0 ; tileIndex < scene->terrain.tiles.size() ; tileIndex++ ) {
+			terrainLists.push_back( terrain_displayListBase + tileIndex );
+		}
+		
+		// add sub objects to draw list
+		solidLists.clear();
+		for( int subObjectIndex = 0 ; subObjectIndex < scene->subObjects.size() ; ++subObjectIndex ) {
+			if( scene->subObjects[subObjectIndex].material.alphaType == SGSScene::Material::AT_NONE ) {
+				solidLists.push_back( subObjects_disptlayListBase + subObjectIndex );
+			} 
+		}
+
+		shadowMapProgram.use();
+
+		// draw terrain tiles		
+		if( !terrainLists.empty() ) {
+			glCallLists( terrainLists.size(), GL_UNSIGNED_INT, &terrainLists.front() );
+		}
+
+		if( !solidLists.empty() )
+			glCallLists( solidLists.size(), GL_UNSIGNED_INT, &solidLists.front() );
+
+		// reset state
+		fbo.unbind();
+		fbo.resetDrawBuffers();
+
+		glColorMask( GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE );
+		glPopAttrib();
+
+		//glStringMarkerGREMEDY( 0, "shadow map done" );
+	}
+
+	void buildDrawLists( const Matrix4f &projectionView, const Eigen::Vector3f &worldViewerPosition ) {
+		Eigen::FrustumPlanesMatrixf frustumPlanes = Eigen::Frustum::normalize( Eigen::projectionToFrustumPlanes * projectionView );
+
 		if( debug.updateRenderLists ) {
 			terrainLists.clear();
 			for( int tileIndex = 0 ; tileIndex < scene->terrain.tiles.size() ; tileIndex++ ) {
@@ -607,8 +805,8 @@ struct SGSSceneRenderer {
 			solidLists.clear();
 			alphaLists.clear();
 			for( int subObjectIndex = 0 ; subObjectIndex < scene->subObjects.size() ; ++subObjectIndex ) {
-				const SGSScene::BoundingSphere &boundingSphere = scene->subObjects[subObjectIndex].boundingSphere;
-				
+				const SGSScene::BoundingSphere &boundingSphere = scene->subObjects[subObjectIndex].bounding.sphere;
+
 				if( Eigen::Frustum::isInside( frustumPlanes, Eigen::Vector3f::Map( boundingSphere.center ).eval(), -boundingSphere.radius ) ) {
 					if( scene->subObjects[subObjectIndex].material.alphaType == SGSScene::Material::AT_NONE ) {
 						solidLists.push_back( subObjects_disptlayListBase + subObjectIndex );
@@ -618,7 +816,27 @@ struct SGSSceneRenderer {
 					}
 				}
 			}
+
+			// sort alpha list
+			boost::sort( 
+				alphaLists, [&, this] ( int indexA, int indexB ) {
+					return ( Eigen::Vector3f::Map( scene->subObjects[indexA - subObjects_disptlayListBase ].bounding.sphere.center ) - worldViewerPosition).squaredNorm() >
+						( Eigen::Vector3f::Map( scene->subObjects[indexB - subObjects_disptlayListBase ].bounding.sphere.center ) - worldViewerPosition).squaredNorm();
+				}
+			);
 		}
+	}
+
+	void render( const Matrix4f &projectionView, const Eigen::Vector3f &worldViewerPosition ) {
+		buildDrawLists( projectionView, worldViewerPosition );
+
+		glDisable( GL_CULL_FACE );
+		glCullFace( GL_BACK );
+
+		// set the shadow map
+		glActiveTexture( GL_TEXTURE1 );
+		sunShadowMap.bind();
+		glActiveTexture( GL_TEXTURE0 );
 		
 		// terrain rendering
 		{
@@ -631,43 +849,57 @@ struct SGSSceneRenderer {
 			bakedTerrainTexture.enable();
 			terrainProgram.use();
 
+			// hack
+			glUniform( terrainProgram.uniformLocations[ "viewerPosition" ], worldViewerPosition );
+			glUniform( terrainProgram.uniformLocations[ "sunShadowProjection" ], sunProjectionMatrix );
+
 			if( !terrainLists.empty() ) {
 				glCallLists( terrainLists.size(), GL_UNSIGNED_INT, &terrainLists.front() );
 			}
 		}
-		
-			
+					
 		// object rendering
-		if( !solidLists.empty() )
-			glCallLists( solidLists.size(), GL_UNSIGNED_INT, &solidLists.front() );
+		{
+			objectProgram.use();
 
-		// sort alpha list
-		boost::sort( alphaLists, [&, this] ( int indexA, int indexB ) {
-				return ( Eigen::Vector3f::Map( scene->subObjects[indexA - subObjects_disptlayListBase ].boundingSphere.center ) - worldViewerPosition).squaredNorm() <
-						( Eigen::Vector3f::Map( scene->subObjects[indexB - subObjects_disptlayListBase ].boundingSphere.center ) - worldViewerPosition).squaredNorm();
-			}
-			);
+			// hack
+			glUniform( objectProgram.uniformLocations[ "viewerPosition" ], worldViewerPosition );
+			glUniform( objectProgram.uniformLocations[ "sunShadowProjection" ], sunProjectionMatrix );
 
-		if( !alphaLists.empty() )
-			glCallLists( alphaLists.size(), GL_UNSIGNED_INT, &alphaLists.front() );
+			if( !solidLists.empty() )
+				glCallLists( solidLists.size(), GL_UNSIGNED_INT, &solidLists.front() );
+
+			if( !alphaLists.empty() )
+				glCallLists( alphaLists.size(), GL_UNSIGNED_INT, &alphaLists.front() );
+		}
 
 		// make sure this is turned on again, otherwise glClear wont work correctly...
 		glDepthMask( GL_TRUE );
 
 
-		// more state resets for debug rendering
-		glDisable( GL_BLEND );
-		glDisable( GL_ALPHA_TEST );
+		{
+			// more state resets for debug rendering
+			glDisable( GL_BLEND );
+			glDisable( GL_ALPHA_TEST );
+			glDisable( GL_CULL_FACE );
 
-		glDepthMask( GL_TRUE );
-		glDisable( GL_TEXTURE_2D );
-		Program::useFixed();
+			glDepthMask( GL_TRUE );
+			glDisable( GL_TEXTURE_2D );
+			Program::useFixed();
 
-		if( debug.showBoundingSpheres ) {
-			debug.boundingSpheres.render();
-		}
-		if( debug.showTerrainBoundingSpheres ) {
-			debug.terrainBoundingSpheres.render();
+			if( debug.showBoundingSpheres ) {
+				debug.boundingSpheres.render();
+			}
+			if( debug.showTerrainBoundingSpheres ) {
+				debug.terrainBoundingSpheres.render();
+			}
+
+			DebugRender::ImmediateCalls lightFrustum;
+			lightFrustum.begin();
+			glMatrixMode( GL_MODELVIEW );
+			glMultMatrix( sunProjectionMatrix.inverse() );
+			lightFrustum.drawBox( Eigen::Vector3f::Constant( 2.0 ), true, true );
+			lightFrustum.end();
 		}
 	}
 };
