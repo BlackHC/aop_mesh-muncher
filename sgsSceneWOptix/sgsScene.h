@@ -1,0 +1,171 @@
+#pragma once
+
+#include "serializer.h"
+#include "serializer_std.h"
+
+struct SGSScene {
+	static const int NO_TEXTURE = -1;
+
+	struct Texture {
+		std::string name;
+		std::vector<unsigned char> rawContent;
+
+		SERIALIZER_DEFAULT_IMPL( (name)(rawContent) );
+	};
+
+	struct Vertex {
+		float position[3];
+		float normal[3];
+		float uv[2][2];
+	};
+
+	struct Color4ub {
+		unsigned char r, g, b, a;
+
+		SERIALIZER_ENABLE_RAW_MODE();
+	};
+
+	struct Color3ub {
+		unsigned char r, g, b;
+
+		SERIALIZER_ENABLE_RAW_MODE();
+	};
+
+	struct BoundingSphere {
+		float center[3];
+		float radius;
+
+		SERIALIZER_ENABLE_RAW_MODE();
+	};
+
+	struct BoundingBox {
+		float min[3], max[3];
+
+		SERIALIZER_ENABLE_RAW_MODE();
+	};
+
+	struct Material {
+		int textureIndex[2];
+
+		Color3ub ambient;
+		Color3ub diffuse;
+		Color3ub specular;
+		float specularSharpness;
+
+		unsigned char alpha;
+
+		bool doubleSided;
+		bool wireFrame;
+
+		enum AlphaType {
+			AT_NONE,
+			AT_MATERIAL, // material only alpha
+			AT_TEXTURE, // texture * material 
+			AT_ADDITIVE, // additive
+			AT_MULTIPLY,
+			AT_MULTIPLY_2,
+			AT_ALPHATEST // like AT_TEXTURE
+		};
+
+		AlphaType alphaType;
+
+		SERIALIZER_DEFAULT_IMPL( (alphaType)(textureIndex)(doubleSided)(wireFrame)(ambient)(diffuse)(specular)(alpha)(specularSharpness) )
+		//SERIALIZER_ENABLE_RAW_MODE();
+	};
+
+	struct Bounding {
+		BoundingBox box;
+		BoundingSphere sphere;
+
+		SERIALIZER_ENABLE_RAW_MODE();
+	};
+
+	struct SubObject {
+		std::string subModelName;
+
+		Material material;
+
+		// for rendering
+		int startIndex;
+		int numIndices;
+
+		// bounding sphere
+		Bounding bounding;
+
+		SERIALIZER_DEFAULT_IMPL( (subModelName)(startIndex)(numIndices)(material)(bounding) );
+	};
+
+	struct Object {
+		int modelId;
+
+		int startSubObject;
+		int numSubObjects;
+
+		SERIALIZER_DEFAULT_IMPL( (modelId)(startSubObject)(numSubObjects) );
+	};
+
+	struct Terrain {
+		struct Vertex {
+			float position[3];
+			float normal[3];
+			float blendUV[2];
+
+			SERIALIZER_ENABLE_RAW_MODE();
+		};
+
+		struct Layer {
+			int textureIndex;
+
+			std::vector<unsigned char> weights;
+
+			SERIALIZER_DEFAULT_IMPL( (textureIndex)(weights) );
+		};
+
+		struct Tile {
+			Bounding bounding;
+
+			int startIndex;
+			int numIndices;
+
+			// both are raw
+			SERIALIZER_ENABLE_RAW_MODE();
+		};
+
+		static const int TILE_SIZE = 8;
+		static const int EDGES_PER_TILE = TILE_SIZE - 1;
+		static const int VERTICES_PER_TILE = TILE_SIZE * TILE_SIZE;
+		static const int TRIANGLES_PER_TILE = 2 * (TILE_SIZE - 1) * (TILE_SIZE - 1);
+		static const int INDICES_PER_TILE = 3 * TRIANGLES_PER_TILE;
+
+		int mapSize[2];
+		int layerSize[2];
+
+		std::vector<Vertex> vertices;
+		std::vector<unsigned int> indices;
+		
+		std::vector< Layer > layers;
+
+		std::vector<Tile> tiles;
+
+		//std::vector< unsigned int > blockLayerMask;
+
+		SERIALIZER_DEFAULT_IMPL( (mapSize)(layerSize)(vertices)(indices)(layers)(tiles) );
+	};
+
+	std::vector<Vertex> vertices;
+	std::vector<unsigned> indices;
+
+	std::vector<std::string> modelNames;
+	std::vector<Object> objects;
+	std::vector<SubObject> subObjects;
+	
+	std::vector<Texture> textures;
+
+	Terrain terrain;
+
+	SERIALIZER_DEFAULT_IMPL( (modelNames)(objects)(subObjects)(textures)(vertices)(indices)(terrain) );
+
+	SGSScene() {}
+};
+
+SERIALIZER_ENABLE_RAW_MODE_EXTERN( SGSScene::Vertex );

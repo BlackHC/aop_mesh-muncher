@@ -183,6 +183,22 @@ namespace DebugRender {
 			}
 			glEnd();
 		}
+
+		void drawTexturedUnitQuad() {			
+			glBegin( GL_QUADS );
+				glMultiTexCoord2f( GL_TEXTURE0, 0.0, 0.0 );
+				glVertex3f( -1.0, -1.0, 0.0 );
+
+				glMultiTexCoord2f( GL_TEXTURE0, 1.0, 0.0 );
+				glVertex3f( 1.0, -1.0, 0.0 );
+
+				glMultiTexCoord2f( GL_TEXTURE0, 1.0, 1.0 );
+				glVertex3f( 1.0, 1.0, 0.0 );
+
+				glMultiTexCoord2f( GL_TEXTURE0, 0.0, 1.0 );
+				glVertex3f( -1.0, 1.0, 0.0 );
+			glEnd();
+		}
 	};
 
 	struct CombinedCalls : ImmediateCalls {
