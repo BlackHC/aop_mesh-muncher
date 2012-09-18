@@ -24,6 +24,8 @@ using namespace Eigen;
 
 #include "sgsSceneRender.h"
 
+#include "debugWindows.h"
+
 struct IntVariableControl : EventHandler {
 	sf::Keyboard::Key upKey, downKey;
 	int *variable;
@@ -87,85 +89,6 @@ struct BoolVariableControl : EventHandler {
 	}
 };
 
-struct TextureVisualizationWindow : std::enable_shared_from_this<TextureVisualizationWindow> {
-	Texture2D debugTexture;
-
-	Camera camera;
-	CameraInputControl cameraInputControl;
-	sf::Window window;
-
-	TextureVisualizationWindow( const Texture2D &debugTexture ) : debugTexture( debugTexture ) {}
-
-	void init( const std::string &caption ) {
-		window.create( sf::VideoMode( 640, 480 ), caption.c_str(), sf::Style::Default, sf::ContextSettings(42) );
-		window.setActive();
-
-		glEnable(GL_DEPTH_TEST);
-		glDepthMask(GL_TRUE);
-		glClearDepth(1.f);
-
-		// init the camera
-		camera.perspectiveProjectionParameters.aspect = 640.0f / 480.0f;
-		camera.perspectiveProjectionParameters.FoV_y = 75.0f;
-		camera.perspectiveProjectionParameters.zNear = 0.1f;
-		camera.perspectiveProjectionParameters.zFar = 500.0f;
-
-		// input camera input control
-		cameraInputControl.init( make_nonallocated_shared(camera), make_nonallocated_shared(window) );
-	}
-
-	typedef float Seconds;
-	void update( const Seconds deltaTime, const Seconds elapsedTime ) {
-		// process events etc
-		if (window.isOpen()) {
-			// Activate the window for OpenGL rendering		
-			window.setActive();
-
-			// Event processing
-			sf::Event event;
-			while (window.pollEvent(event))
-			{
-				// Request for closing the window
-				if (event.type == sf::Event::Closed) {
-					window.close();
-					return;
-				}
-
-				if( event.type == sf::Event::Resized ) {
-					camera.perspectiveProjectionParameters.aspect = float( event.size.width ) / event.size.height;
-					glViewport( 0, 0, event.size.width, event.size.height );
-				}
-
-				cameraInputControl.handleEvent( event );
-			}
-
-			cameraInputControl.update( deltaTime, false );
-			//update( frameClock.restart().asSeconds(), clock.getElapsedTime().asSeconds() );
-
-			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-			// OpenGL drawing commands go here...
-			glColor4f( 1.0, 1.0, 1.0, 1.0 );
-			debugTexture.bind();
-			debugTexture.enable();
-
-			Program::useFixed();
-
-			glMatrixMode( GL_PROJECTION );
-			glLoadIdentity();
-			glMatrixMode( GL_MODELVIEW );
-			glLoadIdentity();
-
-			DebugRender::ImmediateCalls().drawTexturedUnitQuad();
-
-			debugTexture.unbind();
-
-			// End the current frame and display its contents on screen
-			window.display();
-		}
-	}
-};
-
 void main() {
 	sf::Window window( sf::VideoMode( 640, 480 ), "sgsSceneViewer", sf::Style::Default, sf::ContextSettings(24, 8, 0, 4, 2, false,true, false) );
 	glewInit();
@@ -189,7 +112,7 @@ void main() {
 	glClearDepth(1.f);
 
 	// The main loop - ends as soon as the window is closed
-	sf::Clock frameClock[2], clock;
+	sf::Clock frameClock, clock;
 
 	SGSSceneRenderer sgsSceneRenderer;
 	SGSScene sgsScene;
@@ -226,13 +149,20 @@ void main() {
 
 	sgsSceneRenderer.initOptix();
 
-	TextureVisualizationWindow optixWindow( sgsSceneRenderer.optix.debugTexture );
+	TextureVisualizationWindow optixWindow;
 	optixWindow.init( "Optix Version" );
+	optixWindow.texture = sgsSceneRenderer.optix.debugTexture;
+
+	DebugWindowManager debugWindowManager;
+	debugWindowManager.windows.push_back( make_nonallocated_shared( optixWindow ) );
 	
 	while (window.isOpen())
 	{
-		sgsSceneRenderer.renderOptix( optixWindow.camera.getProjectionMatrix() * optixWindow.camera.getViewTransformation().matrix(), optixWindow.camera.getPosition() );
-		optixWindow.update( frameClock[1].restart().asSeconds(), clock.getElapsedTime().asSeconds() );
+		sgsSceneRenderer.renderOptix( camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() );
+		debugWindowManager.update();
+
+		// Activate the window for OpenGL rendering
+		window.setActive();
 
 		// Event processing
 		sf::Event event;
@@ -250,10 +180,9 @@ void main() {
 			eventDispatcher.handleEvent( event );
 		}
 
-		cameraInputControl.update( frameClock[0].restart().asSeconds(), false );
+		cameraInputControl.update( frameClock.restart().asSeconds(), false );
 
-		// Activate the window for OpenGL rendering
-		window.setActive();
+
 
 		sgsSceneRenderer.renderShadowmap();
 

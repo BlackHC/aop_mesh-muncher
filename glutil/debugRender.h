@@ -6,27 +6,27 @@
 
 namespace DebugRender {
 	struct ImmediateCalls {
-		void begin() {
+		static void begin() {
 			glMatrixMode( GL_MODELVIEW );
 			glPushMatrix();
 		}
 
-		void setPosition( const Eigen::Vector3f &position ) {
+		static void setPosition( const Eigen::Vector3f &position ) {
 			glPopMatrix();
 			glPushMatrix();
 			Eigen::glTranslate( position );
 		}
 
-		void setColor( const Eigen::Vector3f &color ) {
+		static void setColor( const Eigen::Vector3f &color ) {
 			Eigen::glColor( color );
 		}
 
-		void end() {
+		static void end() {
 			glPopMatrix();
 		}
 
 		// from glut 3.7 and SFML's SimpleGLScene
-		void drawBox(const Eigen::Vector3f &size, bool wireframe = true, bool gay = false)
+		static void drawBox(const Eigen::Vector3f &size, bool wireframe = true, bool gay = false)
 		{
 			static GLfloat n[6][3] =
 			{
@@ -94,14 +94,14 @@ namespace DebugRender {
 			}
 		}
 
-		void drawAABB( const Eigen::Vector3f &minCorner, const Eigen::Vector3f &maxCorner, bool wireframe = true, bool gay = false ) {
+		static void drawAABB( const Eigen::Vector3f &minCorner, const Eigen::Vector3f &maxCorner, bool wireframe = true, bool gay = false ) {
 			glPushMatrix();
 			setPosition( (minCorner + maxCorner) / 2 );
 			drawBox( (maxCorner - minCorner).cwiseAbs(), wireframe, gay );
 			glPopMatrix();
 		}
 
-		void drawCordinateSystem( float size ) {
+		static void drawCordinateSystem( float size ) {
 			glBegin(GL_LINES);
 			glColor3f( 1.0, 0.0, 0.0 );
 			glVertex3f( 0.0, 0.0, 0.0 );
@@ -117,7 +117,7 @@ namespace DebugRender {
 			glEnd();
 		}
 
-		void drawEllipse( float radius, bool wireframe = true, int n = 20, const Eigen::Vector3f &axis1 = Eigen::Vector3f::UnitX(), const Eigen::Vector3f &axis2 = Eigen::Vector3f::UnitY() ) {
+		static void drawEllipse( float radius, bool wireframe = true, int n = 20, const Eigen::Vector3f &axis1 = Eigen::Vector3f::UnitX(), const Eigen::Vector3f &axis2 = Eigen::Vector3f::UnitY() ) {
 			const float step = float( 2 * M_PI / n );
 			glBegin( wireframe ? GL_LINE_LOOP : GL_TRIANGLE_FAN );
 			for( int i = 0 ; i < n ; i++ ) {
@@ -126,27 +126,27 @@ namespace DebugRender {
 			glEnd();
 		}
 
-		void drawAbstractSphere( float radius, bool wireframe = true, int n = 20 ) {
+		static void drawAbstractSphere( float radius, bool wireframe = true, int n = 20 ) {
 			drawEllipse( radius, wireframe, n, Eigen::Vector3f::UnitX(), Eigen::Vector3f::UnitY() );
 			drawEllipse( radius, wireframe, n, Eigen::Vector3f::UnitY(), Eigen::Vector3f::UnitZ() );
 			drawEllipse( radius, wireframe, n, Eigen::Vector3f::UnitX(), Eigen::Vector3f::UnitZ() );
 		}
 
-		void drawVector( const Eigen::Vector3f &direction ) {
+		static void drawVector( const Eigen::Vector3f &direction ) {
 			glBegin( GL_LINES );
 			glVertex3f( 0.0, 0.0, 0.0 );
 			Eigen::glVertex( direction );
 			glEnd();
 		}
 
-		void drawLine( const Eigen::Vector3f &start, const Eigen::Vector3f &end ) {
+		static void drawLine( const Eigen::Vector3f &start, const Eigen::Vector3f &end ) {
 			glBegin( GL_LINES );
 			Eigen::glVertex( start );
 			Eigen::glVertex( end );
 			glEnd();
 		}
 
-		void drawWireframeSphere( float radius, int n = 20, int slices = 5 ) {
+		static void drawWireframeSphere( float radius, int n = 20, int slices = 5 ) {
 			const float step = 2 * radius / (slices + 2);
 
 			glPushMatrix();
@@ -162,7 +162,7 @@ namespace DebugRender {
 			glPopMatrix();
 		}
 
-		void drawSolidSphere( float radius, int u = 10, int v = 20 ) {
+		static void drawSolidSphere( float radius, int u = 10, int v = 20 ) {
 			glBegin( GL_QUADS );
 			for( int i = 0 ; i < u ; i++ ) {
 				for( int j = 0 ; j < v ; j++ ) {
@@ -184,7 +184,7 @@ namespace DebugRender {
 			glEnd();
 		}
 
-		void drawTexturedUnitQuad() {			
+		static void drawTexturedScreenQuad() {			
 			glBegin( GL_QUADS );
 				glMultiTexCoord2f( GL_TEXTURE0, 0.0, 0.0 );
 				glVertex3f( -1.0, -1.0, 0.0 );
