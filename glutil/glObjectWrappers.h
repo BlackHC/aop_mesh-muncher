@@ -28,12 +28,16 @@ struct DisplayList {
 		glNewList( handle, GL_COMPILE );
 	}
 
-	void end() {
+	static void end() {
 		glEndList();
 	}
 
 	void call() const {
 		glCallList( handle );
+	}
+
+	GLuint create() {
+		handle = glGenLists( 1 );
 	}
 
 	void release() {
@@ -44,37 +48,39 @@ struct DisplayList {
 	}
 };
 
-struct ScopedDisplayList : DisplayList {
-	static GLuint createDisplayList() {
-		GLuint handle = glGenLists( 1 );
-		return handle;
-	}
-
-	ScopedDisplayList() : DisplayList( createDisplayList() ) {}
-	~ScopedDisplayList() {
-		release();
-	}
-};
-
 struct Texture {
 	GLuint handle;
 
 	Texture( GLuint handle = 0 ) : handle( handle ) {}
-};
 
-template< class SpecializedTexture = Texture >
-struct ScopedTexture : SpecializedTexture {
-	static GLuint createTextureHandle() {
-		GLuint handle;
+	void create() {
 		glGenTextures( 1, &handle );
-		return handle;
 	}
 
-	ScopedTexture() : SpecializedTexture( createTextureHandle() ) {}
-	~ScopedTexture() {
+	void release() {
 		if( handle ) {
 			glDeleteTextures( 1, &handle );
 		}
+	}
+
+	static void createMultiple( int count, GLuint *handles ) {
+		glGenTextures( count, handles );
+	}
+
+	static void releaseMultiple( int count, GLuint *handles ) {
+		glDeleteTextures( count, handles );
+	}
+};
+
+// TODO: remove this!
+template< class SpecializedTexture = Texture >
+struct ScopedTexture : SpecializedTexture {
+
+	ScopedTexture() {
+		SpecializedTexture::create();
+	}
+	~ScopedTexture() {
+		SpecializedTexture::release();
 	}
 
 	SpecializedTexture publish() {
@@ -84,10 +90,8 @@ struct ScopedTexture : SpecializedTexture {
 	}
 };
 
-struct Texture2D {
-	GLuint handle;
-
-	Texture2D( GLuint handle = 0 ) : handle( handle ) {}
+struct Texture2D : Texture {
+	Texture2D( GLuint handle = 0 ) : Texture( handle ) {}
 
 	void bind() const {
 		glBindTexture( GL_TEXTURE_2D, handle );
@@ -136,6 +140,10 @@ struct Texture2D {
 
 	void parameter( GLenum pname, float *param ) const {
 		glTextureParameterfvEXT( handle, GL_TEXTURE_2D, pname, param );
+	}
+
+	void getLevelParameter( int lod, GLenum value, int *data ) {
+		glGetTextureLevelParameterivEXT( handle, GL_TEXTURE_2D, lod, value, data );
 	}
 };
 
@@ -268,4 +276,196 @@ struct ScopedFramebufferObject {
 	}
 };
 
+struct Buffer {
+	GLuint handle;
+
+	Buffer( GLuint handle = 0 ) : handle( handle ) {}
+
+	void bind( GLenum target ) {
+		glBindBuffer( target, handle );
+	}
+
+	static void unbind( GLenum target ) {
+		glBindBuffer( target, 0 );
+	}
+
+	void bufferData( GLsizei size, const void *data, GLenum usage ) {
+		glNamedBufferDataEXT( handle, size, data, usage );
+	}
+
+	void bufferSubData( GLintptr offset, GLsizei size, const void *data ) {
+		glNamedBufferSubDataEXT( handle, offset, size, data );
+	}
+
+	GLuint create() {
+		glGenBuffers( 1, &handle );
+	}
+
+	void release() {
+		if( handle ) {
+			glDeleteBuffers( 1, &handle );
+			handle = 0;
+		}
+	}
+};
+
+struct VertexArrayObject {
+	GLuint handle;
+
+	VertexArrayObject( GLuint handle = 0 ) : handle( handle ) {}
+
+	GLuint create() {
+		glGenVertexArrays( 1, &handle );
+	}
+
+	void release() {
+		glDeleteVertexArrays( 1, &handle );
+		handle = 0;
+	}
+
+	static void createMultiple( int count, GLuint *handles ) {
+		glGenVertexArrays( count, handles );
+	}
+
+	static void releaseMultiple( int count, GLuint *handles ) {
+		glDeleteVertexArrays( count, handles );
+	}
+
+	void bind() {
+		glBindVertexArray( handle );
+	}
+
+	static void unbind() {
+		glBindVertexArray( 0 );
+	}
+};
+
+template< typename Base >
+struct Scoped : Base {
+	Scoped() {
+		Base::create();
+	}
+	~Scoped() {
+		Base::release();
+	}
+
+	Base publish() {
+		Base published( handle );
+		handle = 0;
+		return published;
+	}
+};
+
+typedef Scoped<DisplayList> ScopedDisplayList;
+typedef Scoped<VertexArrayObject> ScopedVertexArrayObject;
+typedef Scoped<Buffer> ScopedBuffer;
+
+template< typename Base >
+struct Array {
+	std::vector<GLuint> handles;
+
+	Array( int size = 0 ) : handles( size ) {}
+
+	Base get( int index ) {
+		return Base( handles[ index ] );
+	}
+
+	Base operator []( int index ) {
+		return get( index );
+	}
+};
+
+template< typename Base >
+struct ScopedArray : Array< Base > {
+	ScopedArray( int size = 0 ) : Array( size ) {
+		if( size ) {
+			Base::createMultiple( size, &handles.front() );
+		}
+	}
+
+	~ScopedArray() {
+		if( handles.size() ) {
+			Base::releaseMultiple( (int) handles.size(), &handles.front() );
+		}
+	}
+
+	void resize( int size ) {
+		if( handles.empty() ) {
+			handles.resize( size );
+			Base::createMultiple( size, &handles.front() );
+		}
+		else {
+			throw std::logic_error( "ScopedTextures not zero!" );
+		}
+	}
+
+	Base publish( int index ) {
+		Base global( handles[ index ] );
+		handles[ index ] = 0;
+		return global;
+	}
+
+	Array<Base> publishAll() {
+		Array<Base> global;
+
+		std::swap( global.handles, handles );
+
+		return global;
+	}
+};
+
+template<>
+struct Array< DisplayList > {
+	GLuint handle;
+	GLsizei count;
+
+	Array() : handle( 0 ), count( 0 ) {}
+
+	DisplayList get( int index ) {
+		return DisplayList( handle + index );
+	}
+
+	DisplayList operator []( int index ) {
+		return get( index );
+	}
+};
+
+template<>
+struct ScopedArray< DisplayList > : Array< DisplayList > {
+	ScopedArray( int size = 0 ) {
+		if( size ) {
+			handle = glGenLists( size );
+			count = size;
+		}
+	}
+
+	~ScopedArray() {
+		if( handle ) {
+			glDeleteLists( handle, count );
+		}
+	}
+
+	void resize( int size ) {
+		if( !handle ) {
+			handle = glGenLists( size );
+			count = size;			
+		}
+		else {
+			throw std::logic_error( "ScopedTextures not zero!" );
+		}
+	}
+
+	Array<DisplayList> publishAll() {
+		Array<DisplayList> global;
+
+		global.handle = handle;
+		global.count = handle;
+
+		handle = 0;
+
+		return global;
+	}
+};
+
+typedef ScopedArray< DisplayList > ScopedDisplayLists;
 }

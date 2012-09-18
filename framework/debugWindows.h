@@ -73,6 +73,10 @@ struct DisplayListVisualizationWindow : std::enable_shared_from_this<DisplayList
 				cameraInputControl.handleEvent( event );
 			}
 
+			if( !window.isOpen() ) {
+				return;
+			}
+
 			cameraInputControl.update( deltaTime, false );
 			//update( frameClock.restart().asSeconds(), clock.getElapsedTime().asSeconds() );
 
@@ -86,8 +90,7 @@ struct DisplayListVisualizationWindow : std::enable_shared_from_this<DisplayList
 			glMatrixMode( GL_MODELVIEW );
 			glLoadIdentity();
 
-			DebugRender::ImmediateCalls ic;
-			ic.drawCordinateSystem( 1.0 );
+			DebugRender::ImmediateCalls::drawCordinateSystem( 1.0 );
 
 			displayList.call();
 
@@ -148,6 +151,10 @@ struct TextureVisualizationWindow : std::enable_shared_from_this<TextureVisualiz
 				cameraInputControl.handleEvent( event );
 			}
 
+			if( !window.isOpen() ) {
+				return;
+			}
+
 			cameraInputControl.update( deltaTime, false );
 			//update( frameClock.restart().asSeconds(), clock.getElapsedTime().asSeconds() );
 
@@ -175,7 +182,6 @@ struct TextureVisualizationWindow : std::enable_shared_from_this<TextureVisualiz
 		}
 	}
 };
-
 
 struct DebugWindowManager {
 	std::vector< std::shared_ptr< DebugWindowBase > > windows;

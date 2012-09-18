@@ -109,6 +109,18 @@ sgsMesh:
 			gl_TexCoord[0] = gl_MultiTexCoord0;
 		}
 
+shadowMapPixelShader:
+	surfaceShader
+
+	uniforms:
+		baseTexture 'layout( binding = 0 ) sampler2D'
+
+	code::
+		vec4 surfaceShader() {
+			vec4 baseColor = texture( baseTexture, gl_TexCoord[0].st );
+			return baseColor;			
+		}
+
 shadowMapMesh:
 	vertexShader
 

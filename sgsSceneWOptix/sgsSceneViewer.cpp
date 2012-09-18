@@ -147,6 +147,7 @@ void main() {
 	sgsSceneRenderer.optix.debugTexture.parameter( GL_TEXTURE_MAG_FILTER, GL_LINEAR );
 	sgsSceneRenderer.optix.debugTexture.parameter( GL_TEXTURE_MIN_FILTER, GL_LINEAR );
 
+	window.setActive();
 	sgsSceneRenderer.initOptix();
 
 	TextureVisualizationWindow optixWindow;
@@ -156,7 +157,7 @@ void main() {
 	DebugWindowManager debugWindowManager;
 	debugWindowManager.windows.push_back( make_nonallocated_shared( optixWindow ) );
 	
-	while (window.isOpen())
+	while (true)
 	{
 		sgsSceneRenderer.renderOptix( camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() );
 		debugWindowManager.update();
@@ -180,10 +181,12 @@ void main() {
 			eventDispatcher.handleEvent( event );
 		}
 
+		if( !window.isOpen() ) {
+			break;
+		}
+
 		cameraInputControl.update( frameClock.restart().asSeconds(), false );
-
-
-
+		
 		sgsSceneRenderer.renderShadowmap();
 
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);

@@ -116,13 +116,6 @@ struct SGSSceneRenderer {
 
 	std::shared_ptr<SGSScene> scene;
 
-	GLuint subObjects_disptlayListBase;
-	GLuint terrain_displayListBase;
-
-	std::vector<GLuint> solidLists;
-	std::vector<GLuint> alphaLists;
-	std::vector<GLuint> terrainLists;
-
 	ScopedTextures2D textures;
 
 	Texture2D bakedTerrainTexture;
@@ -139,16 +132,37 @@ struct SGSSceneRenderer {
 		Debug() : showBoundingSpheres( false ), showTerrainBoundingSpheres( false ), updateRenderLists( true ) {}
 	} debug;
 
-	SGSSceneRenderer() : subObjects_disptlayListBase( 0 ), terrain_displayListBase( 0 ) {}
+	struct MultiDrawList {
+		std::vector< GLsizei > counts;
+		std::vector< const void * > indices;
 
-	~SGSSceneRenderer() {
-		if( subObjects_disptlayListBase ) {
-			glDeleteLists( subObjects_disptlayListBase, scene->subObjects.size() );
+		bool empty() const {
+			return counts.empty();
 		}
-		if( terrain_displayListBase ) {
-			glDeleteLists( terrain_displayListBase, scene->subObjects.size() );
+
+		void reserve( size_t capacity ) {
+			counts.reserve( capacity );
+			indices.reserve( capacity );
 		}
-	}
+
+		void push_back( GLsizei count, const void *firstIndex ) {
+			counts.push_back( count );
+			indices.push_back( firstIndex );
+		}
+
+		size_t size() const {
+			return counts.size();
+		}
+	};
+
+	std::vector<int> solidLists;
+	std::vector<int> alphaLists;
+	std::vector<int> terrainLists;
+
+	GL::ScopedBuffer objectVertices, objectIndices, terrainVertices, terrainIndices;
+	GL::ScopedVertexArrayObject objectVAO, terrainVAO;
+	// one display list per sub object
+	GL::ScopedDisplayLists materialDisplayLists;
 
 	Texture2D bakeTerrainTexture( int detailFactor, float textureDetailFactor ) {
 		glPushAttrib( GL_ALL_ATTRIB_BITS );
@@ -271,6 +285,7 @@ struct SGSSceneRenderer {
 			objectProgram.vertexShader = shaders[ "sgsMesh" ];
 
 			shadowMapProgram.vertexShader = shaders[ "shadowMapMesh" ];
+			shadowMapProgram.surfaceShader = shaders[ "shadowMapPixelShader" ];
 
 			if( terrainProgram.build( shaders ) && objectProgram.build( shaders ) && shadowMapProgram.build( shaders ) ) {
 				break;
@@ -288,167 +303,184 @@ struct SGSSceneRenderer {
 		textures.resize( numTextures );
 
 		for( int textureIndex = 0 ; textureIndex < numTextures ; ++textureIndex ) {
-			const auto &rawContent = scene->textures[ textureIndex ].rawContent;
+			const auto &rawContent = scene->textures[ textureIndex ].rawContent;	
+			
 			SOIL_load_OGL_texture_from_memory( &rawContent.front(), rawContent.size(), 0, textures[ textureIndex ].handle, SOIL_FLAG_DDS_LOAD_DIRECT | SOIL_FLAG_MIPMAPS | SOIL_FLAG_TEXTURE_REPEATS );
+
+			int width, height;
+			textures[ textureIndex ].getLevelParameter( 0, GL_TEXTURE_WIDTH, &width );
+			textures[ textureIndex ].getLevelParameter( 0, GL_TEXTURE_HEIGHT, &height );
+
+			std::cout << width << "x" << height << "\n";
 		}
 
 		bakedTerrainTexture = bakeTerrainTexture( 32, 1 / 8.0 );
 
 		// render everything into display lists
-		subObjects_disptlayListBase = glGenLists( scene->subObjects.size() );
-
-		terrain_displayListBase = glGenLists( scene->terrain.tiles.size() );
-
 		terrainLists.reserve( scene->terrain.tiles.size() );
 		solidLists.reserve( scene->subObjects.size() );
 		alphaLists.reserve( scene->subObjects.size() );
 
+		loadBuffers();
+		setVertexArrayObjects();
+
+		prepareMaterialDisplayLists();
+
 		prerender();
+	}
+
+	void loadBuffers() {
+		objectVertices.bufferData( scene->vertices.size() * sizeof( SGSScene::Vertex ), &scene->vertices.front(), GL_STATIC_DRAW );
+		objectIndices.bufferData( scene->indices.size() * sizeof( unsigned ), &scene->indices.front(), GL_STATIC_DRAW );
+
+		terrainVertices.bufferData( scene->terrain.vertices.size() * sizeof( SGSScene::Terrain::Vertex ), &scene->terrain.vertices.front(), GL_STATIC_DRAW );
+		terrainIndices.bufferData( scene->terrain.indices.size() * sizeof( unsigned ), &scene->terrain.indices.front(), GL_STATIC_DRAW );
+	}
+
+	void setVertexArrayObjects() {
+		// object vertex array object
+		{
+			objectVAO.bind();
+			glEnableClientState( GL_VERTEX_ARRAY );
+			glEnableClientState( GL_NORMAL_ARRAY );
+			glEnableClientState( GL_TEXTURE_COORD_ARRAY );
+
+			objectVertices.bind( GL_ARRAY_BUFFER );
+			SGSScene::Vertex *firstVertex = nullptr;
+			glVertexPointer( 3, GL_FLOAT, sizeof( SGSScene::Vertex ), firstVertex->position );
+			glNormalPointer( GL_FLOAT, sizeof( SGSScene::Vertex ), firstVertex->normal );
+			glTexCoordPointer( 2, GL_FLOAT, sizeof( SGSScene::Vertex ), firstVertex->uv[0] );
+
+			objectIndices.bind( GL_ELEMENT_ARRAY_BUFFER );
+			objectVAO.unbind();
+		}
+		// terrain vertex array object
+		{
+			terrainVAO.bind();
+			glEnableClientState( GL_VERTEX_ARRAY );
+			glEnableClientState( GL_NORMAL_ARRAY );
+			glEnableClientState( GL_TEXTURE_COORD_ARRAY );
+
+			terrainVertices.bind( GL_ARRAY_BUFFER );
+			SGSScene::Terrain::Vertex *firstVertex = nullptr;
+			glVertexPointer( 3, GL_FLOAT, sizeof( SGSScene::Terrain::Vertex ), firstVertex->position );
+			glNormalPointer( GL_FLOAT, sizeof( SGSScene::Terrain::Vertex ), firstVertex->normal );
+			glTexCoordPointer( 2, GL_FLOAT, sizeof( SGSScene::Terrain::Vertex ), firstVertex->blendUV );
+
+			terrainIndices.bind( GL_ELEMENT_ARRAY_BUFFER );
+			terrainVAO.unbind();
+		}
+
+		GL::Buffer::unbind( GL_ARRAY_BUFFER );
+		GL::Buffer::unbind( GL_ELEMENT_ARRAY_BUFFER );
+
+		glDisableClientState( GL_VERTEX_ARRAY );
+		glDisableClientState( GL_NORMAL_ARRAY );
+		glDisableClientState( GL_TEXTURE_COORD_ARRAY );
+	}
+
+	void prepareMaterialDisplayLists() {
+		materialDisplayLists.resize( scene->subObjects.size() );
+
+		for( int subObjectIndex = 0 ; subObjectIndex < scene->numSceneSubObjects ; ++subObjectIndex ) {
+			const SGSScene::SubObject &subObject = scene->subObjects[ subObjectIndex ];
+
+			materialDisplayLists[ subObjectIndex ].begin();
+
+			// apply the material
+			const auto &material = subObject.material;
+
+			if( material.textureIndex[0] != SGSScene::NO_TEXTURE ) {
+				textures[ material.textureIndex[0] ].bind();
+				Texture2D::enable();
+			}
+			else {
+				Texture2D::unbind();
+			}
+
+			unsigned char alpha = 255;
+
+			switch( material.alphaType ) {
+			default:
+			case SGSScene::Material::AT_NONE:
+				glDisable( GL_BLEND );
+				glDisable( GL_ALPHA_TEST );
+
+				glDepthMask( GL_TRUE );
+
+				break;
+			case SGSScene::Material::AT_ADDITIVE:
+				glDepthMask( GL_FALSE );
+				glEnable( GL_BLEND );
+				glDisable( GL_ALPHA_TEST );
+
+				glBlendFunc( GL_SRC_ALPHA, GL_ONE );
+
+				break;
+			case SGSScene::Material::AT_TEXTURE:
+			case SGSScene::Material::AT_ALPHATEST:
+				glDepthMask( GL_FALSE );
+				glEnable( GL_ALPHA_TEST );
+				glAlphaFunc( GL_GREATER, 0 );
+
+				glEnable( GL_BLEND );
+				glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
+
+				alpha = material.alpha;
+
+				break;
+			case SGSScene::Material::AT_MATERIAL:
+				if( material.alpha == 255 ) {
+					glDisable( GL_BLEND );
+					glDisable( GL_ALPHA_TEST );
+
+					glDepthMask( GL_TRUE );
+				}
+				else {
+					glDepthMask( GL_FALSE );
+					glDisable( GL_ALPHA_TEST );
+
+					glEnable( GL_BLEND );
+					glBlendFunc( GL_CONSTANT_ALPHA, GL_ONE_MINUS_CONSTANT_ALPHA );
+
+					glBlendColor( 1.0, 1.0, 1.0, material.alpha / 255.0 );
+				}
+				break;
+			case SGSScene::Material::AT_MULTIPLY:
+				glDepthMask( GL_FALSE );
+				glDisable( GL_ALPHA_TEST );
+
+				glEnable( GL_BLEND );
+				glBlendFunc( GL_ZERO, GL_SRC_COLOR );
+
+				break;
+			case SGSScene::Material::AT_MULTIPLY_2:
+				glDepthMask( GL_FALSE );
+				glDisable( GL_ALPHA_TEST );
+
+				glEnable( GL_BLEND );
+				glBlendFunc( GL_DST_COLOR, GL_SRC_COLOR );
+
+				break;
+			}
+
+			/*if( material.doubleSided ) {
+				glDisable( GL_CULL_FACE );
+			}
+			else {
+				glEnable( GL_CULL_FACE );
+			}*/
+
+			glColor4ub( material.diffuse.r, material.diffuse.g, material.diffuse.b, alpha );
+
+			GL::DisplayList::end();
+		}
+		Texture2D::unbind();
 	}
 
 
 	// prerender everything into display lists for easy drawing later
 	void prerender() {
-		glPushClientAttrib( GL_CLIENT_ALL_ATTRIB_BITS );
-
-		glEnableClientState( GL_VERTEX_ARRAY );
-		glEnableClientState( GL_NORMAL_ARRAY );
-		glEnableClientState( GL_TEXTURE_COORD_ARRAY );
-
-		glPushAttrib( GL_ALL_ATTRIB_BITS );
-
-		{
-			auto &firstVertex = scene->vertices[0];
-			glVertexPointer( 3, GL_FLOAT, sizeof( SGSScene::Vertex ), firstVertex.position );
-			glNormalPointer( GL_FLOAT, sizeof( SGSScene::Vertex ), firstVertex.normal );
-			glTexCoordPointer( 2, GL_FLOAT, sizeof( SGSScene::Vertex ), firstVertex.uv[0] );
-
-			for( int subObjectIndex = 0 ; subObjectIndex < scene->numSceneSubObjects ; ++subObjectIndex ) {
-				const SGSScene::SubObject &subObject = scene->subObjects[ subObjectIndex ];
-
-				glNewList( subObjects_disptlayListBase + subObjectIndex, GL_COMPILE );
-
-				glEnable( GL_TEXTURE_2D );
-
-				// apply the material
-				const auto &material = subObject.material;
-
-				if( material.textureIndex[0] != SGSScene::NO_TEXTURE ) {
-					textures[ material.textureIndex[0] ].bind();
-				}
-				else {
-					Texture2D::unbind();
-				}
-
-				unsigned char alpha = 255;
-
-				switch( material.alphaType ) {
-				default:
-				case SGSScene::Material::AT_NONE:
-					glDisable( GL_BLEND );
-					glDisable( GL_ALPHA_TEST );
-
-					glDepthMask( GL_TRUE );
-
-					break;
-				case SGSScene::Material::AT_ADDITIVE:
-					glDepthMask( GL_FALSE );
-					glEnable( GL_BLEND );
-					glDisable( GL_ALPHA_TEST );
-
-					glBlendFunc( GL_SRC_ALPHA, GL_ONE );
-
-					break;
-				case SGSScene::Material::AT_TEXTURE:
-				case SGSScene::Material::AT_ALPHATEST:
-					glDepthMask( GL_FALSE );
-					glEnable( GL_ALPHA_TEST );
-					glAlphaFunc( GL_GREATER, 0 );
-
-					glEnable( GL_BLEND );
-					glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
-
-					alpha = material.alpha;
-
-					break;
-				case SGSScene::Material::AT_MATERIAL:
-					if( material.alpha == 255 ) {
-						glDisable( GL_BLEND );
-						glDisable( GL_ALPHA_TEST );
-
-						glDepthMask( GL_TRUE );
-					}
-					else {
-						glDepthMask( GL_FALSE );
-						glDisable( GL_ALPHA_TEST );
-
-						glEnable( GL_BLEND );
-						glBlendFunc( GL_CONSTANT_ALPHA, GL_ONE_MINUS_CONSTANT_ALPHA );
-
-						glBlendColor( 1.0, 1.0, 1.0, material.alpha / 255.0 );
-					}
-					break;
-				case SGSScene::Material::AT_MULTIPLY:
-					glDepthMask( GL_FALSE );
-					glDisable( GL_ALPHA_TEST );
-
-					glEnable( GL_BLEND );
-					glBlendFunc( GL_ZERO, GL_SRC_COLOR );
-
-					break;
-				case SGSScene::Material::AT_MULTIPLY_2:
-					glDepthMask( GL_FALSE );
-					glDisable( GL_ALPHA_TEST );
-
-					glEnable( GL_BLEND );
-					glBlendFunc( GL_DST_COLOR, GL_SRC_COLOR );
-
-					break;
-				}
-
-				/*if( material.doubleSided ) {
-					glDisable( GL_CULL_FACE );
-				}
-				else {
-					glEnable( GL_CULL_FACE );
-				}*/
-
-				glColor4ub( material.diffuse.r, material.diffuse.g, material.diffuse.b, alpha );
-
-				glDrawElements( GL_TRIANGLES, subObject.numIndices, GL_UNSIGNED_INT, &scene->indices.front() + subObject.startIndex );
-
-				glEndList();
-
-				Texture2D::unbind();
-			}
-		}
-
-		// render terrain
-		{
-			auto &firstVertex = scene->terrain.vertices[0];
-
-			glVertexPointer( 3, GL_FLOAT, sizeof( SGSScene::Terrain::Vertex ), firstVertex.position );
-			glNormalPointer( GL_FLOAT, sizeof( SGSScene::Terrain::Vertex ), firstVertex.normal );
-			glTexCoordPointer( 2, GL_FLOAT, sizeof( SGSScene::Terrain::Vertex ), firstVertex.blendUV );
-
-			for( int tileIndex = 0 ; tileIndex < scene->terrain.tiles.size() ; tileIndex++ ) {
-				const auto &tile = scene->terrain.tiles[ tileIndex ];
-
-				glNewList( terrain_displayListBase + tileIndex , GL_COMPILE );
-
-				glDrawElements( GL_TRIANGLES, tile.numIndices, GL_UNSIGNED_INT, &scene->terrain.indices.front() + tile.startIndex );
-				glEndList();
-
-				terrainLists.push_back( terrain_displayListBase + tileIndex );
-			}
-			//glDrawElements( GL_TRIANGLES, scene->terrain.indices.size(), GL_UNSIGNED_INT, &scene->terrain.indices.front() );
-		}
-
-
-		glPopAttrib();
-
-		glPopClientAttrib();
-
 		{
 			debug.boundingSpheres.begin();
 
@@ -564,29 +596,60 @@ struct SGSSceneRenderer {
 		glMatrixMode( GL_MODELVIEW );
 		glLoadIdentity();
 
-		// add terrain tiles to draw list
-		terrainLists.clear();
-		for( int tileIndex = 0 ; tileIndex < scene->terrain.tiles.size() ; tileIndex++ ) {
-			terrainLists.push_back( terrain_displayListBase + tileIndex );
-		}
+		shadowMapProgram.use();		
 
-		// add sub objects to draw list
-		solidLists.clear();
-		for( int subObjectIndex = 0 ; subObjectIndex < scene->numSceneSubObjects ; ++subObjectIndex ) {
-			if( scene->subObjects[subObjectIndex].material.alphaType == SGSScene::Material::AT_NONE ) {
-				solidLists.push_back( subObjects_disptlayListBase + subObjectIndex );
+		buildDrawLists( sunProjectionMatrix );
+
+		// draw terrain
+		{
+			terrainVAO.bind();
+			glDrawElements( GL_TRIANGLES, scene->terrain.indices.size(), GL_UNSIGNED_INT, nullptr );
+			terrainVAO.unbind();
+		}
+			
+		{
+			objectVAO.bind();
+
+			GLuint *firstIndex = nullptr;
+			for( int i = 0 ; i < solidLists.size() ; i++ ) {
+				const int subObjectIndex = solidLists[i];
+				glDrawElements( GL_TRIANGLES, scene->subObjects[ subObjectIndex ].numIndices, GL_UNSIGNED_INT, firstIndex + scene->subObjects[ subObjectIndex ].startIndex );
 			}
+
+			glEnable( GL_ALPHA_TEST );
+			glAlphaFunc( GL_GREATER, 0.5 );
+
+			for( int i = 0 ; i < alphaLists.size() ; i++ ) {
+				const int subObjectIndex = alphaLists[i];
+				const SGSScene::SubObject &subObject = scene->subObjects[ subObjectIndex ];
+
+				const auto &material = subObject.material;
+				if( material.alphaType == SGSScene::Material::AT_ADDITIVE ) {
+					continue;
+				}
+				if( material.textureIndex[0] != SGSScene::NO_TEXTURE ) {
+					textures[ material.textureIndex[0] ].bind();
+					Texture2D::enable();
+				}
+				else {
+					Texture2D::unbind();
+				}
+
+				glDrawElements( GL_TRIANGLES, scene->subObjects[ subObjectIndex ].numIndices, GL_UNSIGNED_INT, firstIndex + scene->subObjects[ subObjectIndex ].startIndex );
+			}
+
+			objectVAO.unbind();
 		}
 
-		shadowMapProgram.use();
+		// state reset
+		{
+			glDisable( GL_BLEND );
+			glDisable( GL_ALPHA_TEST );
+			glDisable( GL_CULL_FACE );
 
-		// draw terrain tiles
-		if( !terrainLists.empty() ) {
-			glCallLists( terrainLists.size(), GL_UNSIGNED_INT, &terrainLists.front() );
+			glDepthMask( GL_TRUE );
+			glDisable( GL_TEXTURE_2D );
 		}
-
-		if( !solidLists.empty() )
-			glCallLists( solidLists.size(), GL_UNSIGNED_INT, &solidLists.front() );
 
 		// reset state
 		fbo.unbind();
@@ -598,7 +661,7 @@ struct SGSSceneRenderer {
 		//glStringMarkerGREMEDY( 0, "shadow map done" );
 	}
 
-	void buildDrawLists( const Matrix4f &projectionView, const Eigen::Vector3f &worldViewerPosition ) {
+	void buildDrawLists( const Matrix4f &projectionView ) {
 		Eigen::FrustumPlanesMatrixf frustumPlanes = Eigen::Frustum::normalize( Eigen::projectionToFrustumPlanes * projectionView );
 
 		if( debug.updateRenderLists ) {
@@ -606,7 +669,7 @@ struct SGSSceneRenderer {
 			for( int tileIndex = 0 ; tileIndex < scene->terrain.tiles.size() ; tileIndex++ ) {
 				const SGSScene::BoundingSphere &boundingSphere = scene->terrain.tiles[tileIndex].bounding.sphere;
 				if( Eigen::Frustum::isInside( frustumPlanes, Eigen::Map< const Eigen::Vector3f>( boundingSphere.center ).eval(), -boundingSphere.radius ) ) {
-					terrainLists.push_back( terrain_displayListBase + tileIndex );
+					terrainLists.push_back( tileIndex );
 				}
 			}
 
@@ -617,26 +680,28 @@ struct SGSSceneRenderer {
 
 				if( Eigen::Frustum::isInside( frustumPlanes, Eigen::Vector3f::Map( boundingSphere.center ).eval(), -boundingSphere.radius ) ) {
 					if( scene->subObjects[subObjectIndex].material.alphaType == SGSScene::Material::AT_NONE ) {
-						solidLists.push_back( subObjects_disptlayListBase + subObjectIndex );
+						solidLists.push_back( subObjectIndex );
 					}
 					else {
-						alphaLists.push_back( subObjects_disptlayListBase + subObjectIndex );
+						alphaLists.push_back( subObjectIndex );
 					}
 				}
 			}
-
-			// sort alpha list
-			boost::sort(
-				alphaLists, [&, this] ( int indexA, int indexB ) {
-					return ( Eigen::Vector3f::Map( scene->subObjects[indexA - subObjects_disptlayListBase ].bounding.sphere.center ) - worldViewerPosition).squaredNorm() >
-						( Eigen::Vector3f::Map( scene->subObjects[indexB - subObjects_disptlayListBase ].bounding.sphere.center ) - worldViewerPosition).squaredNorm();
-				}
-			);
 		}
 	}
 
+	void sortAlphaList( const Eigen::Vector3f &worldViewerPosition ) {
+		boost::sort(
+			alphaLists, [&, this] ( int indexA, int indexB ) {
+				return ( Eigen::Vector3f::Map( scene->subObjects[indexA].bounding.sphere.center ) - worldViewerPosition).squaredNorm() >
+					( Eigen::Vector3f::Map( scene->subObjects[indexB].bounding.sphere.center ) - worldViewerPosition).squaredNorm();
+		}
+		);
+	}
+
 	void render( const Matrix4f &projectionView, const Eigen::Vector3f &worldViewerPosition ) {
-		buildDrawLists( projectionView, worldViewerPosition );
+		buildDrawLists( projectionView );
+		sortAlphaList( worldViewerPosition );
 
 		glDisable( GL_CULL_FACE );
 		glCullFace( GL_BACK );
@@ -661,8 +726,18 @@ struct SGSSceneRenderer {
 			glUniform( terrainProgram.uniformLocations[ "viewerPosition" ], worldViewerPosition );
 			glUniform( terrainProgram.uniformLocations[ "sunShadowProjection" ], sunProjectionMatrix );
 
-			if( !terrainLists.empty() ) {
-				glCallLists( terrainLists.size(), GL_UNSIGNED_INT, &terrainLists.front() );
+			MultiDrawList drawList;
+			drawList.reserve( terrainLists.size() );			
+			GLuint *firstIndex = nullptr;
+			for( int i = 0 ; i < terrainLists.size() ; i++ ) {
+				const int tileIndex = terrainLists[i];
+				drawList.push_back( scene->terrain.tiles[tileIndex].numIndices, firstIndex + scene->terrain.tiles[tileIndex].startIndex );
+			}
+
+			if( !drawList.empty() ) {
+				terrainVAO.bind();
+				glMultiDrawElements( GL_TRIANGLES, &drawList.counts.front(), GL_UNSIGNED_INT, &drawList.indices.front(), drawList.size() );
+				terrainVAO.unbind();
 			}
 		}
 
@@ -674,17 +749,27 @@ struct SGSSceneRenderer {
 			glUniform( objectProgram.uniformLocations[ "viewerPosition" ], worldViewerPosition );
 			glUniform( objectProgram.uniformLocations[ "sunShadowProjection" ], sunProjectionMatrix );
 
-			if( !solidLists.empty() )
-				glCallLists( solidLists.size(), GL_UNSIGNED_INT, &solidLists.front() );
+			objectVAO.bind();
 
-			if( !alphaLists.empty() )
-				glCallLists( alphaLists.size(), GL_UNSIGNED_INT, &alphaLists.front() );
+			GLuint *firstIndex = nullptr;
+			for( int i = 0 ; i < solidLists.size() ; i++ ) {
+				const int subObjectIndex = solidLists[i];
+				materialDisplayLists[ subObjectIndex ].call();
+				glDrawElements( GL_TRIANGLES, scene->subObjects[ subObjectIndex ].numIndices, GL_UNSIGNED_INT, firstIndex + scene->subObjects[ subObjectIndex ].startIndex );
+			}
+
+			for( int i = 0 ; i < alphaLists.size() ; i++ ) {
+				const int subObjectIndex = alphaLists[i];
+				materialDisplayLists[ subObjectIndex ].call();
+				glDrawElements( GL_TRIANGLES, scene->subObjects[ subObjectIndex ].numIndices, GL_UNSIGNED_INT, firstIndex + scene->subObjects[ subObjectIndex ].startIndex );
+			}
+
+			objectVAO.unbind();
 		}
 
 		// make sure this is turned on again, otherwise glClear wont work correctly...
 		glDepthMask( GL_TRUE );
-
-
+		
 		{
 			// more state resets for debug rendering
 			glDisable( GL_BLEND );
@@ -720,19 +805,19 @@ struct SGSSceneRenderer {
 		optix.context->setPrintBufferSize(65536);
 		optix.context->setPrintEnabled(true);
 
-		int primitiveCount = scene->indices.size() / 3;
+		// only add the actual scene objects for now
 
-		optix.indexBuffer = optix.context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_UNSIGNED_INT3, primitiveCount );
-		::memcpy( optix.indexBuffer->map(), &scene->indices.front(), sizeof( int ) * scene->numSceneIndices );
-		optix.indexBuffer->unmap();
+		int primitiveCount = scene->numSceneIndices / 3;
 
+		optix.indexBuffer = optix.context->createBufferFromGLBO( RT_BUFFER_INPUT, objectIndices.handle );
+		optix.indexBuffer->setFormat( RT_FORMAT_UNSIGNED_INT3 );
+		optix.indexBuffer->setSize( primitiveCount );
 		optix.indexBuffer->validate();
 
-		optix.vertexBuffer = optix.context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_USER, scene->vertices.size() );
+		optix.vertexBuffer = optix.context->createBufferFromGLBO( RT_BUFFER_INPUT, objectVertices.handle );
+		optix.vertexBuffer->setSize( scene->numSceneVertices );
+		optix.vertexBuffer->setFormat( RT_FORMAT_USER );
 		optix.vertexBuffer->setElementSize( sizeof SGSScene::Vertex );
-		::memcpy( optix.vertexBuffer->map(), &scene->vertices.front(), sizeof SGSScene::Vertex * scene->numSceneVertices );
-		optix.vertexBuffer->unmap();
-
 		optix.vertexBuffer->validate();
 
 		const char *ptxFilename = "cuda_compile_ptx_generated_raytracer.cu.ptx";
