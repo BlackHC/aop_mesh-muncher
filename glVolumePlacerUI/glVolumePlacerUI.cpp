@@ -39,10 +39,6 @@ int TW_CALL TwEventSFML20(const sf::Event *event);
 #include <boost/utility/enable_if.hpp>
 #include <boost/range/numeric.hpp>
 
-#define GLSCENE_SUPPORT_RENDER
-#include "sgsScene.h"
-#include "sgsSceneRender.h"
-
 using namespace Eigen;
 
 AlignedBox3f AlignedBox3f_fromMinSize( const Vector3f &min, const Vector3f &size ) {
@@ -67,10 +63,37 @@ struct AntTweakBarEventHandler : EventHandler {
 
 #include "contextHelper.h"
 
-#define SERIALIZER_SUPPORT_STL
-#define SERIALIZER_SUPPORT_EIGEN
 #include "serializer.h"
-#include "serializer_eigen.h"
+
+namespace Serializer {
+	template< typename Reader, typename Scalar >
+	void read( Reader &reader, Eigen::Matrix< Scalar, 3, 1 > &value ) {
+		typedef Scalar (*ArrayPointer)[3];
+		ArrayPointer array = (ArrayPointer) &value[0];
+		read( reader, *array );
+	}
+
+	template< typename Emitter, typename Scalar >
+	void write( Emitter &emitter, const Eigen::Matrix<Scalar, 3, 1> &value ) {
+		typedef const Scalar (*ArrayPointer)[3];
+		ArrayPointer array = (ArrayPointer) &value[0];
+		write( emitter, *array );
+	}
+
+	template< typename Reader >
+	void read( Reader &reader, AlignedBox3f &value ) {
+		get( reader, "min", value.min() );
+		get( reader, "max", value.max() );
+	}
+
+	template< typename Emitter >
+	void write( Emitter &emitter, const AlignedBox3f &value ) {
+		put( emitter, "min", value.min() );
+		put( emitter, "max", value.max() );
+	}
+
+	template void write< TextEmitter, float >( TextEmitter &, const Eigen::Matrix< float, 3, 1 > & );
+}
 
 struct RenderContext : AsExecutionContext<RenderContext> {
 	bool solidObjects;
@@ -226,7 +249,7 @@ namespace Serializer {
 		{"all_objects", MASK_ALL_OBJECTS}
 	};
 
-	//template boost::enable_if_c< boost::is_enum< ProbeMask >::value && sizeof( EnumSimpleReflection<ProbeMask>::labels[0] ) != 0 >::type write( TextWriter &writer, const ProbeMask &value );
+	//template boost::enable_if_c< boost::is_enum< ProbeMask >::value && sizeof( EnumSimpleReflection<ProbeMask>::labels[0] ) != 0 >::type write( TextEmitter &emitter, const ProbeMask &value );
 }
 
 #define ANTTWBARGROUPTYPES_DEFINE_CUSTOM_TYPE( globalType ) \
@@ -353,7 +376,6 @@ struct SceneShader : Shader {
 
 struct Application {
 	ObjSceneGL objScene;
-	SGSSceneRenderer renderGLScene;
 	SceneShader sceneShader;
 
 	Camera camera;
@@ -437,16 +459,6 @@ struct Application {
 		glewInit();
 
 		initCamera();
-
-		{
-			SGSScene glScene;
-			
-			Serializer::BinaryReader reader( "P:\\sgs\\sg_and_sgs_source\\survivor\\__GameData\\Editor\\Save\\Survivor_original_mission_editorfiles\\test\\scene.glscene" );
-			
-			Serializer::read( reader, glScene );
-
-			renderGLScene.processScene( glScene );
-		}
 
 		// input camera input control
 		cameraInputControl.init( make_nonallocated_shared(camera), make_nonallocated_shared(window) );
@@ -575,8 +587,6 @@ struct Application {
 		glUniform( sceneShader.viewerPos, camera.getPosition() );
 
 		objScene.Draw();
-
-		renderGLScene.render();
 
 		RenderContext renderContext;
 		if( !renderContext.disableObjects ) {
@@ -848,7 +858,7 @@ struct Application {
 	void writeState() {
 		using namespace Serializer;
 
-		TextWriter writer( "state.json" );
+		TextEmitter writer( "state.json" );
 
 		put( writer, "gridResolution", gridResolution_ );
 		put( writer, "maxDistance", maxDistance_ );
@@ -887,7 +897,7 @@ struct Application {
 	}
 
 	void writeObjects() {
-		Serializer::TextWriter writer( "objects.json" );
+		Serializer::TextEmitter writer( "objects.json" );
 
 		Serializer::put( writer, "objectTemplates", objectTemplates_ );
 		Serializer::put( writer, "objectInstances", objectInstances_.items );

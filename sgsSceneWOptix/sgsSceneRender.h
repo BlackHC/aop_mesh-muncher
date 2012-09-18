@@ -1016,7 +1016,8 @@ struct SGSSceneRenderer {
 	void renderOptix(const Matrix4f &projectionView, const Eigen::Vector3f &worldViewerPosition) {
 		optix.context[ "eye" ]->set3fv( worldViewerPosition.data() );
 		
-		// determine u, v, and w by unprojecting (x,y,-1,1) from clip space to world space
+		// this works with all usual projection matrices (where x and y don't have any effect on z and w in clip space)
+		// determine u, v, and w by unprojecting (x,y,-1,1) from clip space to world spacel
 		Eigen::Matrix4f inverseProjectionView = projectionView.inverse();
 		// this is the w coordinate of the unprojected coordinates
 		const float unprojectedW = inverseProjectionView(3,3) - inverseProjectionView(3,2);

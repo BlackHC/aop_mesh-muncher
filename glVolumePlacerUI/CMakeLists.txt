@@ -22,8 +22,7 @@ INCLUDE_DIRECTORIES(
 	../objScene
 	../cielab
 	../volume
-	../serializer
-	../sgsScene
+	../glVoxelVolumePlacerUI
 	)
 
 # ../gtest/gtest_main.cc
@@ -40,11 +39,7 @@ ADD_EXECUTABLE(glVolumePlacerUI
 	twEventSFML20.cpp
 	glHelpers.h
 	ui.h
-	../sgsScene/sgsScene.h
-	../sgsScene/sgsSceneRender.h
-	../serializer/serializer.h
-	../serializer/serializer_std.h
-	../serializer/serializer_eigen.h
+	../glVoxelVolumePlacerUI/serializer.h
 	../modelSampler/colorAndDepthSampler.h
 	../modelSampler/eigenProjectionMatrices.h
 	../volume/grid.h
