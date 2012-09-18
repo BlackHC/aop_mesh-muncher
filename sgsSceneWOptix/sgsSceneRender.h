@@ -545,7 +545,7 @@ struct SGSSceneRenderer {
 			glNormalPointer( GL_FLOAT, sizeof( SGSScene::Vertex ), firstVertex.normal );
 			glTexCoordPointer( 2, GL_FLOAT, sizeof( SGSScene::Vertex ), firstVertex.uv[0] );
 
-			for( int subObjectIndex = 0 ; subObjectIndex < scene->subObjects.size() ; ++subObjectIndex ) {
+			for( int subObjectIndex = 0 ; subObjectIndex < scene->numSceneSubObjects ; ++subObjectIndex ) {
 				const SGSScene::SubObject &subObject = scene->subObjects[ subObjectIndex ];
 
 				glNewList( subObjects_disptlayListBase + subObjectIndex, GL_COMPILE );
@@ -674,7 +674,7 @@ struct SGSSceneRenderer {
 		{
 			debug.boundingSpheres.begin();
 
-			for( int subObjectIndex = 0 ; subObjectIndex < scene->subObjects.size() ; ++subObjectIndex ) {
+			for( int subObjectIndex = 0 ; subObjectIndex < scene->numSceneSubObjects ; ++subObjectIndex ) {
 				const SGSScene::BoundingSphere &boundingSphere = scene->subObjects[subObjectIndex].bounding.sphere;
 
 				debug.boundingSpheres.setPosition( Eigen::Vector3f::Map( boundingSphere.center ) );
@@ -757,7 +757,7 @@ struct SGSSceneRenderer {
 			sceneBoundingBox.extend( AlignedBox3f( Vector3f::Map( boundingBox.min ), Vector3f::Map( boundingBox.max ) ) );
 		}
 
-		for( int subObjectIndex = 0 ; subObjectIndex < scene->subObjects.size() ; ++subObjectIndex ) {
+		for( int subObjectIndex = 0 ; subObjectIndex < scene->numSceneSubObjects ; ++subObjectIndex ) {
 			const SGSScene::BoundingBox &boundingBox = scene->subObjects[subObjectIndex].bounding.box;
 
 			sceneBoundingBox.extend( AlignedBox3f( Vector3f::Map( boundingBox.min ), Vector3f::Map( boundingBox.max ) ) );
@@ -794,7 +794,7 @@ struct SGSSceneRenderer {
 
 		// add sub objects to draw list
 		solidLists.clear();
-		for( int subObjectIndex = 0 ; subObjectIndex < scene->subObjects.size() ; ++subObjectIndex ) {
+		for( int subObjectIndex = 0 ; subObjectIndex < scene->numSceneSubObjects ; ++subObjectIndex ) {
 			if( scene->subObjects[subObjectIndex].material.alphaType == SGSScene::Material::AT_NONE ) {
 				solidLists.push_back( subObjects_disptlayListBase + subObjectIndex );
 			}
@@ -834,7 +834,7 @@ struct SGSSceneRenderer {
 
 			solidLists.clear();
 			alphaLists.clear();
-			for( int subObjectIndex = 0 ; subObjectIndex < scene->subObjects.size() ; ++subObjectIndex ) {
+			for( int subObjectIndex = 0 ; subObjectIndex < scene->numSceneSubObjects ; ++subObjectIndex ) {
 				const SGSScene::BoundingSphere &boundingSphere = scene->subObjects[subObjectIndex].bounding.sphere;
 
 				if( Eigen::Frustum::isInside( frustumPlanes, Eigen::Vector3f::Map( boundingSphere.center ).eval(), -boundingSphere.radius ) ) {
@@ -945,14 +945,14 @@ struct SGSSceneRenderer {
 		int primitiveCount = scene->indices.size() / 3;
 
 		optix.indexBuffer = optix.context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_UNSIGNED_INT3, primitiveCount );
-		::memcpy( optix.indexBuffer->map(), &scene->indices.front(), sizeof( int ) * scene->indices.size() );
+		::memcpy( optix.indexBuffer->map(), &scene->indices.front(), sizeof( int ) * scene->numSceneIndices );
 		optix.indexBuffer->unmap();
 
 		optix.indexBuffer->validate();
 
 		optix.vertexBuffer = optix.context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_USER, scene->vertices.size() );
 		optix.vertexBuffer->setElementSize( sizeof SGSScene::Vertex );
-		::memcpy( optix.vertexBuffer->map(), &scene->vertices.front(), sizeof SGSScene::Vertex * scene->vertices.size() );
+		::memcpy( optix.vertexBuffer->map(), &scene->vertices.front(), sizeof SGSScene::Vertex * scene->numSceneVertices );
 		optix.vertexBuffer->unmap();
 
 		optix.vertexBuffer->validate();
@@ -1016,10 +1016,17 @@ struct SGSSceneRenderer {
 	void renderOptix(const Matrix4f &projectionView, const Eigen::Vector3f &worldViewerPosition) {
 		optix.context[ "eye" ]->set3fv( worldViewerPosition.data() );
 		
-		Eigen::Matrix<float,3,4> inverseProjectionView = projectionView.inverse().topLeftCorner<3,4>();
-		const Eigen::Vector3f u = inverseProjectionView.col(0);
-		const Eigen::Vector3f v = inverseProjectionView.col(1);
-		const Eigen::Vector3f w = inverseProjectionView.col(3) - inverseProjectionView.col(2);
+		// determine u, v, and w by unprojecting (x,y,-1,1) from clip space to world space
+		Eigen::Matrix4f inverseProjectionView = projectionView.inverse();
+		// this is the w coordinate of the unprojected coordinates
+		const float unprojectedW = inverseProjectionView(3,3) - inverseProjectionView(3,2);
+
+		// divide the homogeneous affine matrix by the projected w
+		// see R1 page for deduction
+		Eigen::Matrix< float, 3, 4> inverseProjectionView34 = projectionView.inverse().topLeftCorner<3,4>() / unprojectedW;
+		const Eigen::Vector3f u = inverseProjectionView34.col(0);
+		const Eigen::Vector3f v = inverseProjectionView34.col(1);
+		const Eigen::Vector3f w = inverseProjectionView34.col(3) - inverseProjectionView34.col(2) - worldViewerPosition;
 
 		optix.context[ "U" ]->set3fv( u.data() );
 		optix.context[ "V" ]->set3fv( v.data() );

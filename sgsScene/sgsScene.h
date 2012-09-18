@@ -89,7 +89,6 @@ struct SGSScene {
 		int startIndex;
 		int numIndices;
 
-		// bounding sphere
 		Bounding bounding;
 
 		SERIALIZER_DEFAULT_IMPL( (subModelName)(startIndex)(numIndices)(material)(bounding) );
@@ -100,6 +99,8 @@ struct SGSScene {
 
 		int startSubObject;
 		int numSubObjects;
+
+		Bounding bounding;
 
 		SERIALIZER_DEFAULT_IMPL( (modelId)(startSubObject)(numSubObjects) );
 	};
@@ -143,7 +144,7 @@ struct SGSScene {
 		std::vector<Vertex> vertices;
 		std::vector<unsigned int> indices;
 		
-		std::vector< Layer > layers;
+		std::vector<Layer> layers;
 
 		std::vector<Tile> tiles;
 
@@ -152,18 +153,27 @@ struct SGSScene {
 		SERIALIZER_DEFAULT_IMPL( (mapSize)(layerSize)(vertices)(indices)(layers)(tiles) );
 	};
 
+	// scene data first, then prototype object data
 	std::vector<Vertex> vertices;
 	std::vector<unsigned> indices;
-
-	std::vector<std::string> modelNames;
-	std::vector<Object> objects;
-	std::vector<SubObject> subObjects;
 	
+	std::vector<std::string> modelNames;
+	
+	// first scene subobjects, then prototype subobjects
+	std::vector<SubObject> subObjects;
+	// first scene objects, then prototype objects in modelNames order
+	std::vector<Object> objects;
+
+	int numSceneVertices;
+	int numSceneIndices;
+	int numSceneSubObjects;
+	int numSceneObjects;
+
 	std::vector<Texture> textures;
 
 	Terrain terrain;
 
-	SERIALIZER_DEFAULT_IMPL( (modelNames)(objects)(subObjects)(textures)(vertices)(indices)(terrain) );
+	SERIALIZER_DEFAULT_IMPL( (numSceneVertices)(numSceneIndices)(numSceneSubObjects)(numSceneObjects)(modelNames)(objects)(subObjects)(textures)(vertices)(indices)(terrain) );
 
 	SGSScene() {}
 };

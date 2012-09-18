@@ -87,14 +87,14 @@ struct BoolVariableControl : EventHandler {
 	}
 };
 
-struct SimpleVisualizationWindow : std::enable_shared_from_this<SimpleVisualizationWindow> {
-	GLuint displayList;
+struct TextureVisualizationWindow : std::enable_shared_from_this<TextureVisualizationWindow> {
+	Texture2D debugTexture;
 
 	Camera camera;
 	CameraInputControl cameraInputControl;
 	sf::Window window;
 
-	SimpleVisualizationWindow() : displayList( 0 ) {}
+	TextureVisualizationWindow( const Texture2D &debugTexture ) : debugTexture( debugTexture ) {}
 
 	void init( const std::string &caption ) {
 		window.create( sf::VideoMode( 640, 480 ), caption.c_str(), sf::Style::Default, sf::ContextSettings(42) );
@@ -145,19 +145,20 @@ struct SimpleVisualizationWindow : std::enable_shared_from_this<SimpleVisualizat
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 			// OpenGL drawing commands go here...
-			glMatrixMode( GL_PROJECTION );
-			glLoadMatrix( camera.getProjectionMatrix() );
-			glMultMatrix( camera.getViewTransformation().matrix() );
+			glColor4f( 1.0, 1.0, 1.0, 1.0 );
+			debugTexture.bind();
+			debugTexture.enable();
 
+			Program::useFixed();
+
+			glMatrixMode( GL_PROJECTION );
+			glLoadIdentity();
 			glMatrixMode( GL_MODELVIEW );
 			glLoadIdentity();
 
-			DebugRender::ImmediateCalls ic;
-			ic.drawCordinateSystem( 1.0 );
+			DebugRender::ImmediateCalls().drawTexturedUnitQuad();
 
-			if( displayList ) {
-				glCallList( displayList );
-			}
+			debugTexture.unbind();
 
 			// End the current frame and display its contents on screen
 			window.display();
@@ -170,9 +171,6 @@ void main() {
 	glewInit();
 
 	glutil::RegisterDebugOutput( glutil::STD_OUT );
-
-	SimpleVisualizationWindow optixWindow;
-	optixWindow.init( "Optix Version" );
 
 	Camera camera;
 	camera.perspectiveProjectionParameters.aspect = 640.0 / 480.0;
@@ -226,27 +224,11 @@ void main() {
 	sgsSceneRenderer.optix.debugTexture.parameter( GL_TEXTURE_MAG_FILTER, GL_LINEAR );
 	sgsSceneRenderer.optix.debugTexture.parameter( GL_TEXTURE_MIN_FILTER, GL_LINEAR );
 
-	optixWindow.displayList = glGenLists(1);
-	glNewList( optixWindow.displayList, GL_COMPILE );
-
-	glColor4f( 1.0, 1.0, 1.0, 1.0 );
-	sgsSceneRenderer.optix.debugTexture.bind();
-	sgsSceneRenderer.optix.debugTexture.enable();
-
-	Program::useFixed();
-
-	glMatrixMode( GL_PROJECTION );
-	glLoadIdentity();
-	glMatrixMode( GL_MODELVIEW );
-	glLoadIdentity();
-
-	DebugRender::ImmediateCalls().drawTexturedUnitQuad();
-
-	sgsSceneRenderer.optix.debugTexture.unbind();
-	glEndList();
-
 	sgsSceneRenderer.initOptix();
 
+	TextureVisualizationWindow optixWindow( sgsSceneRenderer.optix.debugTexture );
+	optixWindow.init( "Optix Version" );
+	
 	while (window.isOpen())
 	{
 		sgsSceneRenderer.renderOptix( optixWindow.camera.getProjectionMatrix() * optixWindow.camera.getViewTransformation().matrix(), optixWindow.camera.getPosition() );
