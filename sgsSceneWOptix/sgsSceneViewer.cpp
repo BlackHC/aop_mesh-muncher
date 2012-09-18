@@ -89,7 +89,7 @@ struct BoolVariableControl : EventHandler {
 	}
 };
 
-void main() {
+void real_main() {
 	sf::Window window( sf::VideoMode( 640, 480 ), "sgsSceneViewer", sf::Style::Default, sf::ContextSettings(24, 8, 0, 4, 2, false,true, false) );
 	glewInit();
 
@@ -204,3 +204,12 @@ void main() {
 		window.display();
 	}
 };
+
+void main() {
+	try {
+		real_main();
+	}
+	catch( std::exception &e) {
+		std::cout << e.what() << "\n";
+	}
+}

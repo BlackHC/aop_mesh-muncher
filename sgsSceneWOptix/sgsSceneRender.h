@@ -90,12 +90,15 @@ struct SGSSceneRenderer {
 		optix::Context context;
 		optix::GeometryGroup scene;
 		optix::Acceleration acceleration;
-
-		optix::Geometry geometry;
-		optix::GeometryInstance geometryInstance;
+				
 		optix::Material material;
 
-		optix::Buffer indexBuffer, vertexBuffer;
+		struct MeshData {
+			optix::Buffer indexBuffer, vertexBuffer;
+			optix::Geometry geometry;
+			optix::GeometryInstance geometryInstance;
+		};
+		MeshData terrain, objects;
 
 		optix::Buffer outputBuffer;
 		int width, height;
@@ -805,21 +808,6 @@ struct SGSSceneRenderer {
 		optix.context->setPrintBufferSize(65536);
 		optix.context->setPrintEnabled(true);
 
-		// only add the actual scene objects for now
-
-		int primitiveCount = scene->numSceneIndices / 3;
-
-		optix.indexBuffer = optix.context->createBufferFromGLBO( RT_BUFFER_INPUT, objectIndices.handle );
-		optix.indexBuffer->setFormat( RT_FORMAT_UNSIGNED_INT3 );
-		optix.indexBuffer->setSize( primitiveCount );
-		optix.indexBuffer->validate();
-
-		optix.vertexBuffer = optix.context->createBufferFromGLBO( RT_BUFFER_INPUT, objectVertices.handle );
-		optix.vertexBuffer->setSize( scene->numSceneVertices );
-		optix.vertexBuffer->setFormat( RT_FORMAT_USER );
-		optix.vertexBuffer->setElementSize( sizeof SGSScene::Vertex );
-		optix.vertexBuffer->validate();
-
 		const char *ptxFilename = "cuda_compile_ptx_generated_raytracer.cu.ptx";
 		optix.programs.anyHit = optix.context->createProgramFromPTXFile (ptxFilename, "any_hit");
 		optix.programs.closestHit = optix.context->createProgramFromPTXFile (ptxFilename, "closest_hit");
@@ -836,14 +824,60 @@ struct SGSSceneRenderer {
 		optix.material->setClosestHitProgram (0, optix.programs.closestHit);
 		optix.material->validate ();
 
-		optix.geometry = optix.context->createGeometry ();
-		optix.geometry ["vertex_buffer"]->setBuffer (optix.vertexBuffer);
-		optix.geometry ["index_buffer"]->setBuffer (optix.indexBuffer);
-		optix.geometry->setBoundingBoxProgram (optix.programs.boundingBox);
-		optix.geometry->setIntersectionProgram (optix.programs.intersect);
+		// setup the objects buffers
+		{
+			int primitiveCount = scene->numSceneIndices / 3;
 
-		optix.geometry->setPrimitiveCount ( primitiveCount );
-		optix.geometry->validate ();
+			optix.objects.indexBuffer = optix.context->createBufferFromGLBO( RT_BUFFER_INPUT, objectIndices.handle );
+			optix.objects.indexBuffer->setFormat( RT_FORMAT_UNSIGNED_INT3 );
+			optix.objects.indexBuffer->setSize( primitiveCount );
+			optix.objects.indexBuffer->validate();
+
+			optix.objects.vertexBuffer = optix.context->createBufferFromGLBO( RT_BUFFER_INPUT, objectVertices.handle );
+			optix.objects.vertexBuffer->setSize( scene->numSceneVertices );
+			optix.objects.vertexBuffer->setFormat( RT_FORMAT_USER );
+			optix.objects.vertexBuffer->setElementSize( sizeof SGSScene::Vertex );
+			optix.objects.vertexBuffer->validate();
+
+			optix.objects.geometry = optix.context->createGeometry ();
+			optix.objects.geometry ["vertex_buffer"]->setBuffer (optix.objects.vertexBuffer);
+			optix.objects.geometry ["index_buffer"]->setBuffer (optix.objects.indexBuffer);
+			optix.objects.geometry->setBoundingBoxProgram (optix.programs.boundingBox);
+			optix.objects.geometry->setIntersectionProgram (optix.programs.intersect);
+
+			optix.objects.geometry->setPrimitiveCount ( primitiveCount );
+			optix.objects.geometry->validate ();
+
+			optix.objects.geometryInstance = optix.context->createGeometryInstance (optix.objects.geometry, &optix.material, &optix.material + 1);
+			optix.objects.geometryInstance->validate ();
+		}
+
+		// set up the terrain buffers
+		{
+			int primitiveCount = scene->terrain.indices.size() / 3;
+			optix.terrain.indexBuffer = optix.context->createBufferFromGLBO( RT_BUFFER_INPUT, terrainIndices.handle );
+			optix.terrain.indexBuffer->setFormat( RT_FORMAT_UNSIGNED_INT3 );
+			optix.terrain.indexBuffer->setSize( primitiveCount );
+			optix.terrain.indexBuffer->validate();
+
+			optix.terrain.vertexBuffer = optix.context->createBufferFromGLBO( RT_BUFFER_INPUT, terrainVertices.handle );
+			optix.terrain.vertexBuffer->setSize( scene->terrain.vertices.size() );
+			optix.terrain.vertexBuffer->setFormat( RT_FORMAT_USER );
+			optix.terrain.vertexBuffer->setElementSize( sizeof SGSScene::Terrain::Vertex );
+			optix.terrain.vertexBuffer->validate();
+
+			optix.terrain.geometry = optix.context->createGeometry ();
+			optix.terrain.geometry ["vertex_buffer"]->setBuffer (optix.terrain.vertexBuffer);
+			optix.terrain.geometry ["index_buffer"]->setBuffer (optix.terrain.indexBuffer);
+			optix.terrain.geometry->setBoundingBoxProgram (optix.programs.boundingBox);
+			optix.terrain.geometry->setIntersectionProgram (optix.programs.intersect);
+
+			optix.terrain.geometry->setPrimitiveCount ( primitiveCount );
+			optix.terrain.geometry->validate ();
+
+			optix.terrain.geometryInstance = optix.context->createGeometryInstance (optix.terrain.geometry, &optix.material, &optix.material + 1);
+			optix.terrain.geometryInstance->validate ();
+		}
 
 		optix.acceleration = optix.context->createAcceleration ("Bvh", "Bvh");
 
@@ -855,13 +889,11 @@ struct SGSSceneRenderer {
 		optix.context->setExceptionProgram (0, optix.programs.exception);
 		optix.context->validate ();
 
-		optix.geometryInstance = optix.context->createGeometryInstance (optix.geometry, &optix.material, &optix.material + 1);
-		optix.geometryInstance->validate ();
-
 		optix.scene = optix.context->createGeometryGroup ();
 		optix.scene->setAcceleration (optix.acceleration);
-		optix.scene->setChildCount (1);
-		optix.scene->setChild (0, optix.geometryInstance);
+		optix.scene->setChildCount (2);
+		optix.scene->setChild (0, optix.objects.geometryInstance);
+		optix.scene->setChild (1, optix.terrain.geometryInstance);
 		optix.scene->validate ();
 
 		optix.outputBuffer = optix.context->createBuffer( RT_BUFFER_OUTPUT,  RT_FORMAT_UNSIGNED_BYTE4, optix.width = 640, optix.height = 480 );
