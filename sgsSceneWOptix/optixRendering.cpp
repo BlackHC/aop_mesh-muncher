@@ -39,7 +39,7 @@ void OptixRenderer::init( const std::shared_ptr< SGSSceneRenderer > &sgsSceneRen
 	context["rootObject"]->set(scene);
 
 	// create and set the output buffer
-	outputBuffer = context->createBuffer( RT_BUFFER_OUTPUT,  RT_FORMAT_UNSIGNED_BYTE4, width = 640, height = 480 );	
+	outputBuffer = context->createBuffer( RT_BUFFER_OUTPUT,  RT_FORMAT_UNSIGNED_BYTE4, width = 800, height = 600 );	
 	context["outputBuffer"]->set(outputBuffer);
 
 	SimpleGL::setLinearMinMag( debugTexture );

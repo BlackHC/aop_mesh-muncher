@@ -9,7 +9,8 @@ rtBuffer<MergedTextureInfo> textureInfos;
 rtTextureSampler<float4, 2> objectTexture;
 
 // one per primitive
-rtBuffer<int> textureIndices;
+rtBuffer<MaterialInfo> materialInfos;
+rtBuffer<int> materialIndices;
 
 struct Vertex
 {
@@ -21,13 +22,28 @@ struct Vertex
 rtBuffer<Vertex> vertexBuffer;
 rtBuffer<int3> indexBuffer; // position indices
 
-__device__ float4 performTextureLookup() {
-	MergedTextureInfo &textureInfo = textureInfos[ textureIndex ];
+__device__ float4 getTexel() {
+	MergedTextureInfo &textureInfo = textureInfos[ materialInfo.textureIndex ];
 
 	const float2 wrappedTexCoords = texCoord - floor( texCoord ); 
 	const float2 mergedTexCoords = make_float2( textureInfo.offset ) + wrappedTexCoords * make_float2( textureInfo.size );
 
 	return tex2D( objectTexture, mergedTexCoords.x, mergedTexCoords.y );
+}
+
+__device__ float3 subTrace( const float3 &position, const float3 &direction, bool earlyOut ) {
+	if( earlyOut ) {
+		return make_float3( 0.0 );
+	}
+
+	optix::Ray subRay( position, direction, RT_EYE, sceneEpsilon );
+		
+	Ray_Eye subRay_eye;
+	subRay_eye.color = make_float3( 0.0f );
+
+	rtTrace(rootObject, subRay, subRay_eye);
+	
+	return subRay_eye.color;
 }
 
 RT_PROGRAM void closestHit() {
@@ -40,46 +56,56 @@ RT_PROGRAM void closestHit() {
 	// actually -sunDirection but we don't need to care because of the abs
 	float diffuseAttenuation = abs( dot( ffnormal, sunDirection ) );
 
-	const float4 textureLookup = performTextureLookup();
+	const float4 diffuseColor = getTexel();
 	
-	const float3 litSurfaceColor = diffuseAttenuation * make_float3( textureLookup ) * getDirectionalLightTransmittance( hitPosition, sunDirection );
+	const float3 litSurfaceColor = make_float3( diffuseColor ) * 
+		(0.2 + 0.8 * diffuseAttenuation * getDirectionalLightTransmittance( hitPosition, sunDirection ));
 
-	if( textureLookup.w < 1.0 ) {
-		// cast another ray
-		optix::Ray subRay( hitPosition, currentRay.direction, RT_EYE, sceneEpsilon );
-		
-		Ray_Eye subRay_eye;
-		subRay_eye.color = make_float3( 0.0f );
-
-		rtTrace(rootObject, subRay, subRay_eye);
-
-		currentRay_eye.color = litSurfaceColor * textureLookup.w + subRay_eye.color * (1.0f - textureLookup.w);
-	}
-	else {
+	switch( materialInfo.alphaType ) {
+	default:
+	case MaterialInfo::AT_NONE:
 		currentRay_eye.color = litSurfaceColor;
+		break;
+	case MaterialInfo::AT_ADDITIVE:
+		currentRay_eye.color = make_float3( diffuseColor ) + subTrace( hitPosition, currentRay.direction, false );
+		break;
+	case MaterialInfo::AT_MATERIAL: {
+		const float alpha = materialInfo.alpha;
+		currentRay_eye.color = litSurfaceColor * alpha + subTrace( hitPosition, currentRay.direction, alpha > 0.99f ) * (1.0f - alpha);
+		break;
 	}
-}
-
-RT_PROGRAM void closestHitAdditive() {
-	float3 hitPosition = currentRay.origin + t_hit * currentRay.direction;
-
-	const float4 textureLookup = performTextureLookup();
-	
-	// cast another ray
-	optix::Ray subRay( hitPosition, currentRay.direction, RT_EYE, sceneEpsilon );
-		
-	Ray_Eye subRay_eye;
-	subRay_eye.color = make_float3( 0.0f );
-
-	rtTrace(rootObject, subRay, subRay_eye);
-
-	currentRay_eye.color = make_float3( textureLookup ) + subRay_eye.color;
+	case MaterialInfo::AT_TEXTURE:
+	case MaterialInfo::AT_ALPHATEST:
+		currentRay_eye.color = litSurfaceColor * diffuseColor.w + subTrace( hitPosition, currentRay.direction, diffuseColor.w > 0.99f ) * (1.0f - diffuseColor.w);
+		break;
+	case MaterialInfo::AT_MULTIPLY:
+		currentRay_eye.color = make_float3( diffuseColor ) * subTrace( hitPosition, currentRay.direction, false );
+		break;
+	case MaterialInfo::AT_MULTIPLY_2:
+		currentRay_eye.color = make_float3( diffuseColor ) * subTrace( hitPosition, currentRay.direction, false ) * 2;
+		break;
+	}
 }
 
 RT_PROGRAM void anyHit() {
-	const float4 textureLookup = performTextureLookup();
-	
-	currentRay_shadow.transmittance *= 1.0 - textureLookup.w;
+	switch( materialInfo.alphaType ) {
+	default:
+	case MaterialInfo::AT_NONE:
+		currentRay_shadow.transmittance = 0.0;
+		rtTerminateRay();
+		return;
+	case MaterialInfo::AT_ADDITIVE:
+		rtIgnoreIntersection();
+		return;
+	case MaterialInfo::AT_MATERIAL:
+		currentRay_shadow.transmittance *= 1.0 - materialInfo.alpha;
+		break;
+	case MaterialInfo::AT_ALPHATEST:
+	case MaterialInfo::AT_TEXTURE:
+		currentRay_shadow.transmittance *= 1.0 - getTexel().w;
+		break;
+	}
+
 	if( currentRay_shadow.transmittance < 0.01 ) {
 		rtTerminateRay();
 	}
@@ -87,11 +113,6 @@ RT_PROGRAM void anyHit() {
 		// NOTE: this is important, otherwise it wont take into account other possible hit locations
 		rtIgnoreIntersection();
 	}
-}
-
-// additive objects are fully transparent
-RT_PROGRAM void anyHitAdditive() {
-	rtIgnoreIntersection();
 }
 
 RT_PROGRAM void intersect( int primIdx )
@@ -122,7 +143,7 @@ RT_PROGRAM void intersect( int primIdx )
 			float2 t2 = vertexBuffer[ t_idx.z ].uv[0];
 			texCoord = ( t1*beta + t2*gamma + t0*(1.0f-beta-gamma) );
 
-			textureIndex = textureIndices[ primIdx ];
+			materialInfo = materialInfos[ materialIndices[ primIdx ] ];
 				
 			rtReportIntersection(0);
 		}

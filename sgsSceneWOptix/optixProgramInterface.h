@@ -13,6 +13,24 @@ enum RayType {
 	RT_COUNT
 };
 
+struct MaterialInfo {
+	int textureIndex;
+	
+	// copied straight from SGSScene::Material
+	enum AlphaType {
+		AT_NONE,
+		AT_MATERIAL, // material only alpha
+		AT_TEXTURE, // texture * material 
+		AT_ADDITIVE, // additive
+		AT_MULTIPLY,
+		AT_MULTIPLY_2,
+		AT_ALPHATEST // like AT_TEXTURE
+	};
+
+	AlphaType alphaType;
+	float alpha;
+};
+
 //////////////////////////////////////////////////////////////////////////
 // CUDA specific declarations/definitions
 #if defined(__CUDACC__)
@@ -36,7 +54,7 @@ rtDeclareVariable( float3, geometricNormal, attribute geometricNormal, );
 rtDeclareVariable( float3, shadingNormal, attribute shadingNormal, );
 rtDeclareVariable( float2, texCoord, attribute texCoord, );
 
-rtDeclareVariable(int, textureIndex, attribute textureIndex, );
+rtDeclareVariable(MaterialInfo, materialInfo, attribute materialInfo, );
 
 rtDeclareVariable(optix::Ray, currentRay, rtCurrentRay, );
 rtDeclareVariable(float, t_hit, rtIntersectionDistance, );

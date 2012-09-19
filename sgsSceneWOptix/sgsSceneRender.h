@@ -103,7 +103,7 @@ struct SGSSceneRenderer {
 		};
 		MeshData terrain, objects;
 
-		optix::Buffer textureInfos, textureIndices;
+		optix::Buffer textureInfos, materialInfos, materialIndices;
 		optix::TextureSampler terrainTextureSampler;
 		optix::TextureSampler objectTextureSampler;
 	} optix;
@@ -946,25 +946,36 @@ struct SGSSceneRenderer {
 			optix.textureInfos->unmap();
 			optix.textureInfos->validate();
 
-			// set texture indices
-			optix.textureIndices = optixRenderer->context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_INT, primitiveCount );
+			// set materialInfos and materialIndices
+			optix.materialInfos = optixRenderer->context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_USER, scene->subObjects.size() );
+			optix.materialInfos->setElementSize( sizeof OptixProgramInterface::MaterialInfo );
 
-			int *textureIndices = (int *) optix.textureIndices->map();
+			optix.materialIndices = optixRenderer->context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_INT, primitiveCount );
+
+			OptixProgramInterface::MaterialInfo *materialInfos = (OptixProgramInterface::MaterialInfo *) optix.materialInfos->map();	
+			int *materialIndices = (int *) optix.materialIndices->map();
 
 			for( int subObjectIndex = 0 ; subObjectIndex < scene->numSceneSubObjects ; ++subObjectIndex ) {
 				const SGSScene::SubObject &subObject = scene->subObjects[ subObjectIndex ];
 
-				const int textureIndex = subObject.material.textureIndex[0];
+				OptixProgramInterface::MaterialInfo &materialInfo = materialInfos[subObjectIndex];
+				materialInfo.textureIndex = subObject.material.textureIndex[0];
+				materialInfo.alphaType = (OptixProgramInterface::MaterialInfo::AlphaType) subObject.material.alphaType;
+				materialInfo.alpha = subObject.material.alpha / 255.0f;
 
 				const int startPrimitive = subObject.startIndex / 3;
 				const int endPrimitive = startPrimitive + subObject.numIndices / 3;
-				std::fill( textureIndices + startPrimitive, textureIndices + endPrimitive, textureIndex );
+				std::fill( materialIndices + startPrimitive, materialIndices + endPrimitive, subObjectIndex );
 			}
-			optix.textureIndices->unmap();
-			optix.textureIndices->validate();
+			optix.materialIndices->unmap();
+			optix.materialIndices->validate();
 
-			optixRenderer->context[ "textureIndices" ]->setBuffer( optix.textureIndices );
-			optix.objects.material[ "textureInfos" ]->setBuffer( optix.textureInfos );
+			optix.materialInfos->unmap();
+			optix.materialInfos->validate();
+
+			optixRenderer->context[ "materialIndices" ]->set( optix.materialIndices );
+			optixRenderer->context[ "materialInfos" ]->set( optix.materialInfos );
+			optix.objects.material[ "textureInfos" ]->set( optix.textureInfos );
 		}
 
 		// set up the terrain buffers

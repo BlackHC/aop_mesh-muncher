@@ -27,7 +27,8 @@ RT_PROGRAM void closestHit()
 	// actually -sunDirection but we don't need to care because of the abs
 	float diffuseAttenuation = abs( dot( ffnormal, sunDirection ) );
 
-	currentRay_eye.color = make_float3( tex2D( terrainTexture, texCoord.x, texCoord.y ) ) * diffuseAttenuation * getDirectionalLightTransmittance( hitPosition, sunDirection );
+	currentRay_eye.color = make_float3( tex2D( terrainTexture, texCoord.x, texCoord.y ) ) * 
+		(0.2 + 0.8 * diffuseAttenuation * getDirectionalLightTransmittance( hitPosition, sunDirection ));
 }
 
 RT_PROGRAM void anyHit()
