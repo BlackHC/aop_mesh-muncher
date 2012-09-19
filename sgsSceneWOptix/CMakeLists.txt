@@ -32,7 +32,7 @@ INCLUDE_DIRECTORIES(
 )
 
 # ../gtest/gtest_main.cc
-CUDA_COMPILE_PTX( PTX_FILES ../build/optix/raytracer.cu ../build/optix/terrainMesh.cu ../build/optix/objectMesh.cu )
+CUDA_COMPILE_PTX( PTX_FILES raytracer.cu terrainMesh.cu objectMesh.cu )
 
 CUDA_ADD_EXECUTABLE(optix_sgsSceneViewer
 	${GLEW_SOURCE_FILE}
@@ -56,6 +56,7 @@ CUDA_ADD_EXECUTABLE(optix_sgsSceneViewer
 	Rect.h
 	MaxRectsBinPack.cpp
 	MaxRectsBinPack.h
+	optixProgramInterface.h
 	${PTX_FILES}
 	../build/sgsScene.shaders
 	)

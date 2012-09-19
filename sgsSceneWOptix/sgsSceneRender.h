@@ -25,6 +25,8 @@
 #include <ppl.h>
 #include <algorithm>
 
+#include "optixProgramInterface.h"
+
 using namespace GL;
 
 //////////////////////////////////////////////////////////////////////////
@@ -56,7 +58,8 @@ inline Eigen::Matrix4f unpermutedToPermutedMatrix( const int *permutation ) {
 		Eigen::RowVector4f::UnitW() ).finished();
 }
 
-/*struct BoundingBox {
+/*
+ struct BoundingBox {
 	Eigen::Vector3f minCorner, maxCorner;
 
 	BoundingBox() {
@@ -80,7 +83,8 @@ struct OrthogonalShadowMapConstructor {
 	BoundingBox bbox;
 
 
-};*/
+};
+*/
 
 struct SGSSceneRenderer {
 	/*struct BoundingBox {
@@ -196,12 +200,8 @@ struct SGSSceneRenderer {
 		}
 	}
 #else
-	struct MergedTextureInfo {
-		int offset[2];
-		int size[2];
-		int index;
-		int pad;
-	};
+	typedef OptixProgramInterface::MergedTextureInfo MergedTextureInfo;
+
 	// one merged texture per unique size
 	ScopedTexture2D mergedTexture;
 	// in textureIndex order
@@ -1007,7 +1007,7 @@ struct SGSSceneRenderer {
 	void initOptix() {
 		optix.context = optix::Context::create();
 
-		optix.context->setRayTypeCount(1);
+		optix.context->setRayTypeCount(2);
 		optix.context->setEntryPointCount(1);
 		optix.context->setStackSize(8000);
 		optix.context->setPrintBufferSize(65536);
@@ -1034,7 +1034,7 @@ struct SGSSceneRenderer {
 		// setup the objects buffers
 		{
 			optix.objects.material = optix.context->createMaterial ();
-			//optix.material->setAnyHitProgram (1, optix.programs.anyHit);
+			optix.objects.material->setAnyHitProgram (1, optix.objects.anyHit);
 			optix.objects.material->setClosestHitProgram (0, optix.objects.closestHit);
 			optix.objects.material->validate ();
 
@@ -1052,8 +1052,8 @@ struct SGSSceneRenderer {
 			optix.objects.vertexBuffer->validate();
 
 			optix.objects.geometry = optix.context->createGeometry ();
-			optix.objects.geometry ["vertex_buffer"]->setBuffer (optix.objects.vertexBuffer);
-			optix.objects.geometry ["index_buffer"]->setBuffer (optix.objects.indexBuffer);
+			optix.objects.geometry ["vertexBuffer"]->setBuffer (optix.objects.vertexBuffer);
+			optix.objects.geometry ["indexBuffer"]->setBuffer (optix.objects.indexBuffer);
 			optix.objects.geometry->setBoundingBoxProgram (optix.objects.boundingBox);
 			optix.objects.geometry->setIntersectionProgram (optix.objects.intersect);
 
@@ -1104,8 +1104,8 @@ struct SGSSceneRenderer {
 		// set up the terrain buffers
 		{
 			optix.terrain.material = optix.context->createMaterial ();
-			//optix.material->setAnyHitProgram (1, optix.programs.anyHit);
 			optix.terrain.material->setClosestHitProgram (0, optix.terrain.closestHit);
+			optix.terrain.material->setAnyHitProgram (1, optix.terrain.anyHit);
 			optix.terrain.material->validate ();
 
 			int primitiveCount = scene->terrain.indices.size() / 3;
@@ -1121,8 +1121,8 @@ struct SGSSceneRenderer {
 			optix.terrain.vertexBuffer->validate();
 
 			optix.terrain.geometry = optix.context->createGeometry ();
-			optix.terrain.geometry ["vertex_buffer"]->setBuffer (optix.terrain.vertexBuffer);
-			optix.terrain.geometry ["index_buffer"]->setBuffer (optix.terrain.indexBuffer);
+			optix.terrain.geometry ["vertexBuffer"]->setBuffer (optix.terrain.vertexBuffer);
+			optix.terrain.geometry ["indexBuffer"]->setBuffer (optix.terrain.indexBuffer);
 			optix.terrain.geometry->setBoundingBoxProgram (optix.terrain.boundingBox);
 			optix.terrain.geometry->setIntersectionProgram (optix.terrain.intersect);
 
@@ -1162,9 +1162,9 @@ struct SGSSceneRenderer {
 
 		optix.outputBuffer = optix.context->createBuffer( RT_BUFFER_OUTPUT,  RT_FORMAT_UNSIGNED_BYTE4, optix.width = 640, optix.height = 480 );
 
-		optix.context ["top_object"]->set (optix.scene);
+		optix.context ["rootObject"]->set (optix.scene);
 
-		optix.context ["result_buffer"]->setBuffer (optix.outputBuffer);
+		optix.context ["resultBuffer"]->setBuffer (optix.outputBuffer);
 
 		auto r = rtContextCompile (optix.context->get());
 		const char* e;
@@ -1173,7 +1173,7 @@ struct SGSSceneRenderer {
 	}
 
 	void renderOptix(const Matrix4f &projectionView, const Eigen::Vector3f &worldViewerPosition) {
-		optix.context[ "eye" ]->set3fv( worldViewerPosition.data() );
+		optix.context[ "eyePosition" ]->set3fv( worldViewerPosition.data() );
 		
 		// this works with all usual projection matrices (where x and y don't have any effect on z and w in clip space)
 		// determine u, v, and w by unprojecting (x,y,-1,1) from clip space to world spacel

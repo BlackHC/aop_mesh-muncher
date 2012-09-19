@@ -1,0 +1,81 @@
+#ifndef __OPTIXPROGRAMINTERFACE_H__
+#define __OPTIXPROGRAMINTERFACE_H__
+
+#if !defined(__CUDACC__)
+namespace OptixProgramInterface {
+#endif
+
+//////////////////////////////////////////////////////////////////////////
+// shared declarations/definitions
+enum RayType {
+	RT_EYE,
+	RT_SHADOW,
+	RT_COUNT
+};
+
+//////////////////////////////////////////////////////////////////////////
+// CUDA specific declarations/definitions
+#if defined(__CUDACC__)
+struct MergedTextureInfo {
+	int2 offset;
+	int2 size;
+	int index;
+};
+
+struct Ray_Eye {
+	float3 color;
+};
+
+struct Ray_Shadow {
+	float transmittance;
+};
+
+rtDeclareVariable( Ray_Eye, currentRay_eye, rtPayload, );
+rtDeclareVariable( Ray_Shadow, currentRay_shadow, rtPayload, );
+rtDeclareVariable( float3, geometricNormal, attribute geometricNormal, );
+rtDeclareVariable( float3, shadingNormal, attribute shadingNormal, );
+rtDeclareVariable( float2, texCoord, attribute texCoord, );
+
+rtDeclareVariable(int, textureIndex, attribute textureIndex, );
+
+rtDeclareVariable(optix::Ray, currentRay, rtCurrentRay, );
+rtDeclareVariable(float, t_hit, rtIntersectionDistance, );
+
+rtDeclareVariable(rtObject, rootObject, , );
+
+#define sunDirection make_float3( 0.0, -1.0, -1.0 )
+#define sceneEpsilon 0.005f
+
+//////////////////////////////////////////////////////////////////////////
+// CUDA helper functions
+
+// lightDirection from light away
+__device__ float getDirectionalLightTransmittance( const float3 &position, const float3 &lightDirection ) {
+	// cast another ray
+	optix::Ray subRay( position, -lightDirection, RT_SHADOW, sceneEpsilon );
+
+	Ray_Shadow subRay_shadow;
+	subRay_shadow.transmittance = 1.0f;
+
+	rtTrace(rootObject, subRay, subRay_shadow);
+
+	return subRay_shadow.transmittance;
+}
+
+
+#else
+//////////////////////////////////////////////////////////////////////////
+// host specific declarations/definitions
+struct MergedTextureInfo {
+	int offset[2];
+	int size[2];
+	int index;
+	int pad;
+};
+#endif
+
+#if !defined(__CUDACC__)
+}
+#endif
+
+#endif /*__OPTIXPROGRAMINTERFACE_H__*/
