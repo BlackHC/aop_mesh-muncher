@@ -154,8 +154,13 @@ void real_main() {
 	optixWindow.init( "Optix Version" );
 	optixWindow.texture = sgsSceneRenderer.optix.debugTexture;
 
+	TextureVisualizationWindow mergedTextureWindow;
+	mergedTextureWindow.init( "merged object textures" );
+	mergedTextureWindow.texture = sgsSceneRenderer.mergedTexture;
+
 	DebugWindowManager debugWindowManager;
 	debugWindowManager.windows.push_back( make_nonallocated_shared( optixWindow ) );
+	debugWindowManager.windows.push_back( make_nonallocated_shared( mergedTextureWindow ) );
 	
 	while (true)
 	{

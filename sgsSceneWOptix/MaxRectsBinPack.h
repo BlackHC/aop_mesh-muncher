@@ -40,10 +40,12 @@ public:
 	/// @param rects The list of rectangles to insert. This vector will be destroyed in the process.
 	/// @param dst [out] This list will contain the packed rectangles. The indices will not correspond to that of rects.
 	/// @param method The rectangle placement rule to use when packing.
-	void Insert(std::vector<RectSize> &rects, std::vector<Rect> &dst, FreeRectChoiceHeuristic method);
+	void Insert(std::vector<RectSize> &rects, FreeRectChoiceHeuristic method);
 
 	/// Inserts a single rectangle into the bin, possibly rotated.
 	Rect Insert(int width, int height, FreeRectChoiceHeuristic method);
+
+	std::vector<Rect> & GetRectangles() { return usedRectangles; }
 
 	/// Computes the ratio of used surface area to the total bin area.
 	float Occupancy() const;

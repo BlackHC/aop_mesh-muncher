@@ -36,7 +36,7 @@ struct DisplayList {
 		glCallList( handle );
 	}
 
-	GLuint create() {
+	void create() {
 		handle = glGenLists( 1 );
 	}
 
@@ -144,6 +144,10 @@ struct Texture2D : Texture {
 
 	void getLevelParameter( int lod, GLenum value, int *data ) const {
 		glGetTextureLevelParameterivEXT( handle, GL_TEXTURE_2D, lod, value, data );
+	}
+
+	void getImage( int lod, GLenum format, GLenum type, void *img ) const {
+		glGetTextureImageEXT( handle, GL_TEXTURE_2D, lod, format, type, img );
 	}
 };
 
@@ -305,7 +309,7 @@ struct Buffer {
 		glNamedBufferSubDataEXT( handle, offset, size, data );
 	}
 
-	GLuint create() {
+	void create() {
 		glGenBuffers( 1, &handle );
 	}
 
@@ -322,7 +326,7 @@ struct VertexArrayObject {
 
 	VertexArrayObject( GLuint handle = 0 ) : handle( handle ) {}
 
-	GLuint create() {
+	void create() {
 		glGenVertexArrays( 1, &handle );
 	}
 

@@ -8,24 +8,44 @@ struct Ray_Payload
 	float4 result;
 };
 
+struct MergedTextureInfo {
+	int2 offset;
+	int2 size;
+	int index;
+};
+
+rtBuffer<MergedTextureInfo> textureInfos;
+rtTextureSampler<float4, 2> objectTexture;
+
+// one per primitive
+rtBuffer<int> textureIndices;
+
 rtDeclareVariable( Ray_Payload, pr_payload, rtPayload, );
 rtDeclareVariable(float3, geometric_normal, attribute geometric_normal, );
 rtDeclareVariable(float3, shading_normal, attribute shading_normal, );
-rtDeclareVariable( float2, texcoord, attribute texcoord, );
+rtDeclareVariable( float2, texCoords, attribute texcoord, );
 rtDeclareVariable(float3, surface_color, attribute surface_color, );
 
+rtDeclareVariable(int, textureIndex, attribute textureIndex, );
+
 rtDeclareVariable(optix::Ray, ray, rtCurrentRay, );
-rtDeclareVariable(float,      t_hit, rtIntersectionDistance, );
+rtDeclareVariable(float, t_hit, rtIntersectionDistance, );
 
 RT_PROGRAM void closest_hit()
 {
-	float3 phit    = ray.origin + t_hit * ray.direction;
+	float3 phit = ray.origin + t_hit * ray.direction;
 
 	float3 world_shading_normal   = normalize(shading_normal);
 	float3 world_geometric_normal = normalize(geometric_normal);
 	float3 ffnormal = faceforward(world_shading_normal, -ray.direction, world_geometric_normal);
-		
-	pr_payload.result = make_float4( make_float3( abs( dot( ffnormal, make_float3( 0.0, 1.0, 1.0 ) ) ) ), 1.0 );
+	
+	float diffuseAttenuation = abs( dot( ffnormal, make_float3( 0.0, 1.0, 1.0 ) ) );
+
+	MergedTextureInfo &texInfo = textureInfos[ textureIndex ];
+	float2 wrappedTexCoords = texCoords - floor( texCoords ); 
+	float2 mergedTexCoords = make_float2( texInfo.offset ) + wrappedTexCoords * make_float2( texInfo.size );
+	float3 textureLookup = make_float3( tex2D( objectTexture, mergedTexCoords.x, mergedTexCoords.y ) );
+	pr_payload.result = make_float4( diffuseAttenuation * textureLookup, 1.0 );
 }
 
 RT_PROGRAM void any_hit()
@@ -69,7 +89,9 @@ RT_PROGRAM void intersect( int primIdx )
 			float2 t0 = vertex_buffer[ t_idx.x ].uv[0];
 			float2 t1 = vertex_buffer[ t_idx.y ].uv[0];
 			float2 t2 = vertex_buffer[ t_idx.z ].uv[0];
-			texcoord = ( t1*beta + t2*gamma + t0*(1.0f-beta-gamma) );
+			texCoords = ( t1*beta + t2*gamma + t0*(1.0f-beta-gamma) );
+
+			textureIndex = textureIndices[ primIdx ];
 				
 			/*float3 c0 = vertex_buffer[ t_idx.x ].color;
 			float3 c1 = vertex_buffer[ t_idx.y ].color;

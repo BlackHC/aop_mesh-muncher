@@ -15,6 +15,8 @@
 
 #include "MaxRectsBinPack.h"
 
+//#define ALLOW_ROTATION
+
 using namespace std;
 
 MaxRectsBinPack::MaxRectsBinPack()
@@ -79,10 +81,8 @@ Rect MaxRectsBinPack::Insert(int width, int height, FreeRectChoiceHeuristic meth
 	return newNode;
 }
 
-void MaxRectsBinPack::Insert(std::vector<RectSize> &rects, std::vector<Rect> &dst, FreeRectChoiceHeuristic method)
+void MaxRectsBinPack::Insert(std::vector<RectSize> &rects, FreeRectChoiceHeuristic method)
 {
-	dst.clear();
-
 	while(rects.size() > 0)
 	{
 		int bestScore1 = std::numeric_limits<int>::max();
@@ -191,6 +191,7 @@ Rect MaxRectsBinPack::FindPositionForNewNodeBottomLeft(int width, int height, in
 				bestX = freeRectangles[i].x;
 			}
 		}
+#ifdef ALLOW_ROTATION
 		if (freeRectangles[i].width >= height && freeRectangles[i].height >= width)
 		{
 			int topSideY = freeRectangles[i].y + width;
@@ -204,6 +205,7 @@ Rect MaxRectsBinPack::FindPositionForNewNodeBottomLeft(int width, int height, in
 				bestX = freeRectangles[i].x;
 			}
 		}
+#endif
 	}
 	return bestNode;
 }
@@ -236,7 +238,7 @@ Rect MaxRectsBinPack::FindPositionForNewNodeBestShortSideFit(int width, int heig
 				bestLongSideFit = longSideFit;
 			}
 		}
-
+#ifdef ALLOW_ROTATION
 		if (freeRectangles[i].width >= height && freeRectangles[i].height >= width)
 		{
 			int flippedLeftoverHoriz = abs(freeRectangles[i].width - height);
@@ -254,6 +256,7 @@ Rect MaxRectsBinPack::FindPositionForNewNodeBestShortSideFit(int width, int heig
 				bestLongSideFit = flippedLongSideFit;
 			}
 		}
+#endif
 	}
 	return bestNode;
 }
@@ -286,7 +289,7 @@ Rect MaxRectsBinPack::FindPositionForNewNodeBestLongSideFit(int width, int heigh
 				bestLongSideFit = longSideFit;
 			}
 		}
-
+#ifdef ALLOW_ROTATION
 		if (freeRectangles[i].width >= height && freeRectangles[i].height >= width)
 		{
 			int leftoverHoriz = abs(freeRectangles[i].width - height);
@@ -304,6 +307,7 @@ Rect MaxRectsBinPack::FindPositionForNewNodeBestLongSideFit(int width, int heigh
 				bestLongSideFit = longSideFit;
 			}
 		}
+#endif
 	}
 	return bestNode;
 }
@@ -337,7 +341,7 @@ Rect MaxRectsBinPack::FindPositionForNewNodeBestAreaFit(int width, int height,
 				bestAreaFit = areaFit;
 			}
 		}
-
+#ifdef ALLOW_ROTATION
 		if (freeRectangles[i].width >= height && freeRectangles[i].height >= width)
 		{
 			int leftoverHoriz = abs(freeRectangles[i].width - height);
@@ -354,6 +358,7 @@ Rect MaxRectsBinPack::FindPositionForNewNodeBestAreaFit(int width, int height,
 				bestAreaFit = areaFit;
 			}
 		}
+#endif
 	}
 	return bestNode;
 }
@@ -407,6 +412,7 @@ Rect MaxRectsBinPack::FindPositionForNewNodeContactPoint(int width, int height, 
 				bestContactScore = score;
 			}
 		}
+#ifdef ALLOW_ROTATION
 		if (freeRectangles[i].width >= height && freeRectangles[i].height >= width)
 		{
 			int score = ContactPointScoreNode(freeRectangles[i].x, freeRectangles[i].y, height, width);
@@ -419,6 +425,7 @@ Rect MaxRectsBinPack::FindPositionForNewNodeContactPoint(int width, int height, 
 				bestContactScore = score;
 			}
 		}
+#endif
 	}
 	return bestNode;
 }

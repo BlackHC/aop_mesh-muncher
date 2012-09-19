@@ -29,6 +29,10 @@ struct Rect
 	int y;
 	int width;
 	int height;
+
+	bool isEmpty() const {
+		return width == 0 || height == 0;
+	}
 };
 
 /// Performs a lexicographic compare on (rect short side, rect long side).

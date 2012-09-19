@@ -15,7 +15,7 @@ rtDeclareVariable( float2, texcoord, attribute texcoord, );
 rtDeclareVariable(float3, surface_color, attribute surface_color, );
 
 rtDeclareVariable(optix::Ray, ray, rtCurrentRay, );
-rtDeclareVariable(float,      t_hit, rtIntersectionDistance, );
+rtDeclareVariable(float, t_hit, rtIntersectionDistance, );
 
 rtTextureSampler<float4, 2> terrainTexture;
 

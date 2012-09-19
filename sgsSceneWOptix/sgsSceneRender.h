@@ -16,6 +16,15 @@
 
 #include <boost/unordered_map.hpp>
 
+#include "MaxRectsBinPack.h"
+
+#include "boost/range/algorithm/for_each.hpp"
+
+#include <boost/timer/timer.hpp>
+
+#include <ppl.h>
+#include <algorithm>
+
 using namespace GL;
 
 //////////////////////////////////////////////////////////////////////////
@@ -103,7 +112,9 @@ struct SGSSceneRenderer {
 		};
 		MeshData terrain, objects;
 
+		optix::Buffer textureInfos, textureIndices;
 		optix::TextureSampler terrainTextureSampler;
+		optix::TextureSampler objectTextureSampler;
 
 		optix::Buffer outputBuffer;
 		int width, height;
@@ -119,6 +130,7 @@ struct SGSSceneRenderer {
 	std::shared_ptr<SGSScene> scene;
 
 	//////////////////////////////////////////////////////////////////////////
+#if 0
 	struct MergedTextureInfo {		
 		int offset[2];
 		int size[2];
@@ -129,7 +141,6 @@ struct SGSSceneRenderer {
 	// in textureIndex order
 	std::vector<MergedTextureInfo> mergedTextureInfos;
 
-	
 	void mergeTextures( const ScopedTextures2D &textures ) {
 		typedef std::pair<int, int> Resolution;
 		// distribute by resolutions
@@ -184,6 +195,130 @@ struct SGSSceneRenderer {
 			}			
 		}
 	}
+#else
+	struct MergedTextureInfo {
+		int offset[2];
+		int size[2];
+		int index;
+		int pad;
+	};
+	// one merged texture per unique size
+	ScopedTexture2D mergedTexture;
+	// in textureIndex order
+	std::vector<MergedTextureInfo> mergedTextureInfos;
+
+	void mergeTextures( const ScopedTextures2D &textures ) {
+		typedef std::pair<int, int> Resolution;
+		// distribute by resolutions
+		boost::unordered_map<Resolution, std::vector<int> > resolutions;
+
+		std::vector<RectSize> rectSizes;
+		rectSizes.reserve( textures.handles.size() );
+
+		for( int textureIndex = 0 ; textureIndex < textures.handles.size() ; textureIndex++ ) {
+			int width, height;
+			textures[ textureIndex ].getLevelParameter( 0, GL_TEXTURE_WIDTH, &width );
+			textures[ textureIndex ].getLevelParameter( 0, GL_TEXTURE_HEIGHT, &height );
+
+			resolutions[ Resolution( width + 4, height + 4 ) ].push_back( textureIndex );
+
+			RectSize rectSize = { width + 4, height + 4 };
+			rectSizes.push_back( rectSize );
+		}
+
+		mergedTextureInfos.resize( textures.handles.size() );
+
+		const int maxTextureSize = 8192;
+		int mergedTextureSize = maxTextureSize;
+		MaxRectsBinPack packer;
+
+		packer.Init( mergedTextureSize, mergedTextureSize );
+		std::vector<Rect> packedRects;
+		packer.Insert( std::vector<RectSize>( rectSizes ), MaxRectsBinPack::RectBestShortSideFit );
+		std::cout << packer.Occupancy() << "\n";
+
+		packedRects = std::move( packer.GetRectangles() );
+
+		int stepSize = maxTextureSize / 2;
+		for( int step = 0 ; step < 4 ; ++step, stepSize /= 2 ) {
+			const int testTextureSize = mergedTextureSize - stepSize;
+
+			packer.Init( testTextureSize, testTextureSize );
+			packer.Insert( std::vector<RectSize>( rectSizes ), MaxRectsBinPack::RectBestShortSideFit );
+		
+			if( packer.GetRectangles().size() == rectSizes.size() ) {
+				std::cout << packer.Occupancy() << "\n";
+
+				mergedTextureSize = testTextureSize;
+				packedRects = std::move( packer.GetRectangles() );
+			}
+		}
+		
+		for( int i = 0 ; i < packedRects.size() ; i++ ) {
+			const Rect &packedRect = packedRects[i];
+
+			// find a fitting texture index
+			auto &bin = resolutions[ Resolution( packedRect.width, packedRect.height ) ];
+			int textureIndex = bin.back();
+			bin.pop_back();
+
+			auto &info = mergedTextureInfos[textureIndex];
+			info.offset[0] = packedRect.x + 2;
+			info.offset[1] = packedRect.y + 2;
+			info.size[0] = packedRect.width - 4;
+			info.size[1] = packedRect.height - 4;
+		}
+
+		// output texture
+		// using uint instead of char[4]
+		typedef unsigned __int32 RGBA;
+		RGBA *mergedTextureData = new RGBA[ mergedTextureSize * mergedTextureSize ];
+		{
+			boost::timer::auto_cpu_timer timer;
+
+			Concurrency::task_group blits;
+
+			for( int textureIndex = 0 ; textureIndex < textures.handles.size() ; ++textureIndex ) {
+				auto &info = mergedTextureInfos[textureIndex];
+
+				// download the uncompressed texture
+				RGBA *textureData = new RGBA[ info.size[0] * info.size[1] ];
+				textures[ textureIndex ].getImage( 0, GL_RGBA, GL_UNSIGNED_BYTE, textureData );
+				
+				blits.run( [&, info, textureData]() {
+#define Wrap( x, width ) (((x) + (width)) % (width))
+#define Texel( x, y ) textureData[ Wrap(x, info.size[0]) + Wrap(y, info.size[1]) * info.size[0] ]
+#define MergedTexel( x, y ) mergedTextureData[ (x) + (y) * mergedTextureSize ]
+
+					for( int y = -2 ; y < info.size[1] + 2 ; ++y ) {
+						int mergedY = info.offset[1] + y;
+						for( int x = -2 ; x < info.size[0] + 2 ; ++x ) {
+							int mergedX = info.offset[0] + x;
+
+							MergedTexel( mergedX, mergedY ) = Texel( x, y );
+						}
+					}
+#undef MergedTexel
+#undef Texel
+#undef Wrap
+					delete[] textureData;
+				});
+			}
+
+			blits.wait();
+		}
+
+		// upload the texture and compress it
+		mergedTexture.load( 0, GL_RGBA8, mergedTextureSize, mergedTextureSize, 0, GL_RGBA, GL_UNSIGNED_BYTE, mergedTextureData );
+		// TODO: add helper functions for this (but not to object wrapper..?) [9/19/2012 kirschan2]
+		mergedTexture.parameter( GL_TEXTURE_WRAP_S, GL_REPEAT );
+		mergedTexture.parameter( GL_TEXTURE_WRAP_T, GL_REPEAT );
+		mergedTexture.parameter( GL_TEXTURE_MAG_FILTER, GL_LINEAR );
+		mergedTexture.parameter( GL_TEXTURE_MIN_FILTER, GL_LINEAR );
+
+		delete[] mergedTextureData;
+	}
+#endif
 
 	//////////////////////////////////////////////////////////////////////////
 
@@ -927,6 +1062,43 @@ struct SGSSceneRenderer {
 
 			optix.objects.geometryInstance = optix.context->createGeometryInstance (optix.objects.geometry, &optix.objects.material, &optix.objects.material + 1);
 			optix.objects.geometryInstance->validate ();
+
+			optix.objectTextureSampler = optix.context->createTextureSamplerFromGLImage( mergedTexture.handle, RT_TARGET_GL_TEXTURE_2D );
+			optix.objectTextureSampler->setWrapMode( 0, RT_WRAP_REPEAT );
+			optix.objectTextureSampler->setWrapMode( 1, RT_WRAP_REPEAT );
+			// we can still use tex2d here and linear interpolation with array indexing [9/19/2012 kirschan2]
+			optix.objectTextureSampler->setIndexingMode( RT_TEXTURE_INDEX_ARRAY_INDEX );
+			optix.objectTextureSampler->setReadMode( RT_TEXTURE_READ_NORMALIZED_FLOAT );
+			optix.objectTextureSampler->setMaxAnisotropy( 1.0f );
+			optix.objectTextureSampler->setFilteringModes( RT_FILTER_LINEAR, RT_FILTER_LINEAR, RT_FILTER_NONE );
+
+			optix.objects.material[ "objectTexture" ]->setTextureSampler( optix.objectTextureSampler );
+
+			optix.textureInfos = optix.context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_USER, mergedTextureInfos.size() );
+			optix.textureInfos->setElementSize( sizeof MergedTextureInfo );
+			::memcpy( optix.textureInfos->map(), &mergedTextureInfos.front(), sizeof( MergedTextureInfo ) * mergedTextureInfos.size() );
+			optix.textureInfos->unmap();
+			optix.textureInfos->validate();
+
+			// set texture indices
+			optix.textureIndices = optix.context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_INT, primitiveCount );
+
+			int *textureIndices = (int *) optix.textureIndices->map();
+
+			for( int subObjectIndex = 0 ; subObjectIndex < scene->numSceneSubObjects ; ++subObjectIndex ) {
+				const SGSScene::SubObject &subObject = scene->subObjects[ subObjectIndex ];
+
+				const int textureIndex = subObject.material.textureIndex[0];
+
+				const int startPrimitive = subObject.startIndex / 3;
+				const int endPrimitive = startPrimitive + subObject.numIndices / 3;
+				std::fill( textureIndices + startPrimitive, textureIndices + endPrimitive, textureIndex );
+			}
+			optix.textureIndices->unmap();
+			optix.textureIndices->validate();
+
+			optix.context[ "textureIndices" ]->setBuffer( optix.textureIndices );
+			optix.objects.material[ "textureInfos" ]->setBuffer( optix.textureInfos );
 		}
 
 		// set up the terrain buffers
