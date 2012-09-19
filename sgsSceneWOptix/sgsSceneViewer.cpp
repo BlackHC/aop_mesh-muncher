@@ -115,17 +115,25 @@ void real_main() {
 	sf::Clock frameClock, clock;
 
 	SGSSceneRenderer sgsSceneRenderer;
+	OptixRenderer optixRenderer;
 	SGSScene sgsScene;
 
-	sgsSceneRenderer.reloadShaders();
 	{
-		boost::timer::auto_cpu_timer loadTimer;
+		boost::timer::auto_cpu_timer timer( "SGSSceneRenderer: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
 
-		Serializer::BinaryReader reader( "P:\\sgs\\sg_and_sgs_source\\survivor\\__GameData\\Editor\\Save\\Survivor_original_mission_editorfiles\\test\\scene.glscene" );
+		sgsSceneRenderer.reloadShaders();
 
-		Serializer::read( reader, sgsScene );
-
+		{
+			Serializer::BinaryReader reader( "P:\\sgs\\sg_and_sgs_source\\survivor\\__GameData\\Editor\\Save\\Survivor_original_mission_editorfiles\\test\\scene.glscene" );
+			Serializer::read( reader, sgsScene );
+		}
+		
 		sgsSceneRenderer.processScene( make_nonallocated_shared( sgsScene ) );
+	}
+	{
+		boost::timer::auto_cpu_timer timer( "OptixRenderer: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
+
+		optixRenderer.init( make_nonallocated_shared( sgsSceneRenderer ) );
 	}
 
 	EventDispatcher eventDispatcher;
@@ -143,16 +151,9 @@ void real_main() {
 	BoolVariableControl updateRenderListsToggle( sgsSceneRenderer.debug.updateRenderLists, sf::Keyboard::C );
 	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( updateRenderListsToggle ) );
 
-	sgsSceneRenderer.optix.debugTexture.load( 0, GL_RGBA8, 640, 480, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr );
-	sgsSceneRenderer.optix.debugTexture.parameter( GL_TEXTURE_MAG_FILTER, GL_LINEAR );
-	sgsSceneRenderer.optix.debugTexture.parameter( GL_TEXTURE_MIN_FILTER, GL_LINEAR );
-
-	window.setActive();
-	sgsSceneRenderer.initOptix();
-
 	TextureVisualizationWindow optixWindow;
 	optixWindow.init( "Optix Version" );
-	optixWindow.texture = sgsSceneRenderer.optix.debugTexture;
+	optixWindow.texture = optixRenderer.debugTexture;
 
 	TextureVisualizationWindow mergedTextureWindow;
 	mergedTextureWindow.init( "merged object textures" );
@@ -164,7 +165,7 @@ void real_main() {
 	
 	while (true)
 	{
-		sgsSceneRenderer.renderOptix( camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() );
+		optixRenderer.renderPinholeCamera( camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() );
 		debugWindowManager.update();
 
 		// Activate the window for OpenGL rendering

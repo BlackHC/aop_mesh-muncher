@@ -15,7 +15,7 @@ __device__ __inline__ uchar4 make_color(const float3& c)
 
 rtDeclareVariable(uint2, launchIndex, rtLaunchIndex, );
 rtDeclareVariable(uint2, launchDim, rtLaunchDim, );
-rtBuffer<uchar4, 2>	 resultBuffer;
+rtBuffer<uchar4, 2>	 outputBuffer;
 
 // Camera Params:
 rtDeclareVariable(float3, eyePosition, , );
@@ -23,7 +23,7 @@ rtDeclareVariable(float3, U, , );
 rtDeclareVariable(float3, V, , );
 rtDeclareVariable(float3, W, , );
 
-RT_PROGRAM void ray_gen()
+RT_PROGRAM void pinholeCamera_rayGeneration()
 {
 	float2 d = (make_float2(launchIndex) + make_float2(0.5f, 0.5f)) / make_float2(launchDim) * 2.0f - 1.0f;;
 
@@ -37,13 +37,13 @@ RT_PROGRAM void ray_gen()
 
 	rtTrace( rootObject, ray, ray_eye );
 		
-	resultBuffer[launchIndex] = make_color( ray_eye.color );
+	outputBuffer[launchIndex] = make_color( ray_eye.color );
 }
 
 RT_PROGRAM void exception() {
 	unsigned int const error_code = rtGetExceptionCode();
 	if(RT_EXCEPTION_STACK_OVERFLOW == error_code) {
-		resultBuffer[launchIndex] = make_uchar4(255, 0, 0, 255);
+		outputBuffer[launchIndex] = make_uchar4(255, 0, 0, 255);
 	} else {
 		rtPrintExceptionDetails();
 	}

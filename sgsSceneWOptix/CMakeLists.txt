@@ -49,6 +49,7 @@ CUDA_ADD_EXECUTABLE(optix_sgsSceneViewer
 	../wml/wml.h
 	../wml/leanTextProcessing.h
 	glslPipeline.h
+	glslPipeline.cpp
 	sgsScene.h
 	sgsSceneRender.h
 	sgsSceneViewer.cpp
@@ -57,6 +58,7 @@ CUDA_ADD_EXECUTABLE(optix_sgsSceneViewer
 	MaxRectsBinPack.cpp
 	MaxRectsBinPack.h
 	optixProgramInterface.h
+	optixRendering.cpp
 	${PTX_FILES}
 	../build/sgsScene.shaders
 	)

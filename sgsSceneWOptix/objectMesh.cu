@@ -30,8 +30,7 @@ __device__ float4 performTextureLookup() {
 	return tex2D( objectTexture, mergedTexCoords.x, mergedTexCoords.y );
 }
 
-RT_PROGRAM void closest_hit()
-{
+RT_PROGRAM void closestHit() {
 	float3 hitPosition = currentRay.origin + t_hit * currentRay.direction;
 
 	float3 worldShadingNormal   = normalize(shadingNormal);
@@ -40,8 +39,6 @@ RT_PROGRAM void closest_hit()
 	
 	// actually -sunDirection but we don't need to care because of the abs
 	float diffuseAttenuation = abs( dot( ffnormal, sunDirection ) );
-
-	
 
 	const float4 textureLookup = performTextureLookup();
 	
@@ -63,8 +60,23 @@ RT_PROGRAM void closest_hit()
 	}
 }
 
-RT_PROGRAM void any_hit()
-{	
+RT_PROGRAM void closestHitAdditive() {
+	float3 hitPosition = currentRay.origin + t_hit * currentRay.direction;
+
+	const float4 textureLookup = performTextureLookup();
+	
+	// cast another ray
+	optix::Ray subRay( hitPosition, currentRay.direction, RT_EYE, sceneEpsilon );
+		
+	Ray_Eye subRay_eye;
+	subRay_eye.color = make_float3( 0.0f );
+
+	rtTrace(rootObject, subRay, subRay_eye);
+
+	currentRay_eye.color = make_float3( textureLookup ) + subRay_eye.color;
+}
+
+RT_PROGRAM void anyHit() {
 	const float4 textureLookup = performTextureLookup();
 	
 	currentRay_shadow.transmittance *= 1.0 - textureLookup.w;
@@ -75,6 +87,11 @@ RT_PROGRAM void any_hit()
 		// NOTE: this is important, otherwise it wont take into account other possible hit locations
 		rtIgnoreIntersection();
 	}
+}
+
+// additive objects are fully transparent
+RT_PROGRAM void anyHitAdditive() {
+	rtIgnoreIntersection();
 }
 
 RT_PROGRAM void intersect( int primIdx )
@@ -112,8 +129,7 @@ RT_PROGRAM void intersect( int primIdx )
 	}
 }
 
-RT_PROGRAM void bounding_box (int primIdx, float result[6])
-{
+RT_PROGRAM void calculateBoundingBox (int primIdx, float result[6]) {
 	int3 v_idx = indexBuffer[primIdx];
 
 	float3 v0 = vertexBuffer[ v_idx.x ].position;

@@ -481,3 +481,56 @@ struct ScopedArray< DisplayList > : Array< DisplayList > {
 
 typedef ScopedArray< DisplayList > ScopedDisplayLists;
 }
+
+namespace SimpleGL {
+	using namespace GL;
+
+	class ImmediateMultiDrawElements {
+	public:
+		bool empty() const {
+			return counts.empty();
+		}
+
+		void reserve( size_t capacity ) {
+			counts.reserve( capacity );
+			indices.reserve( capacity );
+		}
+
+		void push_back( GLsizei count, const void *firstIndex ) {
+			counts.push_back( count );
+			indices.push_back( firstIndex );
+		}
+
+		size_t size() const {
+			return counts.size();
+		}
+
+		void operator () ( GLenum mode, GLenum elementType ) {
+			glMultiDrawElements( mode, &counts.front(), elementType, &indices.front(), size() );
+		}
+
+	private:
+		std::vector< GLsizei > counts;
+		std::vector< const void * > indices;
+	};
+
+	inline void setRepeatST( Texture2D &texture ) {
+		texture.parameter( GL_TEXTURE_WRAP_S, GL_REPEAT );
+		texture.parameter( GL_TEXTURE_WRAP_T, GL_REPEAT );
+	}
+
+	inline void setClampToBorderST( Texture2D &texture ) {
+		texture.parameter( GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER );
+		texture.parameter( GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER );
+	}
+
+	inline void setLinearMinMag( Texture2D &texture ) {
+		texture.parameter( GL_TEXTURE_MAG_FILTER, GL_LINEAR );
+		texture.parameter( GL_TEXTURE_MIN_FILTER, GL_LINEAR );
+	}
+
+	inline void setLinearMipmapMinMag( Texture2D &texture ) {
+		texture.parameter( GL_TEXTURE_MAG_FILTER, GL_LINEAR );
+		texture.parameter( GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR );
+	}
+}

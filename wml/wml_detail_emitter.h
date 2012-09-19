@@ -165,7 +165,7 @@ namespace wml {
 			}
 		};
 
-		std::string emit( const Node &node ) {
+		inline std::string emit( const Node &node ) {
 			Emitter emitter;
 			emitter.emitMap( node );
 			return emitter.text;

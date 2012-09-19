@@ -23,7 +23,7 @@ namespace Math {
 
 namespace Eigen {
 	// like glFrustum
-	static Matrix4f createFrustumMatrix( const float left, const float right, const float bottom, const float top, const float near, const float far ) {
+	inline Matrix4f createFrustumMatrix( const float left, const float right, const float bottom, const float top, const float near, const float far ) {
 		const float width = right - left;
 		const float height = top - bottom;
 		const float depth = far - near;
@@ -36,7 +36,7 @@ namespace Eigen {
 	}
 
 	// like glOrtho
-	static Matrix4f createOrthoProjectionMatrix( const float left, const float right, const float bottom, const float top, const float near, const float far ) {
+	inline Matrix4f createOrthoProjectionMatrix( const float left, const float right, const float bottom, const float top, const float near, const float far ) {
 		const float width = right - left;
 		const float height = top - bottom;
 		const float depth = far - near;
@@ -50,7 +50,7 @@ namespace Eigen {
 
 	// min_z = zNear, max_z = zFar
 	// looks along positive z
-	static Matrix4f createOrthoProjectionMatrixLH( const Vector3f &min, const Vector3f &max ) {
+	inline Matrix4f createOrthoProjectionMatrixLH( const Vector3f &min, const Vector3f &max ) {
 		const Vector3f center = (min + max) / 2.0;
 		const Vector3f halfSize = (max - min) / 2.0;
 
@@ -62,7 +62,7 @@ namespace Eigen {
 	}
 
 	typedef float Degrees;
-	static Matrix4f createPerspectiveProjectionMatrix( const Degrees FoV_y, const float aspectRatio, const float zNear, const float zFar ) {
+	inline Matrix4f createPerspectiveProjectionMatrix( const Degrees FoV_y, const float aspectRatio, const float zNear, const float zFar ) {
 		const float f = Math::cotf( FoV_y * 0.5f * (float) Math::PI / 180.0f );
 		const float depth = zFar - zNear;
 
@@ -75,7 +75,7 @@ namespace Eigen {
 
 	// min_z = zNear, max_z = zFar
 	// looks along positive z
-	static Matrix4f createShearProjectionMatrixLH( const Vector3f &min, const Vector3f &max, const Vector2f &zDirection ) {
+	inline Matrix4f createShearProjectionMatrixLH( const Vector3f &min, const Vector3f &max, const Vector2f &zDirection ) {
 		const Vector3f center = (min + max) / 2.0;
 		const Vector3f halfSize = (max - min) / 2.0;
 
@@ -87,7 +87,7 @@ namespace Eigen {
 	}
 
 	// also looks down the negative Z axis!
-	static Matrix4f createShearProjectionMatrix( const Vector2f &min, const Vector2f &max, const float zNear, const float zFar, const Vector2f &zStep ) {
+	inline Matrix4f createShearProjectionMatrix( const Vector2f &min, const Vector2f &max, const float zNear, const float zFar, const Vector2f &zStep ) {
 		const Vector2f center = (min + max) / 2.0;
 		const Vector2f halfSize = (max - min) / 2.0;
 		const float depth = zFar - zNear;
@@ -99,7 +99,7 @@ namespace Eigen {
 			0,						0,					0,							1.0f).finished();
 	}
 
-	static Matrix4f createViewerMatrixLH( const Vector3f &position, const Vector3f &forward, const Vector3f &up ) {
+	inline Matrix4f createViewerMatrixLH( const Vector3f &position, const Vector3f &forward, const Vector3f &up ) {
 		const RowVector3f right = forward.cross( up ).normalized();
 		const RowVector3f realUp = right.cross( forward );
 
@@ -110,7 +110,7 @@ namespace Eigen {
 	}
 
 	// TODO: rename header to something more fitting.. eigenMatrixHelpers?
-	static Matrix4f createViewerMatrix( const Vector3f &position, const Vector3f &forward, const Vector3f &up ) {
+	inline Matrix4f createViewerMatrix( const Vector3f &position, const Vector3f &forward, const Vector3f &up ) {
 		const RowVector3f right = forward.cross( up ).normalized();
 		const RowVector3f realUp = right.cross( forward );
 
@@ -120,7 +120,7 @@ namespace Eigen {
 		return (view * Translation3f( -position )).matrix();
 	}
 
-	static Matrix4f createLookAtMatrix( const Vector3f &position, const Vector3f &point, const Vector3f &up ) {
+	inline Matrix4f createLookAtMatrix( const Vector3f &position, const Vector3f &point, const Vector3f &up ) {
 		const RowVector3f forward = (point - position).normalized();
 		const RowVector3f right = forward.cross( up ).normalized();
 		const RowVector3f realUp = right.cross( forward );
@@ -153,15 +153,15 @@ namespace Eigen {
 	const Map< const FrustumPlanesMatrixf > projectionToFrustumPlanes( projectionToFrustumPlanes_coeffs );
 
 	namespace Plane {
-		RowVector4f parallelShift( const RowVector4f &plane, int distance ) {
+		inline RowVector4f parallelShift( const RowVector4f &plane, int distance ) {
 			return plane - RowVector4f::UnitW() * distance * plane.head<3>().norm(); 
 		}
 
-		RowVector4f normalize( const RowVector4f &plane ) {
+		inline RowVector4f normalize( const RowVector4f &plane ) {
 			return plane / plane.head<3>().norm(); 
 		}
 
-		RowVector4f parallelShiftNormalized( const RowVector4f &plane, int distance ) {
+		inline RowVector4f parallelShiftNormalized( const RowVector4f &plane, int distance ) {
 			return plane - RowVector4f::UnitW() * distance; 
 		}
 	}
@@ -171,16 +171,16 @@ namespace Eigen {
 		// minDistance > 0 makes the frustum smaller
 		// minDistance < 0 makes the frustum bigger
 		template< typename Derived >
-		bool isInside( const MatrixBase< Derived > &frustumPlanes, const Vector3f &point, float minDistance = 0.0f ) {
+		inline bool isInside( const MatrixBase< Derived > &frustumPlanes, const Vector3f &point, float minDistance = 0.0f ) {
 			return ((frustumPlanes * point.homogeneous()).array() >= minDistance).all();
 		}
 
 		template< typename Derived >
-		bool isInside( const MatrixBase< Derived > &frustumPlanes, const Vector4f &point, float minDistance = 0.0f  ) {
+		inline bool isInside( const MatrixBase< Derived > &frustumPlanes, const Vector4f &point, float minDistance = 0.0f  ) {
 			return ((frustumPlanes * point).cwise() >= minDistance).all();
 		}
 
-		FrustumPlanesMatrixf normalize( const FrustumPlanesMatrixf &frustumPlanes ) {
+		inline FrustumPlanesMatrixf normalize( const FrustumPlanesMatrixf &frustumPlanes ) {
 			FrustumPlanesMatrixf normalized;
 			for( int i = 0 ; i < 6 ; ++i ) {
 				normalized.row(i) = Plane::normalize( frustumPlanes.row(i) );	

@@ -1,5 +1,7 @@
 #pragma once
 
+#define SERIALIZER_SUPPORT_STL
+#define SERIALIZER_SUPPORT_EIGEN
 #include "serializer.h"
 
 #include <string>
@@ -383,40 +385,4 @@ struct Program {
 	}
 };
 
-Program *Program::currentProgram = nullptr;
-
-int Shader::uniform( const char *name ) const {
-	if( !currentProgram ) {
-		return -1;
-	}
-
-	auto location = currentProgram->uniformLocations.find( name );
-	if( location != currentProgram->uniformLocations.end() ) {
-		return location->second;
-	}
-
-	return -1;
-}
-
-void loadShaderCollection( ShaderCollection &library, const char *filename ) {
-	ShaderCollection subCollection;
-
-	for( bool success = false ; !success ; ) {
-		subCollection.shaders.clear();
-
-		try
-		{
-			Serializer::TextReader reader( filename );
-			Serializer::read( reader, library );
-
-			success = true;
-		}
-		catch (std::exception &e)
-		{
-			std::cerr << e.what();
-			__debugbreak();
-		}
-	}
-
-	library.shaders.splice( library.shaders.end(), subCollection.shaders );
-}
+void loadShaderCollection( ShaderCollection &library, const char *filename );

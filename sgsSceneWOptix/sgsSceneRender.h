@@ -1,31 +1,32 @@
 #pragma once
 
-#include "sgsScene.h"
-
-#include "gl/glew.h"
-
-#include "SOIL.h"
-
-#include "glslPipeline.h"
-#include <boost/range/algorithm/sort.hpp>
-#include <debugRender.h>
-
-#include <optix_world.h>
-
-#include "glObjectWrappers.h"
+#include <gl/glew.h>
+#include <SOIL.h>
 
 #include <boost/unordered_map.hpp>
-
-#include "MaxRectsBinPack.h"
-
+#include <boost/range/algorithm/sort.hpp>
 #include "boost/range/algorithm/for_each.hpp"
-
-#include <boost/timer/timer.hpp>
 
 #include <ppl.h>
 #include <algorithm>
 
+#include <optix_world.h>
+
+#include "glObjectWrappers.h"
+#include <debugRender.h>
+#include "glslPipeline.h"
+
+#include "sgsScene.h"
+
+#include "MaxRectsBinPack.h"
+
+#include <boost/timer/timer.hpp>
+
 #include "optixProgramInterface.h"
+
+#include <Eigen/Eigen>
+
+#include "eigenProjectionMatrices.h"
 
 using namespace GL;
 
@@ -58,53 +59,39 @@ inline Eigen::Matrix4f unpermutedToPermutedMatrix( const int *permutation ) {
 		Eigen::RowVector4f::UnitW() ).finished();
 }
 
-/*
- struct BoundingBox {
-	Eigen::Vector3f minCorner, maxCorner;
+//////////////////////////////////////////////////////////////////////////
+struct SGSSceneRenderer;
 
-	BoundingBox() {
-		reset();
+struct OptixRenderer {
+	optix::Context context;
+	optix::Group scene;
+	optix::Acceleration acceleration;
+
+	optix::Buffer outputBuffer;
+	int width, height;
+
+	ScopedTexture2D debugTexture;
+
+	struct Programs {
+		optix::Program miss, exception;
+	} programs;
+
+	std::shared_ptr< SGSSceneRenderer > sgsSceneRenderer;
+
+	void init( const std::shared_ptr< SGSSceneRenderer > &sgsSceneRenderer );
+	void renderPinholeCamera(const Eigen::Matrix4f &projectionView, const Eigen::Vector3f &worldViewerPosition);
+
+	void addSceneChild( const optix::GeometryGroup &child ) {
+		int index = scene->getChildCount();
+		scene->setChildCount( index + 1 );
+		scene->setChild( index, child );
 	}
-
-	void reset() {
-		minCorner.setConstant( FLT_MAX );
-		maxCorner.setConstant( FLT_MIN );
-	}
-
-	void mergePoint( const Eigen::Vector3f &point ) {
-		minCorner = minCorner.cwiseMin( point );
-		maxCorner = maxCorner.cwiseMin( point );
-	}
-
-	Eigen::Vector3f
 };
-
-struct OrthogonalShadowMapConstructor {
-	BoundingBox bbox;
-
-
-};
-*/
 
 struct SGSSceneRenderer {
-	/*struct BoundingBox {
-		Eigen::Vector3f min, max;
-	};
-
-	struct BoundingSphere {
-		Eigen::Vector3f center;
-		float radius;
-	};
-
-	struct CullInfo {
-		BoundingBox boundingBox;
-		BoundingSphere boundingSphere;
-	};*/
-
 	struct Optix {
-		optix::Context context;
-		optix::GeometryGroup scene;
-		optix::Acceleration acceleration;
+		optix::GeometryGroup staticScene;
+		optix::Acceleration staticAcceleration;
 				
 		struct MeshData {
 			optix::Buffer indexBuffer, vertexBuffer;
@@ -119,87 +106,11 @@ struct SGSSceneRenderer {
 		optix::Buffer textureInfos, textureIndices;
 		optix::TextureSampler terrainTextureSampler;
 		optix::TextureSampler objectTextureSampler;
-
-		optix::Buffer outputBuffer;
-		int width, height;
-
-		ScopedTexture2D debugTexture;
-
-		struct Programs
-		{
-			optix::Program miss, exception;
-		} programs;
 	} optix;
 
 	std::shared_ptr<SGSScene> scene;
 
 	//////////////////////////////////////////////////////////////////////////
-#if 0
-	struct MergedTextureInfo {		
-		int offset[2];
-		int size[2];
-		int index;
-	};
-	// one merged texture per unique size
-	ScopedTextures2D mergedTextures;
-	// in textureIndex order
-	std::vector<MergedTextureInfo> mergedTextureInfos;
-
-	void mergeTextures( const ScopedTextures2D &textures ) {
-		typedef std::pair<int, int> Resolution;
-		// distribute by resolutions
-		boost::unordered_map<Resolution, std::vector<int> > resolutions;
-
-		for( int textureIndex = 0 ; textureIndex < textures.handles.size() ; textureIndex++ ) {
-			int width, height;
-			textures[ textureIndex ].getLevelParameter( 0, GL_TEXTURE_WIDTH, &width );
-			textures[ textureIndex ].getLevelParameter( 0, GL_TEXTURE_HEIGHT, &height );
-
-			resolutions[ Resolution( width, height ) ].push_back( textureIndex );
-		}
-
-		mergedTextures.resize( resolutions.size() );
-		mergedTextureInfos.resize( textures.handles.size() );
-		
-		std::vector<Resolution> mergedResolutions;
-
-		const int maxTextureSize = 8192;
-
-		for( auto resolution = resolutions.cbegin() ; resolution != resolutions.cend() ; ++resolution ) {
-			// + 4 because we use compressed textures
-			const int adjustedWidth = resolution->first.first + 4;
-			const int adjustedHeight = resolution->first.second + 4;
-
-			const int numTextures = resolution->second.size();
-			const int maxPerRow = maxTextureSize / adjustedWidth;
-			const int numRows = numTextures > maxPerRow ? resolution->second.size() / maxPerRow + 1 : 1;
-			const int numCols = numRows > 1 ? maxPerRow : resolution->second.size();
-
-			mergedResolutions.push_back( Resolution( numCols * adjustedWidth, numRows * adjustedHeight ) );
-
-			int textureSubIndex = 0; 
-			for( int row = 0 ; row < numRows ; ++row ) {
-				int realY = row * adjustedHeight;
-
-				for( int col = 0 ; col < numCols ; ++col, ++textureSubIndex ) {
-					if( textureSubIndex >= numTextures ) {
-						break;
-					}
-
-					int realX = col * adjustedWidth;
-					
-					auto &info = mergedTextureInfos[ resolution->second[ textureSubIndex ] ];
-					info.size[0] = resolution->first.first;
-					info.size[1] = resolution->first.second;
-
-					// 2 pixel border 
-					info.offset[0] = realX + 2;
-					info.offset[1] = realY + 2;
-				}
-			}			
-		}
-	}
-#else
 	typedef OptixProgramInterface::MergedTextureInfo MergedTextureInfo;
 
 	// one merged texture per unique size
@@ -318,7 +229,6 @@ struct SGSSceneRenderer {
 
 		delete[] mergedTextureData;
 	}
-#endif
 
 	//////////////////////////////////////////////////////////////////////////
 
@@ -337,29 +247,6 @@ struct SGSSceneRenderer {
 
 		Debug() : showBoundingSpheres( false ), showTerrainBoundingSpheres( false ), updateRenderLists( true ) {}
 	} debug;
-
-	struct MultiDrawList {
-		std::vector< GLsizei > counts;
-		std::vector< const void * > indices;
-
-		bool empty() const {
-			return counts.empty();
-		}
-
-		void reserve( size_t capacity ) {
-			counts.reserve( capacity );
-			indices.reserve( capacity );
-		}
-
-		void push_back( GLsizei count, const void *firstIndex ) {
-			counts.push_back( count );
-			indices.push_back( firstIndex );
-		}
-
-		size_t size() const {
-			return counts.size();
-		}
-	};
 
 	std::vector<int> solidLists;
 	std::vector<int> alphaLists;
@@ -382,12 +269,9 @@ struct SGSSceneRenderer {
 
 		for( int layer = 0 ; layer < numLayers ; ++layer ) {
 			auto weightTexture = weightTextures.get( layer );
-			weightTexture.bind();
 			weightTexture.load( 0, GL_INTENSITY, scene->terrain.layerSize[0], scene->terrain.layerSize[1], 0, GL_RED, GL_UNSIGNED_BYTE, &scene->terrain.layers[ layer ].weights.front() );
-			glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT );
-			glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT );
-			glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
-			glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
+			SimpleGL::setRepeatST( weightTexture );
+			SimpleGL::setLinearMinMag( weightTexture );
 		}
 
 		ScopedFramebufferObject fbo;
@@ -468,12 +352,9 @@ struct SGSSceneRenderer {
 
 		glPopAttrib();
 
-		bakedTexture.bind();
-		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
-		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR );
+		SimpleGL::setLinearMipmapMinMag( bakedTexture );
 
 		bakedTexture.generateMipmap();
-		bakedTexture.unbind();
 
 		return bakedTexture.publish();
 	}
@@ -721,14 +602,13 @@ struct SGSSceneRenderer {
 	void initShadowMap() {
 		sunShadowMapSize = 8096;
 		sunShadowMap.load( 0, GL_DEPTH_COMPONENT32F, sunShadowMapSize, sunShadowMapSize, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, nullptr );
-		sunShadowMap.parameter( GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER );
-		sunShadowMap.parameter( GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER );
+
+		SimpleGL::setClampToBorderST( sunShadowMap );
+		SimpleGL::setLinearMinMag( sunShadowMap );
 
 		sunShadowMap.parameter( GL_DEPTH_TEXTURE_MODE, GL_LUMINANCE );
 		sunShadowMap.parameter( GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE );
 		sunShadowMap.parameter( GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL );
-		sunShadowMap.parameter( GL_TEXTURE_MAG_FILTER, GL_LINEAR );
-		sunShadowMap.parameter( GL_TEXTURE_MIN_FILTER, GL_LINEAR );
 	}
 
 	void initShadowMapProjectionMatrix( const Eigen::AlignedBox3f &boundingBox, const Eigen::Vector3f &direction ) {
@@ -869,7 +749,7 @@ struct SGSSceneRenderer {
 		//glStringMarkerGREMEDY( 0, "shadow map done" );
 	}
 
-	void buildDrawLists( const Matrix4f &projectionView ) {
+	void buildDrawLists( const Eigen::Matrix4f &projectionView ) {
 		Eigen::FrustumPlanesMatrixf frustumPlanes = Eigen::Frustum::normalize( Eigen::projectionToFrustumPlanes * projectionView );
 
 		if( debug.updateRenderLists ) {
@@ -907,7 +787,7 @@ struct SGSSceneRenderer {
 		);
 	}
 
-	void render( const Matrix4f &projectionView, const Eigen::Vector3f &worldViewerPosition ) {
+	void render( const Eigen::Matrix4f &projectionView, const Eigen::Vector3f &worldViewerPosition ) {
 		buildDrawLists( projectionView );
 		sortAlphaList( worldViewerPosition );
 
@@ -934,17 +814,17 @@ struct SGSSceneRenderer {
 			glUniform( terrainProgram.uniformLocations[ "viewerPosition" ], worldViewerPosition );
 			glUniform( terrainProgram.uniformLocations[ "sunShadowProjection" ], sunProjectionMatrix );
 
-			MultiDrawList drawList;
-			drawList.reserve( terrainLists.size() );			
+			SimpleGL::ImmediateMultiDrawElements multiDrawElements;
+			multiDrawElements.reserve( terrainLists.size() );			
 			GLuint *firstIndex = nullptr;
 			for( int i = 0 ; i < terrainLists.size() ; i++ ) {
 				const int tileIndex = terrainLists[i];
-				drawList.push_back( scene->terrain.tiles[tileIndex].numIndices, firstIndex + scene->terrain.tiles[tileIndex].startIndex );
+				multiDrawElements.push_back( scene->terrain.tiles[tileIndex].numIndices, firstIndex + scene->terrain.tiles[tileIndex].startIndex );
 			}
 
-			if( !drawList.empty() ) {
+			if( !multiDrawElements.empty() ) {
 				terrainVAO.bind();
-				glMultiDrawElements( GL_TRIANGLES, &drawList.counts.front(), GL_UNSIGNED_INT, &drawList.indices.front(), drawList.size() );
+				multiDrawElements( GL_TRIANGLES, GL_UNSIGNED_INT );
 				terrainVAO.unbind();
 			}
 		}
@@ -1004,54 +884,40 @@ struct SGSSceneRenderer {
 		}
 	}
 
-	void initOptix() {
-		optix.context = optix::Context::create();
-
-		optix.context->setRayTypeCount(2);
-		optix.context->setEntryPointCount(1);
-		optix.context->setStackSize(8000);
-		optix.context->setPrintBufferSize(65536);
-		optix.context->setPrintEnabled(true);
-
-		const char *raytracerPtxFilename = "cuda_compile_ptx_generated_raytracer.cu.ptx";		
-		optix.programs.exception = optix.context->createProgramFromPTXFile (raytracerPtxFilename, "exception");
-		optix.programs.miss = optix.context->createProgramFromPTXFile (raytracerPtxFilename, "miss");
-
+	void initOptix( OptixRenderer *optixRenderer ) {
 		const char *terrainMeshPtxFilename = "cuda_compile_ptx_generated_terrainMesh.cu.ptx";
-		optix.terrain.intersect = optix.context->createProgramFromPTXFile (terrainMeshPtxFilename, "intersect");
-		optix.terrain.boundingBox = optix.context->createProgramFromPTXFile (terrainMeshPtxFilename, "bounding_box");
-		optix.terrain.anyHit = optix.context->createProgramFromPTXFile (terrainMeshPtxFilename, "any_hit");
-		optix.terrain.closestHit = optix.context->createProgramFromPTXFile (terrainMeshPtxFilename, "closest_hit");
+		optix.terrain.intersect = optixRenderer->context->createProgramFromPTXFile (terrainMeshPtxFilename, "intersect");
+		optix.terrain.boundingBox = optixRenderer->context->createProgramFromPTXFile (terrainMeshPtxFilename, "calculateBoundingBox");
+		optix.terrain.anyHit = optixRenderer->context->createProgramFromPTXFile (terrainMeshPtxFilename, "anyHit");
+		optix.terrain.closestHit = optixRenderer->context->createProgramFromPTXFile (terrainMeshPtxFilename, "closestHit");
 
 		const char *objectMeshPtxFilename = "cuda_compile_ptx_generated_objectMesh.cu.ptx";
-		optix.objects.intersect = optix.context->createProgramFromPTXFile (objectMeshPtxFilename, "intersect");
-		optix.objects.boundingBox = optix.context->createProgramFromPTXFile (objectMeshPtxFilename, "bounding_box");
-		optix.objects.anyHit = optix.context->createProgramFromPTXFile (objectMeshPtxFilename, "any_hit");
-		optix.objects.closestHit = optix.context->createProgramFromPTXFile (objectMeshPtxFilename, "closest_hit");
-
-		optix.context->setRayGenerationProgram (0, optix.context->createProgramFromPTXFile (raytracerPtxFilename, "ray_gen"));
+		optix.objects.intersect = optixRenderer->context->createProgramFromPTXFile (objectMeshPtxFilename, "intersect");
+		optix.objects.boundingBox = optixRenderer->context->createProgramFromPTXFile (objectMeshPtxFilename, "calculateBoundingBox");
+		optix.objects.anyHit = optixRenderer->context->createProgramFromPTXFile (objectMeshPtxFilename, "anyHit");
+		optix.objects.closestHit = optixRenderer->context->createProgramFromPTXFile (objectMeshPtxFilename, "closestHit");
 
 		// setup the objects buffers
 		{
-			optix.objects.material = optix.context->createMaterial ();
+			optix.objects.material = optixRenderer->context->createMaterial ();
 			optix.objects.material->setAnyHitProgram (1, optix.objects.anyHit);
 			optix.objects.material->setClosestHitProgram (0, optix.objects.closestHit);
 			optix.objects.material->validate ();
 
 			int primitiveCount = scene->numSceneIndices / 3;
 
-			optix.objects.indexBuffer = optix.context->createBufferFromGLBO( RT_BUFFER_INPUT, objectIndices.handle );
+			optix.objects.indexBuffer = optixRenderer->context->createBufferFromGLBO( RT_BUFFER_INPUT, objectIndices.handle );
 			optix.objects.indexBuffer->setFormat( RT_FORMAT_UNSIGNED_INT3 );
 			optix.objects.indexBuffer->setSize( primitiveCount );
 			optix.objects.indexBuffer->validate();
 
-			optix.objects.vertexBuffer = optix.context->createBufferFromGLBO( RT_BUFFER_INPUT, objectVertices.handle );
+			optix.objects.vertexBuffer = optixRenderer->context->createBufferFromGLBO( RT_BUFFER_INPUT, objectVertices.handle );
 			optix.objects.vertexBuffer->setSize( scene->numSceneVertices );
 			optix.objects.vertexBuffer->setFormat( RT_FORMAT_USER );
 			optix.objects.vertexBuffer->setElementSize( sizeof SGSScene::Vertex );
 			optix.objects.vertexBuffer->validate();
 
-			optix.objects.geometry = optix.context->createGeometry ();
+			optix.objects.geometry = optixRenderer->context->createGeometry ();
 			optix.objects.geometry ["vertexBuffer"]->setBuffer (optix.objects.vertexBuffer);
 			optix.objects.geometry ["indexBuffer"]->setBuffer (optix.objects.indexBuffer);
 			optix.objects.geometry->setBoundingBoxProgram (optix.objects.boundingBox);
@@ -1060,10 +926,10 @@ struct SGSSceneRenderer {
 			optix.objects.geometry->setPrimitiveCount ( primitiveCount );
 			optix.objects.geometry->validate ();
 
-			optix.objects.geometryInstance = optix.context->createGeometryInstance (optix.objects.geometry, &optix.objects.material, &optix.objects.material + 1);
+			optix.objects.geometryInstance = optixRenderer->context->createGeometryInstance (optix.objects.geometry, &optix.objects.material, &optix.objects.material + 1);
 			optix.objects.geometryInstance->validate ();
 
-			optix.objectTextureSampler = optix.context->createTextureSamplerFromGLImage( mergedTexture.handle, RT_TARGET_GL_TEXTURE_2D );
+			optix.objectTextureSampler = optixRenderer->context->createTextureSamplerFromGLImage( mergedTexture.handle, RT_TARGET_GL_TEXTURE_2D );
 			optix.objectTextureSampler->setWrapMode( 0, RT_WRAP_REPEAT );
 			optix.objectTextureSampler->setWrapMode( 1, RT_WRAP_REPEAT );
 			// we can still use tex2d here and linear interpolation with array indexing [9/19/2012 kirschan2]
@@ -1074,14 +940,14 @@ struct SGSSceneRenderer {
 
 			optix.objects.material[ "objectTexture" ]->setTextureSampler( optix.objectTextureSampler );
 
-			optix.textureInfos = optix.context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_USER, mergedTextureInfos.size() );
+			optix.textureInfos = optixRenderer->context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_USER, mergedTextureInfos.size() );
 			optix.textureInfos->setElementSize( sizeof MergedTextureInfo );
 			::memcpy( optix.textureInfos->map(), &mergedTextureInfos.front(), sizeof( MergedTextureInfo ) * mergedTextureInfos.size() );
 			optix.textureInfos->unmap();
 			optix.textureInfos->validate();
 
 			// set texture indices
-			optix.textureIndices = optix.context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_INT, primitiveCount );
+			optix.textureIndices = optixRenderer->context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_INT, primitiveCount );
 
 			int *textureIndices = (int *) optix.textureIndices->map();
 
@@ -1097,30 +963,30 @@ struct SGSSceneRenderer {
 			optix.textureIndices->unmap();
 			optix.textureIndices->validate();
 
-			optix.context[ "textureIndices" ]->setBuffer( optix.textureIndices );
+			optixRenderer->context[ "textureIndices" ]->setBuffer( optix.textureIndices );
 			optix.objects.material[ "textureInfos" ]->setBuffer( optix.textureInfos );
 		}
 
 		// set up the terrain buffers
 		{
-			optix.terrain.material = optix.context->createMaterial ();
+			optix.terrain.material = optixRenderer->context->createMaterial ();
 			optix.terrain.material->setClosestHitProgram (0, optix.terrain.closestHit);
 			optix.terrain.material->setAnyHitProgram (1, optix.terrain.anyHit);
 			optix.terrain.material->validate ();
 
 			int primitiveCount = scene->terrain.indices.size() / 3;
-			optix.terrain.indexBuffer = optix.context->createBufferFromGLBO( RT_BUFFER_INPUT, terrainIndices.handle );
+			optix.terrain.indexBuffer = optixRenderer->context->createBufferFromGLBO( RT_BUFFER_INPUT, terrainIndices.handle );
 			optix.terrain.indexBuffer->setFormat( RT_FORMAT_UNSIGNED_INT3 );
 			optix.terrain.indexBuffer->setSize( primitiveCount );
 			optix.terrain.indexBuffer->validate();
 
-			optix.terrain.vertexBuffer = optix.context->createBufferFromGLBO( RT_BUFFER_INPUT, terrainVertices.handle );
+			optix.terrain.vertexBuffer = optixRenderer->context->createBufferFromGLBO( RT_BUFFER_INPUT, terrainVertices.handle );
 			optix.terrain.vertexBuffer->setSize( scene->terrain.vertices.size() );
 			optix.terrain.vertexBuffer->setFormat( RT_FORMAT_USER );
 			optix.terrain.vertexBuffer->setElementSize( sizeof SGSScene::Terrain::Vertex );
 			optix.terrain.vertexBuffer->validate();
 
-			optix.terrain.geometry = optix.context->createGeometry ();
+			optix.terrain.geometry = optixRenderer->context->createGeometry ();
 			optix.terrain.geometry ["vertexBuffer"]->setBuffer (optix.terrain.vertexBuffer);
 			optix.terrain.geometry ["indexBuffer"]->setBuffer (optix.terrain.indexBuffer);
 			optix.terrain.geometry->setBoundingBoxProgram (optix.terrain.boundingBox);
@@ -1129,7 +995,7 @@ struct SGSSceneRenderer {
 			optix.terrain.geometry->setPrimitiveCount ( primitiveCount );
 			optix.terrain.geometry->validate ();
 
-			optix.terrainTextureSampler = optix.context->createTextureSamplerFromGLImage( bakedTerrainTexture.handle, RT_TARGET_GL_TEXTURE_2D );
+			optix.terrainTextureSampler = optixRenderer->context->createTextureSamplerFromGLImage( bakedTerrainTexture.handle, RT_TARGET_GL_TEXTURE_2D );
 			optix.terrainTextureSampler->setWrapMode( 0, RT_WRAP_REPEAT );
 			optix.terrainTextureSampler->setWrapMode( 1, RT_WRAP_REPEAT );
 			optix.terrainTextureSampler->setIndexingMode( RT_TEXTURE_INDEX_NORMALIZED_COORDINATES );
@@ -1139,64 +1005,20 @@ struct SGSSceneRenderer {
 
 			optix.terrain.material[ "terrainTexture" ]->setTextureSampler( optix.terrainTextureSampler );
 
-			optix.terrain.geometryInstance = optix.context->createGeometryInstance (optix.terrain.geometry, &optix.terrain.material, &optix.terrain.material + 1);
+			optix.terrain.geometryInstance = optixRenderer->context->createGeometryInstance (optix.terrain.geometry, &optix.terrain.material, &optix.terrain.material + 1);
 			optix.terrain.geometryInstance->validate ();
 		}
 
-		optix.acceleration = optix.context->createAcceleration ("Bvh", "Bvh");
+		optix.staticAcceleration = optixRenderer->context->createAcceleration ("Bvh", "Bvh");
+		optix.staticAcceleration->validate ();
 
-		// make dirty is not really needed here, is it?
-		optix.acceleration->markDirty ();
-		optix.acceleration->validate ();
+		optix.staticScene = optixRenderer->context->createGeometryGroup();
+		optix.staticScene->setAcceleration (optix.staticAcceleration);
+		optix.staticScene->setChildCount (2);
+		optix.staticScene->setChild (0, optix.objects.geometryInstance);
+		optix.staticScene->setChild (1, optix.terrain.geometryInstance);
+		optix.staticScene->validate ();
 
-		optix.context->setMissProgram (0, optix.programs.miss);
-		optix.context->setExceptionProgram (0, optix.programs.exception);
-		optix.context->validate ();
-
-		optix.scene = optix.context->createGeometryGroup ();
-		optix.scene->setAcceleration (optix.acceleration);
-		optix.scene->setChildCount (2);
-		optix.scene->setChild (0, optix.objects.geometryInstance);
-		optix.scene->setChild (1, optix.terrain.geometryInstance);
-		optix.scene->validate ();
-
-		optix.outputBuffer = optix.context->createBuffer( RT_BUFFER_OUTPUT,  RT_FORMAT_UNSIGNED_BYTE4, optix.width = 640, optix.height = 480 );
-
-		optix.context ["rootObject"]->set (optix.scene);
-
-		optix.context ["resultBuffer"]->setBuffer (optix.outputBuffer);
-
-		auto r = rtContextCompile (optix.context->get());
-		const char* e;
-		rtContextGetErrorString (optix.context->get(), r, &e);
-		std::cout << e;
-	}
-
-	void renderOptix(const Matrix4f &projectionView, const Eigen::Vector3f &worldViewerPosition) {
-		optix.context[ "eyePosition" ]->set3fv( worldViewerPosition.data() );
-		
-		// this works with all usual projection matrices (where x and y don't have any effect on z and w in clip space)
-		// determine u, v, and w by unprojecting (x,y,-1,1) from clip space to world spacel
-		Eigen::Matrix4f inverseProjectionView = projectionView.inverse();
-		// this is the w coordinate of the unprojected coordinates
-		const float unprojectedW = inverseProjectionView(3,3) - inverseProjectionView(3,2);
-
-		// divide the homogeneous affine matrix by the projected w
-		// see R1 page for deduction
-		Eigen::Matrix< float, 3, 4> inverseProjectionView34 = projectionView.inverse().topLeftCorner<3,4>() / unprojectedW;
-		const Eigen::Vector3f u = inverseProjectionView34.col(0);
-		const Eigen::Vector3f v = inverseProjectionView34.col(1);
-		const Eigen::Vector3f w = inverseProjectionView34.col(3) - inverseProjectionView34.col(2) - worldViewerPosition;
-
-		optix.context[ "U" ]->set3fv( u.data() );
-		optix.context[ "V" ]->set3fv( v.data() );
-		optix.context[ "W" ]->set3fv( w.data() );
-
-		optix.context->launch(0, optix.width, optix.height );
-
-		void *data = optix.outputBuffer->map();
-		optix.debugTexture.load( 0, GL_RGBA8, optix.width, optix.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data );
-		//SOIL_save_image( "frame.bmp", SOIL_SAVE_TYPE_BMP, 640, 480, 4, (unsigned char*) data );
-		optix.outputBuffer->unmap();
+		optixRenderer->addSceneChild( optix.staticScene );
 	}
 };

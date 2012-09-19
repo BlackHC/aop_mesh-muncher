@@ -120,24 +120,24 @@ namespace Serializer {
 	}
 
 	// std::string
-	void read( BinaryReader &reader, std::string &value ) {
+	inline void read( BinaryReader &reader, std::string &value ) {
 		unsigned int size;
 		read( reader, size );
 		value.resize( size );
 		fread( &value[0], size, 1, reader.handle );
 	}
 
-	void write( BinaryWriter &writer, const std::string &value ) {
+	inline void write( BinaryWriter &writer, const std::string &value ) {
 		unsigned int size = (unsigned int)  value.size();
 		fwrite( &size, sizeof( unsigned int ), 1, writer.handle );
 		fwrite( &value[0], size, 1, writer.handle );
 	}
 
-	void read( TextReader &reader, std::string &value ) {
+	inline void read( TextReader &reader, std::string &value ) {
 		value = reader.mapNode->data().content;
 	}
 
-	void write( TextWriter &writer, const std::string &value ) {
+	inline void write( TextWriter &writer, const std::string &value ) {
 		writer.mapNode->push_back( value );
 	}
 

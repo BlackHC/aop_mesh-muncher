@@ -16,7 +16,7 @@ rtTextureSampler<float4, 2> terrainTexture;
 rtBuffer<Vertex> vertexBuffer;
 rtBuffer<int3> indexBuffer;
 
-RT_PROGRAM void closest_hit()
+RT_PROGRAM void closestHit()
 {
 	float3 hitPosition = currentRay.origin + t_hit * currentRay.direction;
 
@@ -30,7 +30,7 @@ RT_PROGRAM void closest_hit()
 	currentRay_eye.color = make_float3( tex2D( terrainTexture, texCoord.x, texCoord.y ) ) * diffuseAttenuation * getDirectionalLightTransmittance( hitPosition, sunDirection );
 }
 
-RT_PROGRAM void any_hit()
+RT_PROGRAM void anyHit()
 {
 	currentRay_shadow.transmittance = 0.0;
 	rtTerminateRay();
@@ -69,7 +69,7 @@ RT_PROGRAM void intersect( int primIdx )
 	}
 }
 
-RT_PROGRAM void bounding_box (int primIdx, float result[6])
+RT_PROGRAM void calculateBoundingBox (int primIdx, float result[6])
 {
 	int3 v_idx = indexBuffer[primIdx];
 
