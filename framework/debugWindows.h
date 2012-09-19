@@ -193,8 +193,11 @@ struct DebugWindowManager {
 		// remove expired or closed windows
 		boost::remove_erase_if( windows, [] ( const std::shared_ptr< DebugWindowBase > &window) { return !window->window.isOpen(); } );
 
+		Seconds frameTime = frameTimer.restart().asSeconds();
+		Seconds totalTime = totalTimer.getElapsedTime().asSeconds();
+
 		BOOST_FOREACH( auto &window, windows ) {
-			window->update( frameTimer.restart().asSeconds(), totalTimer.getElapsedTime().asSeconds() );
+			window->update( frameTime, totalTime );
 		}
 	}
 };

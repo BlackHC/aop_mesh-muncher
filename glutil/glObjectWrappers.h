@@ -142,7 +142,7 @@ struct Texture2D : Texture {
 		glTextureParameterfvEXT( handle, GL_TEXTURE_2D, pname, param );
 	}
 
-	void getLevelParameter( int lod, GLenum value, int *data ) {
+	void getLevelParameter( int lod, GLenum value, int *data ) const {
 		glGetTextureLevelParameterivEXT( handle, GL_TEXTURE_2D, lod, value, data );
 	}
 };
@@ -158,6 +158,14 @@ struct Textures {
 	}
 
 	SpecializedTexture operator []( int index ) {
+		return get( index );
+	}
+
+	const SpecializedTexture get( int index ) const {
+		return SpecializedTexture( handles[ index ] );
+	}
+
+	const SpecializedTexture operator []( int index ) const {
 		return get( index );
 	}
 };

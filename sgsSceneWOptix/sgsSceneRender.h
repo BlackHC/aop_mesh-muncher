@@ -14,6 +14,8 @@
 
 #include "glObjectWrappers.h"
 
+#include <boost/unordered_map.hpp>
+
 using namespace GL;
 
 //////////////////////////////////////////////////////////////////////////
@@ -91,14 +93,17 @@ struct SGSSceneRenderer {
 		optix::GeometryGroup scene;
 		optix::Acceleration acceleration;
 				
-		optix::Material material;
-
 		struct MeshData {
 			optix::Buffer indexBuffer, vertexBuffer;
 			optix::Geometry geometry;
 			optix::GeometryInstance geometryInstance;
+
+			optix::Program intersect, boundingBox, closestHit, anyHit;
+			optix::Material material;
 		};
 		MeshData terrain, objects;
+
+		optix::TextureSampler terrainTextureSampler;
 
 		optix::Buffer outputBuffer;
 		int width, height;
@@ -107,17 +112,80 @@ struct SGSSceneRenderer {
 
 		struct Programs
 		{
-			optix::Program
-				intersect
-				, boundingBox
-				, anyHit
-				, closestHit
-				, miss
-				, exception;
+			optix::Program miss, exception;
 		} programs;
 	} optix;
 
 	std::shared_ptr<SGSScene> scene;
+
+	//////////////////////////////////////////////////////////////////////////
+	struct MergedTextureInfo {		
+		int offset[2];
+		int size[2];
+		int index;
+	};
+	// one merged texture per unique size
+	ScopedTextures2D mergedTextures;
+	// in textureIndex order
+	std::vector<MergedTextureInfo> mergedTextureInfos;
+
+	
+	void mergeTextures( const ScopedTextures2D &textures ) {
+		typedef std::pair<int, int> Resolution;
+		// distribute by resolutions
+		boost::unordered_map<Resolution, std::vector<int> > resolutions;
+
+		for( int textureIndex = 0 ; textureIndex < textures.handles.size() ; textureIndex++ ) {
+			int width, height;
+			textures[ textureIndex ].getLevelParameter( 0, GL_TEXTURE_WIDTH, &width );
+			textures[ textureIndex ].getLevelParameter( 0, GL_TEXTURE_HEIGHT, &height );
+
+			resolutions[ Resolution( width, height ) ].push_back( textureIndex );
+		}
+
+		mergedTextures.resize( resolutions.size() );
+		mergedTextureInfos.resize( textures.handles.size() );
+		
+		std::vector<Resolution> mergedResolutions;
+
+		const int maxTextureSize = 8192;
+
+		for( auto resolution = resolutions.cbegin() ; resolution != resolutions.cend() ; ++resolution ) {
+			// + 4 because we use compressed textures
+			const int adjustedWidth = resolution->first.first + 4;
+			const int adjustedHeight = resolution->first.second + 4;
+
+			const int numTextures = resolution->second.size();
+			const int maxPerRow = maxTextureSize / adjustedWidth;
+			const int numRows = numTextures > maxPerRow ? resolution->second.size() / maxPerRow + 1 : 1;
+			const int numCols = numRows > 1 ? maxPerRow : resolution->second.size();
+
+			mergedResolutions.push_back( Resolution( numCols * adjustedWidth, numRows * adjustedHeight ) );
+
+			int textureSubIndex = 0; 
+			for( int row = 0 ; row < numRows ; ++row ) {
+				int realY = row * adjustedHeight;
+
+				for( int col = 0 ; col < numCols ; ++col, ++textureSubIndex ) {
+					if( textureSubIndex >= numTextures ) {
+						break;
+					}
+
+					int realX = col * adjustedWidth;
+					
+					auto &info = mergedTextureInfos[ resolution->second[ textureSubIndex ] ];
+					info.size[0] = resolution->first.first;
+					info.size[1] = resolution->first.second;
+
+					// 2 pixel border 
+					info.offset[0] = realX + 2;
+					info.offset[1] = realY + 2;
+				}
+			}			
+		}
+	}
+
+	//////////////////////////////////////////////////////////////////////////
 
 	ScopedTextures2D textures;
 
@@ -330,6 +398,8 @@ struct SGSSceneRenderer {
 		prepareMaterialDisplayLists();
 
 		prerender();
+
+		mergeTextures( textures );
 	}
 
 	void loadBuffers() {
@@ -808,24 +878,31 @@ struct SGSSceneRenderer {
 		optix.context->setPrintBufferSize(65536);
 		optix.context->setPrintEnabled(true);
 
-		const char *ptxFilename = "cuda_compile_ptx_generated_raytracer.cu.ptx";
-		optix.programs.anyHit = optix.context->createProgramFromPTXFile (ptxFilename, "any_hit");
-		optix.programs.closestHit = optix.context->createProgramFromPTXFile (ptxFilename, "closest_hit");
-		optix.programs.intersect = optix.context->createProgramFromPTXFile (ptxFilename, "intersect");
-		optix.programs.boundingBox = optix.context->createProgramFromPTXFile (ptxFilename, "bounding_box");
-		optix.programs.exception = optix.context->createProgramFromPTXFile (ptxFilename, "exception");
-		optix.programs.miss = optix.context->createProgramFromPTXFile (ptxFilename, "miss");
+		const char *raytracerPtxFilename = "cuda_compile_ptx_generated_raytracer.cu.ptx";		
+		optix.programs.exception = optix.context->createProgramFromPTXFile (raytracerPtxFilename, "exception");
+		optix.programs.miss = optix.context->createProgramFromPTXFile (raytracerPtxFilename, "miss");
 
-		optix.context->setRayGenerationProgram (0,
-		optix.context->createProgramFromPTXFile (ptxFilename, "ray_gen"));
+		const char *terrainMeshPtxFilename = "cuda_compile_ptx_generated_terrainMesh.cu.ptx";
+		optix.terrain.intersect = optix.context->createProgramFromPTXFile (terrainMeshPtxFilename, "intersect");
+		optix.terrain.boundingBox = optix.context->createProgramFromPTXFile (terrainMeshPtxFilename, "bounding_box");
+		optix.terrain.anyHit = optix.context->createProgramFromPTXFile (terrainMeshPtxFilename, "any_hit");
+		optix.terrain.closestHit = optix.context->createProgramFromPTXFile (terrainMeshPtxFilename, "closest_hit");
 
-		optix.material = optix.context->createMaterial ();
-		//optix.material->setAnyHitProgram (1, optix.programs.anyHit);
-		optix.material->setClosestHitProgram (0, optix.programs.closestHit);
-		optix.material->validate ();
+		const char *objectMeshPtxFilename = "cuda_compile_ptx_generated_objectMesh.cu.ptx";
+		optix.objects.intersect = optix.context->createProgramFromPTXFile (objectMeshPtxFilename, "intersect");
+		optix.objects.boundingBox = optix.context->createProgramFromPTXFile (objectMeshPtxFilename, "bounding_box");
+		optix.objects.anyHit = optix.context->createProgramFromPTXFile (objectMeshPtxFilename, "any_hit");
+		optix.objects.closestHit = optix.context->createProgramFromPTXFile (objectMeshPtxFilename, "closest_hit");
+
+		optix.context->setRayGenerationProgram (0, optix.context->createProgramFromPTXFile (raytracerPtxFilename, "ray_gen"));
 
 		// setup the objects buffers
 		{
+			optix.objects.material = optix.context->createMaterial ();
+			//optix.material->setAnyHitProgram (1, optix.programs.anyHit);
+			optix.objects.material->setClosestHitProgram (0, optix.objects.closestHit);
+			optix.objects.material->validate ();
+
 			int primitiveCount = scene->numSceneIndices / 3;
 
 			optix.objects.indexBuffer = optix.context->createBufferFromGLBO( RT_BUFFER_INPUT, objectIndices.handle );
@@ -842,18 +919,23 @@ struct SGSSceneRenderer {
 			optix.objects.geometry = optix.context->createGeometry ();
 			optix.objects.geometry ["vertex_buffer"]->setBuffer (optix.objects.vertexBuffer);
 			optix.objects.geometry ["index_buffer"]->setBuffer (optix.objects.indexBuffer);
-			optix.objects.geometry->setBoundingBoxProgram (optix.programs.boundingBox);
-			optix.objects.geometry->setIntersectionProgram (optix.programs.intersect);
+			optix.objects.geometry->setBoundingBoxProgram (optix.objects.boundingBox);
+			optix.objects.geometry->setIntersectionProgram (optix.objects.intersect);
 
 			optix.objects.geometry->setPrimitiveCount ( primitiveCount );
 			optix.objects.geometry->validate ();
 
-			optix.objects.geometryInstance = optix.context->createGeometryInstance (optix.objects.geometry, &optix.material, &optix.material + 1);
+			optix.objects.geometryInstance = optix.context->createGeometryInstance (optix.objects.geometry, &optix.objects.material, &optix.objects.material + 1);
 			optix.objects.geometryInstance->validate ();
 		}
 
 		// set up the terrain buffers
 		{
+			optix.terrain.material = optix.context->createMaterial ();
+			//optix.material->setAnyHitProgram (1, optix.programs.anyHit);
+			optix.terrain.material->setClosestHitProgram (0, optix.terrain.closestHit);
+			optix.terrain.material->validate ();
+
 			int primitiveCount = scene->terrain.indices.size() / 3;
 			optix.terrain.indexBuffer = optix.context->createBufferFromGLBO( RT_BUFFER_INPUT, terrainIndices.handle );
 			optix.terrain.indexBuffer->setFormat( RT_FORMAT_UNSIGNED_INT3 );
@@ -869,13 +951,23 @@ struct SGSSceneRenderer {
 			optix.terrain.geometry = optix.context->createGeometry ();
 			optix.terrain.geometry ["vertex_buffer"]->setBuffer (optix.terrain.vertexBuffer);
 			optix.terrain.geometry ["index_buffer"]->setBuffer (optix.terrain.indexBuffer);
-			optix.terrain.geometry->setBoundingBoxProgram (optix.programs.boundingBox);
-			optix.terrain.geometry->setIntersectionProgram (optix.programs.intersect);
+			optix.terrain.geometry->setBoundingBoxProgram (optix.terrain.boundingBox);
+			optix.terrain.geometry->setIntersectionProgram (optix.terrain.intersect);
 
 			optix.terrain.geometry->setPrimitiveCount ( primitiveCount );
 			optix.terrain.geometry->validate ();
 
-			optix.terrain.geometryInstance = optix.context->createGeometryInstance (optix.terrain.geometry, &optix.material, &optix.material + 1);
+			optix.terrainTextureSampler = optix.context->createTextureSamplerFromGLImage( bakedTerrainTexture.handle, RT_TARGET_GL_TEXTURE_2D );
+			optix.terrainTextureSampler->setWrapMode( 0, RT_WRAP_REPEAT );
+			optix.terrainTextureSampler->setWrapMode( 1, RT_WRAP_REPEAT );
+			optix.terrainTextureSampler->setIndexingMode( RT_TEXTURE_INDEX_NORMALIZED_COORDINATES );
+			optix.terrainTextureSampler->setReadMode( RT_TEXTURE_READ_NORMALIZED_FLOAT );
+			optix.terrainTextureSampler->setMaxAnisotropy( 1.0f );
+			optix.terrainTextureSampler->setFilteringModes( RT_FILTER_LINEAR, RT_FILTER_LINEAR, RT_FILTER_NONE );
+
+			optix.terrain.material[ "terrainTexture" ]->setTextureSampler( optix.terrainTextureSampler );
+
+			optix.terrain.geometryInstance = optix.context->createGeometryInstance (optix.terrain.geometry, &optix.terrain.material, &optix.terrain.material + 1);
 			optix.terrain.geometryInstance->validate ();
 		}
 
