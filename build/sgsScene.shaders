@@ -109,7 +109,7 @@ sgsMesh:
 			gl_TexCoord[0] = gl_MultiTexCoord0;
 		}
 
-shadowMapPixelShader:
+shadowMapSurface:
 	surfaceShader
 
 	uniforms:

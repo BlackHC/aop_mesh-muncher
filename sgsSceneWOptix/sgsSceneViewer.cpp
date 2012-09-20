@@ -123,12 +123,15 @@ void real_main() {
 
 		sgsSceneRenderer.reloadShaders();
 
+		const char *scenePath = "P:\\sgs\\sg_and_sgs_source\\survivor\\__GameData\\Editor\\Save\\Survivor_original_mission_editorfiles\\test\\scene.glscene";
 		{
-			Serializer::BinaryReader reader( "P:\\sgs\\sg_and_sgs_source\\survivor\\__GameData\\Editor\\Save\\Survivor_original_mission_editorfiles\\test\\scene.glscene" );
+			Serializer::BinaryReader reader( scenePath );
 			Serializer::read( reader, sgsScene );
 		}
 		
 		sgsSceneRenderer.processScene( make_nonallocated_shared( sgsScene ) );
+
+		sgsSceneRenderer.flushCache( scenePath );
 	}
 	{
 		boost::timer::auto_cpu_timer timer( "OptixRenderer: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );

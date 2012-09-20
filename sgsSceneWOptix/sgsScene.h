@@ -153,6 +153,24 @@ struct SGSScene {
 		SERIALIZER_DEFAULT_IMPL( (mapSize)(layerSize)(vertices)(indices)(layers)(tiles) );
 	};
 
+	struct Cache {
+		struct TextureDump {
+			int width;
+			int height;
+
+			std::vector<unsigned char> image;
+
+			SERIALIZER_DEFAULT_IMPL( (width)(height)(image) );
+		};
+		TextureDump bakedTerrainTexture;
+		TextureDump mergedObjectTextures;
+		// for optix
+		std::vector<unsigned char> staticSceneAccelerationCache;
+		std::vector<std::vector<unsigned char>> prototypesAccelerationCache;
+
+		SERIALIZER_DEFAULT_IMPL( (bakedTerrainTexture)(mergedObjectTextures)(staticSceneAccelerationCache)(prototypesAccelerationCache) );
+	};
+
 	// scene data first, then prototype object data
 	std::vector<Vertex> vertices;
 	std::vector<unsigned> indices;
@@ -173,7 +191,9 @@ struct SGSScene {
 
 	Terrain terrain;
 
-	SERIALIZER_DEFAULT_IMPL( (numSceneVertices)(numSceneIndices)(numSceneSubObjects)(numSceneObjects)(modelNames)(objects)(subObjects)(textures)(vertices)(indices)(terrain) );
+	Cache cache;
+
+	SERIALIZER_DEFAULT_IMPL( (numSceneVertices)(numSceneIndices)(numSceneSubObjects)(numSceneObjects)(modelNames)(objects)(subObjects)(textures)(vertices)(indices)(terrain)(cache) );
 
 	SGSScene() {}
 };
