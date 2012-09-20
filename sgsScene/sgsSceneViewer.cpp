@@ -129,9 +129,8 @@ void real_main() {
 			Serializer::read( reader, sgsScene );
 		}
 		
-		sgsSceneRenderer.processScene( make_nonallocated_shared( sgsScene ) );
-
-		sgsSceneRenderer.flushCache( scenePath );
+		const char *cachePath = "scene.sgsRendererCache";
+		sgsSceneRenderer.processScene( make_nonallocated_shared( sgsScene ), cachePath );
 	}
 	{
 		boost::timer::auto_cpu_timer timer( "OptixRenderer: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );

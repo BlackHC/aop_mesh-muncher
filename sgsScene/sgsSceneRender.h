@@ -23,6 +23,7 @@
 #include <boost/timer/timer.hpp>
 
 #include "optixProgramInterface.h"
+SERIALIZER_ENABLE_RAW_MODE_EXTERN( OptixProgramInterface::MergedTextureInfo );
 
 #include <Eigen/Eigen>
 
@@ -109,7 +110,6 @@ struct SGSSceneRenderer {
 	} optix;
 
 	std::shared_ptr<SGSScene> scene;
-	bool cacheChanged;
 
 	//////////////////////////////////////////////////////////////////////////
 	typedef OptixProgramInterface::MergedTextureInfo MergedTextureInfo;
@@ -186,7 +186,7 @@ struct SGSSceneRenderer {
 		typedef unsigned __int32 RGBA;
 		RGBA *mergedTextureData = new RGBA[ mergedTextureSize * mergedTextureSize ];
 		{
-			boost::timer::auto_cpu_timer timer;
+			boost::timer::auto_cpu_timer timer( "mergeTextures blitting: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
 
 			Concurrency::task_group blits;
 
@@ -235,7 +235,7 @@ struct SGSSceneRenderer {
 
 	ScopedTextures2D textures;
 
-	Texture2D bakedTerrainTexture;
+	ScopedTexture2D bakedTerrainTexture;
 
 	ShaderCollection shaders;
 	Program terrainProgram, objectProgram, shadowMapProgram;
@@ -258,9 +258,46 @@ struct SGSSceneRenderer {
 	// one display list per sub object
 	GL::ScopedDisplayLists materialDisplayLists;
 
-	SGSSceneRenderer() : cacheChanged( false ) {}
+	struct Cache {
+		struct TextureDump {
+			int width;
+			int height;
 
-	Texture2D bakeTerrainTexture( int detailFactor, float textureDetailFactor ) {
+			std::vector<unsigned char> image;
+
+			SERIALIZER_DEFAULT_IMPL( (width)(height)(image) );
+
+			void dump( const Texture2D &texture ) {
+				texture.getLevelParameter( 0, GL_TEXTURE_WIDTH, &width );
+				texture.getLevelParameter( 0, GL_TEXTURE_HEIGHT, &height );
+
+				int imageSize = width * height * 4;
+
+				image.resize( imageSize );
+				texture.getImage( 0, GL_RGBA, GL_UNSIGNED_BYTE, &image.front() );
+			}
+
+			void load( Texture2D &texture ) {
+				texture.load( 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, &image.front() );
+			}
+		};
+
+		int magicStamp;
+
+		TextureDump bakedTerrainTexture;
+		TextureDump mergedObjectTextures;
+		std::vector<MergedTextureInfo> mergedTextureInfos;
+
+		// for optix
+		std::vector<unsigned char> staticSceneAccelerationCache;
+		std::vector<std::vector<unsigned char>> prototypesAccelerationCache;
+
+		SERIALIZER_DEFAULT_IMPL( (magicStamp)(bakedTerrainTexture)(mergedTextureInfos)(mergedObjectTextures)(staticSceneAccelerationCache)(prototypesAccelerationCache) );
+	};
+		
+	SGSSceneRenderer() {}
+
+	void bakeTerrainTexture( int detailFactor, float textureDetailFactor ) {
 		glPushAttrib( GL_ALL_ATTRIB_BITS );
 
 		int numLayers = scene->terrain.layers.size();
@@ -278,14 +315,13 @@ struct SGSSceneRenderer {
 		}
 
 		ScopedFramebufferObject fbo;
-		ScopedTexture2D bakedTexture;
-
+		
 		Eigen::Vector2i mapSize( scene->terrain.mapSize[0], scene->terrain.mapSize[1] );
 		Eigen::Vector2i bakeSize = mapSize * detailFactor;
 
-		bakedTexture.load( 0, GL_RGBA8, bakeSize.x(), bakeSize.y(), 0, GL_RGBA, GL_UNSIGNED_BYTE );
+		bakedTerrainTexture.load( 0, GL_RGBA8, bakeSize.x(), bakeSize.y(), 0, GL_RGBA, GL_UNSIGNED_BYTE );
 
-		fbo.attach( bakedTexture, GL_COLOR_ATTACHMENT0 );
+		fbo.attach( bakedTerrainTexture, GL_COLOR_ATTACHMENT0 );
 
 		fbo.bind();
 		fbo.setDrawBuffers();
@@ -355,11 +391,8 @@ struct SGSSceneRenderer {
 
 		glPopAttrib();
 
-		SimpleGL::setLinearMipmapMinMag( bakedTexture );
-
-		bakedTexture.generateMipmap();
-
-		return bakedTexture.publish();
+		SimpleGL::setLinearMipmapMinMag( bakedTerrainTexture );
+		bakedTerrainTexture.generateMipmap();
 	}
 
 	void reloadShaders() {
@@ -385,28 +418,24 @@ struct SGSSceneRenderer {
 		}
 	}
 
-	static void dumpRGBA8Texture( const Texture2D &texture, SGSScene::Cache::TextureDump &destination ) {
-		int width, height;
-		texture.getLevelParameter( 0, GL_TEXTURE_WIDTH, &width );
-		texture.getLevelParameter( 0, GL_TEXTURE_HEIGHT, &height );
-		
-		int imageSize = width * height * 4;
-
-		destination.image.resize( imageSize );
-		texture.getImage( 0, GL_RGBA, GL_UNSIGNED_BYTE, &destination.image.front() );
-
-		destination.width = width;
-		destination.height = height;
-	}
-
-	static void loadRGBA8Texture( const SGSScene::Cache::TextureDump &source, Texture2D &texture ) {
-		texture.load( 0, GL_RGBA8, source.width, source.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, &source.image.front() );
-	}
-
-	void processScene( const std::shared_ptr<SGSScene> &scene ) {
+	void processScene( const std::shared_ptr<SGSScene> &scene, const char *cacheFilename ) {
 		this->scene = scene;
 
-		cacheChanged = false;
+		bool cacheChanged = false;
+		Cache cache;
+		{
+			boost::timer::auto_cpu_timer timer( "processScene; load cache: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
+			Serializer::BinaryReader reader( cacheFilename, sizeof Cache );
+			if( reader.valid() ) {
+				reader.get( cache );
+			}
+
+			// reset the cache if the scene has changed
+			if( cache.magicStamp != scene->numSceneVertices ) {
+				cache = Cache();
+				cache.magicStamp = scene->numSceneVertices;
+			}
+		}
 
 		// load textures
 		int numTextures = scene->textures.size();
@@ -418,33 +447,34 @@ struct SGSSceneRenderer {
 			SOIL_load_OGL_texture_from_memory( &rawContent.front(), rawContent.size(), 0, textures[ textureIndex ].handle, SOIL_FLAG_DDS_LOAD_DIRECT | SOIL_FLAG_MIPMAPS | SOIL_FLAG_TEXTURE_REPEATS );
 		}
 
-		if( scene->cache.mergedObjectTextures.image.empty() ) {
+		if( cache.mergedObjectTextures.image.empty() ) {
 			mergeTextures( textures );
 
 			// store in cache
-			dumpRGBA8Texture( mergedTexture, scene->cache.mergedObjectTextures );
-
+			cache.mergedObjectTextures.dump( mergedTexture );
+			cache.mergedTextureInfos = mergedTextureInfos;
 			cacheChanged = true;
 		}
 		else {
 			// load from cache
-			loadRGBA8Texture( scene->cache.mergedObjectTextures, mergedTexture );
+			mergedTextureInfos = std::move( cache.mergedTextureInfos );
+			cache.mergedObjectTextures.load( mergedTexture );
 
 			SimpleGL::setRepeatST( mergedTexture );
 			SimpleGL::setLinearMinMag( mergedTexture );
 		}
 		
-		if( scene->cache.bakedTerrainTexture.image.empty() ) {
-			bakedTerrainTexture = bakeTerrainTexture( 32, 1 / 8.0 );
+		if( cache.bakedTerrainTexture.image.empty() ) {
+			bakeTerrainTexture( 32, 1 / 8.0 );
 
 			// store in cache
-			dumpRGBA8Texture( bakedTerrainTexture, scene->cache.bakedTerrainTexture );
+			cache.bakedTerrainTexture.dump( bakedTerrainTexture );
 
 			cacheChanged = true;
 		}
 		else {
 			// load from cache
-			loadRGBA8Texture( scene->cache.bakedTerrainTexture, bakedTerrainTexture );
+			cache.bakedTerrainTexture.load( bakedTerrainTexture );
 			
 			bakedTerrainTexture.generateMipmap();
 			SimpleGL::setRepeatST( bakedTerrainTexture );
@@ -462,13 +492,13 @@ struct SGSSceneRenderer {
 		prepareMaterialDisplayLists();
 
 		prerender();
-	}
 
-	void flushCache( const char *filename ) {
+		// flush the cache if necessary
 		if( cacheChanged ) {
-			Serializer::BinaryWriter writer( filename );
-			Serializer::put( writer, *scene );
-			cacheChanged = false;
+			boost::timer::auto_cpu_timer timer( "processScene; store cache: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
+
+			Serializer::BinaryWriter writer( cacheFilename, sizeof Cache );
+			writer.put( cache );
 		}
 	}
 
@@ -730,7 +760,7 @@ struct SGSSceneRenderer {
 		glViewport( 0, 0, sunShadowMapSize, sunShadowMapSize );
 
 		glClear( GL_DEPTH_BUFFER_BIT );
-		glColorMask( GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE );
+		//glColorMask( GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE );
 
 		glMatrixMode( GL_PROJECTION );
 		glLoadMatrix( sunProjectionMatrix );
@@ -758,7 +788,6 @@ struct SGSSceneRenderer {
 				glDrawElements( GL_TRIANGLES, scene->subObjects[ subObjectIndex ].numIndices, GL_UNSIGNED_INT, firstIndex + scene->subObjects[ subObjectIndex ].startIndex );
 			}
 
-			glEnable( GL_BLEND );
 			glEnable( GL_ALPHA_TEST );
 			glAlphaFunc( GL_GREATER, 0.5 );
 

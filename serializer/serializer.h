@@ -113,11 +113,23 @@ namespace Serializer {
 	struct BinaryWriter : boost::noncopyable {
 		FILE *handle;
 
-		BinaryWriter( const char *filename ) : handle( fopen( filename , "wb" ) ) {}
+		BinaryWriter( const char *filename ) : handle( fopen( filename , "wb" ) ) {
+		}
+
+		BinaryWriter( const char *filename, int version ) : handle( fopen( filename , "wb" ) ) {
+			put( version );
+		}
+
+
 		~BinaryWriter() {
 			if( handle ) {
 				fclose( handle );
 			}
+		}
+
+		template<typename T>
+		void put( const T &value ) {
+			Serializer::put( *this, value );
 		}
 	};
 
@@ -125,11 +137,33 @@ namespace Serializer {
 		FILE *handle;
 
 		BinaryReader( const char *filename ) : handle( fopen( filename , "rb" ) ) {}
+		BinaryReader( const char *filename, int version ) : handle( fopen( filename , "rb" ) ) {
+			if( handle ) {
+				int actualVersion;
+				get( actualVersion );
+				if( actualVersion != version ) {
+					fclose( handle );
+					handle = nullptr;
+				}
+			}
+		}
+
 		~BinaryReader() {
 			if( handle ) {
 				fclose( handle );
 			}
 		}
+
+		bool valid() const {
+			return handle != nullptr;
+		}
+
+		template<typename T>
+		void get( T &value ) {
+			Serializer::get( *this, value );
+		}
+
+		// TODO: etc
 	};
 
 	namespace detail {
