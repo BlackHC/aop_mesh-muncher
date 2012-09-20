@@ -141,7 +141,13 @@ void SGSSceneRenderer::initOptix( OptixRenderer *optixRenderer ) {
 		optix.terrain.geometryInstance->validate ();
 	}
 
-	optix.staticAcceleration = optixRenderer->context->createAcceleration ("Bvh", "Bvh");
+	optix.staticAcceleration = optixRenderer->context->createAcceleration ("Sbvh", "Bvh");
+
+	BOOST_STATIC_ASSERT( sizeof( SGSScene::Vertex ) == sizeof( SGSScene::Terrain::Vertex) );
+	/*optix.staticAcceleration->setProperty( "vertex_buffer_name", "vertexBuffer" );
+	optix.staticAcceleration->setProperty( "vertex_buffer_stride", boost::lexical_cast<std::string>( sizeof( SGSScene::Vertex ) ) );
+	optix.staticAcceleration->setProperty( "index_buffer_name", "indexBuffer" );
+	*/
 	optix.staticAcceleration->validate ();
 
 	optix.staticScene = optixRenderer->context->createGeometryGroup();
@@ -152,6 +158,54 @@ void SGSSceneRenderer::initOptix( OptixRenderer *optixRenderer ) {
 	optix.staticScene->validate ();
 
 	optixRenderer->addSceneChild( optix.staticScene );
+
+	// cache
+	{
+		Optix::Cache cache;
+		bool cacheChanged = false;
+
+		const char *optixCacheFilename = "scene.optixCache";
+		{
+			boost::timer::auto_cpu_timer timer( "initOptix; load cache: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
+
+			Serializer::BinaryReader reader( optixCacheFilename, sizeof Optix::Cache );
+			if( reader.valid() ) {
+				reader.get( cache );
+			}
+
+			if( cache.magicStamp != scene->numSceneVertices ) {
+				cache = Optix::Cache();
+
+				cache.magicStamp = scene->numSceneVertices;
+			}
+		}
+
+		if( cache.staticSceneAccelerationCache.empty() ) {
+			boost::timer::auto_cpu_timer timer( "initOptix; build acceleration structure: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
+
+			// build the static scene acceleration tree
+			optixRenderer->context->launch( 0, 0 );
+
+			int size;
+			size = optix.staticAcceleration->getDataSize();
+			cache.staticSceneAccelerationCache.resize( size );
+			optix.staticAcceleration->getData( &cache.staticSceneAccelerationCache.front() );
+
+			cacheChanged = true;
+		}
+		else {
+			// load from the cache
+			optix.staticAcceleration->setData( &cache.staticSceneAccelerationCache.front(), cache.staticSceneAccelerationCache.size() );
+		}
+
+		// dump the cache?
+		if( cacheChanged ) {
+			boost::timer::auto_cpu_timer timer( "initOptix; write cache: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
+			
+			Serializer::BinaryWriter writer( optixCacheFilename, sizeof Optix::Cache );
+			writer.put( cache );
+		}
+	}
 }
 
 void OptixRenderer::init( const std::shared_ptr< SGSSceneRenderer > &sgsSceneRenderer ) {
@@ -161,22 +215,29 @@ void OptixRenderer::init( const std::shared_ptr< SGSSceneRenderer > &sgsSceneRen
 
 	// initialize the context
 	context->setRayTypeCount( OptixProgramInterface::RT_COUNT );
-	context->setEntryPointCount(1);
+	context->setEntryPointCount(2);
+	context->setCPUNumThreads( 12 );
 	context->setStackSize(8000);
 	context->setPrintBufferSize(65536);
 	context->setPrintEnabled(true);
 
 	// create the rt programs
 	const char *raytracerPtxFilename = "cuda_compile_ptx_generated_raytracer.cu.ptx";
-	programs.exception = context->createProgramFromPTXFile (raytracerPtxFilename, "exception");
+	programs.raytracer_exception = context->createProgramFromPTXFile (raytracerPtxFilename, "exception");
 	programs.miss = context->createProgramFromPTXFile (raytracerPtxFilename, "miss");
+
+	const char *probeSamplerPtxFilename = "cuda_compile_ptx_generated_probeTracer.cu.ptx";
+	programs.probeSampler_exception = context->createProgramFromPTXFile (probeSamplerPtxFilename, "exception");
 
 	// set the rt programs
 	context->setMissProgram( 0, programs.miss );
-	context->setExceptionProgram( 0, programs.exception );
+	context->setExceptionProgram( 0, programs.raytracer_exception );
+	context->setExceptionProgram( 1, programs.probeSampler_exception );
 	
 	// set the pinhole camera entry point
-	context->setRayGenerationProgram (0, context->createProgramFromPTXFile (raytracerPtxFilename, "pinholeCamera_rayGeneration"));
+	context->setRayGenerationProgram(  0, context->createProgramFromPTXFile( raytracerPtxFilename, "pinholeCamera_rayGeneration" ) );
+	// set the probe sampler entry point
+	context->setRayGenerationProgram( 1, context->createProgramFromPTXFile( probeSamplerPtxFilename, "sampleProbes" ) );
 
 	// create the acceleration structure
 	acceleration = context->createAcceleration ("Bvh", "Bvh");
@@ -191,6 +252,28 @@ void OptixRenderer::init( const std::shared_ptr< SGSSceneRenderer > &sgsSceneRen
 	outputBuffer = context->createBuffer( RT_BUFFER_OUTPUT,  RT_FORMAT_UNSIGNED_BYTE4, width = 800, height = 600 );	
 	context["outputBuffer"]->set(outputBuffer);
 
+	// create and set the hemisphere sample buffer
+	hemisphereSamples = context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_FLOAT3, numHemisphereSamples );
+	createHemisphereSamples( (optix::float3*) hemisphereSamples->map() );
+	hemisphereSamples->unmap();
+	hemisphereSamples->validate();
+
+	context[ "hemisphereSamples" ]->set( hemisphereSamples );
+	
+	// create and set the probe buffers
+	probes = context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_USER, maxNumProbes );
+	probes->setElementSize( sizeof OptixProgramInterface::Probe );
+	probes->validate();
+
+	context[ "probes" ]->set( probes );
+
+	probeContexts = context->createBuffer( RT_BUFFER_OUTPUT, RT_FORMAT_USER, maxNumProbes );
+	probeContexts->setElementSize( sizeof OptixProgramInterface::ProbeContext );
+	probeContexts->validate();
+
+	context[ "probeContexts" ]->set( probeContexts );
+
+	// init the output texture
 	SimpleGL::setLinearMinMag( debugTexture );
 
 	// init our main object source

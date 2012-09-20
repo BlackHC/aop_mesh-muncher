@@ -32,7 +32,7 @@ INCLUDE_DIRECTORIES(
 )
 
 # ../gtest/gtest_main.cc
-CUDA_COMPILE_PTX( PTX_FILES raytracer.cu terrainMesh.cu objectMesh.cu )
+CUDA_COMPILE_PTX( PTX_FILES raytracer.cu terrainMesh.cu objectMesh.cu probeTracer.cu )
 
 CUDA_ADD_EXECUTABLE(optix_sgsSceneViewer
 	${GLEW_SOURCE_FILE}

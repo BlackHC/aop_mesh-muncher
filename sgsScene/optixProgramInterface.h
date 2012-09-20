@@ -31,6 +31,17 @@ struct MaterialInfo {
 	float alpha;
 };
 
+struct Probe {
+	optix::float3 position;
+	optix::float3 direction;
+};
+
+struct ProbeContext {
+	optix::uchar4 color;
+	float distance;
+	float hitPercentage;
+};
+
 //////////////////////////////////////////////////////////////////////////
 // CUDA specific declarations/definitions
 #if defined(__CUDACC__)
@@ -42,6 +53,7 @@ struct MergedTextureInfo {
 
 struct Ray_Eye {
 	float3 color;
+	float distance;
 };
 
 struct Ray_Shadow {
@@ -63,6 +75,7 @@ rtDeclareVariable(rtObject, rootObject, , );
 
 #define sunDirection make_float3( 0.0, -1.0, -1.0 )
 #define sceneEpsilon 0.005f
+#define maxDistance RT_DEFAULT_MAX
 
 //////////////////////////////////////////////////////////////////////////
 // CUDA helper functions

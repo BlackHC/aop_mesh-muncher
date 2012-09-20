@@ -118,7 +118,10 @@ shadowMapSurface:
 	code::
 		vec4 surfaceShader() {
 			vec4 baseColor = texture( baseTexture, gl_TexCoord[0].st );
-			return baseColor;			
+			if( baseColor.a < 0.95 ) {
+				discard;
+			}
+			return vec4( 1.0 );	
 		}
 
 shadowMapMesh:

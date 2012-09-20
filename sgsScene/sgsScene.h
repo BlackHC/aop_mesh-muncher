@@ -16,7 +16,7 @@ struct SGSScene {
 	struct Vertex {
 		float position[3];
 		float normal[3];
-		float uv[2][2];
+		float uv[1][2];
 	};
 
 	struct Color4ub {
@@ -45,7 +45,7 @@ struct SGSScene {
 	};
 
 	struct Material {
-		int textureIndex[2];
+		int textureIndex[1];
 
 		Color3ub ambient;
 		Color3ub diffuse;

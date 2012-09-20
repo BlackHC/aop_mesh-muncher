@@ -38,7 +38,7 @@ struct IntVariableControl : EventHandler {
 	virtual bool handleEvent( const sf::Event &event ) 
 	{
 		switch( event.type ) {
-		case sf::Event::KeyPressed:
+		case sf::Event::KeyReleased:
 			if( event.key.code == upKey ) {
 				*variable = std::min( *variable + 1, max );
 				return true;
@@ -60,7 +60,7 @@ struct KeyAction : EventHandler {
 	KeyAction( sf::Keyboard::Key key, const std::function<void()> &action) : key( key ), action( action ) {}
 
 	virtual bool handleEvent( const sf::Event &event ) {
-		if( event.type == sf::Event::KeyPressed && event.key.code == key ) {
+		if( event.type == sf::Event::KeyReleased && event.key.code == key ) {
 			action();
 			return true;
 		}
@@ -98,7 +98,7 @@ void real_main() {
 	Camera camera;
 	camera.perspectiveProjectionParameters.aspect = 640.0 / 480.0;
 	camera.perspectiveProjectionParameters.FoV_y = 75.0;
-	camera.perspectiveProjectionParameters.zNear = 1.0;
+	camera.perspectiveProjectionParameters.zNear = 0.05;
 	camera.perspectiveProjectionParameters.zFar = 500.0;
 
 	CameraInputControl cameraInputControl;
@@ -153,21 +153,51 @@ void real_main() {
 	BoolVariableControl updateRenderListsToggle( sgsSceneRenderer.debug.updateRenderLists, sf::Keyboard::C );
 	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( updateRenderListsToggle ) );
 
+	DebugRender::CombinedCalls probeDumps;
+	KeyAction dumpProbeAction( sf::Keyboard::P, [&] () { 
+		// dump a probe at the current position and view direction
+		const Eigen::Vector3f position = camera.getPosition();
+		const Eigen::Vector3f direction = camera.getDirection();
+
+		std::vector< OptixRenderer::Probe > probes;
+		std::vector< OptixRenderer::ProbeContext > probeContexts;
+		
+		OptixRenderer::Probe probe;
+		Eigen::Vector3f::Map( &probe.position.x ) = position;
+		Eigen::Vector3f::Map( &probe.direction.x ) = direction;
+		
+		probes.push_back( probe );
+
+		optixRenderer.sampleProbes( probes, probeContexts );
+
+		probeDumps.append();
+		probeDumps.setPosition( position );
+		glColor4ubv( &probeContexts.front().color.x );		
+		probeDumps.drawVectorCone( probeContexts.front().distance * direction, probeContexts.front().distance * 0.25, 1 + probeContexts.front().hitPercentage * 15 );
+		probeDumps.end();
+	} );
+	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( dumpProbeAction ) );
+
+	DebugWindowManager debugWindowManager;
+	
+#if 0
 	TextureVisualizationWindow optixWindow;
 	optixWindow.init( "Optix Version" );
 	optixWindow.texture = optixRenderer.debugTexture;
 
+	debugWindowManager.windows.push_back( make_nonallocated_shared( optixWindow ) );
+#endif
+#if 0
 	TextureVisualizationWindow mergedTextureWindow;
 	mergedTextureWindow.init( "merged object textures" );
 	mergedTextureWindow.texture = sgsSceneRenderer.mergedTexture;
 
-	DebugWindowManager debugWindowManager;
-	debugWindowManager.windows.push_back( make_nonallocated_shared( optixWindow ) );
 	debugWindowManager.windows.push_back( make_nonallocated_shared( mergedTextureWindow ) );
+#endif
 	
 	while (true)
 	{
-		optixRenderer.renderPinholeCamera( camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() );
+		//optixRenderer.renderPinholeCamera( camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() );
 		debugWindowManager.update();
 
 		// Activate the window for OpenGL rendering
@@ -207,6 +237,8 @@ void real_main() {
 		glLoadMatrix( camera.getViewTransformation().matrix() );
 			
 		sgsSceneRenderer.render( camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() );
+
+		probeDumps.render();
 
 		// End the current frame and display its contents on screen
 		window.display();

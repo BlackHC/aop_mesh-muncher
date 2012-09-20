@@ -20,6 +20,8 @@ RT_PROGRAM void closestHit()
 {
 	float3 hitPosition = currentRay.origin + t_hit * currentRay.direction;
 
+	currentRay_eye.distance = t_hit;
+
 	float3 worldShadingNormal   = normalize(shadingNormal);
 	float3 worldGeometricNormal = normalize(geometricNormal);
 	float3 ffnormal = faceforward(worldShadingNormal, -currentRay.direction, worldGeometricNormal);

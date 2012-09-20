@@ -16,7 +16,7 @@ struct Vertex
 {
 	float3 position;
 	float3 normal;
-	float2 uv[2];
+	float2 uv[1];
 };
 
 rtBuffer<Vertex> vertexBuffer;
@@ -48,6 +48,8 @@ __device__ float3 subTrace( const float3 &position, const float3 &direction, boo
 
 RT_PROGRAM void closestHit() {
 	float3 hitPosition = currentRay.origin + t_hit * currentRay.direction;
+
+	currentRay_eye.distance = t_hit;
 
 	float3 worldShadingNormal   = normalize(shadingNormal);
 	float3 worldGeometricNormal = normalize(geometricNormal);

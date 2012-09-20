@@ -51,4 +51,5 @@ RT_PROGRAM void exception() {
 
 RT_PROGRAM void miss() {
 	currentRay_eye.color = make_float3( 0 );
+	currentRay_eye.distance = maxDistance;
 }

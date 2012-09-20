@@ -29,6 +29,11 @@ SERIALIZER_ENABLE_RAW_MODE_EXTERN( OptixProgramInterface::MergedTextureInfo );
 
 #include "eigenProjectionMatrices.h"
 
+#include <boost/random.hpp>
+#include "boost/range/algorithm/copy.hpp"
+
+#include <contextHelper.h>
+
 using namespace GL;
 
 //////////////////////////////////////////////////////////////////////////
@@ -63,24 +68,59 @@ inline Eigen::Matrix4f unpermutedToPermutedMatrix( const int *permutation ) {
 //////////////////////////////////////////////////////////////////////////
 struct SGSSceneRenderer;
 
+// TODO: -> own file [9/20/2012 kirschan2]
 struct OptixRenderer {
+	typedef OptixProgramInterface::Probe Probe;
+	typedef OptixProgramInterface::ProbeContext ProbeContext;
+
+	static const int numHemisphereSamples = 39989;
+	static const int maxNumProbes = 8192;
+
 	optix::Context context;
 	optix::Group scene;
 	optix::Acceleration acceleration;
 
 	optix::Buffer outputBuffer;
 	int width, height;
-
 	ScopedTexture2D debugTexture;
 
+	optix::Buffer probes, probeContexts, hemisphereSamples;
+
 	struct Programs {
-		optix::Program miss, exception;
+		optix::Program miss, raytracer_exception, probeSampler_exception;
 	} programs;
 
 	std::shared_ptr< SGSSceneRenderer > sgsSceneRenderer;
 
 	void init( const std::shared_ptr< SGSSceneRenderer > &sgsSceneRenderer );
+	
+	void createHemisphereSamples( optix::float3 *hemisphereSamples ) {
+		// produces randomness out of thin air
+		boost::random::mt19937 rng;
+		// see pseudo-random number generators
+		boost::random::uniform_01<> distribution;
+
+		for( int i = 0 ; i < numHemisphereSamples ; ++i ) {
+			const float u1 = distribution(rng) * 0.25;
+			const float u2 = distribution(rng);
+			optix::cosine_sample_hemisphere( u1, u2, hemisphereSamples[i] );
+		}
+	}
+
 	void renderPinholeCamera(const Eigen::Matrix4f &projectionView, const Eigen::Vector3f &worldViewerPosition);
+
+	void sampleProbes( const std::vector< Probe > &probes, std::vector< ProbeContext > &probeContexts ) {
+		boost::range::copy( probes, (Probe *) this->probes->map() );
+		this->probes->unmap();
+
+		context->launch( 1, probes.size() );
+
+		probeContexts.resize( probes.size() );
+
+		const ProbeContext *probeContext = (const ProbeContext *) this->probeContexts->map();
+		std::copy( probeContext, probeContext + probes.size(), probeContexts.begin() );
+		this->probeContexts->unmap();
+	}
 
 	void addSceneChild( const optix::GeometryGroup &child ) {
 		int index = scene->getChildCount();
@@ -107,6 +147,14 @@ struct SGSSceneRenderer {
 		optix::Buffer textureInfos, materialInfos, materialIndices;
 		optix::TextureSampler terrainTextureSampler;
 		optix::TextureSampler objectTextureSampler;
+
+		struct Cache {
+			int magicStamp;
+			std::vector<unsigned char> staticSceneAccelerationCache;
+			std::vector<std::vector<unsigned char>> prototypesAccelerationCache;
+
+			SERIALIZER_DEFAULT_IMPL( (magicStamp)(staticSceneAccelerationCache)(prototypesAccelerationCache) );
+		};
 	} optix;
 
 	std::shared_ptr<SGSScene> scene;
@@ -288,11 +336,7 @@ struct SGSSceneRenderer {
 		TextureDump mergedObjectTextures;
 		std::vector<MergedTextureInfo> mergedTextureInfos;
 
-		// for optix
-		std::vector<unsigned char> staticSceneAccelerationCache;
-		std::vector<std::vector<unsigned char>> prototypesAccelerationCache;
-
-		SERIALIZER_DEFAULT_IMPL( (magicStamp)(bakedTerrainTexture)(mergedTextureInfos)(mergedObjectTextures)(staticSceneAccelerationCache)(prototypesAccelerationCache) );
+		SERIALIZER_DEFAULT_IMPL( (magicStamp)(bakedTerrainTexture)(mergedTextureInfos)(mergedObjectTextures) );
 	};
 		
 	SGSSceneRenderer() {}
@@ -408,7 +452,7 @@ struct SGSSceneRenderer {
 			objectProgram.vertexShader = shaders[ "sgsMesh" ];
 
 			shadowMapProgram.vertexShader = shaders[ "shadowMapMesh" ];
-			shadowMapProgram.surfaceShader = shaders[ "shadowMapSurface" ];
+			//shadowMapProgram.surfaceShader = shaders[ "shadowMapSurface" ];
 
 			if( terrainProgram.build( shaders ) && objectProgram.build( shaders ) && shadowMapProgram.build( shaders ) ) {
 				break;
@@ -760,7 +804,7 @@ struct SGSSceneRenderer {
 		glViewport( 0, 0, sunShadowMapSize, sunShadowMapSize );
 
 		glClear( GL_DEPTH_BUFFER_BIT );
-		//glColorMask( GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE );
+		glColorMask( GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE );
 
 		glMatrixMode( GL_PROJECTION );
 		glLoadMatrix( sunProjectionMatrix );
@@ -775,6 +819,7 @@ struct SGSSceneRenderer {
 		// draw terrain
 		{
 			terrainVAO.bind();
+			Texture2D::unbind();
 			glDrawElements( GL_TRIANGLES, scene->terrain.indices.size(), GL_UNSIGNED_INT, nullptr );
 			terrainVAO.unbind();
 		}
@@ -788,13 +833,11 @@ struct SGSSceneRenderer {
 				glDrawElements( GL_TRIANGLES, scene->subObjects[ subObjectIndex ].numIndices, GL_UNSIGNED_INT, firstIndex + scene->subObjects[ subObjectIndex ].startIndex );
 			}
 
-			glEnable( GL_ALPHA_TEST );
-			glAlphaFunc( GL_GREATER, 0.5 );
-
 			for( int i = 0 ; i < alphaLists.size() ; i++ ) {
 				const int subObjectIndex = alphaLists[i];
 				const SGSScene::SubObject &subObject = scene->subObjects[ subObjectIndex ];
 
+#if 0
 				const auto &material = subObject.material;
 				if( material.alphaType == SGSScene::Material::AT_ADDITIVE ) {
 					continue;
@@ -806,7 +849,7 @@ struct SGSSceneRenderer {
 				else {
 					Texture2D::unbind();
 				}
-
+#endif
 				glDrawElements( GL_TRIANGLES, scene->subObjects[ subObjectIndex ].numIndices, GL_UNSIGNED_INT, firstIndex + scene->subObjects[ subObjectIndex ].startIndex );
 			}
 
@@ -949,7 +992,11 @@ struct SGSSceneRenderer {
 			glDisable( GL_CULL_FACE );
 
 			glDepthMask( GL_TRUE );
-			glDisable( GL_TEXTURE_2D );
+			glActiveTexture( GL_TEXTURE1 );
+			Texture2D::unbind();
+			glActiveTexture( GL_TEXTURE0 );
+			Texture2D::unbind();
+
 			Program::useFixed();
 
 			if( debug.showBoundingSpheres ) {

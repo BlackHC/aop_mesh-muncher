@@ -4,6 +4,8 @@
 #include <Eigen/Eigen>
 #include <unsupported/Eigen/OpenGLSupport>
 
+#include <eigenProjectionMatrices.h>
+
 namespace DebugRender {
 	struct ImmediateCalls {
 		static void begin() {
@@ -136,6 +138,18 @@ namespace DebugRender {
 			glBegin( GL_LINES );
 			glVertex3f( 0.0, 0.0, 0.0 );
 			Eigen::glVertex( direction );
+			glEnd();
+		}
+
+		static void drawVectorCone( const Eigen::Vector3f &direction, const float radius, int n = 10 ) {
+			const Eigen::Matrix3f onb = Eigen::OrthonormalBase::fromNormal( direction );
+			const float step = float( 2 * M_PI / n );
+
+			glBegin( GL_LINES );
+			for( int i = 0 ; i < n ; i++ ) {
+				glVertex3f( 0.0, 0.0, 0.0 );
+				Eigen::glVertex( direction + radius * (onb.col(1) * cos( step * i ) + onb.col(2) * sin(step * i)) );
+			}
 			glEnd();
 		}
 

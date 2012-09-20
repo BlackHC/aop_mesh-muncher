@@ -188,4 +188,27 @@ namespace Eigen {
 			return normalized;
 		}
 	}
+
+	inline Vector3f getPerpendicular( const Vector3f &v ) {
+		// TODO: fix the zero test [9/20/2012 kirschan2]
+		if( abs( v.x() ) < 0.0001 ) {
+			return Vector3f( 0.0f, -v.z(), v.y() );
+		}
+		else if( abs( v.y() ) < 0.0001 ) {
+			return Vector3f( -v.z(), 0.0f, v.x() );
+		}
+		else {
+			return Vector3f( v.y(), -v.x(), 0.0f );
+		}
+	}
+
+	namespace OrthonormalBase {
+		inline Matrix3f fromNormal( const Vector3f &normal ) {
+			Matrix3f base;
+			base.col(0) = normal.normalized();
+			base.col(1) = getPerpendicular( base.col(0) ).normalized();
+			base.col(2) = base.col(0).cross( base.col(1) );
+			return base;
+		}
+	}
 }
