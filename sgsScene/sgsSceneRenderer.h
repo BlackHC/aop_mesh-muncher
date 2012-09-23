@@ -58,6 +58,13 @@ inline Eigen::Matrix4f unpermutedToPermutedMatrix( const int *permutation ) {
 //////////////////////////////////////////////////////////////////////////
 struct SGSSceneRenderer;
 
+struct Instance {
+	// object to world
+	Eigen::Matrix4f transformation;
+
+	int modelId;
+};
+
 struct RenderContext {
 	int disabledInstanceIndex;
 	int disabledObjectIndex;
@@ -192,8 +199,50 @@ struct SGSSceneRenderer {
 	std::vector<int> alphaLists;
 	std::vector<int> terrainLists;
 
-	GL::ScopedBuffer objectVertices, objectIndices, terrainVertices, terrainIndices;
-	GL::ScopedVertexArrayObject objectVAO, terrainVAO;
+	struct Mesh {
+		GL::ScopedBuffer vertexBuffer, indexBuffer;
+		GL::ScopedVertexArrayObject vao;
+	};
+
+	struct ObjectMesh : Mesh {
+		void init() {
+			vao.bind();
+			glEnableClientState( GL_VERTEX_ARRAY );
+			glEnableClientState( GL_NORMAL_ARRAY );
+			glEnableClientState( GL_TEXTURE_COORD_ARRAY );
+
+			vertexBuffer.bind( GL_ARRAY_BUFFER );
+			SGSScene::Vertex *firstVertex = nullptr;
+			glVertexPointer( 3, GL_FLOAT, sizeof( SGSScene::Vertex ), firstVertex->position );
+			glNormalPointer( GL_FLOAT, sizeof( SGSScene::Vertex ), firstVertex->normal );
+			glTexCoordPointer( 2, GL_FLOAT, sizeof( SGSScene::Vertex ), firstVertex->uv[0] );
+
+			indexBuffer.bind( GL_ELEMENT_ARRAY_BUFFER );
+			vao.unbind();
+		}
+	};
+
+	struct TerrainMesh : Mesh {
+		void init() {
+			vao.bind();
+			glEnableClientState( GL_VERTEX_ARRAY );
+			glEnableClientState( GL_NORMAL_ARRAY );
+			glEnableClientState( GL_TEXTURE_COORD_ARRAY );
+
+			vertexBuffer.bind( GL_ARRAY_BUFFER );
+			SGSScene::Terrain::Vertex *firstVertex = nullptr;
+			glVertexPointer( 3, GL_FLOAT, sizeof( SGSScene::Terrain::Vertex ), firstVertex->position );
+			glNormalPointer( GL_FLOAT, sizeof( SGSScene::Terrain::Vertex ), firstVertex->normal );
+			glTexCoordPointer( 2, GL_FLOAT, sizeof( SGSScene::Terrain::Vertex ), firstVertex->blendUV );
+
+			indexBuffer.bind( GL_ELEMENT_ARRAY_BUFFER );
+			vao.unbind();
+		}
+	};
+
+	ObjectMesh staticObjectsMesh, dynamicObjectsMesh;
+	TerrainMesh terrainMesh;
+	
 	// one display list per sub object
 	GL::ScopedDisplayLists materialDisplayLists;
 
@@ -237,12 +286,12 @@ struct SGSSceneRenderer {
 	void reloadShaders();
 
 	void processScene( const std::shared_ptr<SGSScene> &scene, const char *cacheFilename );
-	void loadBuffers();
+	void loadStaticBuffers();
 	void setVertexArrayObjects();
 	void prepareMaterialDisplayLists();
 
 	// prerender everything into display lists for easy drawing later
-	void prerender();
+	void prerenderDebugInfos();
 
 	ScopedTexture2D sunShadowMap;
 	Eigen::Matrix4f sunProjectionMatrix;

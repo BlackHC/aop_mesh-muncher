@@ -506,7 +506,7 @@ namespace SimpleGL {
 		}
 
 		void operator () ( GLenum mode, GLenum elementType ) {
-			glMultiDrawElements( mode, &counts.front(), elementType, &indices.front(), size() );
+			glMultiDrawElements( mode, &counts.front(), elementType, &indices.front(), (GLsizei) size() );
 		}
 
 	private:

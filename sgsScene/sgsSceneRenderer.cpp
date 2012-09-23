@@ -201,12 +201,12 @@ void SGSSceneRenderer::processScene( const std::shared_ptr<SGSScene> &scene, con
 	solidLists.reserve( scene->subObjects.size() );
 	alphaLists.reserve( scene->subObjects.size() );
 
-	loadBuffers();
+	loadStaticBuffers();
 	setVertexArrayObjects();
 
 	prepareMaterialDisplayLists();
 
-	prerender();
+	prerenderDebugInfos();
 
 	// flush the cache if necessary
 	if( cacheChanged ) {
@@ -217,48 +217,20 @@ void SGSSceneRenderer::processScene( const std::shared_ptr<SGSScene> &scene, con
 	}
 }
 
-void SGSSceneRenderer::loadBuffers() {
-	objectVertices.bufferData( scene->vertices.size() * sizeof( SGSScene::Vertex ), &scene->vertices.front(), GL_STATIC_DRAW );
-	objectIndices.bufferData( scene->indices.size() * sizeof( unsigned ), &scene->indices.front(), GL_STATIC_DRAW );
+void SGSSceneRenderer::loadStaticBuffers() {
+	staticObjectsMesh.vertexBuffer.bufferData( scene->vertices.size() * sizeof( SGSScene::Vertex ), &scene->vertices.front(), GL_STATIC_DRAW );
+	staticObjectsMesh.indexBuffer.bufferData( scene->indices.size() * sizeof( unsigned ), &scene->indices.front(), GL_STATIC_DRAW );
 
-	terrainVertices.bufferData( scene->terrain.vertices.size() * sizeof( SGSScene::Terrain::Vertex ), &scene->terrain.vertices.front(), GL_STATIC_DRAW );
-	terrainIndices.bufferData( scene->terrain.indices.size() * sizeof( unsigned ), &scene->terrain.indices.front(), GL_STATIC_DRAW );
+	terrainMesh.vertexBuffer.bufferData( scene->terrain.vertices.size() * sizeof( SGSScene::Terrain::Vertex ), &scene->terrain.vertices.front(), GL_STATIC_DRAW );
+	terrainMesh.indexBuffer.bufferData( scene->terrain.indices.size() * sizeof( unsigned ), &scene->terrain.indices.front(), GL_STATIC_DRAW );
 }
 
 void SGSSceneRenderer::setVertexArrayObjects() {
-	// object vertex array object
-	{
-		objectVAO.bind();
-		glEnableClientState( GL_VERTEX_ARRAY );
-		glEnableClientState( GL_NORMAL_ARRAY );
-		glEnableClientState( GL_TEXTURE_COORD_ARRAY );
-
-		objectVertices.bind( GL_ARRAY_BUFFER );
-		SGSScene::Vertex *firstVertex = nullptr;
-		glVertexPointer( 3, GL_FLOAT, sizeof( SGSScene::Vertex ), firstVertex->position );
-		glNormalPointer( GL_FLOAT, sizeof( SGSScene::Vertex ), firstVertex->normal );
-		glTexCoordPointer( 2, GL_FLOAT, sizeof( SGSScene::Vertex ), firstVertex->uv[0] );
-
-		objectIndices.bind( GL_ELEMENT_ARRAY_BUFFER );
-		objectVAO.unbind();
-	}
-	// terrain vertex array object
-	{
-		terrainVAO.bind();
-		glEnableClientState( GL_VERTEX_ARRAY );
-		glEnableClientState( GL_NORMAL_ARRAY );
-		glEnableClientState( GL_TEXTURE_COORD_ARRAY );
-
-		terrainVertices.bind( GL_ARRAY_BUFFER );
-		SGSScene::Terrain::Vertex *firstVertex = nullptr;
-		glVertexPointer( 3, GL_FLOAT, sizeof( SGSScene::Terrain::Vertex ), firstVertex->position );
-		glNormalPointer( GL_FLOAT, sizeof( SGSScene::Terrain::Vertex ), firstVertex->normal );
-		glTexCoordPointer( 2, GL_FLOAT, sizeof( SGSScene::Terrain::Vertex ), firstVertex->blendUV );
-
-		terrainIndices.bind( GL_ELEMENT_ARRAY_BUFFER );
-		terrainVAO.unbind();
-	}
-
+	staticObjectsMesh.init();
+	terrainMesh.init();
+	
+	// reset the state
+	// TODO: verify that this is unnecessary and remove the following block [9/23/2012 kirschan2]
 	GL::Buffer::unbind( GL_ARRAY_BUFFER );
 	GL::Buffer::unbind( GL_ELEMENT_ARRAY_BUFFER );
 
@@ -366,7 +338,7 @@ void SGSSceneRenderer::prepareMaterialDisplayLists() {
 	Texture2D::unbind();
 }
 
-void SGSSceneRenderer::prerender() {
+void SGSSceneRenderer::prerenderDebugInfos() {
 	{
 		debug.boundingSpheres.begin();
 
@@ -451,14 +423,14 @@ void SGSSceneRenderer::renderShadowmap( const RenderContext &renderContext ) {
 
 	// draw terrain
 	{
-		terrainVAO.bind();
 		Texture2D::unbind();
+		terrainMesh.vao.bind();		
 		glDrawElements( GL_TRIANGLES, scene->terrain.indices.size(), GL_UNSIGNED_INT, nullptr );
-		terrainVAO.unbind();
+		terrainMesh.vao.unbind();
 	}
 
 	{
-		objectVAO.bind();
+		staticObjectsMesh.vao.bind();
 
 		GLuint *firstIndex = nullptr;
 		for( int i = 0 ; i < solidLists.size() ; i++ ) {
@@ -488,7 +460,7 @@ void SGSSceneRenderer::renderShadowmap( const RenderContext &renderContext ) {
 			glDrawElements( GL_TRIANGLES, scene->subObjects[ subObjectIndex ].numIndices, GL_UNSIGNED_INT, firstIndex + scene->subObjects[ subObjectIndex ].startIndex );
 		}
 
-		objectVAO.unbind();
+		staticObjectsMesh.vao.unbind();
 	}
 
 	// state reset
@@ -501,7 +473,7 @@ void SGSSceneRenderer::renderShadowmap( const RenderContext &renderContext ) {
 		glDisable( GL_TEXTURE_2D );
 	}
 
-	// reset state
+	// reset the buffer state
 	fbo.unbind();
 	fbo.resetDrawBuffers();
 
@@ -586,9 +558,9 @@ void SGSSceneRenderer::render( const Eigen::Matrix4f &projectionView, const Eige
 		}
 
 		if( !multiDrawElements.empty() ) {
-			terrainVAO.bind();
+			terrainMesh.vao.bind();
 			multiDrawElements( GL_TRIANGLES, GL_UNSIGNED_INT );
-			terrainVAO.unbind();
+			terrainMesh.vao.unbind();
 		}
 	}
 
@@ -600,7 +572,7 @@ void SGSSceneRenderer::render( const Eigen::Matrix4f &projectionView, const Eige
 		glUniform( objectProgram.uniformLocations[ "viewerPosition" ], worldViewerPosition );
 		glUniform( objectProgram.uniformLocations[ "sunShadowProjection" ], sunProjectionMatrix );
 
-		objectVAO.bind();
+		staticObjectsMesh.vao.bind();
 
 		GLuint *firstIndex = nullptr;
 		for( int i = 0 ; i < solidLists.size() ; i++ ) {
@@ -615,7 +587,7 @@ void SGSSceneRenderer::render( const Eigen::Matrix4f &projectionView, const Eige
 			glDrawElements( GL_TRIANGLES, scene->subObjects[ subObjectIndex ].numIndices, GL_UNSIGNED_INT, firstIndex + scene->subObjects[ subObjectIndex ].startIndex );
 		}
 
-		objectVAO.unbind();
+		staticObjectsMesh.vao.unbind();
 	}
 
 	// make sure this is turned on again, otherwise glClear wont work correctly...

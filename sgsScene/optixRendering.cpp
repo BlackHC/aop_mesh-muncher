@@ -14,12 +14,12 @@ void SGSSceneRenderer::initOptix( OptixRenderer *optixRenderer ) {
 
 		int primitiveCount = scene->numSceneIndices / 3;
 
-		optix.objects.indexBuffer = optixRenderer->context->createBufferFromGLBO( RT_BUFFER_INPUT, objectIndices.handle );
+		optix.objects.indexBuffer = optixRenderer->context->createBufferFromGLBO( RT_BUFFER_INPUT, staticObjectsMesh.indexBuffer.handle );
 		optix.objects.indexBuffer->setFormat( RT_FORMAT_UNSIGNED_INT3 );
 		optix.objects.indexBuffer->setSize( primitiveCount );
 		optix.objects.indexBuffer->validate();
 
-		optix.objects.vertexBuffer = optixRenderer->context->createBufferFromGLBO( RT_BUFFER_INPUT, objectVertices.handle );
+		optix.objects.vertexBuffer = optixRenderer->context->createBufferFromGLBO( RT_BUFFER_INPUT, staticObjectsMesh.vertexBuffer.handle );
 		optix.objects.vertexBuffer->setSize( scene->numSceneVertices );
 		optix.objects.vertexBuffer->setFormat( RT_FORMAT_USER );
 		optix.objects.vertexBuffer->setElementSize( sizeof SGSScene::Vertex );
@@ -99,12 +99,12 @@ void SGSSceneRenderer::initOptix( OptixRenderer *optixRenderer ) {
 		optix.terrain.material->validate ();
 
 		int primitiveCount = scene->terrain.indices.size() / 3;
-		optix.terrain.indexBuffer = optixRenderer->context->createBufferFromGLBO( RT_BUFFER_INPUT, terrainIndices.handle );
+		optix.terrain.indexBuffer = optixRenderer->context->createBufferFromGLBO( RT_BUFFER_INPUT, terrainMesh.indexBuffer.handle );
 		optix.terrain.indexBuffer->setFormat( RT_FORMAT_UNSIGNED_INT3 );
 		optix.terrain.indexBuffer->setSize( primitiveCount );
 		optix.terrain.indexBuffer->validate();
 
-		optix.terrain.vertexBuffer = optixRenderer->context->createBufferFromGLBO( RT_BUFFER_INPUT, terrainVertices.handle );
+		optix.terrain.vertexBuffer = optixRenderer->context->createBufferFromGLBO( RT_BUFFER_INPUT, terrainMesh.vertexBuffer.handle );
 		optix.terrain.vertexBuffer->setSize( scene->terrain.vertices.size() );
 		optix.terrain.vertexBuffer->setFormat( RT_FORMAT_USER );
 		optix.terrain.vertexBuffer->setElementSize( sizeof SGSScene::Terrain::Vertex );

@@ -153,7 +153,7 @@ namespace Eigen {
 	const Map< const FrustumPlanesMatrixf > projectionToFrustumPlanes( projectionToFrustumPlanes_coeffs );
 
 	namespace Plane {
-		inline RowVector4f parallelShift( const RowVector4f &plane, int distance ) {
+		inline RowVector4f parallelShift( const RowVector4f &plane, float distance ) {
 			return plane - RowVector4f::UnitW() * distance * plane.head<3>().norm(); 
 		}
 
@@ -161,7 +161,7 @@ namespace Eigen {
 			return plane / plane.head<3>().norm(); 
 		}
 
-		inline RowVector4f parallelShiftNormalized( const RowVector4f &plane, int distance ) {
+		inline RowVector4f parallelShiftNormalized( const RowVector4f &plane, float distance ) {
 			return plane - RowVector4f::UnitW() * distance; 
 		}
 	}
