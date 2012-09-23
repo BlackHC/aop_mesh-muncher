@@ -12,6 +12,35 @@
 #include "sgsSceneRenderer.h"
 #include <boost/timer/timer.hpp>
 
+//////////////////////////////////////////////////////////////////////////
+// from grid.h
+// xyz -120-> yzx
+template< typename Vector >
+Vector permute( const Vector &v, const int *permutation ) {
+	return Vector( v[permutation[0]], v[permutation[1]], v[permutation[2]] );
+}
+
+// yzx -120->xyz
+template< typename Vector >
+Vector permute_reverse( const Vector &w, const int *permutation ) {
+	Vector v;
+	for( int i = 0 ; i < 3 ; ++i ) {
+		v[ permutation[i] ] = w[i];
+	}
+	return v;
+}
+
+inline Eigen::Matrix4f permutedToUnpermutedMatrix( const int *permutation ) {
+	return (Eigen::Matrix4f() << Eigen::Vector3f::Unit( permutation[0] ), Eigen::Vector3f::Unit( permutation[1] ), Eigen::Vector3f::Unit( permutation[2] ), Eigen::Vector3f::Zero(), 0,0,0,1.0 ).finished();
+}
+
+inline Eigen::Matrix4f unpermutedToPermutedMatrix( const int *permutation ) {
+	return (Eigen::Matrix4f() << Eigen::RowVector3f::Unit( permutation[0] ), 0.0,
+		Eigen::RowVector3f::Unit( permutation[1] ), 0.0,
+		Eigen::RowVector3f::Unit( permutation[2] ), 0.0,
+		Eigen::RowVector4f::UnitW() ).finished();
+}
+
 void SGSSceneRenderer::bakeTerrainTexture( int detailFactor, float textureDetailFactor ) {
 	glPushAttrib( GL_ALL_ATTRIB_BITS );
 

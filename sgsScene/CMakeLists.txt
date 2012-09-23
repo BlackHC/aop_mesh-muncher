@@ -35,6 +35,7 @@ INCLUDE_DIRECTORIES(
 	../glutil
 	../serializer
 	../wml
+	../texturePacker
 )
 
 # ../gtest/gtest_main.cc
@@ -54,16 +55,16 @@ CUDA_ADD_EXECUTABLE(optix_sgsSceneViewer
 	../glutil/glObjectWrappers.h
 	../wml/wml.h
 	../wml/leanTextProcessing.h
-	glslPipeline.h
-	glslPipeline.cpp
+	../framework/glslPipeline.h
+	../framework/glslPipeline.cpp
 	sgsScene.h
 	sgsSceneRenderer.h
 	sgsSceneRenderer.cpp
 	sgsSceneViewer.cpp
-	Rect.cpp
-	Rect.h
-	MaxRectsBinPack.cpp
-	MaxRectsBinPack.h
+	../texturePacker/Rect.cpp
+	../texturePacker/Rect.h
+	../texturePacker/MaxRectsBinPack.cpp
+	../texturePacker/MaxRectsBinPack.h
 	optixProgramInterface.h
 	optixProgramHelpers.h
 	optixProgramHelpers.cpp
