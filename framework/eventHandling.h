@@ -9,8 +9,9 @@ struct EventHandler {
 	virtual bool update( const float elapsedTime, bool inputProcessed ) { return inputProcessed; }
 };
 
-struct EventDispatcher : public EventHandler {
-	std::vector<std::shared_ptr<EventHandler>> eventHandlers;
+template< typename BaseEventHandler >
+struct TemplateEventDispatcher : public BaseEventHandler {
+	std::vector<std::shared_ptr<BaseEventHandler>> eventHandlers;
 
 	bool handleEvent( const sf::Event &event ) {
 		for( auto eventHandler = eventHandlers.rbegin() ; eventHandler != eventHandlers.rend() ; ++eventHandler ) {
@@ -28,3 +29,5 @@ struct EventDispatcher : public EventHandler {
 		return inputProcessed;
 	}
 };
+
+typedef TemplateEventDispatcher< EventHandler > EventDispatcher;

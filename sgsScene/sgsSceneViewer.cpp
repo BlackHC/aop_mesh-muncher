@@ -20,78 +20,13 @@ using namespace Eigen;
 
 #include "camera.h"
 #include "cameraInputControl.h"
+#include <verboseEventHandlers.h>
 
 #include "make_nonallocated_shared.h"
 
 #include "sgsSceneRenderer.h"
 
 #include "debugWindows.h"
-
-struct IntVariableControl : EventHandler {
-	sf::Keyboard::Key upKey, downKey;
-	int &variable;
-	int min, max;
-
-	IntVariableControl( int &variable, int min, int max, sf::Keyboard::Key upKey = sf::Keyboard::Up, sf::Keyboard::Key downKey = sf::Keyboard::Down )
-		: variable( variable ), min( min ), max( max ), upKey( upKey ), downKey( downKey ) {
-	}
-
-	virtual bool handleEvent( const sf::Event &event ) 
-	{
-		switch( event.type ) {
-			// allow key repeat here
-		case sf::Event::KeyPressed:
-			if( event.key.code == upKey ) {
-				variable = std::min( variable + 1, max );
-				std::cout << "up: " << variable << "\n";
-				return true;
-			}
-			else if( event.key.code == downKey ) {
-				variable = std::max( variable - 1, min );
-				std::cout << "down: " << variable << "\n";
-				return false;
-			}
-			break;
-		}
-		return false;
-	}
-};
-
-struct KeyAction : EventHandler {
-	sf::Keyboard::Key key;
-	std::function<void()> action;
-
-	KeyAction( sf::Keyboard::Key key, const std::function<void()> &action) : key( key ), action( action ) {}
-
-	virtual bool handleEvent( const sf::Event &event ) {
-		if( event.type == sf::Event::KeyReleased && event.key.code == key ) {
-			action();
-			return true;
-		}
-		return false;
-	} 
-};
-
-struct BoolVariableControl : EventHandler {
-	sf::Keyboard::Key toggleKey, downKey;
-	bool &variable;
-
-	BoolVariableControl( bool &variable, sf::Keyboard::Key toggleKey = sf::Keyboard::T )
-		: variable( variable ), toggleKey( toggleKey ) {
-	}
-
-	virtual bool handleEvent( const sf::Event &event ) 
-	{
-		switch( event.type ) {
-		case sf::Event::KeyPressed:
-			if( event.key.code == toggleKey ) {
-				variable = !variable;
-				return true;
-			}
-		}
-		return false;
-	}
-};
 
 DebugRender::CombinedCalls selectionDR;
 
@@ -166,26 +101,32 @@ void real_main() {
 	EventDispatcher eventDispatcher;
 	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( cameraInputControl ) );
 
-	KeyAction reloadShadersAction( sf::Keyboard::R, [&] () { sgsSceneRenderer.reloadShaders(); } );
-	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( reloadShadersAction ) );
+	VerboseEventDispatcher verboseEventDispatcher;
+	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( verboseEventDispatcher ) );
 
-	BoolVariableControl showBoundingSpheresToggle( sgsSceneRenderer.debug.showBoundingSpheres, sf::Keyboard::B );
-	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( showBoundingSpheresToggle ) );
+	verboseEventDispatcher.registerConsoleHelpAction();
 
-	BoolVariableControl showTerrainBoundingSpheresToggle( sgsSceneRenderer.debug.showTerrainBoundingSpheres, sf::Keyboard::N );
-	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( showTerrainBoundingSpheresToggle ) );
+	KeyAction reloadShadersAction( "reload shaders", sf::Keyboard::R, [&] () { sgsSceneRenderer.reloadShaders(); } );
+	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( reloadShadersAction ) );
 
-	BoolVariableControl updateRenderListsToggle( sgsSceneRenderer.debug.updateRenderLists, sf::Keyboard::C );
-	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( updateRenderListsToggle ) );
+	BoolVariableToggle showBoundingSpheresToggle( "show bounding spheres",sgsSceneRenderer.debug.showBoundingSpheres, sf::Keyboard::B );
+	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( showBoundingSpheresToggle ) );
 
-	IntVariableControl disabledObjectIndexControl( renderContext.disabledModelIndex, -1, sgsScene.modelNames.size(), sf::Keyboard::Numpad7, sf::Keyboard::Numpad1 );
-	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( disabledObjectIndexControl ) );
+	BoolVariableToggle showTerrainBoundingSpheresToggle( "show terrain bounding spheres",sgsSceneRenderer.debug.showTerrainBoundingSpheres, sf::Keyboard::N );
+	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( showTerrainBoundingSpheresToggle ) );
 
-	IntVariableControl disabledInstanceIndexControl( renderContext.disabledInstanceIndex, -1, sgsScene.numSceneObjects, sf::Keyboard::Numpad9, sf::Keyboard::Numpad3 );
-	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( disabledInstanceIndexControl ) );
+	BoolVariableToggle updateRenderListsToggle( "updateRenderLists",sgsSceneRenderer.debug.updateRenderLists, sf::Keyboard::C );
+	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( updateRenderListsToggle ) );
 
+	IntVariableControl disabledObjectIndexControl( "disabledModelIndex", renderContext.disabledModelIndex, -1, sgsScene.modelNames.size(), sf::Keyboard::Numpad7, sf::Keyboard::Numpad1 );
+	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( disabledObjectIndexControl ) );
+
+	IntVariableControl disabledInstanceIndexControl( "disabledInstanceIndex",renderContext.disabledInstanceIndex, -1, sgsScene.numSceneObjects, sf::Keyboard::Numpad9, sf::Keyboard::Numpad3 );
+	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( disabledInstanceIndexControl ) );
+
+	
 	DebugRender::CombinedCalls probeDumps;
-	KeyAction dumpProbeAction( sf::Keyboard::P, [&] () { 
+	KeyAction dumpProbeAction( "dump probe", sf::Keyboard::P, [&] () { 
 		// dump a probe at the current position and view direction
 		const Eigen::Vector3f position = camera.getPosition();
 		const Eigen::Vector3f direction = camera.getDirection();
@@ -207,9 +148,9 @@ void real_main() {
 		probeDumps.drawVectorCone( probeContexts.front().distance * direction, probeContexts.front().distance * 0.25, 1 + probeContexts.front().hitPercentage * 15 );
 		probeDumps.end();
 	} );
-	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( dumpProbeAction ) );
+	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( dumpProbeAction ) );
 
-	KeyAction disableObjectAction( sf::Keyboard::Numpad4, [&] () { 
+	KeyAction disableObjectAction( "disable models shot", sf::Keyboard::Numpad4, [&] () { 
 		// dump a probe at the current position and view direction
 		const ViewerContext viewerContext = { camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() };
 
@@ -222,9 +163,9 @@ void real_main() {
 		renderContext.disabledModelIndex = selectionResults.front().modelIndex;
 		std::cout << "object: " << selectionResults.front().modelIndex << "\n";
 	} );
-	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( disableObjectAction ) );
+	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( disableObjectAction ) );
 
-	KeyAction disableInstanceAction( sf::Keyboard::Numpad6, [&] () { 
+	KeyAction disableInstanceAction( "disable instance shot", sf::Keyboard::Numpad6, [&] () { 
 		// dump a probe at the current position and view direction
 		const ViewerContext viewerContext = { camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() };
 
@@ -237,11 +178,11 @@ void real_main() {
 		renderContext.disabledInstanceIndex = selectionResults.front().objectIndex;
 		std::cout << "instance: " << selectionResults.front().objectIndex << "\n";
 	} );
-	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( disableInstanceAction ) );
+	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( disableInstanceAction ) );
 
 	DebugWindowManager debugWindowManager;
 	
-#if 1
+#if 0
 	TextureVisualizationWindow optixWindow;
 	optixWindow.init( "Optix Version" );
 	optixWindow.texture = optixRenderer.debugTexture;
@@ -315,8 +256,9 @@ void real_main() {
 			glDisable( GL_DEPTH_TEST );
 			selectionDR.render();
 			glEnable( GL_DEPTH_TEST );
+			
 			const ViewerContext viewerContext = { camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() };
-			optixRenderer.renderPinholeCamera( viewerContext, renderContext );
+			//optixRenderer.renderPinholeCamera( viewerContext, renderContext );
 
 			// End the current frame and display its contents on screen
 			renderDuration.setString( renderTimer.format() );

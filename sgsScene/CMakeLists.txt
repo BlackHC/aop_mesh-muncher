@@ -49,6 +49,7 @@ CUDA_ADD_EXECUTABLE(optix_sgsSceneViewer
 	../framework/eventHandling.h
 	../framework/eigenProjectionMatrices.h
 	../framework/debugWindows.h
+	../framework/verboseEventHandlers.h
 	../glutil/Debug.cpp
 	../glutil/Debug.h
 	../glutil/shaderPrograms.h
