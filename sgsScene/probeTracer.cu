@@ -38,7 +38,7 @@ RT_PROGRAM void sampleProbes() {
 		const float3 sample = hemisphereSamples[ (sampleStartIndex + rayIndex) % numHemisphereSamples ];
 		const float3 rayDirection = onb.m_normal * sample.z + onb.m_tangent * sample.x + onb.m_binormal * sample.y;
 		
-		Ray ray( probe.position, rayDirection, RT_EYE, sceneEpsilon );
+		Ray ray( probe.position, rayDirection, RT_EYE, sceneEpsilon, maxDistance );
 
 		Ray_Eye ray_eye;
 		rtTrace( rootObject, ray, ray_eye );
@@ -59,7 +59,7 @@ RT_PROGRAM void sampleProbes() {
 	context.hitPercentage = float( numHits ) / numProbeSamples;
 }
 
-RT_PROGRAM void exception() {
+RT_PROGRAM void sampleProbes_exception() {
 	unsigned int const error_code = rtGetExceptionCode();
 	if(RT_EXCEPTION_STACK_OVERFLOW == error_code) {
 		probeContexts[ probeIndex ].color = make_uchar4(255, 0, 0, 128);

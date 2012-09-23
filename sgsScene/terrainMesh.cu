@@ -16,7 +16,7 @@ rtTextureSampler<float4, 2> terrainTexture;
 rtBuffer<Vertex> vertexBuffer;
 rtBuffer<int3> indexBuffer;
 
-RT_PROGRAM void closestHit()
+RT_PROGRAM void eye_closestHit()
 {
 	float3 hitPosition = currentRay.origin + t_hit * currentRay.direction;
 
@@ -33,10 +33,17 @@ RT_PROGRAM void closestHit()
 		(0.2 + 0.8 * diffuseAttenuation * getDirectionalLightTransmittance( hitPosition, sunDirection ));
 }
 
-RT_PROGRAM void anyHit()
+RT_PROGRAM void shadow_anyHit()
 {
 	currentRay_shadow.transmittance = 0.0;
 	rtTerminateRay();
+}
+
+RT_PROGRAM void selection_closestHit() {
+	currentRay_selection.objectIndex = currentRay_selection.modelIndex = SelectionResult::SELECTION_INDEX_TERRAIN;
+
+	currentRay_selection.hitPosition = currentRay.origin + t_hit * currentRay.direction;
+	currentRay_selection.hitDistance = t_hit;
 }
 
 RT_PROGRAM void intersect( int primIdx )

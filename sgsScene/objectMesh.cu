@@ -46,7 +46,7 @@ __device__ float3 subTrace( const float3 &position, const float3 &direction, boo
 	return subRay_eye.color;
 }
 
-RT_PROGRAM void closestHit() {
+RT_PROGRAM void eye_closestHit() {
 	float3 hitPosition = currentRay.origin + t_hit * currentRay.direction;
 
 	currentRay_eye.distance = t_hit;
@@ -89,7 +89,21 @@ RT_PROGRAM void closestHit() {
 	}
 }
 
-RT_PROGRAM void anyHit() {
+__device__ bool checkObjectDisabled() {
+	return materialInfo.objectIndex == disabledObjectIndex || materialInfo.modelIndex == disabledModelIndex;
+}
+RT_PROGRAM void eye_anyHit() {
+	if( checkObjectDisabled() ) {
+		rtIgnoreIntersection();
+	}
+}
+
+RT_PROGRAM void shadow_anyHit() {
+	if( checkObjectDisabled() ) {
+		rtIgnoreIntersection();
+		return;
+	}
+
 	switch( materialInfo.alphaType ) {
 	default:
 	case MaterialInfo::AT_NONE:
@@ -115,6 +129,41 @@ RT_PROGRAM void anyHit() {
 		// NOTE: this is important, otherwise it wont take into account other possible hit locations
 		rtIgnoreIntersection();
 	}
+}
+
+RT_PROGRAM void selection_anyHit() {
+	if( checkObjectDisabled() ) {
+		rtIgnoreIntersection();
+		return;
+	}
+
+	float alpha = 1.0;
+	switch( materialInfo.alphaType ) {
+	default:
+	case MaterialInfo::AT_NONE:
+		return;
+	case MaterialInfo::AT_ADDITIVE:
+		return;
+	case MaterialInfo::AT_MATERIAL:
+		alpha = materialInfo.alpha;
+		break;
+	case MaterialInfo::AT_ALPHATEST:
+	case MaterialInfo::AT_TEXTURE:
+		alpha = getTexel().w;
+		break;
+	}
+
+	if( alpha < 0.1 ) {
+		rtIgnoreIntersection();
+	}
+}
+
+RT_PROGRAM void selection_closestHit() {
+	currentRay_selection.objectIndex = materialInfo.objectIndex;
+	currentRay_selection.modelIndex = materialInfo.modelIndex;
+
+	currentRay_selection.hitPosition = currentRay.origin + t_hit * currentRay.direction;
+	currentRay_selection.hitDistance = t_hit;
 }
 
 RT_PROGRAM void intersect( int primIdx )

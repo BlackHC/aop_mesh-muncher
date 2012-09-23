@@ -10,10 +10,14 @@ namespace OptixProgramInterface {
 enum RayType {
 	RT_EYE,
 	RT_SHADOW,
+	RT_SELECTION,
 	RT_COUNT
 };
 
 struct MaterialInfo {
+	int objectIndex;
+	int modelIndex;
+
 	int textureIndex;
 	
 	// copied straight from SGSScene::Material
@@ -42,9 +46,26 @@ struct ProbeContext {
 	float hitPercentage;
 };
 
+// terrain is -1, -1
+// miss is -2, -2
+struct SelectionResult {
+	enum {
+		SELECTION_INDEX_TERRAIN = -2,
+		SELECTION_INDEX_MISS = -1,
+		SELECTION_INDEX_STACK_OVERFLOW = -3
+	};
+
+	int modelIndex;
+	int objectIndex;
+
+	optix::float3 hitPosition;
+	float hitDistance;
+};
+
 //////////////////////////////////////////////////////////////////////////
 // CUDA specific declarations/definitions
 #if defined(__CUDACC__)
+
 struct MergedTextureInfo {
 	int2 offset;
 	int2 size;
@@ -60,8 +81,12 @@ struct Ray_Shadow {
 	float transmittance;
 };
 
+
+typedef SelectionResult Ray_Selection;
+
 rtDeclareVariable( Ray_Eye, currentRay_eye, rtPayload, );
 rtDeclareVariable( Ray_Shadow, currentRay_shadow, rtPayload, );
+rtDeclareVariable( Ray_Selection, currentRay_selection, rtPayload, );
 rtDeclareVariable( float3, geometricNormal, attribute geometricNormal, );
 rtDeclareVariable( float3, shadingNormal, attribute shadingNormal, );
 rtDeclareVariable( float2, texCoord, attribute texCoord, );
@@ -73,9 +98,14 @@ rtDeclareVariable(float, t_hit, rtIntersectionDistance, );
 
 rtDeclareVariable(rtObject, rootObject, , );
 
-#define sunDirection make_float3( 0.0, -1.0, -1.0 )
 #define sceneEpsilon 0.005f
-#define maxDistance RT_DEFAULT_MAX
+
+rtDeclareVariable( float3, sunDirection, , ) = { 0.0, -1.0, -1.0 };
+rtDeclareVariable( float, maxDistance, , ) = RT_DEFAULT_MAX;
+
+// render context
+rtDeclareVariable(int, disabledObjectIndex, , );
+rtDeclareVariable(int, disabledModelIndex, , );
 
 //////////////////////////////////////////////////////////////////////////
 // CUDA helper functions
@@ -103,6 +133,26 @@ struct MergedTextureInfo {
 	int index;
 	int pad;
 };
+
+const char * const rayTypeNamespaces[] = {
+	"eye",
+	"shadow",
+	"selection"
+};
+
+enum EntryPoint {
+	renderPinholeCameraView,
+	sampleProbes,
+	selectFromPinholeCamera,
+	EP_COUNT
+};
+
+const char * const entryPointNamespaces[] = {
+	"renderPinholeCameraView",
+	"sampleProbes",
+	"selectFromPinholeCamera"
+};
+
 #endif
 
 #if !defined(__CUDACC__)

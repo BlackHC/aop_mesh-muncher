@@ -128,7 +128,6 @@ struct AntTWBarEditableCollection {
 			members->addButton( "Select " + getSummary( items[i], i ), selectCallbacks[i] );
 			members->addVarRW( getSummary( items[i], i ), items[i] );
 			members->addButton( "Remove", removeCallbacks[i] );
-			
 		}
 
 		ui->addVarRW( "Prototype", prototype, "", "prototype" );

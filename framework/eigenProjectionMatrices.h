@@ -23,28 +23,28 @@ namespace Math {
 
 namespace Eigen {
 	// like glFrustum
-	inline Matrix4f createFrustumMatrix( const float left, const float right, const float bottom, const float top, const float near, const float far ) {
+	inline Matrix4f createFrustumMatrix( const float left, const float right, const float bottom, const float top, const float zNear, const float zFar ) {
 		const float width = right - left;
 		const float height = top - bottom;
-		const float depth = far - near;
+		const float depth = zFar - zNear;
 
 		return (Matrix4f() <<
-			2 * near / width,	0,					(right + left) / width,		0,
-			0,					2 * near / height,	(top + bottom) / height,	0,
-			0,					0,					-(far + near) / depth,		-2 * far * near / depth,
+			2 * zNear / width,	0,					(right + left) / width,		0,
+			0,					2 * zNear / height,	(top + bottom) / height,	0,
+			0,					0,					-(zFar + zNear) / depth,	-2 * zFar * zNear / depth,
 			0,					0,					-1.0,						0).finished();
 	}
 
 	// like glOrtho
-	inline Matrix4f createOrthoProjectionMatrix( const float left, const float right, const float bottom, const float top, const float near, const float far ) {
+	inline Matrix4f createOrthoProjectionMatrix( const float left, const float right, const float bottom, const float top, const float zNear, const float zFar ) {
 		const float width = right - left;
 		const float height = top - bottom;
-		const float depth = far - near;
+		const float depth = zFar - zNear;
 
 		return (Matrix4f() <<
 			2 / width,		0,					0,				-(right + left) / width,
 			0,				2 / height,			0,				-(top + bottom) / height,
-			0,				0,					-2 / depth,		-(far + near) / depth,
+			0,				0,					-2 / depth,		-(zFar + zNear) / depth,
 			0,				0,					0,				1.0).finished();
 	}
 

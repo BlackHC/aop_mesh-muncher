@@ -22,29 +22,32 @@ using namespace Eigen;
 
 #include "make_nonallocated_shared.h"
 
-#include "sgsSceneRender.h"
+#include "sgsSceneRenderer.h"
 
 #include "debugWindows.h"
 
 struct IntVariableControl : EventHandler {
 	sf::Keyboard::Key upKey, downKey;
-	int *variable;
+	int &variable;
 	int min, max;
 
-	IntVariableControl( int *variable, int min, int max, sf::Keyboard::Key upKey = sf::Keyboard::Up, sf::Keyboard::Key downKey = sf::Keyboard::Down )
+	IntVariableControl( int &variable, int min, int max, sf::Keyboard::Key upKey = sf::Keyboard::Up, sf::Keyboard::Key downKey = sf::Keyboard::Down )
 		: variable( variable ), min( min ), max( max ), upKey( upKey ), downKey( downKey ) {
 	}
 
 	virtual bool handleEvent( const sf::Event &event ) 
 	{
 		switch( event.type ) {
-		case sf::Event::KeyReleased:
+			// allow key repeat here
+		case sf::Event::KeyPressed:
 			if( event.key.code == upKey ) {
-				*variable = std::min( *variable + 1, max );
+				variable = std::min( variable + 1, max );
+				std::cout << "up: " << variable << "\n";
 				return true;
 			}
 			else if( event.key.code == downKey ) {
-				*variable = std::max( *variable - 1, min );
+				variable = std::max( variable - 1, min );
+				std::cout << "down: " << variable << "\n";
 				return false;
 			}
 			break;
@@ -117,6 +120,8 @@ void real_main() {
 	SGSSceneRenderer sgsSceneRenderer;
 	OptixRenderer optixRenderer;
 	SGSScene sgsScene;
+	RenderContext renderContext;
+	renderContext.setDefault();
 
 	{
 		boost::timer::auto_cpu_timer timer( "SGSSceneRenderer: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
@@ -153,6 +158,12 @@ void real_main() {
 	BoolVariableControl updateRenderListsToggle( sgsSceneRenderer.debug.updateRenderLists, sf::Keyboard::C );
 	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( updateRenderListsToggle ) );
 
+	IntVariableControl disabledObjectIndexControl( renderContext.disabledObjectIndex, -1, sgsScene.modelNames.size(), sf::Keyboard::Numpad7, sf::Keyboard::Numpad1 );
+	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( disabledObjectIndexControl ) );
+
+	IntVariableControl disabledInstanceIndexControl( renderContext.disabledInstanceIndex, -1, sgsScene.numSceneObjects, sf::Keyboard::Numpad9, sf::Keyboard::Numpad3 );
+	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( disabledInstanceIndexControl ) );
+
 	DebugRender::CombinedCalls probeDumps;
 	KeyAction dumpProbeAction( sf::Keyboard::P, [&] () { 
 		// dump a probe at the current position and view direction
@@ -168,7 +179,7 @@ void real_main() {
 		
 		probes.push_back( probe );
 
-		optixRenderer.sampleProbes( probes, probeContexts );
+		optixRenderer.sampleProbes( probes, probeContexts, renderContext );
 
 		probeDumps.append();
 		probeDumps.setPosition( position );
@@ -178,9 +189,39 @@ void real_main() {
 	} );
 	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( dumpProbeAction ) );
 
+	KeyAction disableObjectAction( sf::Keyboard::Numpad4, [&] () { 
+		// dump a probe at the current position and view direction
+		const ViewerContext viewerContext = { camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() };
+
+		OptixRenderer::SelectionRays selectionRays;
+		selectionRays.push_back( optix::make_float2( 0.0f ) );
+
+		OptixRenderer::SelectionResults selectionResults;
+		optixRenderer.selectFromPinholeCamera( selectionRays, selectionResults, viewerContext, renderContext );
+	
+		renderContext.disabledObjectIndex = selectionResults.front().modelIndex;
+		std::cout << "object: " << selectionResults.front().modelIndex << "\n";
+	} );
+	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( disableObjectAction ) );
+
+	KeyAction disableInstanceAction( sf::Keyboard::Numpad6, [&] () { 
+		// dump a probe at the current position and view direction
+		const ViewerContext viewerContext = { camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() };
+
+		OptixRenderer::SelectionRays selectionRays;
+		selectionRays.push_back( optix::make_float2( 0.0f ) );
+
+		OptixRenderer::SelectionResults selectionResults;
+		optixRenderer.selectFromPinholeCamera( selectionRays, selectionResults, viewerContext, renderContext );
+
+		renderContext.disabledInstanceIndex = selectionResults.front().objectIndex;
+		std::cout << "instance: " << selectionResults.front().objectIndex << "\n";
+	} );
+	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( disableInstanceAction ) );
+
 	DebugWindowManager debugWindowManager;
 	
-#if 0
+#if 1
 	TextureVisualizationWindow optixWindow;
 	optixWindow.init( "Optix Version" );
 	optixWindow.texture = optixRenderer.debugTexture;
@@ -197,7 +238,8 @@ void real_main() {
 	
 	while (true)
 	{
-		//optixRenderer.renderPinholeCamera( camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() );
+		const ViewerContext viewerContext = { camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() };
+		optixRenderer.renderPinholeCamera( viewerContext, renderContext );
 		debugWindowManager.update();
 
 		// Activate the window for OpenGL rendering
@@ -225,7 +267,7 @@ void real_main() {
 
 		cameraInputControl.update( frameClock.restart().asSeconds(), false );
 		
-		sgsSceneRenderer.renderShadowmap();
+		sgsSceneRenderer.renderShadowmap( renderContext );
 
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -236,7 +278,7 @@ void real_main() {
 		glMatrixMode( GL_MODELVIEW );
 		glLoadMatrix( camera.getViewTransformation().matrix() );
 			
-		sgsSceneRenderer.render( camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() );
+		sgsSceneRenderer.render( camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition(), renderContext );
 
 		probeDumps.render();
 

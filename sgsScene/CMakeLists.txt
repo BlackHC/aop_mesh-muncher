@@ -7,6 +7,10 @@ PROJECT(optix_sgsSceneViewer)
 # niven is built with RTTI disabled (/GR-) and unicode-aware
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /GR- /D_UNICODE")
 
+# windows.h sucks..
+# and turn on multiprocessor compilation
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /DNOMINMAX /MP")
+
 ADD_OPENMP_FLAGS()
 
 FIND_PACKAGE(OpenGL)
@@ -32,7 +36,7 @@ INCLUDE_DIRECTORIES(
 )
 
 # ../gtest/gtest_main.cc
-CUDA_COMPILE_PTX( PTX_FILES raytracer.cu terrainMesh.cu objectMesh.cu probeTracer.cu )
+CUDA_COMPILE_PTX( PTX_FILES raytracer.cu terrainMesh.cu objectMesh.cu probeTracer.cu  pinholeSelection.cu )
 
 CUDA_ADD_EXECUTABLE(optix_sgsSceneViewer
 	${GLEW_SOURCE_FILE}
@@ -51,7 +55,8 @@ CUDA_ADD_EXECUTABLE(optix_sgsSceneViewer
 	glslPipeline.h
 	glslPipeline.cpp
 	sgsScene.h
-	sgsSceneRender.h
+	sgsSceneRenderer.h
+	sgsSceneRenderer.cpp
 	sgsSceneViewer.cpp
 	Rect.cpp
 	Rect.h

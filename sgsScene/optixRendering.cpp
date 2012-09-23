@@ -1,28 +1,14 @@
-#define NOMINMAX
-#include <Windows.h>
-#undef near
-#undef far
-
-#include "sgsSceneRender.h"
+#include "sgsSceneRenderer.h"
+#include "boost/timer/timer.hpp"
 
 void SGSSceneRenderer::initOptix( OptixRenderer *optixRenderer ) {
-	const char *terrainMeshPtxFilename = "cuda_compile_ptx_generated_terrainMesh.cu.ptx";
-	optix.terrain.intersect = optixRenderer->context->createProgramFromPTXFile (terrainMeshPtxFilename, "intersect");
-	optix.terrain.boundingBox = optixRenderer->context->createProgramFromPTXFile (terrainMeshPtxFilename, "calculateBoundingBox");
-	optix.terrain.anyHit = optixRenderer->context->createProgramFromPTXFile (terrainMeshPtxFilename, "anyHit");
-	optix.terrain.closestHit = optixRenderer->context->createProgramFromPTXFile (terrainMeshPtxFilename, "closestHit");
-
-	const char *objectMeshPtxFilename = "cuda_compile_ptx_generated_objectMesh.cu.ptx";
-	optix.objects.intersect = optixRenderer->context->createProgramFromPTXFile (objectMeshPtxFilename, "intersect");
-	optix.objects.boundingBox = optixRenderer->context->createProgramFromPTXFile (objectMeshPtxFilename, "calculateBoundingBox");
-	optix.objects.anyHit = optixRenderer->context->createProgramFromPTXFile (objectMeshPtxFilename, "anyHit");
-	optix.objects.closestHit = optixRenderer->context->createProgramFromPTXFile (objectMeshPtxFilename, "closestHit");
+	OptixHelpers::Namespace::Modules terrainModule = OptixHelpers::Namespace::makeModules( "cuda_compile_ptx_generated_terrainMesh.cu.ptx" );
+	OptixHelpers::Namespace::Modules objectModule = OptixHelpers::Namespace::makeModules( "cuda_compile_ptx_generated_objectMesh.cu.ptx" );
 
 	// setup the objects buffers
 	{
 		optix.objects.material = optixRenderer->context->createMaterial ();
-		optix.objects.material->setAnyHitProgram (1, optix.objects.anyHit);
-		optix.objects.material->setClosestHitProgram (0, optix.objects.closestHit);
+		OptixHelpers::Namespace::setMaterialPrograms( optix.objects.material, objectModule, "" );
 		optix.objects.material->validate ();
 
 		int primitiveCount = scene->numSceneIndices / 3;
@@ -41,9 +27,7 @@ void SGSSceneRenderer::initOptix( OptixRenderer *optixRenderer ) {
 		optix.objects.geometry = optixRenderer->context->createGeometry ();
 		optix.objects.geometry ["vertexBuffer"]->setBuffer (optix.objects.vertexBuffer);
 		optix.objects.geometry ["indexBuffer"]->setBuffer (optix.objects.indexBuffer);
-		optix.objects.geometry->setBoundingBoxProgram (optix.objects.boundingBox);
-		optix.objects.geometry->setIntersectionProgram (optix.objects.intersect);
-
+		OptixHelpers::Namespace::setGeometryPrograms( optix.objects.geometry, objectModule, "" );
 		optix.objects.geometry->setPrimitiveCount ( primitiveCount );
 		optix.objects.geometry->validate ();
 
@@ -76,17 +60,25 @@ void SGSSceneRenderer::initOptix( OptixRenderer *optixRenderer ) {
 		OptixProgramInterface::MaterialInfo *materialInfos = (OptixProgramInterface::MaterialInfo *) optix.materialInfos->map();	
 		int *materialIndices = (int *) optix.materialIndices->map();
 
-		for( int subObjectIndex = 0 ; subObjectIndex < scene->numSceneSubObjects ; ++subObjectIndex ) {
-			const SGSScene::SubObject &subObject = scene->subObjects[ subObjectIndex ];
+		for( int objectIndex = 0 ; objectIndex < scene->numSceneObjects ; ++objectIndex ) {
+			const SGSScene::Object &object = scene->objects[objectIndex];
 
-			OptixProgramInterface::MaterialInfo &materialInfo = materialInfos[subObjectIndex];
-			materialInfo.textureIndex = subObject.material.textureIndex[0];
-			materialInfo.alphaType = (OptixProgramInterface::MaterialInfo::AlphaType) subObject.material.alphaType;
-			materialInfo.alpha = subObject.material.alpha / 255.0f;
+			const int endSubObject = object.startSubObject + object.numSubObjects;
+			for( int subObjectIndex = object.startSubObject ; subObjectIndex < endSubObject ; ++subObjectIndex ) {
+				const SGSScene::SubObject &subObject = scene->subObjects[ subObjectIndex ];
 
-			const int startPrimitive = subObject.startIndex / 3;
-			const int endPrimitive = startPrimitive + subObject.numIndices / 3;
-			std::fill( materialIndices + startPrimitive, materialIndices + endPrimitive, subObjectIndex );
+				OptixProgramInterface::MaterialInfo &materialInfo = materialInfos[subObjectIndex];
+				materialInfo.modelIndex = object.modelId;
+				materialInfo.objectIndex = objectIndex;
+
+				materialInfo.textureIndex = subObject.material.textureIndex[0];
+				materialInfo.alphaType = (OptixProgramInterface::MaterialInfo::AlphaType) subObject.material.alphaType;
+				materialInfo.alpha = subObject.material.alpha / 255.0f;
+
+				const int startPrimitive = subObject.startIndex / 3;
+				const int endPrimitive = startPrimitive + subObject.numIndices / 3;
+				std::fill( materialIndices + startPrimitive, materialIndices + endPrimitive, subObjectIndex );
+			}
 		}
 		optix.materialIndices->unmap();
 		optix.materialIndices->validate();
@@ -102,8 +94,7 @@ void SGSSceneRenderer::initOptix( OptixRenderer *optixRenderer ) {
 	// set up the terrain buffers
 	{
 		optix.terrain.material = optixRenderer->context->createMaterial ();
-		optix.terrain.material->setClosestHitProgram (0, optix.terrain.closestHit);
-		optix.terrain.material->setAnyHitProgram (1, optix.terrain.anyHit);
+		OptixHelpers::Namespace::setMaterialPrograms( optix.terrain.material, terrainModule, "" );
 		optix.terrain.material->validate ();
 
 		int primitiveCount = scene->terrain.indices.size() / 3;
@@ -121,8 +112,7 @@ void SGSSceneRenderer::initOptix( OptixRenderer *optixRenderer ) {
 		optix.terrain.geometry = optixRenderer->context->createGeometry ();
 		optix.terrain.geometry ["vertexBuffer"]->setBuffer (optix.terrain.vertexBuffer);
 		optix.terrain.geometry ["indexBuffer"]->setBuffer (optix.terrain.indexBuffer);
-		optix.terrain.geometry->setBoundingBoxProgram (optix.terrain.boundingBox);
-		optix.terrain.geometry->setIntersectionProgram (optix.terrain.intersect);
+		OptixHelpers::Namespace::setGeometryPrograms( optix.terrain.geometry, terrainModule, "" );
 
 		optix.terrain.geometry->setPrimitiveCount ( primitiveCount );
 		optix.terrain.geometry->validate ();
@@ -215,29 +205,22 @@ void OptixRenderer::init( const std::shared_ptr< SGSSceneRenderer > &sgsSceneRen
 
 	// initialize the context
 	context->setRayTypeCount( OptixProgramInterface::RT_COUNT );
-	context->setEntryPointCount(2);
+	context->setEntryPointCount( OptixProgramInterface::EP_COUNT );
 	context->setCPUNumThreads( 12 );
 	context->setStackSize(8000);
 	context->setPrintBufferSize(65536);
 	context->setPrintEnabled(true);
 
 	// create the rt programs
-	const char *raytracerPtxFilename = "cuda_compile_ptx_generated_raytracer.cu.ptx";
-	programs.raytracer_exception = context->createProgramFromPTXFile (raytracerPtxFilename, "exception");
-	programs.miss = context->createProgramFromPTXFile (raytracerPtxFilename, "miss");
-
-	const char *probeSamplerPtxFilename = "cuda_compile_ptx_generated_probeTracer.cu.ptx";
-	programs.probeSampler_exception = context->createProgramFromPTXFile (probeSamplerPtxFilename, "exception");
-
-	// set the rt programs
-	context->setMissProgram( 0, programs.miss );
-	context->setExceptionProgram( 0, programs.raytracer_exception );
-	context->setExceptionProgram( 1, programs.probeSampler_exception );
+	static const char *raytracerPtxFilename = "cuda_compile_ptx_generated_raytracer.cu.ptx";
+	static const char *probeSamplerPtxFilename = "cuda_compile_ptx_generated_probeTracer.cu.ptx";
+	static const char *pinholeSelectionPtxFilename = "cuda_compile_ptx_generated_pinholeSelection.cu.ptx";
 	
-	// set the pinhole camera entry point
-	context->setRayGenerationProgram(  0, context->createProgramFromPTXFile( raytracerPtxFilename, "pinholeCamera_rayGeneration" ) );
-	// set the probe sampler entry point
-	context->setRayGenerationProgram( 1, context->createProgramFromPTXFile( probeSamplerPtxFilename, "sampleProbes" ) );
+	OptixHelpers::Namespace::Modules modules = OptixHelpers::Namespace::makeModules( raytracerPtxFilename, probeSamplerPtxFilename, pinholeSelectionPtxFilename );
+
+	OptixHelpers::Namespace::setRayGenerationPrograms( context, modules );
+	OptixHelpers::Namespace::setMissPrograms( context, modules );
+	OptixHelpers::Namespace::setExceptionPrograms( context, modules );
 
 	// create the acceleration structure
 	acceleration = context->createAcceleration ("Bvh", "Bvh");
@@ -249,7 +232,7 @@ void OptixRenderer::init( const std::shared_ptr< SGSSceneRenderer > &sgsSceneRen
 	context["rootObject"]->set(scene);
 
 	// create and set the output buffer
-	outputBuffer = context->createBuffer( RT_BUFFER_OUTPUT,  RT_FORMAT_UNSIGNED_BYTE4, width = 800, height = 600 );	
+	outputBuffer = context->createBuffer( RT_BUFFER_OUTPUT,  RT_FORMAT_UNSIGNED_BYTE4, width = 640, height = 480 );	
 	context["outputBuffer"]->set(outputBuffer);
 
 	// create and set the hemisphere sample buffer
@@ -273,6 +256,18 @@ void OptixRenderer::init( const std::shared_ptr< SGSSceneRenderer > &sgsSceneRen
 
 	context[ "probeContexts" ]->set( probeContexts );
 
+	// init and set the selection buffers
+	selectionRays = context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_FLOAT2, maxNumSelectionRays );
+	selectionRays->validate();
+	
+	context[ "selectionRays" ]->set( selectionRays );
+
+	selectionResults = context->createBuffer( RT_BUFFER_OUTPUT, RT_FORMAT_USER, maxNumSelectionRays );
+	selectionResults->setElementSize( sizeof OptixProgramInterface::SelectionResult );
+	selectionResults->validate();
+
+	context[ "selectionResults" ]->set( selectionResults );
+
 	// init the output texture
 	SimpleGL::setLinearMinMag( debugTexture );
 
@@ -290,30 +285,69 @@ void OptixRenderer::init( const std::shared_ptr< SGSSceneRenderer > &sgsSceneRen
 	std::cout << e;
 }
 
-void OptixRenderer::renderPinholeCamera(const Eigen::Matrix4f &projectionView, const Eigen::Vector3f &worldViewerPosition) {
-	context[ "eyePosition" ]->set3fv( worldViewerPosition.data() );
+void OptixRenderer::setRenderContext( const RenderContext &renderContext ) {
+	context[ "disabledModelIndex" ]->setInt( renderContext.disabledObjectIndex );
+	context[ "disabledObjectIndex" ]->setInt( renderContext.disabledInstanceIndex );
+}
+
+void OptixRenderer::setPinholeCameraViewerContext( const ViewerContext &viewerContext ) {
+	context[ "eyePosition" ]->set3fv( viewerContext.worldViewerPosition.data() );
 
 	// this works with all usual projection matrices (where x and y don't have any effect on z and w in clip space)
 	// determine u, v, and w by unprojecting (x,y,-1,1) from clip space to world space
-	Eigen::Matrix4f inverseProjectionView = projectionView.inverse();
+	Eigen::Matrix4f inverseProjectionView = viewerContext.projectionView.inverse();
 	// this is the w coordinate of the unprojected coordinates
 	const float unprojectedW = inverseProjectionView(3,3) - inverseProjectionView(3,2);
 
 	// divide the homogeneous affine matrix by the projected w
 	// see R1 page for deduction
-	Eigen::Matrix< float, 3, 4> inverseProjectionView34 = projectionView.inverse().topLeftCorner<3,4>() / unprojectedW;
+	Eigen::Matrix< float, 3, 4> inverseProjectionView34 = viewerContext.projectionView.inverse().topLeftCorner<3,4>() / unprojectedW;
 	const Eigen::Vector3f u = inverseProjectionView34.col(0);
 	const Eigen::Vector3f v = inverseProjectionView34.col(1);
-	const Eigen::Vector3f w = inverseProjectionView34.col(3) - inverseProjectionView34.col(2) - worldViewerPosition;
+	const Eigen::Vector3f w = inverseProjectionView34.col(3) - inverseProjectionView34.col(2) - viewerContext.worldViewerPosition;
 
 	context[ "U" ]->set3fv( u.data() );
 	context[ "V" ]->set3fv( v.data() );
 	context[ "W" ]->set3fv( w.data() );
+}
 
-	context->launch(0, width, height );
+void OptixRenderer::renderPinholeCamera( const ViewerContext &viewerContext, const RenderContext &renderContext ) {
+	setRenderContext( renderContext );
+	setPinholeCameraViewerContext( viewerContext );
+
+	context->launch( OptixProgramInterface::renderPinholeCameraView, width, height );
 
 	void *data = outputBuffer->map();
 	debugTexture.load( 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data );
 	//SOIL_save_image( "frame.bmp", SOIL_SAVE_TYPE_BMP, 640, 480, 4, (unsigned char*) data );
 	outputBuffer->unmap();
+}
+
+void OptixRenderer::selectFromPinholeCamera( const std::vector< optix::float2 > &selectionRays, std::vector< OptixProgramInterface::SelectionResult > &selectionResults, const ViewerContext &viewerContext, const RenderContext &renderContext ) {
+	setRenderContext( renderContext );
+	setPinholeCameraViewerContext( viewerContext );
+
+	OptixHelpers::Buffer::copyToDevice( this->selectionRays, selectionRays );
+	
+	boost::range::copy( selectionRays, (optix::float2 *) this->selectionRays->map() );
+	this->selectionRays->unmap();
+
+	context->launch( OptixProgramInterface::selectFromPinholeCamera, selectionRays.size() );
+
+	selectionResults.resize( selectionRays.size() );
+	OptixHelpers::Buffer::copyToHost( this->selectionResults, selectionResults.front(), selectionResults.size() );
+}
+
+void OptixRenderer::sampleProbes( const std::vector< Probe > &probes, std::vector< ProbeContext > &probeContexts, const RenderContext &renderContext ) {
+	setRenderContext( renderContext );
+
+	OptixHelpers::Buffer::copyToDevice( this->probes, probes );
+
+	boost::range::copy( probes, (Probe *) this->probes->map() );
+	this->probes->unmap();
+
+	context->launch( OptixProgramInterface::sampleProbes, probes.size() );
+
+	probeContexts.resize( probes.size() );
+	OptixHelpers::Buffer::copyToHost( this->probeContexts, probeContexts.front(), probeContexts.size() );
 }
