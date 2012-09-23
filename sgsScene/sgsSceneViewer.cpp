@@ -93,6 +93,25 @@ struct BoolVariableControl : EventHandler {
 	}
 };
 
+DebugRender::CombinedCalls selectionDR;
+
+void selectObjectsByModelID( SGSSceneRenderer &renderer, int modelIndex ) {
+	SGSSceneRenderer::InstanceIndices indices = renderer.getModelInstances( modelIndex );
+
+	selectionDR.begin();
+	selectionDR.setColor( Eigen::Vector3f::UnitX() );
+
+	for( auto instanceIndex = indices.begin() ; instanceIndex != indices.end() ; ++instanceIndex ) {
+		auto transformation = renderer.getInstanceTransformation( *instanceIndex );
+		auto boundingBox = renderer.getUntransformedInstanceBoundingBox( *instanceIndex );
+
+		selectionDR.setTransformation( transformation );	
+		selectionDR.drawAABB( boundingBox.min(), boundingBox.max() );
+	}
+
+	selectionDR.end();
+}
+
 void real_main() {
 	sf::RenderWindow window( sf::VideoMode( 640, 480 ), "sgsSceneViewer", sf::Style::Default, sf::ContextSettings(24, 8, 0, 4, 2, false,true, false) );
 	glewInit();
@@ -292,6 +311,10 @@ void real_main() {
 
 			probeDumps.render();		
 
+			selectObjectsByModelID( sgsSceneRenderer, renderContext.disabledModelIndex );
+			glDisable( GL_DEPTH_TEST );
+			selectionDR.render();
+			glEnable( GL_DEPTH_TEST );
 			const ViewerContext viewerContext = { camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() };
 			optixRenderer.renderPinholeCamera( viewerContext, renderContext );
 

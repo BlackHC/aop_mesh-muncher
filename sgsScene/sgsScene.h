@@ -101,9 +101,9 @@ struct SGSScene {
 		int startSubObject;
 		int numSubObjects;
 
-		Bounding bounding;
+		BoundingBox boundingBox;
 
-		SERIALIZER_DEFAULT_IMPL( (startSubObject)(numSubObjects)(bounding) );
+		SERIALIZER_DEFAULT_IMPL( (startSubObject)(numSubObjects)(boundingBox) );
 	};
 
 	struct Object : Model {
@@ -112,7 +112,7 @@ struct SGSScene {
 		float transformation[16];
 
 		// TODO: add inheritance support to serializer? [9/23/2012 kirschan2]
-		SERIALIZER_DEFAULT_IMPL( (modelId)(startSubObject)(numSubObjects)(bounding)(transformation) );
+		SERIALIZER_DEFAULT_IMPL( (modelId)(startSubObject)(numSubObjects)(boundingBox)(transformation) );
 	};
 
 	struct Terrain {

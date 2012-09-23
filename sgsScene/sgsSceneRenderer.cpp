@@ -600,7 +600,10 @@ void SGSSceneRenderer::render( const Eigen::Matrix4f &projectionView, const Eige
 		staticObjectsMesh.vao.bind();
 		
 		for( int instanceIndex = 0 ; instanceIndex < instances.size() ; ++instanceIndex ) {
-			drawInstance( instances[ instanceIndex ] );
+			const Instance &instance = instances[ instanceIndex ];
+			if( renderContext.disabledModelIndex != instance.modelId && renderContext.disabledInstanceIndex != scene->objects.size() + instanceIndex ) {
+				drawInstance( instances[ instanceIndex ] );
+			}
 		}
 
 		staticObjectsMesh.vao.unbind();

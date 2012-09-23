@@ -340,4 +340,42 @@ struct SGSSceneRenderer {
 			return instances[ instanceIndex ].transformation;
 		}
 	}
+
+	Eigen::AlignedBox3f getUntransformedInstanceBoundingBox( int instanceIndex ) const {
+		const auto &model = getInstanceModel( instanceIndex );
+
+		return Eigen::AlignedBox3f(
+			Eigen::Vector3f::Map( model.boundingBox.min ),
+			Eigen::Vector3f::Map( model.boundingBox.max )
+		);
+	}
+
+	const SGSScene::Model &getInstanceModel( int instanceIndex ) const {
+		if( instanceIndex < scene->objects.size() ) {
+			return scene->models[ scene->objects[ instanceIndex ].modelId ];
+		}
+		else {
+			instanceIndex -= scene->objects.size();
+			return scene->models[ instances[ instanceIndex ].modelId ];
+		}
+	}
+
+	typedef std::vector<int> InstanceIndices;
+	
+	InstanceIndices getModelInstances( int modelIndex ) const {
+		InstanceIndices indices;
+
+		for( int instanceIndex = 0 ; instanceIndex < scene->objects.size() ; ++instanceIndex ) {
+			if( scene->objects[ instanceIndex ].modelId == modelIndex ) {
+				indices.push_back( instanceIndex );
+			}
+		}
+		for( int instanceIndex = 0 ; instanceIndex < instances.size() ; ++instanceIndex ) {
+			if( instances[ instanceIndex ].modelId == modelIndex ) {
+				indices.push_back( scene->objects.size() + instanceIndex );
+			}
+		}
+
+		return indices;
+	}
 };

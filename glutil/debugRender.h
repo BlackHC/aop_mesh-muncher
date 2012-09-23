@@ -19,6 +19,12 @@ namespace DebugRender {
 			Eigen::glTranslate( position );
 		}
 
+		static void setTransformation( const Eigen::Matrix4f &transformation ) {
+			glPopMatrix();
+			glPushMatrix();
+			Eigen::glMultMatrix( transformation );
+		}
+
 		static void setColor( const Eigen::Vector3f &color ) {
 			Eigen::glColor( color );
 		}
@@ -231,6 +237,8 @@ namespace DebugRender {
 		}
 
 		void begin() {
+			clear();
+
 			list = glGenLists( 1 );
 
 			glNewList( list, GL_COMPILE );
