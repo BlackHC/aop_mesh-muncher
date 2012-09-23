@@ -240,7 +240,7 @@ void real_main() {
 	sf::Text renderDuration;
 	renderDuration.setPosition( 0, 0 );
 	renderDuration.setCharacterSize( 10 );
-		
+	
 	while (true)
 	{
 		// Activate the window for OpenGL rendering

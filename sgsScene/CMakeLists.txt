@@ -10,6 +10,8 @@ SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /GR- /D_UNICODE")
 # windows.h sucks..
 # and turn on multiprocessor compilation
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /DNOMINMAX /MP")
+# this is needed because sfml graphics uses stbi, too
+SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /FORCE:MULTIPLE")
 
 ADD_OPENMP_FLAGS()
 
