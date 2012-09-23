@@ -1,4 +1,5 @@
 #include "sgsSceneRenderer.h"
+#include "optixProgramHelpers.h"
 #include "boost/timer/timer.hpp"
 
 void SGSSceneRenderer::initOptix( OptixRenderer *optixRenderer ) {

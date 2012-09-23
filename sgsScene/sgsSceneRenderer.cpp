@@ -12,8 +12,6 @@
 #include "sgsSceneRenderer.h"
 #include <boost/timer/timer.hpp>
 
-
-
 void SGSSceneRenderer::bakeTerrainTexture( int detailFactor, float textureDetailFactor ) {
 	glPushAttrib( GL_ALL_ATTRIB_BITS );
 

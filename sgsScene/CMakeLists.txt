@@ -63,6 +63,8 @@ CUDA_ADD_EXECUTABLE(optix_sgsSceneViewer
 	MaxRectsBinPack.cpp
 	MaxRectsBinPack.h
 	optixProgramInterface.h
+	optixProgramHelpers.h
+	optixProgramHelpers.cpp
 	optixRendering.cpp
 	${PTX_FILES}
 	../build/sgsScene.shaders
