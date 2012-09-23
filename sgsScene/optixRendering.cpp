@@ -6,35 +6,8 @@ void SGSSceneRenderer::initOptix( OptixRenderer *optixRenderer ) {
 	OptixHelpers::Namespace::Modules terrainModule = OptixHelpers::Namespace::makeModules( "cuda_compile_ptx_generated_terrainMesh.cu.ptx" );
 	OptixHelpers::Namespace::Modules objectModule = OptixHelpers::Namespace::makeModules( "cuda_compile_ptx_generated_objectMesh.cu.ptx" );
 
-	// setup the objects buffers
+	// setup the textures
 	{
-		optix.objects.material = optixRenderer->context->createMaterial ();
-		OptixHelpers::Namespace::setMaterialPrograms( optix.objects.material, objectModule, "" );
-		optix.objects.material->validate ();
-
-		int primitiveCount = scene->numSceneIndices / 3;
-
-		optix.objects.indexBuffer = optixRenderer->context->createBufferFromGLBO( RT_BUFFER_INPUT, staticObjectsMesh.indexBuffer.handle );
-		optix.objects.indexBuffer->setFormat( RT_FORMAT_UNSIGNED_INT3 );
-		optix.objects.indexBuffer->setSize( primitiveCount );
-		optix.objects.indexBuffer->validate();
-
-		optix.objects.vertexBuffer = optixRenderer->context->createBufferFromGLBO( RT_BUFFER_INPUT, staticObjectsMesh.vertexBuffer.handle );
-		optix.objects.vertexBuffer->setSize( scene->numSceneVertices );
-		optix.objects.vertexBuffer->setFormat( RT_FORMAT_USER );
-		optix.objects.vertexBuffer->setElementSize( sizeof SGSScene::Vertex );
-		optix.objects.vertexBuffer->validate();
-
-		optix.objects.geometry = optixRenderer->context->createGeometry ();
-		optix.objects.geometry ["vertexBuffer"]->setBuffer (optix.objects.vertexBuffer);
-		optix.objects.geometry ["indexBuffer"]->setBuffer (optix.objects.indexBuffer);
-		OptixHelpers::Namespace::setGeometryPrograms( optix.objects.geometry, objectModule, "" );
-		optix.objects.geometry->setPrimitiveCount ( primitiveCount );
-		optix.objects.geometry->validate ();
-
-		optix.objects.geometryInstance = optixRenderer->context->createGeometryInstance (optix.objects.geometry, &optix.objects.material, &optix.objects.material + 1);
-		optix.objects.geometryInstance->validate ();
-
 		optix.objectTextureSampler = optixRenderer->context->createTextureSamplerFromGLImage( mergedTexture.handle, RT_TARGET_GL_TEXTURE_2D );
 		optix.objectTextureSampler->setWrapMode( 0, RT_WRAP_REPEAT );
 		optix.objectTextureSampler->setWrapMode( 1, RT_WRAP_REPEAT );
@@ -43,23 +16,75 @@ void SGSSceneRenderer::initOptix( OptixRenderer *optixRenderer ) {
 		optix.objectTextureSampler->setReadMode( RT_TEXTURE_READ_NORMALIZED_FLOAT );
 		optix.objectTextureSampler->setMaxAnisotropy( 1.0f );
 		optix.objectTextureSampler->setFilteringModes( RT_FILTER_LINEAR, RT_FILTER_LINEAR, RT_FILTER_NONE );
+	}
+	{
+		optix.terrainTextureSampler = optixRenderer->context->createTextureSamplerFromGLImage( bakedTerrainTexture.handle, RT_TARGET_GL_TEXTURE_2D );
+		optix.terrainTextureSampler->setWrapMode( 0, RT_WRAP_REPEAT );
+		optix.terrainTextureSampler->setWrapMode( 1, RT_WRAP_REPEAT );
+		optix.terrainTextureSampler->setIndexingMode( RT_TEXTURE_INDEX_NORMALIZED_COORDINATES );
+		optix.terrainTextureSampler->setReadMode( RT_TEXTURE_READ_NORMALIZED_FLOAT );
+		optix.terrainTextureSampler->setMaxAnisotropy( 1.0f );
+		optix.terrainTextureSampler->setFilteringModes( RT_FILTER_LINEAR, RT_FILTER_LINEAR, RT_FILTER_NONE );
+	}
 
-		optix.objects.material[ "objectTexture" ]->setTextureSampler( optix.objectTextureSampler );
+	// setup the materials
+	{
+		optix.objectMaterial = optixRenderer->context->createMaterial ();
+		OptixHelpers::Namespace::setMaterialPrograms( optix.objectMaterial, objectModule, "" );
+		optix.objectMaterial->validate ();
+
+		optix.objectMaterial[ "objectTexture" ]->setTextureSampler( optix.objectTextureSampler );
 
 		optix.textureInfos = optixRenderer->context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_USER, mergedTextureInfos.size() );
 		optix.textureInfos->setElementSize( sizeof MergedTextureInfo );
 		::memcpy( optix.textureInfos->map(), &mergedTextureInfos.front(), sizeof( MergedTextureInfo ) * mergedTextureInfos.size() );
 		optix.textureInfos->unmap();
 		optix.textureInfos->validate();
+		
+		optix.objectMaterial[ "textureInfos" ]->set( optix.textureInfos );
+	}
+	{
+		optix.terrainMaterial = optixRenderer->context->createMaterial ();
+		OptixHelpers::Namespace::setMaterialPrograms( optix.terrainMaterial, terrainModule, "" );
+		optix.terrainMaterial->validate ();
+
+		optix.terrainMaterial[ "terrainTexture" ]->setTextureSampler( optix.terrainTextureSampler );
+	}
+
+	// setup the static objects buffers
+	{
+		int primitiveCount = scene->numSceneIndices / 3;
+
+		optix.staticObjects.indexBuffer = optixRenderer->context->createBufferFromGLBO( RT_BUFFER_INPUT, staticObjectsMesh.indexBuffer.handle );
+		optix.staticObjects.indexBuffer->setFormat( RT_FORMAT_UNSIGNED_INT3 );
+		optix.staticObjects.indexBuffer->setSize( primitiveCount );
+		optix.staticObjects.indexBuffer->validate();
+
+		optix.staticObjects.vertexBuffer = optixRenderer->context->createBufferFromGLBO( RT_BUFFER_INPUT, staticObjectsMesh.vertexBuffer.handle );
+		optix.staticObjects.vertexBuffer->setSize( scene->numSceneVertices );
+		optix.staticObjects.vertexBuffer->setFormat( RT_FORMAT_USER );
+		optix.staticObjects.vertexBuffer->setElementSize( sizeof SGSScene::Vertex );
+		optix.staticObjects.vertexBuffer->validate();
+
+		optix.staticObjects.geometry = optixRenderer->context->createGeometry ();
+		OptixHelpers::Namespace::setGeometryPrograms( optix.staticObjects.geometry, objectModule, "" );
+		optix.staticObjects.geometry->setPrimitiveCount ( primitiveCount );
+		optix.staticObjects.geometry->validate ();
+
+		optix.staticObjects.geometryInstance = optixRenderer->context->createGeometryInstance (optix.staticObjects.geometry, &optix.objectMaterial, &optix.objectMaterial + 1);
+		optix.staticObjects.geometryInstance->validate ();
+
+		optix.staticObjects.geometryInstance[ "vertexBuffer" ]->setBuffer( optix.staticObjects.vertexBuffer );
+		optix.staticObjects.geometryInstance[ "indexBuffer" ]->setBuffer( optix.staticObjects.indexBuffer );
 
 		// set materialInfos and materialIndices
-		optix.materialInfos = optixRenderer->context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_USER, scene->subObjects.size() );
-		optix.materialInfos->setElementSize( sizeof OptixProgramInterface::MaterialInfo );
+		optix.staticObjects.materialInfos = optixRenderer->context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_USER, scene->subObjects.size() );
+		optix.staticObjects.materialInfos->setElementSize( sizeof OptixProgramInterface::MaterialInfo );
 
-		optix.materialIndices = optixRenderer->context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_INT, primitiveCount );
+		optix.staticObjects.materialIndices = optixRenderer->context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_INT, primitiveCount );
 
-		OptixProgramInterface::MaterialInfo *materialInfos = (OptixProgramInterface::MaterialInfo *) optix.materialInfos->map();	
-		int *materialIndices = (int *) optix.materialIndices->map();
+		OptixProgramInterface::MaterialInfo *materialInfos = (OptixProgramInterface::MaterialInfo *) optix.staticObjects.materialInfos->map();	
+		int *materialIndices = (int *) optix.staticObjects.materialIndices->map();
 
 		for( int objectIndex = 0 ; objectIndex < scene->numSceneObjects ; ++objectIndex ) {
 			const SGSScene::Object &object = scene->objects[objectIndex];
@@ -81,23 +106,78 @@ void SGSSceneRenderer::initOptix( OptixRenderer *optixRenderer ) {
 				std::fill( materialIndices + startPrimitive, materialIndices + endPrimitive, subObjectIndex );
 			}
 		}
-		optix.materialIndices->unmap();
-		optix.materialIndices->validate();
+		optix.staticObjects.materialIndices->unmap();
+		optix.staticObjects.materialIndices->validate();
 
-		optix.materialInfos->unmap();
-		optix.materialInfos->validate();
+		optix.staticObjects.materialInfos->unmap();
+		optix.staticObjects.materialInfos->validate();
 
-		optixRenderer->context[ "materialIndices" ]->set( optix.materialIndices );
-		optixRenderer->context[ "materialInfos" ]->set( optix.materialInfos );
-		optix.objects.material[ "textureInfos" ]->set( optix.textureInfos );
+		optix.staticObjects.geometryInstance[ "materialIndices" ]->set( optix.staticObjects.materialIndices );
+		optix.staticObjects.geometryInstance[ "materialInfos" ]->set( optix.staticObjects.materialInfos );
+	}
+
+	// prepare the dynamic buffers
+	{
+		optix.dynamicObjects.indexBuffer = optixRenderer->context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_UNSIGNED_INT3, 1 );
+		optix.dynamicObjects.indexBuffer->validate();
+
+		optix.dynamicObjects.vertexBuffer = optixRenderer->context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_USER, 1 );
+		optix.dynamicObjects.vertexBuffer->setElementSize( sizeof SGSScene::Vertex );
+		optix.dynamicObjects.vertexBuffer->validate();
+
+		optix.dynamicObjects.geometry = optixRenderer->context->createGeometry ();
+		OptixHelpers::Namespace::setGeometryPrograms( optix.dynamicObjects.geometry, objectModule, "" );
+		optix.dynamicObjects.geometry->setPrimitiveCount ( 0 );
+		optix.dynamicObjects.geometry->validate ();
+
+		optix.dynamicObjects.geometryInstance = optixRenderer->context->createGeometryInstance (optix.dynamicObjects.geometry, &optix.objectMaterial, &optix.objectMaterial + 1);
+		optix.dynamicObjects.geometryInstance->validate ();
+
+		optix.dynamicObjects.geometryInstance[ "vertexBuffer" ]->setBuffer( optix.dynamicObjects.vertexBuffer );
+		optix.dynamicObjects.geometryInstance[ "indexBuffer" ]->setBuffer( optix.dynamicObjects.indexBuffer );
+
+		// set materialInfos and materialIndices
+		optix.dynamicObjects.materialInfos = optixRenderer->context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_USER, 0 );
+		optix.dynamicObjects.materialInfos->setElementSize( sizeof OptixProgramInterface::MaterialInfo );
+
+		optix.dynamicObjects.materialIndices = optixRenderer->context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_INT, 0 );
+
+#if 0
+		OptixProgramInterface::MaterialInfo *materialInfos = (OptixProgramInterface::MaterialInfo *) optix.dynamicObjects.materialInfos->map();	
+		int *materialIndices = (int *) optix.dynamicObjects.materialIndices->map();
+
+		for( int objectIndex = 0 ; objectIndex < scene->numSceneObjects ; ++objectIndex ) {
+			const SGSScene::Object &object = scene->objects[objectIndex];
+
+			const int endSubObject = object.startSubObject + object.numSubObjects;
+			for( int subObjectIndex = object.startSubObject ; subObjectIndex < endSubObject ; ++subObjectIndex ) {
+				const SGSScene::SubObject &subObject = scene->subObjects[ subObjectIndex ];
+
+				OptixProgramInterface::MaterialInfo &materialInfo = materialInfos[subObjectIndex];
+				materialInfo.modelIndex = object.modelId;
+				materialInfo.objectIndex = objectIndex;
+
+				materialInfo.textureIndex = subObject.material.textureIndex[0];
+				materialInfo.alphaType = (OptixProgramInterface::MaterialInfo::AlphaType) subObject.material.alphaType;
+				materialInfo.alpha = subObject.material.alpha / 255.0f;
+
+				const int startPrimitive = subObject.startIndex / 3;
+				const int endPrimitive = startPrimitive + subObject.numIndices / 3;
+				std::fill( materialIndices + startPrimitive, materialIndices + endPrimitive, subObjectIndex );
+			}
+		}
+		optix.dynamicObjects.materialIndices->unmap();
+		optix.dynamicObjects.materialInfos->unmap();
+#endif
+		optix.dynamicObjects.materialIndices->validate();
+		optix.dynamicObjects.materialInfos->validate();
+
+		optix.dynamicObjects.geometryInstance[ "materialIndices" ]->set( optix.dynamicObjects.materialIndices );
+		optix.dynamicObjects.geometryInstance[ "materialInfos" ]->set( optix.dynamicObjects.materialInfos );
 	}
 
 	// set up the terrain buffers
 	{
-		optix.terrain.material = optixRenderer->context->createMaterial ();
-		OptixHelpers::Namespace::setMaterialPrograms( optix.terrain.material, terrainModule, "" );
-		optix.terrain.material->validate ();
-
 		int primitiveCount = scene->terrain.indices.size() / 3;
 		optix.terrain.indexBuffer = optixRenderer->context->createBufferFromGLBO( RT_BUFFER_INPUT, terrainMesh.indexBuffer.handle );
 		optix.terrain.indexBuffer->setFormat( RT_FORMAT_UNSIGNED_INT3 );
@@ -118,21 +198,12 @@ void SGSSceneRenderer::initOptix( OptixRenderer *optixRenderer ) {
 		optix.terrain.geometry->setPrimitiveCount ( primitiveCount );
 		optix.terrain.geometry->validate ();
 
-		optix.terrainTextureSampler = optixRenderer->context->createTextureSamplerFromGLImage( bakedTerrainTexture.handle, RT_TARGET_GL_TEXTURE_2D );
-		optix.terrainTextureSampler->setWrapMode( 0, RT_WRAP_REPEAT );
-		optix.terrainTextureSampler->setWrapMode( 1, RT_WRAP_REPEAT );
-		optix.terrainTextureSampler->setIndexingMode( RT_TEXTURE_INDEX_NORMALIZED_COORDINATES );
-		optix.terrainTextureSampler->setReadMode( RT_TEXTURE_READ_NORMALIZED_FLOAT );
-		optix.terrainTextureSampler->setMaxAnisotropy( 1.0f );
-		optix.terrainTextureSampler->setFilteringModes( RT_FILTER_LINEAR, RT_FILTER_LINEAR, RT_FILTER_NONE );
-
-		optix.terrain.material[ "terrainTexture" ]->setTextureSampler( optix.terrainTextureSampler );
-
-		optix.terrain.geometryInstance = optixRenderer->context->createGeometryInstance (optix.terrain.geometry, &optix.terrain.material, &optix.terrain.material + 1);
+		optix.terrain.geometryInstance = optixRenderer->context->createGeometryInstance (optix.terrain.geometry, &optix.terrainMaterial, &optix.terrainMaterial + 1);
 		optix.terrain.geometryInstance->validate ();
 	}
 
 	optix.staticAcceleration = optixRenderer->context->createAcceleration ("Sbvh", "Bvh");
+	optix.dynamicAcceleration = optixRenderer->context->createAcceleration ("Lbvh", "Bvh");
 
 	BOOST_STATIC_ASSERT( sizeof( SGSScene::Vertex ) == sizeof( SGSScene::Terrain::Vertex) );
 	/*optix.staticAcceleration->setProperty( "vertex_buffer_name", "vertexBuffer" );
@@ -140,15 +211,22 @@ void SGSSceneRenderer::initOptix( OptixRenderer *optixRenderer ) {
 	optix.staticAcceleration->setProperty( "index_buffer_name", "indexBuffer" );
 	*/
 	optix.staticAcceleration->validate ();
+	optix.dynamicAcceleration->validate ();
 
 	optix.staticScene = optixRenderer->context->createGeometryGroup();
 	optix.staticScene->setAcceleration (optix.staticAcceleration);
 	optix.staticScene->setChildCount (2);
-	optix.staticScene->setChild (0, optix.objects.geometryInstance);
+	optix.staticScene->setChild (0, optix.staticObjects.geometryInstance);
 	optix.staticScene->setChild (1, optix.terrain.geometryInstance);
 	optix.staticScene->validate ();
 
+	optix.dynamicScene = optixRenderer->context->createGeometryGroup();
+	optix.dynamicScene->setAcceleration( optix.dynamicAcceleration );
+	optix.dynamicScene->setChildCount( 0 );
+	optix.dynamicScene->validate();
+
 	optixRenderer->addSceneChild( optix.staticScene );
+	optixRenderer->addSceneChild( optix.dynamicScene );
 
 	// cache
 	{
@@ -199,6 +277,100 @@ void SGSSceneRenderer::initOptix( OptixRenderer *optixRenderer ) {
 	}
 }
 
+void SGSSceneRenderer::refillDynamicOptixBuffers() {
+	int numVertices = 0;
+	int numIndices = 0;
+	int numSubObjects = 0;
+
+	for( int instanceIndex = 0 ; instanceIndex < instances.size() ; instanceIndex++ ) {
+		const SGSScene::Model &model = scene->models[ instances[ instanceIndex ].modelId ];
+		
+		numSubObjects += model.numSubObjects;
+		const int endSubObject = model.startSubObject + model.numSubObjects;
+		for( int subObjectIndex = model.startSubObject ; subObjectIndex < endSubObject ; subObjectIndex++ ) {
+			const SGSScene::SubObject &subObject = scene->subObjects[ subObjectIndex ];
+			numVertices += subObject.numVertices;
+			numIndices += subObject.numIndices;
+		}
+	}
+
+	optix.dynamicObjects.indexBuffer->setSize( numIndices );
+	optix.dynamicObjects.indexBuffer->validate();
+
+	optix.dynamicObjects.vertexBuffer->setSize( numVertices );
+	optix.dynamicObjects.vertexBuffer->validate();
+
+	optix.dynamicObjects.geometry->setPrimitiveCount ( numIndices / 3 );
+
+	optix.dynamicObjects.materialInfos->setSize( numSubObjects );
+	optix.dynamicObjects.materialIndices->setSize( numVertices );
+
+	auto materialInfos = (OptixProgramInterface::MaterialInfo *) optix.dynamicObjects.materialInfos->map();	
+	auto materialIndices = (int *) optix.dynamicObjects.materialIndices->map();
+	auto vertices = (SGSScene::Vertex *) optix.dynamicObjects.vertexBuffer->map();
+	auto indices = (unsigned int *) optix.dynamicObjects.indexBuffer->map();
+	
+	int globalVertexIndex = 0;
+	int globalIndexIndex = 0;
+	int globalSubObjectIndex = 0;
+
+	for( int instanceIndex = 0 ; instanceIndex < instances.size() ; instanceIndex++ ) {
+		const Instance &instance = instances[ instanceIndex ];
+		const SGSScene::Model &model = scene->models[ instance.modelId ];
+
+		Eigen::Matrix3f normalTransformation = instance.transformation.topLeftCorner<3,3>().inverse().transpose();
+
+		numSubObjects += model.numSubObjects;
+		const int endSubObject = model.startSubObject + model.numSubObjects;
+		for( int subObjectIndex = model.startSubObject ; subObjectIndex < endSubObject ; ++subObjectIndex ) {
+			const SGSScene::SubObject &subObject = scene->subObjects[ subObjectIndex ];
+
+			// set the material info
+			OptixProgramInterface::MaterialInfo &materialInfo = materialInfos[ globalSubObjectIndex ];
+			materialInfo.modelIndex = instance.modelId;
+			materialInfo.objectIndex = instanceIndex + scene->objects.size();
+
+			materialInfo.textureIndex = subObject.material.textureIndex[0];
+			materialInfo.alphaType = (OptixProgramInterface::MaterialInfo::AlphaType) subObject.material.alphaType;
+			materialInfo.alpha = subObject.material.alpha / 255.0f;
+
+			// set the material indices
+			const int startPrimitive = globalIndexIndex / 3;
+			const int endPrimitive = globalIndexIndex + subObject.numIndices / 3;
+			std::fill( materialIndices + startPrimitive, materialIndices + endPrimitive, globalSubObjectIndex );
+
+			int startVertex = globalVertexIndex;
+
+			// copy vertices
+			for( int vertexIndex = subObject.startVertex ; vertexIndex < subObject.startVertex + subObject.numVertices ; ++vertexIndex ) {
+				auto &modelVertex = scene->vertices[ vertexIndex ];
+				auto &instanceVertex = vertices[ globalVertexIndex++ ];
+
+				instanceVertex = modelVertex;
+				Eigen::Vector3f::Map( instanceVertex.position ) = (instance.transformation * Eigen::Vector3f::Map( instanceVertex.position ).homogeneous()).eval().hnormalized();
+				Eigen::Vector3f::Map( instanceVertex.normal ) = normalTransformation * Eigen::Vector3f::Map( instanceVertex.normal );
+			}
+
+			// copy indices
+			int indexShift = startVertex - subObject.startVertex;
+			for( int indexIndex = subObject.startIndex ; indexIndex < subObject.startIndex + subObject.numIndices ; ++indexIndex ) {
+				indices[ globalIndexIndex++ ] = scene->indices[ indexIndex ] + indexShift;
+			}
+
+			++globalSubObjectIndex;
+		}
+	}
+	optix.dynamicObjects.materialIndices->unmap();
+	optix.dynamicObjects.materialInfos->unmap();
+	optix.dynamicObjects.vertexBuffer->unmap();
+	optix.dynamicObjects.indexBuffer->unmap();
+
+	optix.dynamicScene->setChildCount( 1 );
+	optix.dynamicScene->setChild( 0, optix.dynamicObjects.geometryInstance );
+
+	optix.dynamicAcceleration->markDirty();
+}
+
 void OptixRenderer::init( const std::shared_ptr< SGSSceneRenderer > &sgsSceneRenderer ) {
 	this->sgsSceneRenderer = sgsSceneRenderer;
 
@@ -224,7 +396,7 @@ void OptixRenderer::init( const std::shared_ptr< SGSSceneRenderer > &sgsSceneRen
 	OptixHelpers::Namespace::setExceptionPrograms( context, modules );
 
 	// create the acceleration structure
-	acceleration = context->createAcceleration ("Bvh", "Bvh");
+	acceleration = context->createAcceleration ("NoAccel", "NoAccel");
 
 	// create the scene node
 	scene = context->createGroup ();
@@ -287,7 +459,7 @@ void OptixRenderer::init( const std::shared_ptr< SGSSceneRenderer > &sgsSceneRen
 }
 
 void OptixRenderer::setRenderContext( const RenderContext &renderContext ) {
-	context[ "disabledModelIndex" ]->setInt( renderContext.disabledObjectIndex );
+	context[ "disabledModelIndex" ]->setInt( renderContext.disabledModelIndex );
 	context[ "disabledObjectIndex" ]->setInt( renderContext.disabledInstanceIndex );
 }
 

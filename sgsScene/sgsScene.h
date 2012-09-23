@@ -89,20 +89,30 @@ struct SGSScene {
 		int startIndex;
 		int numIndices;
 
+		int startVertex;
+		int numVertices;
+
 		Bounding bounding;
 
-		SERIALIZER_DEFAULT_IMPL( (subModelName)(startIndex)(numIndices)(material)(bounding) );
+		SERIALIZER_DEFAULT_IMPL( (subModelName)(startVertex)(numVertices)(startIndex)(numIndices)(material)(bounding) );
 	};
 
-	struct Object {
-		int modelId;
-
+	struct Model {
 		int startSubObject;
 		int numSubObjects;
 
 		Bounding bounding;
 
-		SERIALIZER_DEFAULT_IMPL( (modelId)(startSubObject)(numSubObjects) );
+		SERIALIZER_DEFAULT_IMPL( (startSubObject)(numSubObjects)(bounding) );
+	};
+
+	struct Object : Model {
+		int modelId;
+		// column major in OGL (== row major in DX)
+		float transformation[16];
+
+		// TODO: add inheritance support to serializer? [9/23/2012 kirschan2]
+		SERIALIZER_DEFAULT_IMPL( (modelId)(startSubObject)(numSubObjects)(bounding)(transformation) );
 	};
 
 	struct Terrain {
@@ -161,8 +171,10 @@ struct SGSScene {
 	
 	// first scene subobjects, then prototype subobjects
 	std::vector<SubObject> subObjects;
-	// first scene objects, then prototype objects in modelNames order
+	// first scene objects
 	std::vector<Object> objects;
+	// in model id order
+	std::vector<Model> models;
 
 	int numSceneVertices;
 	int numSceneIndices;
@@ -173,7 +185,7 @@ struct SGSScene {
 
 	Terrain terrain;
 
-	SERIALIZER_DEFAULT_IMPL( (numSceneVertices)(numSceneIndices)(numSceneSubObjects)(numSceneObjects)(modelNames)(objects)(subObjects)(textures)(vertices)(indices)(terrain) );
+	SERIALIZER_DEFAULT_IMPL( (numSceneVertices)(numSceneIndices)(numSceneSubObjects)(numSceneObjects)(modelNames)(models)(objects)(subObjects)(textures)(vertices)(indices)(terrain) );
 
 	SGSScene() {}
 };

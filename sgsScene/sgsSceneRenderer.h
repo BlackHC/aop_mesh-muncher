@@ -24,6 +24,15 @@ SERIALIZER_ENABLE_RAW_MODE_EXTERN( OptixProgramInterface::MergedTextureInfo );
 #include <contextHelper.h>
 #include <vector>
 
+#include <unsupported/Eigen/openglsupport>
+namespace Eigen {
+	// DSA support
+	EIGEN_GL_FUNC1_DECLARATION       (glMatrixLoad,GLenum,const)
+	EIGEN_GL_FUNC1_SPECIALIZATION_MAT(glMatrixLoad,GLenum,const,float,  4,4,fEXT)
+	EIGEN_GL_FUNC1_SPECIALIZATION_MAT(glMatrixLoad,GLenum,const,double, 4,4,dEXT)
+}
+
+
 using namespace GL;
 
 //////////////////////////////////////////////////////////////////////////
@@ -67,11 +76,11 @@ struct Instance {
 
 struct RenderContext {
 	int disabledInstanceIndex;
-	int disabledObjectIndex;
+	int disabledModelIndex;
 
 	void setDefault() {
 		disabledInstanceIndex = -1;
-		disabledObjectIndex = -1;
+		disabledModelIndex = -1;
 	}
 };
 
@@ -139,20 +148,25 @@ struct OptixRenderer {
 
 struct SGSSceneRenderer {
 	struct Optix {
-		optix::GeometryGroup staticScene;
-		optix::Acceleration staticAcceleration;
+		optix::GeometryGroup staticScene, dynamicScene;
+		optix::Acceleration staticAcceleration, dynamicAcceleration;
 				
 		struct MeshData {
 			optix::Buffer indexBuffer, vertexBuffer;
 			optix::Geometry geometry;
 			optix::GeometryInstance geometryInstance;
-
-			optix::Program intersect, boundingBox;
-			optix::Material material;
 		};
-		MeshData terrain, objects;
 
-		optix::Buffer textureInfos, materialInfos, materialIndices;
+		struct ObjectMeshData : MeshData {
+			optix::Buffer materialIndices, materialInfos;
+		};
+
+		MeshData terrain;
+		ObjectMeshData staticObjects, dynamicObjects;
+
+		optix::Material terrainMaterial, objectMaterial;
+
+		optix::Buffer textureInfos;
 		optix::TextureSampler terrainTextureSampler;
 		optix::TextureSampler objectTextureSampler;
 
@@ -304,7 +318,26 @@ struct SGSSceneRenderer {
 	void buildDrawLists( const Eigen::Matrix4f &projectionView, const RenderContext &renderContext );
 	void sortAlphaList( const Eigen::Vector3f &worldViewerPosition );
 
+	void drawModel( SGSScene::Model &model );
+	void drawInstance( Instance &instance );
+
 	void render( const Eigen::Matrix4f &projectionView, const Eigen::Vector3f &worldViewerPosition, const RenderContext &renderContext );
 
 	void initOptix( OptixRenderer *optixRenderer );
+
+	std::vector< Instance > instances;
+
+	void addInstance( const Instance &instance );
+
+	void refillDynamicOptixBuffers();
+
+	Eigen::Matrix4f getInstanceTransformation( int instanceIndex ) {
+		if( instanceIndex < scene->objects.size() ) {
+			return Eigen::Matrix4f::Map( scene->objects[ instanceIndex ].transformation );
+		}
+		else {
+			instanceIndex -= scene->objects.size();
+			return instances[ instanceIndex ].transformation;
+		}
+	}
 };

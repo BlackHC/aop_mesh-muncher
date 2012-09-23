@@ -159,7 +159,7 @@ void real_main() {
 	BoolVariableControl updateRenderListsToggle( sgsSceneRenderer.debug.updateRenderLists, sf::Keyboard::C );
 	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( updateRenderListsToggle ) );
 
-	IntVariableControl disabledObjectIndexControl( renderContext.disabledObjectIndex, -1, sgsScene.modelNames.size(), sf::Keyboard::Numpad7, sf::Keyboard::Numpad1 );
+	IntVariableControl disabledObjectIndexControl( renderContext.disabledModelIndex, -1, sgsScene.modelNames.size(), sf::Keyboard::Numpad7, sf::Keyboard::Numpad1 );
 	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( disabledObjectIndexControl ) );
 
 	IntVariableControl disabledInstanceIndexControl( renderContext.disabledInstanceIndex, -1, sgsScene.numSceneObjects, sf::Keyboard::Numpad9, sf::Keyboard::Numpad3 );
@@ -200,7 +200,7 @@ void real_main() {
 		OptixRenderer::SelectionResults selectionResults;
 		optixRenderer.selectFromPinholeCamera( selectionRays, selectionResults, viewerContext, renderContext );
 	
-		renderContext.disabledObjectIndex = selectionResults.front().modelIndex;
+		renderContext.disabledModelIndex = selectionResults.front().modelIndex;
 		std::cout << "object: " << selectionResults.front().modelIndex << "\n";
 	} );
 	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( disableObjectAction ) );
@@ -240,7 +240,12 @@ void real_main() {
 	sf::Text renderDuration;
 	renderDuration.setPosition( 0, 0 );
 	renderDuration.setCharacterSize( 10 );
-	
+
+	Instance testInstance;
+	testInstance.modelId = 1;
+	testInstance.transformation.setIdentity();
+	sgsSceneRenderer.addInstance( testInstance );
+
 	while (true)
 	{
 		// Activate the window for OpenGL rendering
@@ -277,9 +282,11 @@ void real_main() {
 			// OpenGL drawing commands go here...
 			glMatrixMode( GL_PROJECTION );
 			glLoadMatrix( camera.getProjectionMatrix() );
+			glMultMatrix( camera.getViewTransformation().matrix() );
 
 			glMatrixMode( GL_MODELVIEW );
-			glLoadMatrix( camera.getViewTransformation().matrix() );
+			// TODO: move this into the render functions [9/23/2012 kirschan2]
+			glLoadIdentity();
 
 			sgsSceneRenderer.render( camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition(), renderContext );
 

@@ -242,7 +242,7 @@ void SGSSceneRenderer::setVertexArrayObjects() {
 void SGSSceneRenderer::prepareMaterialDisplayLists() {
 	materialDisplayLists.resize( scene->subObjects.size() );
 
-	for( int subObjectIndex = 0 ; subObjectIndex < scene->numSceneSubObjects ; ++subObjectIndex ) {
+	for( int subObjectIndex = 0 ; subObjectIndex < scene->subObjects.size() ; ++subObjectIndex ) {
 		const SGSScene::SubObject &subObject = scene->subObjects[ subObjectIndex ];
 
 		materialDisplayLists[ subObjectIndex ].begin();
@@ -500,7 +500,7 @@ void SGSSceneRenderer::buildDrawLists( const Eigen::Matrix4f &projectionView, co
 		for( int objectIndex = 0 ; objectIndex < scene->numSceneObjects ; ++objectIndex ) {
 			const SGSScene::Object &object = scene->objects[objectIndex];
 
-			if( objectIndex == renderContext.disabledInstanceIndex || object.modelId == renderContext.disabledObjectIndex ) {
+			if( objectIndex == renderContext.disabledInstanceIndex || object.modelId == renderContext.disabledModelIndex ) {
 				continue;
 			}
 
@@ -585,6 +585,22 @@ void SGSSceneRenderer::render( const Eigen::Matrix4f &projectionView, const Eige
 			const int subObjectIndex = alphaLists[i];
 			materialDisplayLists[ subObjectIndex ].call();
 			glDrawElements( GL_TRIANGLES, scene->subObjects[ subObjectIndex ].numIndices, GL_UNSIGNED_INT, firstIndex + scene->subObjects[ subObjectIndex ].startIndex );
+		}
+
+		staticObjectsMesh.vao.unbind();
+	}
+
+	// dynamic object rendering
+	{
+		objectProgram.use();
+
+		glUniform( objectProgram.uniformLocations[ "viewerPosition" ], worldViewerPosition );
+		glUniform( objectProgram.uniformLocations[ "sunShadowProjection" ], sunProjectionMatrix );
+
+		staticObjectsMesh.vao.bind();
+		
+		for( int instanceIndex = 0 ; instanceIndex < instances.size() ; ++instanceIndex ) {
+			drawInstance( instances[ instanceIndex ] );
 		}
 
 		staticObjectsMesh.vao.unbind();
@@ -774,5 +790,26 @@ void SGSSceneRenderer::mergeTextures( const ScopedTextures2D &textures ) {
 	mergedTexture.parameter( GL_TEXTURE_MIN_FILTER, GL_LINEAR );
 
 	delete[] mergedTextureData;
+}
+
+void SGSSceneRenderer::drawModel( SGSScene::Model &model ) {
+	GLuint *firstIndex = nullptr;
+
+	int endSubObject = model.startSubObject + model.numSubObjects;
+	for( int subObjectIndex = model.startSubObject ; subObjectIndex < endSubObject ; ++subObjectIndex ) {
+		materialDisplayLists[ subObjectIndex ].call();
+		glDrawElements( GL_TRIANGLES, scene->subObjects[ subObjectIndex ].numIndices, GL_UNSIGNED_INT, firstIndex + scene->subObjects[ subObjectIndex ].startIndex );
+	}
+}
+
+void SGSSceneRenderer::drawInstance( Instance &instance ) {
+	glMatrixLoad( GL_MODELVIEW, instance.transformation );
+	drawModel( scene->models[ instance.modelId ] );
+}
+
+void SGSSceneRenderer::addInstance( const Instance &instance ) {
+	instances.push_back( instance );
+
+	refillDynamicOptixBuffers();
 }
 
