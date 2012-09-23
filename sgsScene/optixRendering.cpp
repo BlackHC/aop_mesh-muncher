@@ -339,8 +339,10 @@ void OptixRenderer::selectFromPinholeCamera( const std::vector< optix::float2 > 
 	OptixHelpers::Buffer::copyToHost( this->selectionResults, selectionResults.front(), selectionResults.size() );
 }
 
-void OptixRenderer::sampleProbes( const std::vector< Probe > &probes, std::vector< ProbeContext > &probeContexts, const RenderContext &renderContext ) {
+void OptixRenderer::sampleProbes( const std::vector< Probe > &probes, std::vector< ProbeContext > &probeContexts, const RenderContext &renderContext, float maxDistance ) {
 	setRenderContext( renderContext );
+
+	context[ "maxDistance" ]->setFloat( maxDistance );
 
 	OptixHelpers::Buffer::copyToDevice( this->probes, probes );
 

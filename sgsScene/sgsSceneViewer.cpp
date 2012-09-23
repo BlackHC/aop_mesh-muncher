@@ -10,6 +10,7 @@
 #include <unsupported/Eigen/OpenGLSupport>
 
 #include <SFML/Window.hpp>
+#include <SFML/Graphics.hpp>
 
 #include "Debug.h"
 
@@ -93,7 +94,7 @@ struct BoolVariableControl : EventHandler {
 };
 
 void real_main() {
-	sf::Window window( sf::VideoMode( 640, 480 ), "sgsSceneViewer", sf::Style::Default, sf::ContextSettings(24, 8, 0, 4, 2, false,true, false) );
+	sf::RenderWindow window( sf::VideoMode( 640, 480 ), "sgsSceneViewer", sf::Style::Default, sf::ContextSettings(24, 8, 0, 4, 2, false,true, false) );
 	glewInit();
 
 	glutil::RegisterDebugOutput( glutil::STD_OUT );
@@ -235,13 +236,13 @@ void real_main() {
 
 	debugWindowManager.windows.push_back( make_nonallocated_shared( mergedTextureWindow ) );
 #endif
-	
+
+	sf::Text renderDuration;
+	renderDuration.setPosition( 0, 0 );
+	renderDuration.setCharacterSize( 10 );
+		
 	while (true)
 	{
-		const ViewerContext viewerContext = { camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() };
-		optixRenderer.renderPinholeCamera( viewerContext, renderContext );
-		debugWindowManager.update();
-
 		// Activate the window for OpenGL rendering
 		window.setActive();
 
@@ -267,23 +268,37 @@ void real_main() {
 
 		cameraInputControl.update( frameClock.restart().asSeconds(), false );
 		
-		sgsSceneRenderer.renderShadowmap( renderContext );
+		{
+			boost::timer::cpu_timer renderTimer;
+			sgsSceneRenderer.renderShadowmap( renderContext );
 
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		// OpenGL drawing commands go here...
-		glMatrixMode( GL_PROJECTION );
-		glLoadMatrix( camera.getProjectionMatrix() );
+			// OpenGL drawing commands go here...
+			glMatrixMode( GL_PROJECTION );
+			glLoadMatrix( camera.getProjectionMatrix() );
 
-		glMatrixMode( GL_MODELVIEW );
-		glLoadMatrix( camera.getViewTransformation().matrix() );
-			
-		sgsSceneRenderer.render( camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition(), renderContext );
+			glMatrixMode( GL_MODELVIEW );
+			glLoadMatrix( camera.getViewTransformation().matrix() );
 
-		probeDumps.render();
+			sgsSceneRenderer.render( camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition(), renderContext );
 
-		// End the current frame and display its contents on screen
-		window.display();
+			probeDumps.render();		
+
+			const ViewerContext viewerContext = { camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() };
+			optixRenderer.renderPinholeCamera( viewerContext, renderContext );
+
+			// End the current frame and display its contents on screen
+			renderDuration.setString( renderTimer.format() );
+			window.pushGLStates();
+			window.resetGLStates();
+			window.draw( renderDuration );
+			window.popGLStates();
+			window.display();
+
+			debugWindowManager.update();
+		}
+		
 	}
 };
 

@@ -121,7 +121,7 @@ struct OptixRenderer {
 
 	void renderPinholeCamera( const ViewerContext &viewerContext, const RenderContext &renderContext );
 	void selectFromPinholeCamera( const SelectionRays &selectionRays, SelectionResults &selectionResults, const ViewerContext &viewerContext, const RenderContext &renderContext );
-	void sampleProbes( const std::vector< Probe > &probes, std::vector< ProbeContext > &probeContexts, const RenderContext &renderContext );
+	void sampleProbes( const std::vector< Probe > &probes, std::vector< ProbeContext > &probeContexts, const RenderContext &renderContext, float maxDistance = RT_DEFAULT_MAX );
 
 	void addSceneChild( const optix::GeometryGroup &child ) {
 		int index = scene->getChildCount();
