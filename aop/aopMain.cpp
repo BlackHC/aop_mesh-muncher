@@ -29,6 +29,93 @@ using namespace Eigen;
 
 #include "debugWindows.h"
 
+#include "probeGenerator.h"
+
+namespace SGSInterface {
+	typedef OptixProgramInterface::Probe Probe;
+
+	OBB makeOBB( const Eigen::Matrix4f &transformation, const Eigen::AlignedBox3f &alignedBox ) {
+		OBB obb;
+		obb.transformation = Eigen::Affine3f( transformation ) * Eigen::Translation3f( alignedBox.center() );
+		obb.size = alignedBox.sizes();
+		return obb;
+	}
+
+	void generateProbes( int instanceIndex, float resolution, SGSSceneRenderer &renderer, std::vector<Probe> &probes, std::vector<Probe> &transformedProbes ) {
+		const const Eigen::AlignedBox3f &sgsBoundingBox = renderer.getUntransformedInstanceBoundingBox( instanceIndex );
+		const Eigen::Matrix4f &sgsTransformation = renderer.getInstanceTransformation( instanceIndex );
+		
+		const OBB obb = makeOBB( sgsTransformation, sgsBoundingBox );
+		ProbeGenerator::generateInstanceProbes( obb.size, resolution, probes );
+		ProbeGenerator::transformProbes( probes, obb.transformation, transformedProbes );
+	}
+}
+
+void visualizeProbes( float resolution, const std::vector< ProbeGenerator::Probe > &probes ) {
+	DebugRender::begin();
+	glColor3f( 0.0, 1.0, 1.0 );
+	glBegin( GL_LINES );
+	for( auto probe = probes.begin() ; probe != probes.end() ; ++probe ) {
+		Eigen::glVertex( EigenMap( probe->position ) );
+		Eigen::glVertex( EigenMap( probe->position ) + EigenMap( probe->direction ) * resolution / 3 );
+	}
+	glEnd();
+	DebugRender::end();
+}
+
+const Eigen::Vector3f flipSign( const Eigen::Vector3f &v, const Eigen::Vector3f &c ) {
+	return Eigen::Vector3f( 
+							(c[0] > 0.0) ? v[0] : -v[0],
+							(c[1] > 0.0) ? v[1] : -v[1],
+							(c[2] > 0.0) ? v[2] : -v[2]
+							);
+}
+
+bool intersectRayWithUnitCube( const Eigen::Vector3f &position, const Eigen::Vector3f &direction, Eigen::Vector3f &hitPoint ) {
+	using namespace Eigen;
+
+	// we use the symmetry around the origin
+	const Vector3f symPosition = flipSign( position, position );
+	const Vector3f symDirection = flipSign( direction, position );
+	// only need to check 3 possible intersection planes (those with positive normal)
+	float t[3];
+	for( int i = 0 ; i < 3 ; i++ ) {
+		t[i] = (1.0 - symPosition[i]) / symDirection[i];
+	}
+	
+	hitPoint = position + direction * t[0];
+	if( fabs( hitPoint[1] ) <= 1 && fabs( hitPoint[2] ) <= 1 ) {
+		return true;
+	}
+	
+	hitPoint = position + direction * t[1];
+	if( fabs( hitPoint[0] ) <= 1 && fabs( hitPoint[2] ) <= 1 ) {
+		return true;
+	}
+
+	hitPoint = position + direction * t[2];
+	if( fabs( hitPoint[0] ) <= 1 && fabs( hitPoint[1] ) <= 1 ) {
+		return true;
+	}
+
+	return false;
+}
+
+bool intersectRayWithAABB( const Eigen::AlignedBox3f &box, const Eigen::Vector3f &position, const Eigen::Vector3f &direction, Eigen::Vector3f &hitPoint ) {
+	using namespace Eigen;
+
+	const auto transformation = Scaling( box.sizes() / 2 ) * Translation3f( box.center() );
+	const Vector3f transformedDirection = transformation.linear() * direction;
+	const Vector3f transformedPosition = transformation * direction;
+
+	if( intersectRayWithUnitCube( transformedPosition, transformedDirection, hitPoint ) ) {
+		// transform back
+		hitPoint = transformation.inverse() * hitPoint;
+		return true;
+	}
+	return false;
+}
+
 DebugRender::CombinedCalls selectionDR;
 
 void selectObjectsByModelID( SGSSceneRenderer &renderer, int modelIndex ) {
@@ -46,6 +133,56 @@ void selectObjectsByModelID( SGSSceneRenderer &renderer, int modelIndex ) {
 	}
 
 	selectionDR.end();
+}
+
+DebugRender::CombinedCalls probeDumps;
+
+void sampleInstances( OptixRenderer &optix, SGSSceneRenderer &renderer, int modelIndex ) {
+	SGSSceneRenderer::InstanceIndices indices = renderer.getModelInstances( modelIndex );
+
+	std::vector< OptixRenderer::ProbeContext > probeContexts;
+	std::vector< OptixRenderer::Probe > probes;
+
+	for( int instanceIndexIndex = 0 ; instanceIndexIndex < indices.size() ; ++instanceIndexIndex ) {
+		const auto &instanceIndex = indices[ instanceIndexIndex ];
+
+		RenderContext renderContext;
+		renderContext.disabledModelIndex = -1;
+		renderContext.disabledInstanceIndex = instanceIndex;
+
+		// create probes
+		std::vector< OptixRenderer::Probe > localProbes;
+
+		const float resolution = 1;
+		auto boundingBox = renderer.getUntransformedInstanceBoundingBox( instanceIndex );
+		auto transformation = Eigen::Affine3f( renderer.getInstanceTransformation( instanceIndex ) );
+		auto mapping = createIndexMapping( ceil( boundingBox.sizes() / resolution ),boundingBox.min(), resolution );
+
+		auto center = transformation * boundingBox.center();
+		for( auto iterator = mapping.getIterator() ; iterator.hasMore() ; ++iterator ) {
+			OptixRenderer::Probe probe;
+			auto probePosition = Eigen::Vector3f::Map( &probe.position.x );
+			auto probeDirection = Eigen::Vector3f::Map( &probe.direction.x );
+			probePosition = transformation * mapping.getPosition( iterator.getIndex3() );
+			probeDirection = (probePosition - center).normalized();
+			localProbes.push_back( probe );
+		}
+
+		std::vector< OptixRenderer::ProbeContext > localProbeContexts;
+		optix.sampleProbes( localProbes, localProbeContexts, renderContext );
+
+		boost::push_back( probes, localProbes );
+		boost::push_back( probeContexts, localProbeContexts );
+	}
+
+	probeDumps.begin();
+	for( int probeContextIndex = 0 ; probeContextIndex < probeContexts.size() ; ++probeContextIndex ) {
+		const auto &probeContext = probeContexts[ probeContextIndex ];
+		probeDumps.setPosition( Eigen::Vector3f::Map( &probes[ probeContextIndex ].position.x ) );
+		glColor4ubv( &probeContext.color.x );		
+		probeDumps.drawVectorCone( probeContext.distance * Eigen::Vector3f::Map( &probes[ probeContextIndex ].direction.x ), probeContexts.front().distance * 0.25, 1 + probeContext.hitPercentage * 15 );	
+	}
+	probeDumps.end();
 }
 
 void real_main() {
@@ -74,7 +211,7 @@ void real_main() {
 	sf::Clock frameClock, clock;
 
 	SGSSceneRenderer sgsSceneRenderer;
-	OptixRenderer optixRenderer;
+	//OptixRenderer optixRenderer;
 	SGSScene sgsScene;
 	RenderContext renderContext;
 	renderContext.setDefault();
@@ -89,14 +226,9 @@ void real_main() {
 			Serializer::BinaryReader reader( scenePath );
 			Serializer::read( reader, sgsScene );
 		}
-		
+
 		const char *cachePath = "scene.sgsRendererCache";
 		sgsSceneRenderer.processScene( make_nonallocated_shared( sgsScene ), cachePath );
-	}
-	{
-		boost::timer::auto_cpu_timer timer( "OptixRenderer: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
-
-		optixRenderer.init( make_nonallocated_shared( sgsSceneRenderer ) );
 	}
 
 	EventDispatcher eventDispatcher;
@@ -125,64 +257,8 @@ void real_main() {
 	IntVariableControl disabledInstanceIndexControl( "disabledInstanceIndex",renderContext.disabledInstanceIndex, -1, sgsScene.numSceneObjects, sf::Keyboard::Numpad9, sf::Keyboard::Numpad3 );
 	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( disabledInstanceIndexControl ) );
 
-	
-	DebugRender::CombinedCalls probeDumps;
-	KeyAction dumpProbeAction( "dump probe", sf::Keyboard::P, [&] () { 
-		// dump a probe at the current position and view direction
-		const Eigen::Vector3f position = camera.getPosition();
-		const Eigen::Vector3f direction = camera.getDirection();
-
-		std::vector< OptixRenderer::Probe > probes;
-		std::vector< OptixRenderer::ProbeContext > probeContexts;
-		
-		OptixRenderer::Probe probe;
-		Eigen::Vector3f::Map( &probe.position.x ) = position;
-		Eigen::Vector3f::Map( &probe.direction.x ) = direction;
-		
-		probes.push_back( probe );
-
-		optixRenderer.sampleProbes( probes, probeContexts, renderContext );
-
-		probeDumps.append();
-		probeDumps.setPosition( position );
-		glColor4ubv( &probeContexts.front().color.x );		
-		probeDumps.drawVectorCone( probeContexts.front().distance * direction, probeContexts.front().distance * 0.25, 1 + probeContexts.front().hitPercentage * 15 );
-		probeDumps.end();
-	} );
-	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( dumpProbeAction ) );
-
-	KeyAction disableObjectAction( "disable models shot", sf::Keyboard::Numpad4, [&] () { 
-		// dump a probe at the current position and view direction
-		const ViewerContext viewerContext = { camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() };
-
-		OptixRenderer::SelectionRays selectionRays;
-		selectionRays.push_back( optix::make_float2( 0.0f ) );
-
-		OptixRenderer::SelectionResults selectionResults;
-		optixRenderer.selectFromPinholeCamera( selectionRays, selectionResults, viewerContext, renderContext );
-	
-		renderContext.disabledModelIndex = selectionResults.front().modelIndex;
-		std::cout << "object: " << selectionResults.front().modelIndex << "\n";
-	} );
-	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( disableObjectAction ) );
-
-	KeyAction disableInstanceAction( "disable instance shot", sf::Keyboard::Numpad6, [&] () { 
-		// dump a probe at the current position and view direction
-		const ViewerContext viewerContext = { camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() };
-
-		OptixRenderer::SelectionRays selectionRays;
-		selectionRays.push_back( optix::make_float2( 0.0f ) );
-
-		OptixRenderer::SelectionResults selectionResults;
-		optixRenderer.selectFromPinholeCamera( selectionRays, selectionResults, viewerContext, renderContext );
-
-		renderContext.disabledInstanceIndex = selectionResults.front().objectIndex;
-		std::cout << "instance: " << selectionResults.front().objectIndex << "\n";
-	} );
-	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( disableInstanceAction ) );
-
 	DebugWindowManager debugWindowManager;
-	
+
 #if 0
 	TextureVisualizationWindow optixWindow;
 	optixWindow.init( "Optix Version" );
@@ -205,8 +281,27 @@ void real_main() {
 	Instance testInstance;
 	testInstance.modelId = 1;
 	testInstance.transformation.setIdentity();
-	sgsSceneRenderer.addInstance( testInstance );
+	//sgsSceneRenderer.addInstance( testInstance );
 
+	ProbeGenerator::initDirections();
+
+	renderContext.disabledModelIndex = 0;
+	DebugRender::DisplayList probeVisualization;
+	{
+		probeVisualization.beginCompile();
+		auto instanceIndices = sgsSceneRenderer.getModelInstances( 0 );
+
+		for( auto instanceIndex = instanceIndices.begin() ; instanceIndex != instanceIndices.end() ; ++instanceIndex ) {
+			std::vector<SGSInterface::Probe> probes, transformedProbes;
+
+			SGSInterface::generateProbes( *instanceIndex, 0.5, sgsSceneRenderer, probes, transformedProbes );
+
+			visualizeProbes( 0.5, transformedProbes );
+		}
+
+		probeVisualization.endCompile();
+	}
+	
 	while (true)
 	{
 		// Activate the window for OpenGL rendering
@@ -233,7 +328,7 @@ void real_main() {
 		}
 
 		cameraInputControl.update( frameClock.restart().asSeconds(), false );
-		
+
 		{
 			boost::timer::cpu_timer renderTimer;
 			sgsSceneRenderer.renderShadowmap( renderContext );
@@ -251,13 +346,13 @@ void real_main() {
 
 			sgsSceneRenderer.render( camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition(), renderContext );
 
-			probeDumps.render();		
+			probeVisualization.render();		
 
 			selectObjectsByModelID( sgsSceneRenderer, renderContext.disabledModelIndex );
 			glDisable( GL_DEPTH_TEST );
 			selectionDR.render();
 			glEnable( GL_DEPTH_TEST );
-			
+
 			const ViewerContext viewerContext = { camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() };
 			//optixRenderer.renderPinholeCamera( viewerContext, renderContext );
 
@@ -271,7 +366,7 @@ void real_main() {
 
 			debugWindowManager.update();
 		}
-		
+
 	}
 };
 

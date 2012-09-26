@@ -28,6 +28,7 @@ using namespace Eigen;
 #include "optixRenderer.h"
 
 #include "debugWindows.h"
+#include "grid.h"
 
 DebugRender::CombinedCalls selectionDR;
 
@@ -46,6 +47,56 @@ void selectObjectsByModelID( SGSSceneRenderer &renderer, int modelIndex ) {
 	}
 
 	selectionDR.end();
+}
+
+DebugRender::CombinedCalls probeDumps;
+
+void sampleInstances( OptixRenderer &optix, SGSSceneRenderer &renderer, int modelIndex ) {
+	SGSSceneRenderer::InstanceIndices indices = renderer.getModelInstances( modelIndex );
+
+	std::vector< OptixRenderer::ProbeContext > probeContexts;
+	std::vector< OptixRenderer::Probe > probes;
+
+	for( int instanceIndexIndex = 0 ; instanceIndexIndex < indices.size() ; ++instanceIndexIndex ) {
+		const auto &instanceIndex = indices[ instanceIndexIndex ];
+		
+		RenderContext renderContext;
+		renderContext.disabledModelIndex = -1;
+		renderContext.disabledInstanceIndex = instanceIndex;
+
+		// create probes
+		std::vector< OptixRenderer::Probe > localProbes;
+
+		const float resolution = 1;
+		auto boundingBox = renderer.getUntransformedInstanceBoundingBox( instanceIndex );
+		auto transformation = Eigen::Affine3f( renderer.getInstanceTransformation( instanceIndex ) );
+		auto mapping = createIndexMapping( ceil( boundingBox.sizes() / resolution ),boundingBox.min(), resolution );
+
+		auto center = transformation * boundingBox.center();
+		for( auto iterator = mapping.getIterator() ; iterator.hasMore() ; ++iterator ) {
+			OptixRenderer::Probe probe;
+			auto probePosition = Eigen::Vector3f::Map( &probe.position.x );
+			auto probeDirection = Eigen::Vector3f::Map( &probe.direction.x );
+			probePosition = transformation * mapping.getPosition( iterator.getIndex3() );
+			probeDirection = (probePosition - center).normalized();
+			localProbes.push_back( probe );
+		}
+
+		std::vector< OptixRenderer::ProbeContext > localProbeContexts;
+		optix.sampleProbes( localProbes, localProbeContexts, renderContext );
+
+		boost::push_back( probes, localProbes );
+		boost::push_back( probeContexts, localProbeContexts );
+	}
+
+	probeDumps.begin();
+	for( int probeContextIndex = 0 ; probeContextIndex < probeContexts.size() ; ++probeContextIndex ) {
+		const auto &probeContext = probeContexts[ probeContextIndex ];
+		probeDumps.setPosition( Eigen::Vector3f::Map( &probes[ probeContextIndex ].position.x ) );
+		glColor4ubv( &probeContext.color.x );		
+		probeDumps.drawVectorCone( probeContext.distance * Eigen::Vector3f::Map( &probes[ probeContextIndex ].direction.x ), probeContexts.front().distance * 0.25, 1 + probeContext.hitPercentage * 15 );	
+	}
+	probeDumps.end();
 }
 
 void real_main() {
@@ -125,8 +176,12 @@ void real_main() {
 	IntVariableControl disabledInstanceIndexControl( "disabledInstanceIndex",renderContext.disabledInstanceIndex, -1, sgsScene.numSceneObjects, sf::Keyboard::Numpad9, sf::Keyboard::Numpad3 );
 	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( disabledInstanceIndexControl ) );
 
+	KeyAction probeInstances( "probe disabled instances", sf::Keyboard::X, [&] () {
+			sampleInstances( optixRenderer, sgsSceneRenderer, renderContext.disabledModelIndex );
+		});
+	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( probeInstances ) );
+
 	
-	DebugRender::CombinedCalls probeDumps;
 	KeyAction dumpProbeAction( "dump probe", sf::Keyboard::P, [&] () { 
 		// dump a probe at the current position and view direction
 		const Eigen::Vector3f position = camera.getPosition();
@@ -206,6 +261,12 @@ void real_main() {
 	testInstance.modelId = 1;
 	testInstance.transformation.setIdentity();
 	sgsSceneRenderer.addInstance( testInstance );
+
+	{
+		boost::timer::auto_cpu_timer timer;
+		optixRenderer.compileContext();
+	}
+	
 
 	while (true)
 	{

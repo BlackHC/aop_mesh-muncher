@@ -14,7 +14,7 @@ struct MouseCapture : public EventHandler  {
 		this->window = window;
 	}
 
-	bool getCapture() const {
+	bool hasCapture() const {
 		return captureMouse;
 	}
 
@@ -96,7 +96,7 @@ struct CameraInputControl : public MouseCapture {
 			}
 			return true;
 		case sf::Event::MouseWheelMoved:
-			if( getCapture() ) {
+			if( hasCapture() ) {
 				moveSpeed *= std::pow( 1.5f, (float) event.mouseWheel.delta );
 				return true;
 			}
@@ -105,7 +105,7 @@ struct CameraInputControl : public MouseCapture {
 	}
 
 	bool update( const float elapsedTime, bool inputProcessed ) {
-		if( !inputProcessed && getCapture() ) {
+		if( !inputProcessed && hasCapture() ) {
 			Eigen::Vector3f relativeMovement = Eigen::Vector3f::Zero();
 			if( sf::Keyboard::isKeyPressed( sf::Keyboard::W ) ) {
 				relativeMovement.z() -= 1;

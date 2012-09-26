@@ -1,42 +1,8 @@
 #pragma once
 
 #include <boost/noncopyable.hpp>
-#include <Eigen/Eigen>
 
-inline Eigen::Vector3i ceil( const Eigen::Vector3f &v ) {
-	return Eigen::Vector3i( (int) ceil( v[0] ), (int) ceil( v[1] ), (int) ceil( v[2] ) );
-}
-
-inline Eigen::Vector3i floor( const Eigen::Vector3f &v ) {
-	return Eigen::Vector3i( (int) floor( v[0] ), (int) floor( v[1] ), (int) floor( v[2] ) );
-}
-
-// xyz -120-> yzx
-template< typename Vector >
-Vector permute( const Vector &v, const int *permutation ) {
-	return Vector( v[permutation[0]], v[permutation[1]], v[permutation[2]] );
-}
-
-// yzx -120->xyz
-template< typename Vector >
-Vector permute_reverse( const Vector &w, const int *permutation ) {
-	Vector v;
-	for( int i = 0 ; i < 3 ; ++i ) {
-		v[ permutation[i] ] = w[i];	
-	}
-	return v;
-}
-
-inline Eigen::Matrix4f permutedToUnpermutedMatrix( const int *permutation ) {
-	return (Eigen::Matrix4f() << Eigen::Vector3f::Unit( permutation[0] ), Eigen::Vector3f::Unit( permutation[1] ), Eigen::Vector3f::Unit( permutation[2] ), Eigen::Vector3f::Zero(), 0,0,0,1.0 ).finished();
-}
-
-inline Eigen::Matrix4f unpermutedToPermutedMatrix( const int *permutation ) {
-	return (Eigen::Matrix4f() << Eigen::RowVector3f::Unit( permutation[0] ), 0.0,
-		Eigen::RowVector3f::Unit( permutation[1] ), 0.0,
-		Eigen::RowVector3f::Unit( permutation[2] ), 0.0,
-		Eigen::RowVector4f::UnitW() ).finished();
-}
+#include <mathUtility.h>
 
 /*
 concept Index3 {
@@ -357,6 +323,10 @@ struct IndexMapping3 : conceptIndexer3 {
 	IndexMapping3() {}
 
 	IndexMapping3( const Indexer3 &indexer, const Eigen::Affine3f &indexToPosition ) : conceptIndexer3( indexer ), indexToPosition( indexToPosition ), positionToIndex( indexToPosition.inverse() ) {
+	}
+
+	IndexMapping3 transformed( const Eigen::Affine3f &transformation ) const {
+		return IndexMapping3( *this, transformation * indexToPosition );
 	}
 
 	// spans the same volume but with permuted coordinates

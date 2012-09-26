@@ -3,8 +3,6 @@
 #include <gl/glew.h>
 #include <SOIL.h>
 
-#include <optix_world.h>
-
 #include "glObjectWrappers.h"
 #include <debugRender.h>
 #include "glslPipeline.h"
@@ -18,11 +16,11 @@ SERIALIZER_ENABLE_RAW_MODE_EXTERN( OptixProgramInterface::MergedTextureInfo );
 
 #include "eigenProjectionMatrices.h"
 
-#include <boost/random.hpp>
 #include "boost/range/algorithm/copy.hpp"
 
 #include <contextHelper.h>
 #include <vector>
+#include "rendering.h"
 
 #include <unsupported/Eigen/openglsupport>
 namespace Eigen {
@@ -36,7 +34,7 @@ namespace Eigen {
 using namespace GL;
 
 //////////////////////////////////////////////////////////////////////////
-struct SGSSceneRenderer;
+struct OptixRenderer;
 
 struct Instance {
 	// object to world
@@ -45,77 +43,10 @@ struct Instance {
 	int modelId;
 };
 
-struct RenderContext {
-	int disabledInstanceIndex;
-	int disabledModelIndex;
 
-	void setDefault() {
-		disabledInstanceIndex = -1;
-		disabledModelIndex = -1;
-	}
-};
-
-struct ViewerContext {
-	Eigen::Matrix4f projectionView;
-	Eigen::Vector3f worldViewerPosition;
-};
 
 // TODO: -> own file [9/20/2012 kirschan2]
-struct OptixRenderer {
-	typedef OptixProgramInterface::Probe Probe;
-	typedef OptixProgramInterface::ProbeContext ProbeContext;
 
-	typedef std::vector< optix::float2 > SelectionRays;
-
-	typedef OptixProgramInterface::SelectionResult SelectionResult;
-	typedef std::vector<SelectionResult > SelectionResults;
-
-	static const int numHemisphereSamples = 39989;
-	static const int maxNumProbes = 8192;
-	static const int maxNumSelectionRays = 32;
-
-	optix::Context context;
-	optix::Group scene;
-	optix::Acceleration acceleration;
-
-	optix::Buffer outputBuffer;
-	int width, height;
-	ScopedTexture2D debugTexture;
-
-	optix::Buffer probes, probeContexts, hemisphereSamples;
-
-	optix::Buffer selectionRays, selectionResults;
-
-	std::shared_ptr< SGSSceneRenderer > sgsSceneRenderer;
-
-	void init( const std::shared_ptr< SGSSceneRenderer > &sgsSceneRenderer );
-	
-	void createHemisphereSamples( optix::float3 *hemisphereSamples ) {
-		// produces randomness out of thin air
-		boost::random::mt19937 rng;
-		// see pseudo-random number generators
-		boost::random::uniform_01<> distribution;
-
-		for( int i = 0 ; i < numHemisphereSamples ; ++i ) {
-			const float u1 = distribution(rng) * 0.25f;
-			const float u2 = distribution(rng);
-			optix::cosine_sample_hemisphere( u1, u2, hemisphereSamples[i] );
-		}
-	}
-
-	void setRenderContext( const RenderContext &renderContext );
-	void setPinholeCameraViewerContext( const ViewerContext &viewerContext );
-
-	void renderPinholeCamera( const ViewerContext &viewerContext, const RenderContext &renderContext );
-	void selectFromPinholeCamera( const SelectionRays &selectionRays, SelectionResults &selectionResults, const ViewerContext &viewerContext, const RenderContext &renderContext );
-	void sampleProbes( const std::vector< Probe > &probes, std::vector< ProbeContext > &probeContexts, const RenderContext &renderContext, float maxDistance = RT_DEFAULT_MAX );
-
-	void addSceneChild( const optix::GeometryGroup &child ) {
-		int index = scene->getChildCount();
-		scene->setChildCount( index + 1 );
-		scene->setChild( index, child );
-	}
-};
 
 struct SGSSceneRenderer {
 	struct Optix {
@@ -312,23 +243,37 @@ struct SGSSceneRenderer {
 		}
 	}
 
-	Eigen::AlignedBox3f getUntransformedInstanceBoundingBox( int instanceIndex ) const {
-		const auto &model = getInstanceModel( instanceIndex );
-
+	Eigen::AlignedBox3f getBoundingBox( const SGSScene::Model &model ) const {
 		return Eigen::AlignedBox3f(
 			Eigen::Vector3f::Map( model.boundingBox.min ),
 			Eigen::Vector3f::Map( model.boundingBox.max )
 		);
 	}
 
-	const SGSScene::Model &getInstanceModel( int instanceIndex ) const {
+	Eigen::AlignedBox3f getUntransformedInstanceBoundingBox( int instanceIndex ) const {
+		return getBoundingBox( getInstanceModel( instanceIndex ) );
+	}
+
+	Eigen::AlignedBox3f getModelBoundingBox( int modelIndex ) const {
+		return getBoundingBox( getModel( modelIndex ) );
+	}
+
+	int getModelIndex( int instanceIndex ) const {
 		if( instanceIndex < scene->objects.size() ) {
-			return scene->models[ scene->objects[ instanceIndex ].modelId ];
+			return scene->objects[ instanceIndex ].modelId;
 		}
 		else {
 			instanceIndex -= scene->objects.size();
-			return scene->models[ instances[ instanceIndex ].modelId ];
+			return instances[ instanceIndex ].modelId;
 		}
+	}
+
+	const SGSScene::Model &getModel( int modelIndex ) const {
+		return scene->models[ modelIndex ];
+	}
+
+	const SGSScene::Model &getInstanceModel( int instanceIndex ) const {
+		return scene->models[ getModelIndex( instanceIndex ) ];
 	}
 
 	typedef std::vector<int> InstanceIndices;

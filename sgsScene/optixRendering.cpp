@@ -1,4 +1,5 @@
 #include "sgsSceneRenderer.h"
+#include "optixRenderer.h"
 #include "optixProgramHelpers.h"
 #include "boost/timer/timer.hpp"
 
@@ -452,10 +453,7 @@ void OptixRenderer::init( const std::shared_ptr< SGSSceneRenderer > &sgsSceneRen
 	acceleration->validate();
 	context->validate();
 
-	auto r = rtContextCompile (context->get());
-	const char* e;
-	rtContextGetErrorString (context->get(), r, &e);
-	std::cout << e;
+	compileContext();
 }
 
 void OptixRenderer::setRenderContext( const RenderContext &renderContext ) {
@@ -502,9 +500,6 @@ void OptixRenderer::selectFromPinholeCamera( const std::vector< optix::float2 > 
 
 	OptixHelpers::Buffer::copyToDevice( this->selectionRays, selectionRays );
 	
-	boost::range::copy( selectionRays, (optix::float2 *) this->selectionRays->map() );
-	this->selectionRays->unmap();
-
 	context->launch( OptixProgramInterface::selectFromPinholeCamera, selectionRays.size() );
 
 	selectionResults.resize( selectionRays.size() );
@@ -518,11 +513,15 @@ void OptixRenderer::sampleProbes( const std::vector< Probe > &probes, std::vecto
 
 	OptixHelpers::Buffer::copyToDevice( this->probes, probes );
 
-	boost::range::copy( probes, (Probe *) this->probes->map() );
-	this->probes->unmap();
-
 	context->launch( OptixProgramInterface::sampleProbes, probes.size() );
 
 	probeContexts.resize( probes.size() );
 	OptixHelpers::Buffer::copyToHost( this->probeContexts, probeContexts.front(), probeContexts.size() );
+}
+
+void OptixRenderer::compileContext()  {
+	auto r = rtContextCompile (context->get());
+	const char* e;
+	rtContextGetErrorString (context->get(), r, &e);
+	std::cout << e;
 }

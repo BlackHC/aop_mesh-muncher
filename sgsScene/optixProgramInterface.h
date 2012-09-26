@@ -1,6 +1,8 @@
 #ifndef __OPTIXPROGRAMINTERFACE_H__
 #define __OPTIXPROGRAMINTERFACE_H__
 
+#include <optix_world.h>
+
 #if !defined(__CUDACC__)
 namespace OptixProgramInterface {
 #endif
@@ -69,7 +71,6 @@ struct SelectionResult {
 struct MergedTextureInfo {
 	int2 offset;
 	int2 size;
-	int index;
 };
 
 struct Ray_Eye {
@@ -130,8 +131,6 @@ __device__ float getDirectionalLightTransmittance( const float3 &position, const
 struct MergedTextureInfo {
 	int offset[2];
 	int size[2];
-	int index;
-	int pad;
 };
 
 const char * const rayTypeNamespaces[] = {

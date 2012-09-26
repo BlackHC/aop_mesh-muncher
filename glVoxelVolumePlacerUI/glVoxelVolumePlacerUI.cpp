@@ -1172,7 +1172,7 @@ struct Application : boost::noncopyable {
 					glViewport( 0, 0, event.size.width, event.size.height );
 				}
 
-				if( !cameraInputControl.getCapture() ) {
+				if( !cameraInputControl.hasCapture() ) {
 					eventDispatcher.handleEvent( event );
 				}
 				else {
