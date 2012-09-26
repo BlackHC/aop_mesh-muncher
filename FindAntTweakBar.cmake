@@ -25,13 +25,12 @@ FUNCTION(ANTTWEAKBAR_COPY_BINARIES)
 		Set(TargetDirectory ${ARGV0})
 	ENDIF(${ARGC} EQUAL 0)
 
-	MESSAGE( STATUS "blub ${TargetDirectory}" )
-
-	ADD_CUSTOM_TARGET(AntTweakBarCopyBinaries
-	COMMAND
-		${CMAKE_COMMAND} -E copy ${ANTTWEAKBAR_LIBRARY_DIR}/AntTweakBar${ANTTWEAKBAR_ARCHITECTURE}.dll ${TargetDirectory}
-	message( "Copying AntTweakBar binaries to '${TargetDirectory}'" )
-	VERBATIM)
+	ADD_CUSTOM_TARGET(
+			AntTweakBarCopyBinaries
+			COMMAND ${CMAKE_COMMAND} -E copy ${ANTTWEAKBAR_LIBRARY_DIR}/AntTweakBar${ANTTWEAKBAR_ARCHITECTURE}.dll ${TargetDirectory}
+			COMMENT "Copying AntTweakBar binaries to '${TargetDirectory}'"
+			VERBATIM
+		)
 ENDFUNCTION(ANTTWEAKBAR_COPY_BINARIES)
 
 
