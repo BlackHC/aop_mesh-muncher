@@ -2,6 +2,8 @@
 #include "grid.h"
 #include "boost/range/size.hpp"
 
+#include "optixEigenInterop.h"
+
 using namespace Eigen;
 
 namespace ProbeGenerator {
@@ -14,8 +16,8 @@ namespace ProbeGenerator {
 	}
 
 	static void transformProbe( const Probe &probe, const OBB::Transformation &transformation, Probe &transformedProbe ) {
-		EigenMap( transformedProbe.direction ) = transformation.linear() * EigenMap( probe.direction );
-		EigenMap( transformedProbe.position ) = transformation * EigenMap( probe.position );
+		map( transformedProbe.direction ) = transformation.linear() * map( probe.direction );
+		map( transformedProbe.position ) = transformation * map( probe.position );
 	}
 
 	void transformProbes( const std::vector<Probe> &probes,const OBB::Transformation &transformation,  std::vector<Probe> &transformedProbes ) {
@@ -36,11 +38,11 @@ namespace ProbeGenerator {
 			const Vector3f position = indexMapping3.getPosition( iterator3.getIndex3() );
 
 			Probe probe;
-			EigenMap( probe.position ) = position;
+			map( probe.position ) = position;
 
 			for( int i = 0 ; i < boost::size( directions ) ; i++ ) {
 				if( position.dot( directions[i] ) > 0 ) {
-					EigenMap( probe.direction ) = directions[i];
+					map( probe.direction ) = directions[i];
 					probes.push_back( probe );
 				}
 			}
@@ -59,10 +61,10 @@ namespace ProbeGenerator {
 			const Vector3f position = indexMapping3.getPosition( iterator3.getIndex3() );
 
 			Probe probe;
-			EigenMap( probe.position ) = obb.transformation * position;
+			map( probe.position ) = obb.transformation * position;
 
 			for( int i = 0 ; i < boost::size( directions ) ; i++ ) {
-				EigenMap( probe.direction ) = obb.transformation.linear() * directions[i];
+				map( probe.direction ) = obb.transformation.linear() * directions[i];
 				transformedProbes.push_back( probe );
 			}
 		}

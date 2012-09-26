@@ -88,6 +88,10 @@ CUDA_ADD_EXECUTABLE(aop
 	aopMain.cpp
 	probeGenerator.h
 	probeGenerator.cpp
+	sgsInterface.h
+	sgsInterface.cpp
+	optixEigenInterop.h
+	probeVisualization.cpp
 	)
 
 # The test application uses niven core, so link against it

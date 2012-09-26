@@ -5,15 +5,6 @@
 
 #include "optixProgramInterface.h"
 
-// optix eigen wrapper
-Eigen::Vector3f::MapType EigenMap( optix::float3 &v ) {
-	return Eigen::Vector3f::Map( &v.x );
-}
-
-Eigen::Vector3f::ConstMapType EigenMap( const optix::float3 &v ) {
-	return Eigen::Vector3f::Map( &v.x );
-}
-
 namespace ProbeGenerator {
 	/* Ideas:
 	 * could generate probes using Morton indexing, which should speed up the tracing because similar probes will always be next to each other

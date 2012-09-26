@@ -29,39 +29,13 @@ using namespace Eigen;
 
 #include "debugWindows.h"
 
+#include "sgsInterface.h"
+#include "mathUtility.h"
+#include "optixEigenInterop.h"
+#include "grid.h"
 #include "probeGenerator.h"
 
-namespace SGSInterface {
-	typedef OptixProgramInterface::Probe Probe;
-
-	OBB makeOBB( const Eigen::Matrix4f &transformation, const Eigen::AlignedBox3f &alignedBox ) {
-		OBB obb;
-		obb.transformation = Eigen::Affine3f( transformation ) * Eigen::Translation3f( alignedBox.center() );
-		obb.size = alignedBox.sizes();
-		return obb;
-	}
-
-	void generateProbes( int instanceIndex, float resolution, SGSSceneRenderer &renderer, std::vector<Probe> &probes, std::vector<Probe> &transformedProbes ) {
-		const const Eigen::AlignedBox3f &sgsBoundingBox = renderer.getUntransformedInstanceBoundingBox( instanceIndex );
-		const Eigen::Matrix4f &sgsTransformation = renderer.getInstanceTransformation( instanceIndex );
-		
-		const OBB obb = makeOBB( sgsTransformation, sgsBoundingBox );
-		ProbeGenerator::generateInstanceProbes( obb.size, resolution, probes );
-		ProbeGenerator::transformProbes( probes, obb.transformation, transformedProbes );
-	}
-}
-
-void visualizeProbes( float resolution, const std::vector< ProbeGenerator::Probe > &probes ) {
-	DebugRender::begin();
-	glColor3f( 0.0, 1.0, 1.0 );
-	glBegin( GL_LINES );
-	for( auto probe = probes.begin() ; probe != probes.end() ; ++probe ) {
-		Eigen::glVertex( EigenMap( probe->position ) );
-		Eigen::glVertex( EigenMap( probe->position ) + EigenMap( probe->direction ) * resolution / 3 );
-	}
-	glEnd();
-	DebugRender::end();
-}
+void visualizeProbes( float resolution, const std::vector< SGSInterface::Probe > &probes );
 
 const Eigen::Vector3f flipSign( const Eigen::Vector3f &v, const Eigen::Vector3f &c ) {
 	return Eigen::Vector3f( 

@@ -33,6 +33,7 @@ template< typename Vector > Vector permute_reverse( const Vector &w, const int *
 inline Eigen::Matrix4f permutedToUnpermutedMatrix( const int *permutation );
 inline Eigen::Matrix4f unpermutedToPermutedMatrix( const int *permutation );
 
+OBB makeOBB( const Eigen::Matrix4f &transformation, const Eigen::AlignedBox3f &alignedBox );
 
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
@@ -71,4 +72,11 @@ inline Eigen::Matrix4f unpermutedToPermutedMatrix( const int *permutation ) {
 		Eigen::RowVector3f::Unit( permutation[1] ), 0.0,
 		Eigen::RowVector3f::Unit( permutation[2] ), 0.0,
 		Eigen::RowVector4f::UnitW() ).finished();
+}
+
+inline OBB makeOBB( const Eigen::Matrix4f &transformation, const Eigen::AlignedBox3f &alignedBox ) {
+	OBB obb;
+	obb.transformation = Eigen::Affine3f( transformation ) * Eigen::Translation3f( alignedBox.center() );
+	obb.size = alignedBox.sizes();
+	return obb;
 }
