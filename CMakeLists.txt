@@ -62,6 +62,8 @@ ADD_SUBDIRECTORY(ctp)
 
 ADD_SUBDIRECTORY(aop)
 
+ADD_SUBDIRECTORY(generic)
+
 # Adds a new build target which copies the niven binaries to
 # the output folder
 NIVEN_COPY_BINARIES(${CMAKE_BINARY_DIR})
