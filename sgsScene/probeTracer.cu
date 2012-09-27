@@ -12,11 +12,18 @@ __device__ __inline__ uchar4 make_color(const float3& c)
 						255u);                                                 /* A */
 }
 
+__device__ __inline__ uchar3 make_rgb(const float3& c)
+{
+	return make_uchar3( static_cast<unsigned char>(__saturatef(c.x)*255.99f),  /* B */
+						static_cast<unsigned char>(__saturatef(c.y)*255.99f),  /* G */
+						static_cast<unsigned char>(__saturatef(c.z)*255.99f)); /* R */
+}
+
+
 rtDeclareVariable(uint, probeIndex, rtLaunchIndex, );
 rtDeclareVariable(uint, numProbes, rtLaunchDim, );
 
 #define numHemisphereSamples 39939
-#define numProbeSamples 223
 rtBuffer<float3> hemisphereSamples;
 
 rtBuffer<Probe> probes;
@@ -27,7 +34,7 @@ RT_PROGRAM void sampleProbes() {
 
 	Onb onb( probe.direction );
 
-	rtPrintf( "%f", dot( onb.m_normal, cross( onb.m_tangent, onb.m_binormal ) ) );
+	//rtPrintf( "%f", dot( onb.m_normal, cross( onb.m_tangent, onb.m_binormal ) ) );
 
 	int sampleStartIndex = numProbeSamples * probeIndex + numProbes * 521;
 
@@ -53,16 +60,18 @@ RT_PROGRAM void sampleProbes() {
 
 	ProbeContext &context = probeContexts[ probeIndex ];
 	if( numHits ) {
-		context.color = make_color( color / numHits);
+		context.color = make_rgb( color / numHits);
 		context.distance = distance / numHits;
 	}
-	context.hitPercentage = float( numHits ) / numProbeSamples;
+	context.hitCounter = numHits;
 }
 
 RT_PROGRAM void sampleProbes_exception() {
 	unsigned int const error_code = rtGetExceptionCode();
 	if(RT_EXCEPTION_STACK_OVERFLOW == error_code) {
-		probeContexts[ probeIndex ].color = make_uchar4(255, 0, 0, 128);
+		probeContexts[ probeIndex ].color = make_rgb( make_float3( 1.0f, 1.0f, 1.0f ) );
+		probeContexts[ probeIndex ].hitCounter = 0;
+		probeContexts[ probeIndex ].distance = 1.0f;
 	} else {
 		rtPrintExceptionDetails();
 	}

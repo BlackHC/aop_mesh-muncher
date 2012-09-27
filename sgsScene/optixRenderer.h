@@ -1,6 +1,5 @@
 #pragma once
 #include <optix_world.h>
-#include <boost/random.hpp>
 
 #include "rendering.h"
 
@@ -16,7 +15,7 @@ struct OptixRenderer {
 	typedef std::vector<SelectionResult > SelectionResults;
 
 	static const int numHemisphereSamples = 39989;
-	static const int maxNumProbes = 8192;
+	static const int maxNumProbes = 1<<18;
 	static const int maxNumSelectionRays = 32;
 
 	optix::Context context;
@@ -35,18 +34,7 @@ struct OptixRenderer {
 
 	void init( const std::shared_ptr< SGSSceneRenderer > &sgsSceneRenderer );
 
-	void createHemisphereSamples( optix::float3 *hemisphereSamples ) {
-		// produces randomness out of thin air
-		boost::random::mt19937 rng;
-		// see pseudo-random number generators
-		boost::random::uniform_01<> distribution;
-
-		for( int i = 0 ; i < numHemisphereSamples ; ++i ) {
-			const float u1 = distribution(rng) * 0.25f;
-			const float u2 = distribution(rng);
-			optix::cosine_sample_hemisphere( u1, u2, hemisphereSamples[i] );
-		}
-	}
+	void createHemisphereSamples( optix::float3 *hemisphereSamples );
 
 	void compileContext();
 

@@ -2,6 +2,7 @@
 #include "optixRenderer.h"
 #include "optixProgramHelpers.h"
 #include "boost/timer/timer.hpp"
+#include <boost/random.hpp>
 
 void SGSSceneRenderer::initOptix( OptixRenderer *optixRenderer ) {
 	OptixHelpers::Namespace::Modules terrainModule = OptixHelpers::Namespace::makeModules( "cuda_compile_ptx_generated_terrainMesh.cu.ptx" );
@@ -495,9 +496,14 @@ void OptixRenderer::renderPinholeCamera( const ViewerContext &viewerContext, con
 }
 
 void OptixRenderer::selectFromPinholeCamera( const std::vector< optix::float2 > &selectionRays, std::vector< OptixProgramInterface::SelectionResult > &selectionResults, const ViewerContext &viewerContext, const RenderContext &renderContext ) {
+	// check bounds
+	if( selectionRays.size() > maxNumSelectionRays ) {
+		throw std::invalid_argument( "too many selection rays!" );
+	}
+
 	setRenderContext( renderContext );
 	setPinholeCameraViewerContext( viewerContext );
-
+	
 	OptixHelpers::Buffer::copyToDevice( this->selectionRays, selectionRays );
 	
 	context->launch( OptixProgramInterface::selectFromPinholeCamera, selectionRays.size() );
@@ -507,6 +513,11 @@ void OptixRenderer::selectFromPinholeCamera( const std::vector< optix::float2 > 
 }
 
 void OptixRenderer::sampleProbes( const std::vector< Probe > &probes, std::vector< ProbeContext > &probeContexts, const RenderContext &renderContext, float maxDistance ) {
+	// check bounds
+	if( probes.size() > maxNumProbes ) {
+		throw std::invalid_argument( "too many probes!" );
+	}
+
 	setRenderContext( renderContext );
 
 	context[ "maxDistance" ]->setFloat( maxDistance );
@@ -524,4 +535,17 @@ void OptixRenderer::compileContext()  {
 	const char* e;
 	rtContextGetErrorString (context->get(), r, &e);
 	std::cout << e;
+}
+
+void OptixRenderer::createHemisphereSamples( optix::float3 *hemisphereSamples ) {
+	// produces randomness out of thin air
+	boost::random::mt19937 rng;
+	// see pseudo-random number generators
+	boost::random::uniform_01<> distribution;
+
+	for( int i = 0 ; i < numHemisphereSamples ; ++i ) {
+		const float u1 = distribution(rng);
+		const float u2 = distribution(rng);
+		optix::cosine_sample_hemisphere( u1, u2, hemisphereSamples[i] );
+	}
 }

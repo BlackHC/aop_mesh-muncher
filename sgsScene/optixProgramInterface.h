@@ -43,9 +43,9 @@ struct Probe {
 };
 
 struct ProbeContext {
-	optix::uchar4 color;
+	optix::uchar3 color;
+	unsigned char hitCounter;
 	float distance;
-	float hitPercentage;
 };
 
 // terrain is -1, -1
@@ -60,9 +60,13 @@ struct SelectionResult {
 	int modelIndex;
 	int objectIndex;
 
-	optix::float3 hitPosition;
+	// occlusion measure
+	optix::float3 hitPosition; 
+
 	float hitDistance;
 };
+
+#define _numProbeSamples 31
 
 //////////////////////////////////////////////////////////////////////////
 // CUDA specific declarations/definitions
@@ -108,6 +112,8 @@ rtDeclareVariable( float, maxDistance, , ) = RT_DEFAULT_MAX;
 rtDeclareVariable(int, disabledObjectIndex, , );
 rtDeclareVariable(int, disabledModelIndex, , );
 
+#define numProbeSamples _numProbeSamples
+
 //////////////////////////////////////////////////////////////////////////
 // CUDA helper functions
 
@@ -151,6 +157,9 @@ const char * const entryPointNamespaces[] = {
 	"sampleProbes",
 	"selectFromPinholeCamera"
 };
+
+const int numProbeSamples = _numProbeSamples;
+#undef _numProbeSamples
 
 #endif
 
