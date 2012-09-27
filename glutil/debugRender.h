@@ -358,6 +358,12 @@ namespace DebugRender {
 		Eigen::glMultMatrix( transformation );
 	}
 
+	inline void setTransformation( const Eigen::Affine3f &transformation ) {
+		glPopMatrix();
+		glPushMatrix();
+		Eigen::glMultMatrix( transformation );
+	}
+
 	inline void setColor( const Eigen::Vector3f &color ) {
 		Eigen::glColor( color );
 	}

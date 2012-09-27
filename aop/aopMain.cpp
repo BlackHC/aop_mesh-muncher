@@ -27,7 +27,7 @@ using namespace Eigen;
 #include "sgsSceneRenderer.h"
 #include "optixRenderer.h"
 
-#include "debugWindows.h"
+//#include "debugWindows.h"
 
 #include "sgsInterface.h"
 #include "mathUtility.h"
@@ -38,59 +38,6 @@ using namespace Eigen;
 //#include "candidateFinderInterface.h"
 
 void visualizeProbes( float resolution, const std::vector< SGSInterface::Probe > &probes );
-
-const Eigen::Vector3f flipSign( const Eigen::Vector3f &v, const Eigen::Vector3f &c ) {
-	return Eigen::Vector3f( 
-							(c[0] > 0.0) ? v[0] : -v[0],
-							(c[1] > 0.0) ? v[1] : -v[1],
-							(c[2] > 0.0) ? v[2] : -v[2]
-							);
-}
-
-bool intersectRayWithUnitCube( const Eigen::Vector3f &position, const Eigen::Vector3f &direction, Eigen::Vector3f &hitPoint ) {
-	using namespace Eigen;
-
-	// we use the symmetry around the origin
-	const Vector3f symPosition = flipSign( position, position );
-	const Vector3f symDirection = flipSign( direction, position );
-	// only need to check 3 possible intersection planes (those with positive normal)
-	float t[3];
-	for( int i = 0 ; i < 3 ; i++ ) {
-		t[i] = (1.0 - symPosition[i]) / symDirection[i];
-	}
-	
-	hitPoint = position + direction * t[0];
-	if( fabs( hitPoint[1] ) <= 1 && fabs( hitPoint[2] ) <= 1 ) {
-		return true;
-	}
-	
-	hitPoint = position + direction * t[1];
-	if( fabs( hitPoint[0] ) <= 1 && fabs( hitPoint[2] ) <= 1 ) {
-		return true;
-	}
-
-	hitPoint = position + direction * t[2];
-	if( fabs( hitPoint[0] ) <= 1 && fabs( hitPoint[1] ) <= 1 ) {
-		return true;
-	}
-
-	return false;
-}
-
-bool intersectRayWithAABB( const Eigen::AlignedBox3f &box, const Eigen::Vector3f &position, const Eigen::Vector3f &direction, Eigen::Vector3f &hitPoint ) {
-	using namespace Eigen;
-
-	const auto transformation = Scaling( box.sizes() / 2 ) * Translation3f( box.center() );
-	const Vector3f transformedDirection = transformation.linear() * direction;
-	const Vector3f transformedPosition = transformation * direction;
-
-	if( intersectRayWithUnitCube( transformedPosition, transformedDirection, hitPoint ) ) {
-		// transform back
-		hitPoint = transformation.inverse() * hitPoint;
-		return true;
-	}
-	return false;
-}
 
 DebugRender::CombinedCalls selectionDR;
 
@@ -160,6 +107,224 @@ void sampleInstances( OptixRenderer &optix, SGSSceneRenderer &renderer, int mode
 	}
 	probeDumps.end();
 }
+#if 0
+struct Editor : VerboseEventHandler {
+	OOB oob;
+
+	struct Mode : VerboseEventHandler {
+		virtual void render() {}
+	};
+
+	struct Selecting : VerboseEventHandler {
+		Editing *parent;
+
+		bool handleEvent( const sf::Event &event ) {
+		}
+	};
+	struct Placing : VerboseEventHandler {
+
+	};
+
+	struct Moving : VerboseEventDispatcher {
+		Editing *parent;
+
+		Eigen::Matrix3f viewToWorldMatrix;
+
+		Eigen::Affine3f original_objectToWorld;
+
+		sf::Vector2i dragging_startPosition;
+		bool dragging;
+
+		void init() {
+			dragging = false;
+		}
+
+		void save() {
+			original_objectToWorld = parent->oob.transformation;
+		}
+
+		void restore() {
+			parent->oob.transformation = original_objectToWorld;
+		}
+
+		//std::shared_ptr<Camera> camera;
+		float moveSpeed;
+
+		void init() {
+			super::init( window );
+			//this->camera = camera;
+			this->moveSpeed = 10.0f;
+		}
+
+		bool handleEvent( const sf::Event &event ) {
+			if( super::handleEvent( event ) ) {
+				return true;
+			}
+
+			switch( event.type ) {
+			case sf::Event::MouseWheelMoved:
+				moveSpeed *= std::pow( 1.5f, (float) event.mouseWheel.delta );
+				return true;
+				break;
+			case sf::Event::KeyPressed:
+				if( event.key.code == sf::Keyboard::Escape ) {
+					dragging = false;
+					restore();
+					return true;
+				}
+				break;
+			case sf::Event::MouseButtonPressed:
+				if( event.mouseButton.button == sf::Mouse::Button::Left ) {
+					save();
+					dragging = true;
+					dragging_startPosition = sf::Mouse::getPosition();
+					return true;
+				}
+			case sf::Event::MouseButtonReleased:
+				if( event.mouseButton.button == sf::Mouse::Button::Left ) {
+					if( dragging ) {
+						dragging = false;
+						// accept
+						save();
+						return true;
+					}
+				}
+				break;
+			}
+			if( dragging ) {
+				return true;
+			}
+			return false;
+		}
+
+		bool update( const float elapsedTime, bool inputProcessed ) {
+			if( inputProcessed ) {
+				return false;
+			}
+
+			if( !dragging ) {
+				Eigen::Vector3f relativeMovement = Eigen::Vector3f::Zero();
+				if( sf::Keyboard::isKeyPressed( sf::Keyboard::W ) ) {
+					relativeMovement.z() -= 1;
+				}
+				if( sf::Keyboard::isKeyPressed( sf::Keyboard::S ) ) {
+					relativeMovement.z() += 1;
+				}
+				if( sf::Keyboard::isKeyPressed( sf::Keyboard::A ) ) {
+					relativeMovement.x() -= 1;
+				}
+				if( sf::Keyboard::isKeyPressed( sf::Keyboard::D ) ) {
+					relativeMovement.x() += 1;
+				}
+				if( sf::Keyboard::isKeyPressed( sf::Keyboard::Space ) ) {
+					relativeMovement.y() += 1;
+				}
+				if( sf::Keyboard::isKeyPressed( sf::Keyboard::LControl ) ) {
+					relativeMovement.y() -= 1;
+				}
+
+				if( !relativeMovement.isZero() ) {
+					relativeMovement.normalize();
+				}
+
+				relativeMovement *= elapsedTime * moveSpeed;
+				if( sf::Keyboard::isKeyPressed( sf::Keyboard::LShift ) ) {
+					relativeMovement *= 4;
+				}
+
+				const auto translation = Eigen::Translation3f( viewToWorldMatrix * relativeMovement );
+				oob.transformation = translation * oob.transformation;
+
+				return true;
+			}
+			else {
+				sf::Vector2i draggedDelta =  sf::Mouse::getPosition() - dragging_startPosition;
+
+				// TODO: get camera viewport size
+				Eigen::Vector3f relativeMovement( draggedDelta.x, draggedDelta.y, 0.0 );
+				relativeMovement /= 10.0;
+
+				if( sf::Keyboard::isKeyPressed( sf::Keyboard::LShift ) ) {
+					relativeMovement *= 4;
+				}
+
+				const auto translation = Eigen::Translation3f( viewToWorldMatrix * relativeMovement );
+				oob.transformation = translation * oob.transformation;
+
+				return true;
+			}
+
+			return false;
+		}
+
+		std::string getHelp(const std::string &prefix /* = std::string */ ) {
+			return prefix + "click+drag with mouse to move, and WASD, Space and Ctrl for precise moving; keep shift pressed for faster movement\n";
+		}
+	};
+
+	struct Rotating : VerboseEventHandler {
+
+	};
+
+	struct Resizing : VerboseEventHandler {
+
+	};
+
+	VerboseEventDispatcher dispatcher;
+	VerboseEventRouter router;
+
+	Selecting selecting;
+	Placing placing;
+	Moving moving;
+	Rotating rotating;
+	Resizing resizing;
+
+	Mode *target;
+
+	Editor() : target( nullptr ), VerboseEventHandler( "Editor" ) {}
+
+	void init() {
+		dispatcher.eventHandlers.push_back( make_nonallocated_shared( router ) );
+
+		dispatcher.eventHandlers.push_back( new KeyAction( "enter selection mode", sf::Keyboard::F6, [&] () {
+			router.target = target = &selecting;
+		} ) );
+		dispatcher.eventHandlers.push_back( new KeyAction( "enter placement mode", sf::Keyboard::F7, [&] () {
+			router.target = target = &placing;
+		} ) );
+		dispatcher.eventHandlers.push_back( new KeyAction( "enter movement mode", sf::Keyboard::F8, [&] () {
+			router.target = target = &moving;
+		} ) );
+		dispatcher.eventHandlers.push_back( new KeyAction( "enter rotation mode", sf::Keyboard::F9, [&] () {
+			router.target = target = &rotating;
+		} ) );
+		dispatcher.eventHandlers.push_back( new KeyAction( "enter resize mode", sf::Keyboard::F10, [&] () {
+			router.target = target = &resizing;
+		} ) );
+		dispatcher.eventHandlers.push_back( new KeyAction( "enter free-look mode", sf::Keyboard::F12, [&] () {
+			router.target = target = &resizing;
+		} ) );
+	
+		router.eventHandlers.push_back( make_nonallocated_shared( selecting ) );
+		router.eventHandlers.push_back( make_nonallocated_shared( placing ) );
+		router.eventHandlers.push_back( make_nonallocated_shared( moving ) );
+		router.eventHandlers.push_back( make_nonallocated_shared( rotating ) );
+		router.eventHandlers.push_back( make_nonallocated_shared( resizing ) );
+	}
+
+	void render {
+		DebugRender::begin();
+		DebugRender::setTransformation( oob.transformation );
+		DebugRender::drawBox( oob.size );
+		DebugRender::end();
+
+		if( target ) {
+			target->render();
+		}
+	}
+
+};
+#endif
 
 void real_main() {
 	sf::RenderWindow window( sf::VideoMode( 640, 480 ), "sgsSceneViewer", sf::Style::Default, sf::ContextSettings(24, 8, 0, 4, 2, false,true, false) );
@@ -174,7 +339,7 @@ void real_main() {
 	camera.perspectiveProjectionParameters.zFar = 500.0;
 
 	CameraInputControl cameraInputControl;
-	cameraInputControl.init( make_nonallocated_shared(camera), make_nonallocated_shared(window) );
+	cameraInputControl.init( make_nonallocated_shared(camera) );
 
 	// Activate the window for OpenGL rendering
 	window.setActive();
@@ -212,33 +377,37 @@ void real_main() {
 		optixRenderer.init( make_nonallocated_shared( sgsSceneRenderer ) );
 	}
 
-	EventDispatcher eventDispatcher;
+	EventDispatcher eventDispatcher( "Root:" );
 	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( cameraInputControl ) );
 
-	VerboseEventDispatcher verboseEventDispatcher;
-	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( verboseEventDispatcher ) );
+	EventSystem eventSystem;
+	eventSystem.rootHandler = make_nonallocated_shared( eventDispatcher );
+	eventSystem.exclusiveMode.window = make_nonallocated_shared( window );
+	
+	EventDispatcher verboseEventDispatcher( "sub" );
+	eventDispatcher.addEventHandler( make_nonallocated_shared( verboseEventDispatcher ) );
 
-	verboseEventDispatcher.registerConsoleHelpAction();
+	registerConsoleHelpAction( eventDispatcher );
 
 	KeyAction reloadShadersAction( "reload shaders", sf::Keyboard::R, [&] () { sgsSceneRenderer.reloadShaders(); } );
-	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( reloadShadersAction ) );
+	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( reloadShadersAction ) );
 
 	BoolVariableToggle showBoundingSpheresToggle( "show bounding spheres",sgsSceneRenderer.debug.showBoundingSpheres, sf::Keyboard::B );
-	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( showBoundingSpheresToggle ) );
+	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( showBoundingSpheresToggle ) );
 
 	BoolVariableToggle showTerrainBoundingSpheresToggle( "show terrain bounding spheres",sgsSceneRenderer.debug.showTerrainBoundingSpheres, sf::Keyboard::N );
-	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( showTerrainBoundingSpheresToggle ) );
+	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( showTerrainBoundingSpheresToggle ) );
 
 	BoolVariableToggle updateRenderListsToggle( "updateRenderLists",sgsSceneRenderer.debug.updateRenderLists, sf::Keyboard::C );
-	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( updateRenderListsToggle ) );
+	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( updateRenderListsToggle ) );
 
 	IntVariableControl disabledObjectIndexControl( "disabledModelIndex", renderContext.disabledModelIndex, -1, sgsScene.modelNames.size(), sf::Keyboard::Numpad7, sf::Keyboard::Numpad1 );
-	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( disabledObjectIndexControl ) );
+	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( disabledObjectIndexControl ) );
 
 	IntVariableControl disabledInstanceIndexControl( "disabledInstanceIndex",renderContext.disabledInstanceIndex, -1, sgsScene.numSceneObjects, sf::Keyboard::Numpad9, sf::Keyboard::Numpad3 );
-	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( disabledInstanceIndexControl ) );
+	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( disabledInstanceIndexControl ) );
 
-	DebugWindowManager debugWindowManager;
+	//DebugWindowManager debugWindowManager;
 
 #if 0
 	TextureVisualizationWindow optixWindow;
@@ -266,6 +435,7 @@ void real_main() {
 
 	ProbeGenerator::initDirections();
 
+#if 0
 	renderContext.disabledModelIndex = 0;
 	DebugRender::DisplayList probeVisualization;
 	{
@@ -294,6 +464,7 @@ void real_main() {
 
 		std::cout << "num probes: " << totalCount << "\n";
 	}
+#endif
 	
 	while (true)
 	{
@@ -313,14 +484,14 @@ void real_main() {
 				glViewport( 0, 0, event.size.width, event.size.height );
 			}
 
-			eventDispatcher.handleEvent( event );
+			eventSystem.processEvent( event );
 		}
 
 		if( !window.isOpen() ) {
 			break;
 		}
 
-		cameraInputControl.update( frameClock.restart().asSeconds(), false );
+		eventSystem.update( frameClock.restart().asSeconds(), clock.getElapsedTime().asSeconds() );
 
 		{
 			boost::timer::cpu_timer renderTimer;
@@ -339,7 +510,7 @@ void real_main() {
 
 			sgsSceneRenderer.render( camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition(), renderContext );
 
-			probeVisualization.render();		
+			//probeVisualization.render();		
 
 			selectObjectsByModelID( sgsSceneRenderer, renderContext.disabledModelIndex );
 			glDisable( GL_DEPTH_TEST );
@@ -349,15 +520,16 @@ void real_main() {
 			//const ViewerContext viewerContext = { camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() };
 			//optixRenderer.renderPinholeCamera( viewerContext, renderContext );
 
-			// End the current frame and display its contents on screen
 			renderDuration.setString( renderTimer.format() );
 			window.pushGLStates();
 			window.resetGLStates();
 			window.draw( renderDuration );
 			window.popGLStates();
+
+			// End the current frame and display its contents on screen
 			window.display();
 
-			debugWindowManager.update();
+			//debugWindowManager.update();
 		}
 
 	}

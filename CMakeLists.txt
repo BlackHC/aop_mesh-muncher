@@ -63,6 +63,7 @@ ADD_SUBDIRECTORY(ctp)
 ADD_SUBDIRECTORY(aop)
 
 ADD_SUBDIRECTORY(generic)
+ADD_SUBDIRECTORY(framework)
 
 # Adds a new build target which copies the niven binaries to
 # the output folder

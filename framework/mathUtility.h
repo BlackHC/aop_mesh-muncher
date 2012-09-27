@@ -4,6 +4,7 @@
 
 struct OBB {
 	typedef Eigen::Affine3f Transformation;
+	// origin box to world (without scaling)
 	Transformation transformation;
 	Eigen::Vector3f size;
 };
@@ -34,6 +35,105 @@ inline Eigen::Matrix4f permutedToUnpermutedMatrix( const int *permutation );
 inline Eigen::Matrix4f unpermutedToPermutedMatrix( const int *permutation );
 
 OBB makeOBB( const Eigen::Matrix4f &transformation, const Eigen::AlignedBox3f &alignedBox );
+
+const Eigen::Vector3f flipSign( const Eigen::Vector3f &v, const Eigen::Vector3f &c );
+
+// unit cube is [-1,1]**3
+bool intersectRayWithUnitCube( const Eigen::Vector3f &position, const Eigen::Vector3f &direction, Eigen::Vector3f &hitPoint );
+bool intersectRayWithAABB( const Eigen::AlignedBox3f &box, const Eigen::Vector3f &position, const Eigen::Vector3f &direction, Eigen::Vector3f &hitPoint );
+
+inline const Eigen::Vector3f flipSign( const Eigen::Vector3f &v, const Eigen::Vector3f &c ) {
+	return Eigen::Vector3f( 
+		(c[0] > 0.0) ? v[0] : -v[0],
+		(c[1] > 0.0) ? v[1] : -v[1],
+		(c[2] > 0.0) ? v[2] : -v[2]
+	);
+}
+
+inline bool intersectRayWithUnitCube( const Eigen::Vector3f &position, const Eigen::Vector3f &direction, Eigen::Vector3f &hitPoint ) {
+	using namespace Eigen;
+
+	// we use the symmetry around the origin
+	// put position in the first octant
+	const Vector3f symPosition = flipSign( position, position );
+	const Vector3f symDirection = flipSign( direction, position );
+
+	const float epsilon = 0.000005;
+	const float OneEpsilon = 1.000005;
+
+	if( symPosition.maxCoeff() < OneEpsilon ) {
+		hitPoint = position;
+		return true;
+	}
+
+	// only need to check 3 possible intersection planes (those with positive normal)
+	float t[3];
+	for( int i = 0 ; i < 3 ; i++ ) {
+		if( symDirection[i] != 0.0 ) {
+			t[i] = (1.0 - symPosition[i]) / symDirection[i];
+		}
+		else {
+			t[i] = -1.0;
+		}
+	}
+
+	if( t[0] >= 0.0f ) {
+		hitPoint = position + direction * t[0];
+		if( fabs( hitPoint[1] ) < OneEpsilon && fabs( hitPoint[2] ) < OneEpsilon ) {
+			return true;
+		}
+	}
+
+	if( t[1] >= 0.0f ) {
+		hitPoint = position + direction * t[1];
+		if( fabs( hitPoint[0] ) < OneEpsilon && fabs( hitPoint[2] ) < OneEpsilon ) {
+			return true;
+		}
+	}
+
+	if( t[2] >= 0.0f ) {
+		hitPoint = position + direction * t[2];
+		if( fabs( hitPoint[0] ) < OneEpsilon && fabs( hitPoint[1] ) < OneEpsilon) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+inline bool intersectRayWithAABB( const Eigen::AlignedBox3f &box, const Eigen::Vector3f &position, const Eigen::Vector3f &direction, Eigen::Vector3f &hitPoint ) {
+	using namespace Eigen;
+
+	// box to world
+	const auto transformation = Translation3f( box.center() ) * Scaling( box.sizes() / 2 );
+	const auto invTransformation = Scaling( box.sizes() / 2 ).inverse() * Translation3f( -box.center() );
+	const Vector3f transformedDirection = invTransformation.linear() * direction;
+	const Vector3f transformedPosition = invTransformation * position;
+
+	if( intersectRayWithUnitCube( transformedPosition, transformedDirection, hitPoint ) ) {
+		// transform back
+		hitPoint = transformation * hitPoint;
+		return true;
+	}
+	return false;
+}
+
+inline bool intersectRayWithOBB( const OBB &obb, const Eigen::Vector3f &position, const Eigen::Vector3f &direction, Eigen::Vector3f &hitPoint ) {
+	using namespace Eigen;
+
+	// box to world
+	const auto transformation = obb.transformation * Scaling( obb.size / 2 );
+	const auto invTransformation = Scaling( obb.size / 2 ).inverse() * obb.transformation.inverse();
+	const Vector3f transformedDirection = invTransformation.linear() * direction;
+	const Vector3f transformedPosition = invTransformation * position;
+
+	if( intersectRayWithUnitCube( transformedPosition, transformedDirection, hitPoint ) ) {
+		// transform back
+		hitPoint = transformation * hitPoint;
+		return true;
+	}
+	return false;
+}
 
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////

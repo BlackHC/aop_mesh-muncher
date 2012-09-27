@@ -5,13 +5,50 @@
 #include <boost/algorithm/string/join.hpp>
 #include <boost/range/adaptor/transformed.hpp>
 
-struct VerboseEventHandler : EventHandler {
-	virtual std::string getHelp() = 0;
+struct VerboseEventWrapper : EventHandler {
+	std::shared_ptr<EventHandler> wrappedHandler;
+
+	const char *description;
+
+	VerboseEventWrapper( const char *description, std::shared_ptr<EventHandler> wrappedHandler )
+		: wrappedHandler( wrappedHandler ), description( description ) {}
+
+	std::string getHelp( const std::string &prefix = std::string() ) {
+		return prefix + description;
+	}
+
+	virtual void onNotify( const EventState &eventState )  {
+		wrappedHandler->onNotify( eventState );
+	}
+
+	virtual void onKeyboard( EventState &eventState )  {
+		wrappedHandler->onKeyboard( eventState );
+	}
+
+	virtual void onMouse( EventState &eventState )  {
+		wrappedHandler->onMouse( eventState );
+	}
+
+	virtual bool acceptFocus( FocusType focusType )  {
+		return wrappedHandler->acceptFocus( focusType );
+	}
+
+	virtual void loseFocus( FocusType focusType )  {
+		wrappedHandler->loseFocus( focusType );
+	}
+
+	virtual void gainFocus( FocusType focusType )  {
+		wrappedHandler->gainFocus( focusType );
+	}
+
+	virtual void onUpdate( EventSystem &eventSystem, const float frameDuration, const float elapsedTime )  {
+		wrappedHandler->onUpdate( eventSystem, frameDuration, elapsedTime );
+	}
 };
 
 const char *getKeyName( const sf::Keyboard::Key key );
 
-struct IntVariableControl : VerboseEventHandler {
+struct IntVariableControl : NullEventHandler {
 	sf::Keyboard::Key upKey, downKey;
 	int &variable;
 	int min, max;
@@ -21,32 +58,30 @@ struct IntVariableControl : VerboseEventHandler {
 		: name( name ), variable( variable ), min( min ), max( max ), upKey( upKey ), downKey( downKey ) {
 	}
 
-	virtual bool handleEvent( const sf::Event &event )
-	{
-		switch( event.type ) {
+	virtual void onKeyboard( EventState &eventState ) {
+		switch( eventState.event.type ) {
 			// allow key repeat here
 		case sf::Event::KeyPressed:
-			if( event.key.code == upKey ) {
+			if( eventState.event.key.code == upKey ) {
 				variable = std::min( variable + 1, max );
 				std::cerr << name << " += 1 == " << variable << "\n";
-				return true;
+				eventState.accept();
 			}
-			else if( event.key.code == downKey ) {
+			else if( eventState.event.key.code == downKey ) {
 				variable = std::max( variable - 1, min );
 				std::cerr << name << " -= 1 == " << variable << "\n";
-				return false;
+				eventState.accept();
 			}
 			break;
 		}
-		return false;
 	}
 
-	std::string getHelp() {
-		return boost::str( boost::format( "%s, %s: increase, decrease %s\n" ) % getKeyName( upKey ) % getKeyName( downKey ) % name );
+	std::string getHelp( const std::string &prefix = std::string() ) {
+		return boost::str( boost::format( "%s%s, %s: increase, decrease %s\n" ) % prefix % getKeyName( upKey ) % getKeyName( downKey ) % name );
 	}
 };
 
-struct BoolVariableToggle : VerboseEventHandler {
+struct BoolVariableToggle : NullEventHandler {
 	sf::Keyboard::Key toggleKey;
 	bool &variable;
 	const char *name;
@@ -55,25 +90,23 @@ struct BoolVariableToggle : VerboseEventHandler {
 		: name( name ), variable( variable ), toggleKey( toggleKey ) {
 	}
 
-	virtual bool handleEvent( const sf::Event &event )
-	{
-		switch( event.type ) {
+	virtual void onKeyboard( EventState &eventState ) {
+		switch( eventState.event.type ) {
 		case sf::Event::KeyPressed:
-			if( event.key.code == toggleKey ) {
+			if( eventState.event.key.code == toggleKey ) {
 				variable = !variable;
 				std::cerr << name << " != " << name << " == " << variable << "\n";
-				return true;
+				eventState.accept();
 			}
 		}
-		return false;
 	}
 
-	std::string getHelp() {
-		return boost::str( boost::format( "%s: toggle %s\n" ) % getKeyName( toggleKey ) % name );
+	std::string getHelp( const std::string &prefix = std::string() ) {
+		return boost::str( boost::format( "%s%s: toggle %s\n" ) % prefix % getKeyName( toggleKey ) % name );
 	}
 };
 
-struct KeyAction : VerboseEventHandler {
+struct KeyAction : NullEventHandler {
 	sf::Keyboard::Key key;
 	std::function<void()> action;
 	const char *description;
@@ -81,31 +114,25 @@ struct KeyAction : VerboseEventHandler {
 	KeyAction( const char *description, sf::Keyboard::Key key, const std::function<void()> &action)
 		: description( description ), key( key ), action( action ) {}
 
-	virtual bool handleEvent( const sf::Event &event ) {
-		if( event.type == sf::Event::KeyReleased && event.key.code == key ) {
+	virtual void onKeyboard( EventState &eventState ) {
+		if( eventState.event.type == sf::Event::KeyReleased && eventState.event.key.code == key ) {
 			action();
-			return true;
+			eventState.accept();
 		}
-		return false;
 	}
 
-	std::string getHelp() {
-		return boost::str( boost::format( "%s: %s\n" ) % getKeyName( key ) % description );
-	}
-};
-
-struct VerboseEventDispatcher : TemplateEventDispatcher< VerboseEventHandler > {
-	std::string getHelp() {
-		return boost::join( eventHandlers | boost::adaptors::transformed( std::bind( &VerboseEventHandler::getHelp, std::placeholders::_1 ) ), "" );
-	}
-
-	void registerConsoleHelpAction() {
-		eventHandlers.push_back( std::make_shared<KeyAction>( "display help", sf::Keyboard::H, [this] () {
-			std::cout << getHelp();
-			} ) );
+	std::string getHelp( const std::string &prefix = std::string() ) {
+		return boost::str( boost::format( "%s%s: %s\n" ) % prefix % getKeyName( key ) % description );
 	}
 };
 
+inline void registerConsoleHelpAction( EventDispatcher &dispatcher ) {
+	dispatcher.addEventHandler( std::make_shared<KeyAction>( "display help", sf::Keyboard::H, [&dispatcher] () {
+		std::cout << dispatcher.getHelp();
+	} ) );
+}
+
+// TODO: move this into its own helper file [9/27/2012 kirschan2]
 inline const char *getKeyName( const sf::Keyboard::Key key ) {
 	switch( key ) {
 	default:

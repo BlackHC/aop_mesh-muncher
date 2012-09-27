@@ -3,109 +3,64 @@
 #include "camera.h"
 #include "eventHandling.h"
 
-struct MouseCapture : public EventHandler  {
-	typedef MouseCapture super;
 
-	std::shared_ptr<sf::Window> window;
-
-	MouseCapture() : captureMouse( false ) {}
-
-	void init( const std::shared_ptr<sf::Window> &window ) {
-		this->window = window;
-	}
-
-	bool hasCapture() const {
-		return captureMouse;
-	}
-
-	sf::Vector2i getMouseDelta() {
-		sf::Vector2i temp = mouseDelta;
-		mouseDelta = sf::Vector2i();
-		return temp;
-	}
-
-	void setCapture( bool active ) {
-		if( captureMouse == active ) {
-			return;
-		}
-
-		mouseDelta = sf::Vector2i();
-
-		if( active ) {
-			oldMousePosition = sf::Mouse::getPosition();
-		}
-		// TODO: add support for ClipCursor?
-		window->setMouseCursorVisible( !active );
-
-		captureMouse = active;
-	}
-
-	bool handleEvent( const sf::Event &event ) {
-		switch( event.type ) {
-		case sf::Event::MouseLeft:
-			if( captureMouse ) {
-				sf::Mouse::setPosition( sf::Vector2i( window->getSize() / 2u ), *window );	
-				oldMousePosition = sf::Mouse::getPosition();
-				return true;
-			}
-			break;
-		case sf::Event::MouseMoved:
-			if( captureMouse ) {
-				mouseDelta += sf::Mouse::getPosition() - oldMousePosition;
-				oldMousePosition = sf::Mouse::getPosition();
-				return true;
-			}			
-			break;
-		}
-		return false;
-	}
-
-private:
-	sf::Vector2i mouseDelta, oldMousePosition;
-	bool captureMouse;
-};
-
-struct CameraInputControl : public MouseCapture {
+struct CameraInputControl : EventHandler {
 	std::shared_ptr<Camera> camera;
 	float moveSpeed;
 
-	void init( const std::shared_ptr<Camera> &camera, const std::shared_ptr<sf::Window> &window ) {
-		super::init( window );
+	void init( const std::shared_ptr<Camera> &camera ) {
 		this->camera = camera;
 		this->moveSpeed = 10.0f;
 	}
-
-	bool handleEvent( const sf::Event &event ) {
-		if( super::handleEvent( event ) ) {
-			return true;
-		}
-
-		switch( event.type ) {
+	
+	virtual void onNotify( const EventState &eventState )  {
+		switch( eventState.event.type ) {
 		case sf::Event::LostFocus:
-			setCapture( false );
-			return false;
-		case sf::Event::KeyPressed:
-			if( event.key.code == sf::Keyboard::Escape ) {
-				setCapture( false );
-				return true;
-			}
+			eventState.setCapture( this, FT_NONE );
 			break;
-		case sf::Event::MouseButtonPressed:
-			if( event.mouseButton.button == sf::Mouse::Left ) {
-				setCapture( true );
-			}
-			return true;
-		case sf::Event::MouseWheelMoved:
-			if( hasCapture() ) {
-				moveSpeed *= std::pow( 1.5f, (float) event.mouseWheel.delta );
-				return true;
-			}
 		}
-		return false;
 	}
 
-	bool update( const float elapsedTime, bool inputProcessed ) {
-		if( !inputProcessed && hasCapture() ) {
+	virtual void onKeyboard( EventState &eventState )  {
+		switch( eventState.event.type ) {
+		case sf::Event::KeyPressed:
+			if( eventState.event.key.code == sf::Keyboard::Escape ) {
+				eventState.setCapture( this, FT_NONE );
+				eventState.accept();
+			}
+			break;
+		}
+	}
+
+	virtual void onMouse( EventState &eventState )  {
+		switch( eventState.event.type ) {
+		case sf::Event::MouseButtonPressed:
+			if( eventState.event.mouseButton.button == sf::Mouse::Left ) {
+				eventState.setCapture( this, FT_EXCLUSIVE );
+				eventState.accept();
+			}
+			break;
+		case sf::Event::MouseWheelMoved:
+			if( eventState.isExclusive( this ) ) {
+				moveSpeed *= std::pow( 1.5f, (float) eventState.event.mouseWheel.delta );
+				eventState.accept();
+			}
+			break;
+		}
+	}
+
+	virtual bool acceptFocus( FocusType focusType )  {
+		return true;
+	}
+
+	virtual void loseFocus( FocusType focusType )  {
+	}
+
+	virtual void gainFocus( FocusType focusType )  {
+	}
+
+	virtual void onUpdate( EventSystem &eventSystem, const float frameDuration, const float elapsedTime )  {
+		if( eventSystem.getCapture( this ) & FT_EXCLUSIVE ) {
 			Eigen::Vector3f relativeMovement = Eigen::Vector3f::Zero();
 			if( sf::Keyboard::isKeyPressed( sf::Keyboard::W ) ) {
 				relativeMovement.z() -= 1;
@@ -125,12 +80,12 @@ struct CameraInputControl : public MouseCapture {
 			if( sf::Keyboard::isKeyPressed( sf::Keyboard::LControl ) ) {
 				relativeMovement.y() -= 1;
 			}
-			
+
 			if( !relativeMovement.isZero() ) {
 				relativeMovement.normalize();
 			}
 
-			relativeMovement *= elapsedTime * moveSpeed;
+			relativeMovement *= frameDuration * moveSpeed;
 			if( sf::Keyboard::isKeyPressed( sf::Keyboard::LShift ) ) {
 				relativeMovement *= 4;
 			}
@@ -138,12 +93,11 @@ struct CameraInputControl : public MouseCapture {
 			Eigen::Vector3f newPosition = camera->getPosition() + camera->getViewTransformation().linear().transpose() * relativeMovement;
 			camera->setPosition( newPosition );
 
-			sf::Vector2f angleDelta = sf::Vector2f( getMouseDelta() ) * 0.5f;
+			sf::Vector2f angleDelta = sf::Vector2f( eventSystem.exclusiveMode.popMouseDelta() ) * 0.5f;
 
 			camera->yaw( angleDelta.x );
 			camera->pitch( angleDelta.y );
 		}
-
-		return true;
 	}
+
 };
