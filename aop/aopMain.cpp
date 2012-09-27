@@ -35,6 +35,8 @@ using namespace Eigen;
 #include "grid.h"
 #include "probeGenerator.h"
 
+//#include "candidateFinderInterface.h"
+
 void visualizeProbes( float resolution, const std::vector< SGSInterface::Probe > &probes );
 
 const Eigen::Vector3f flipSign( const Eigen::Vector3f &v, const Eigen::Vector3f &c ) {
@@ -154,7 +156,7 @@ void sampleInstances( OptixRenderer &optix, SGSSceneRenderer &renderer, int mode
 		const auto &probeContext = probeContexts[ probeContextIndex ];
 		probeDumps.setPosition( Eigen::Vector3f::Map( &probes[ probeContextIndex ].position.x ) );
 		glColor4ubv( &probeContext.color.x );		
-		probeDumps.drawVectorCone( probeContext.distance * Eigen::Vector3f::Map( &probes[ probeContextIndex ].direction.x ), probeContexts.front().distance * 0.25, 1 + probeContext.hitPercentage * 15 );	
+		probeDumps.drawVectorCone( probeContext.distance * Eigen::Vector3f::Map( &probes[ probeContextIndex ].direction.x ), probeContexts.front().distance * 0.25, 1 + float( probeContext.hitCounter ) / OptixProgramInterface::numProbeSamples * 15 );	
 	}
 	probeDumps.end();
 }
@@ -185,7 +187,7 @@ void real_main() {
 	sf::Clock frameClock, clock;
 
 	SGSSceneRenderer sgsSceneRenderer;
-	//OptixRenderer optixRenderer;
+	OptixRenderer optixRenderer;
 	SGSScene sgsScene;
 	RenderContext renderContext;
 	renderContext.setDefault();
@@ -203,6 +205,11 @@ void real_main() {
 
 		const char *cachePath = "scene.sgsRendererCache";
 		sgsSceneRenderer.processScene( make_nonallocated_shared( sgsScene ), cachePath );
+	}
+	{
+		boost::timer::auto_cpu_timer timer( "OptixRenderer: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
+
+		optixRenderer.init( make_nonallocated_shared( sgsSceneRenderer ) );
 	}
 
 	EventDispatcher eventDispatcher;
@@ -262,18 +269,30 @@ void real_main() {
 	renderContext.disabledModelIndex = 0;
 	DebugRender::DisplayList probeVisualization;
 	{
-		probeVisualization.beginCompile();
 		auto instanceIndices = sgsSceneRenderer.getModelInstances( 0 );
 
+		int totalCount = 0;
+
 		for( auto instanceIndex = instanceIndices.begin() ; instanceIndex != instanceIndices.end() ; ++instanceIndex ) {
+			boost::timer::auto_cpu_timer timer( "ProbeSampling, batch: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
+
 			std::vector<SGSInterface::Probe> probes, transformedProbes;
 
-			SGSInterface::generateProbes( *instanceIndex, 0.5, sgsSceneRenderer, probes, transformedProbes );
+			SGSInterface::generateProbes( *instanceIndex, 0.25, sgsSceneRenderer, probes, transformedProbes );
 
-			visualizeProbes( 0.5, transformedProbes );
+			std::vector< OptixRenderer::ProbeContext > probeContexts;
+
+			std::cout << "sampling " << transformedProbes.size() << " probes in one batch:\n\t";
+			//optixRenderer.sampleProbes( transformedProbes, probeContexts, renderContext );
+
+			totalCount += transformedProbes.size();
+
+			probeVisualization.beginCompileAndAppend();
+			visualizeProbes( 0.25, transformedProbes );
+			probeVisualization.endCompile();
 		}
 
-		probeVisualization.endCompile();
+		std::cout << "num probes: " << totalCount << "\n";
 	}
 	
 	while (true)
@@ -327,7 +346,7 @@ void real_main() {
 			selectionDR.render();
 			glEnable( GL_DEPTH_TEST );
 
-			const ViewerContext viewerContext = { camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() };
+			//const ViewerContext viewerContext = { camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() };
 			//optixRenderer.renderPinholeCamera( viewerContext, renderContext );
 
 			// End the current frame and display its contents on screen

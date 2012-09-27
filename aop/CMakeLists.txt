@@ -39,6 +39,7 @@ INCLUDE_DIRECTORIES(
 	../texturePacker
 	../volume
 	../sgsScene
+	../generic
 )
 
 # ../gtest/gtest_main.cc
@@ -85,6 +86,8 @@ CUDA_ADD_EXECUTABLE(aop
 	${PTX_FILES}
 	../build/sgsScene.shaders
 
+	../generic/sort_permute_iter.h
+
 	aopMain.cpp
 	probeGenerator.h
 	probeGenerator.cpp
@@ -92,6 +95,7 @@ CUDA_ADD_EXECUTABLE(aop
 	sgsInterface.cpp
 	optixEigenInterop.h
 	probeVisualization.cpp
+	candidateFinderInterface.h
 	)
 
 # The test application uses niven core, so link against it
