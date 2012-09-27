@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 #include <gl/glew.h>
 #include <Eigen/Eigen>
 #include <unsupported/Eigen/OpenGLSupport>
@@ -281,55 +283,54 @@ namespace DebugRender {
 	// new implementation that is aware that it is using display lists and OGL [9/26/2012 kirschan2]
 	// this is more honest than making all functions static
 	
+	// correctly handles appending to lists (no resource leaks)
 	struct DisplayList {
-		DisplayList() : list( 0 ), oldList( 0 ) {}
+		DisplayList() {}
 		~DisplayList() {
 			clear();
 		}
 
 		void clear() {
-			if( list ) {
-				glDeleteLists( list, 1 );
-				list = 0;
+			for( auto list = lists.begin() ; list != lists.end() ; ++list ) {
+				glDeleteLists( *list, 1 );
 			}
+			lists.clear();
 		}
 
 		void beginCompile() {
 			clear();
 
-			list = glGenLists( 1 );
+			lists.push_back( glGenLists( 1 ) );
 
-			glNewList( list, GL_COMPILE );
+			glNewList( lists.back(), GL_COMPILE );
 		}
 
 		void endCompile() {
 			glEndList();
-
-			if( oldList ) {
-				glDeleteLists( oldList, 1 );
-				oldList = 0;
-			}
 		}
 
-		void append() {
-			oldList = list;
+		void beginCompileAndAppend() {
+			int previousList = 0;
+			if( !lists.empty() ) {
+				previousList = lists.back();
+			}
 
-			list = glGenLists( 1 );
+			lists.push_back( glGenLists( 1 ) );
 
-			glNewList( list, GL_COMPILE );
+			glNewList( lists.back(), GL_COMPILE );
 
-			if( oldList ) {
-				glCallList( oldList );
+			if( previousList ) {
+				glCallList( previousList );
 			}
 		}
 
 		void render() {
-			if( list )
-				glCallList( list );
+			if( !lists.empty() )
+				glCallList( lists.back() );
 		}
 
 	private:
-		GLuint list, oldList;
+		std::vector<GLuint> lists;
 	};
 
 	static void begin() {
