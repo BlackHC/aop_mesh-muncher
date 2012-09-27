@@ -47,7 +47,7 @@ namespace Serializer {
 			for( unsigned int i = 0 ; i < size ; ++i ) {
 				Value value;
 				read( reader, value );
-				collection.push_back( std::move( value ) );
+				collection.emplace_back( std::move( value ) );
 			}
 		}
 		else {
@@ -72,7 +72,7 @@ namespace Serializer {
 		for( int i = 0 ; i < size ; ++i ) {
 			Value value;
 			get( reader, value );
-			collection.push_back( std::move( value ) );
+			collection.emplace_back( std::move( value ) );
 		}
 	}
 
@@ -97,7 +97,7 @@ namespace Serializer {
 		for( unsigned int i = 0 ; i < size ; ++i ) {
 			Value value;
 			read( reader, value );
-			collection.push_back( std::move( value ) );
+			collection.emplace_back( std::move( value ) );
 		}
 	}
 
@@ -115,7 +115,7 @@ namespace Serializer {
 		for( int i = 0 ; i < size ; ++i ) {
 			Value value;
 			get( reader, value );
-			collection.push_back( std::move( value ) );
+			collection.emplace_back( std::move( value ) );
 		}
 	}
 
