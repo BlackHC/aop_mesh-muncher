@@ -1,4 +1,5 @@
 #include "eventHandling.h"
+
 #include <boost/format.hpp>
 #include <functional>
 #include <iostream>
@@ -126,9 +127,10 @@ struct KeyAction : NullEventHandler {
 	}
 };
 
-inline void registerConsoleHelpAction( EventDispatcher &dispatcher ) {
-	dispatcher.addEventHandler( std::make_shared<KeyAction>( "display help", sf::Keyboard::H, [&dispatcher] () {
-		std::cout << dispatcher.getHelp();
+static void registerConsoleHelpAction( EventDispatcher &dispatcher ) {
+	EventHandler &handler = dispatcher;
+	dispatcher.addEventHandler( std::make_shared<KeyAction>( "display help", sf::Keyboard::H, [&] () {
+		std::cout << handler.getHelp();
 	} ) );
 }
 

@@ -529,6 +529,7 @@ void SGSSceneRenderer::render( const Eigen::Matrix4f &projectionView, const Eige
 	buildDrawLists( projectionView, renderContext );
 	sortAlphaList( worldViewerPosition );
 
+	// render the lists now
 	glDisable( GL_CULL_FACE );
 	glCullFace( GL_BACK );
 

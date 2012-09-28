@@ -6,7 +6,7 @@
 struct Camera {
 	const Eigen::Vector3f &getPosition() const { return position; }
 
-	// world to view
+	// world to view rotation
 	Eigen::Matrix3f getViewRotation() const {
 		return (Eigen::Matrix3f() << right, right.cross(forward), -forward).finished().transpose();
 	}

@@ -102,3 +102,20 @@ TEST(rayIntersections_box, mainAxis ) {
 	EXPECT_TRUE( intersectRayWithAABB( box, offset + Vector3f( 0, 1, 5 ), -Vector3f::UnitZ(), hitPoint ) );
 	EXPECT_FALSE( intersectRayWithAABB( box, offset + Vector3f( 0, 3, 5 ), -Vector3f::UnitZ(), hitPoint ) );
 }
+
+// a few tests for unproject
+#include "eigenProjectionMatrices.h"
+
+TEST( unprojectAxes, eye ) {
+	const Matrix4f projection = createPerspectiveProjectionMatrix( 90.0, 1.0, 1.0, 100.0 );
+
+	Vector3f eye;
+	Vector3f dummy;
+	
+	unprojectAxesAndOrigin( projection, dummy, dummy, dummy, eye );
+	EXPECT_TRUE( eye.isZero() );
+
+	Vector3f realEye = Vector3f( 10, 50, 100 );
+	unprojectAxesAndOrigin( (Projective3f( projection ) * Translation3f( realEye )).matrix(), dummy, dummy, dummy, eye );
+	EXPECT_TRUE( eye.isApprox( realEye ) );
+}

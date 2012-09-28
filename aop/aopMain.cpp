@@ -34,6 +34,7 @@ using namespace Eigen;
 #include "optixEigenInterop.h"
 #include "grid.h"
 #include "probeGenerator.h"
+#include "mathUtility.h"
 
 //#include "candidateFinderInterface.h"
 
@@ -51,7 +52,7 @@ void selectObjectsByModelID( SGSSceneRenderer &renderer, int modelIndex ) {
 		auto transformation = renderer.getInstanceTransformation( *instanceIndex );
 		auto boundingBox = renderer.getUntransformedInstanceBoundingBox( *instanceIndex );
 
-		selectionDR.setTransformation( transformation );	
+		selectionDR.setTransformation( transformation );
 		selectionDR.drawAABB( boundingBox.min(), boundingBox.max() );
 	}
 
@@ -102,104 +103,147 @@ void sampleInstances( OptixRenderer &optix, SGSSceneRenderer &renderer, int mode
 	for( int probeContextIndex = 0 ; probeContextIndex < probeContexts.size() ; ++probeContextIndex ) {
 		const auto &probeContext = probeContexts[ probeContextIndex ];
 		probeDumps.setPosition( Eigen::Vector3f::Map( &probes[ probeContextIndex ].position.x ) );
-		glColor4ubv( &probeContext.color.x );		
-		probeDumps.drawVectorCone( probeContext.distance * Eigen::Vector3f::Map( &probes[ probeContextIndex ].direction.x ), probeContexts.front().distance * 0.25, 1 + float( probeContext.hitCounter ) / OptixProgramInterface::numProbeSamples * 15 );	
+		glColor4ubv( &probeContext.color.x );
+		probeDumps.drawVectorCone( probeContext.distance * Eigen::Vector3f::Map( &probes[ probeContextIndex ].direction.x ), probeContexts.front().distance * 0.25, 1 + float( probeContext.hitCounter ) / OptixProgramInterface::numProbeSamples * 15 );
 	}
 	probeDumps.end();
 }
-#if 0
-struct Editor : VerboseEventHandler {
-	OOB oob;
 
-	struct Mode : VerboseEventHandler {
-		virtual void render() {}
-	};
+#if 1
 
-	struct Selecting : VerboseEventHandler {
-		Editing *parent;
+struct MouseDelta {
+	sf::Vector2i lastPosition;
+	
+	void reset() {
+		lastPosition = sf::Mouse::getPosition();
+	}
 
-		bool handleEvent( const sf::Event &event ) {
-		}
-	};
-	struct Placing : VerboseEventHandler {
+	sf::Vector2i pop() {
+		const sf::Vector2i currentPosition = sf::Mouse::getPosition();
+		const sf::Vector2i delta = currentPosition - lastPosition;
+		lastPosition = currentPosition;
+		return delta;
+	}
+};
 
-	};
+struct Editor : EventDispatcher {
+	OBB obb;
+	Camera *camera;
 
-	struct Moving : VerboseEventDispatcher {
-		Editing *parent;
+	struct Mode : NullEventHandler {
+		Editor *editor;
 
-		Eigen::Matrix3f viewToWorldMatrix;
-
-		Eigen::Affine3f original_objectToWorld;
-
-		sf::Vector2i dragging_startPosition;
 		bool dragging;
+		bool selected;
+		//MouseDelta dragDelta;
 
-		void init() {
-			dragging = false;
+		Mode( Editor *editor ) : editor( editor ), dragging( false ), selected( false ) {}
+
+		sf::Vector2i popMouseDelta() {
+			return eventSystem.exclusiveMode.popMouseDelta();
 		}
 
-		void save() {
-			original_objectToWorld = parent->oob.transformation;
-		}
+		virtual void render() {}
 
-		void restore() {
-			parent->oob.transformation = original_objectToWorld;
-		}
+		virtual void storeState() {}
 
-		//std::shared_ptr<Camera> camera;
-		float moveSpeed;
-
-		void init() {
-			super::init( window );
-			//this->camera = camera;
-			this->moveSpeed = 10.0f;
-		}
-
-		bool handleEvent( const sf::Event &event ) {
-			if( super::handleEvent( event ) ) {
-				return true;
+		virtual void restoreState() {}
+		
+		void startDragging() {
+			if( dragging ) {
+				return;
 			}
 
-			switch( event.type ) {
+			storeState();
+			dragging = true;
+			//dragDelta.reset();
+			eventSystem.setCapture( this, FT_EXCLUSIVE );
+		}
+
+		void stopDragging( bool accept ) {
+			if( !dragging ) {
+				return;
+			}
+
+			if( accept ) {
+				storeState();
+			}
+			else {
+				restoreState();
+			}
+
+			dragging = false;
+			eventSystem.setCapture( nullptr, FT_EXCLUSIVE );
+		}
+
+		void onSelected() {
+			selected = true;
+		}
+
+		void onUnselected() {
+			selected = false;
+			stopDragging( false );
+		}
+
+		bool acceptFocus( FocusType focusType ) {
+			return true;
+		}
+	};
+
+	struct TransformMode : Mode {
+		float transformSpeed;
+		OBB::Transformation storedTransformation;
+
+		virtual void transform( const Eigen::Vector3f &relativeMovement ) = 0;
+
+		TransformMode( Editor *editor ) : Mode( editor ), transformSpeed( 1.0f ) {}
+
+		void storeState() {
+			storedTransformation = editor->obb.transformation;
+		}
+
+		void restoreState() {
+			editor->obb.transformation = storedTransformation;
+		}
+
+		virtual void onMouse( EventState &eventState ) {
+			switch( eventState.event.type ) {
 			case sf::Event::MouseWheelMoved:
-				moveSpeed *= std::pow( 1.5f, (float) event.mouseWheel.delta );
-				return true;
-				break;
-			case sf::Event::KeyPressed:
-				if( event.key.code == sf::Keyboard::Escape ) {
-					dragging = false;
-					restore();
-					return true;
-				}
+				transformSpeed *= std::pow( 1.5f, (float) eventState.event.mouseWheel.delta );
+				eventState.accept();
 				break;
 			case sf::Event::MouseButtonPressed:
-				if( event.mouseButton.button == sf::Mouse::Button::Left ) {
-					save();
-					dragging = true;
-					dragging_startPosition = sf::Mouse::getPosition();
-					return true;
+				if( eventState.event.mouseButton.button == sf::Mouse::Button::Left ) {
+					startDragging();
+					eventState.accept();
 				}
+				break;
 			case sf::Event::MouseButtonReleased:
-				if( event.mouseButton.button == sf::Mouse::Button::Left ) {
-					if( dragging ) {
-						dragging = false;
-						// accept
-						save();
-						return true;
-					}
+				if( eventState.event.mouseButton.button == sf::Mouse::Button::Left ) {
+					stopDragging( true );
+					eventState.accept();
 				}
 				break;
 			}
 			if( dragging ) {
-				return true;
+				eventState.accept();
 			}
-			return false;
 		}
 
-		bool update( const float elapsedTime, bool inputProcessed ) {
-			if( inputProcessed ) {
-				return false;
+		void onKeyboard( EventState &eventState ) {
+			switch( eventState.event.type ) {
+			case sf::Event::KeyPressed:
+				if( eventState.event.key.code == sf::Keyboard::Escape && dragging ) {
+					stopDragging( false );
+					eventState.accept();
+				}
+				break;
+			}
+		}
+
+		void onUpdate( EventSystem &eventSystem, const float frameDuration, const float elapsedTime ) {
+			if( !selected ) {
+				return;
 			}
 
 			if( !dragging ) {
@@ -227,51 +271,224 @@ struct Editor : VerboseEventHandler {
 					relativeMovement.normalize();
 				}
 
-				relativeMovement *= elapsedTime * moveSpeed;
+				relativeMovement *= frameDuration * transformSpeed;
 				if( sf::Keyboard::isKeyPressed( sf::Keyboard::LShift ) ) {
 					relativeMovement *= 4;
 				}
 
-				const auto translation = Eigen::Translation3f( viewToWorldMatrix * relativeMovement );
-				oob.transformation = translation * oob.transformation;
-
-				return true;
+				transform( relativeMovement );
 			}
 			else {
-				sf::Vector2i draggedDelta =  sf::Mouse::getPosition() - dragging_startPosition;
+				const sf::Vector2i draggedDelta = popMouseDelta();
 
 				// TODO: get camera viewport size
-				Eigen::Vector3f relativeMovement( draggedDelta.x, draggedDelta.y, 0.0 );
-				relativeMovement /= 10.0;
+				Eigen::Vector3f relativeMovement( draggedDelta.x, -draggedDelta.y, 0.0 );
 
 				if( sf::Keyboard::isKeyPressed( sf::Keyboard::LShift ) ) {
 					relativeMovement *= 4;
 				}
+				relativeMovement *= 0.1;
 
-				const auto translation = Eigen::Translation3f( viewToWorldMatrix * relativeMovement );
-				oob.transformation = translation * oob.transformation;
-
-				return true;
+				transform( relativeMovement );
 			}
+		}
 
-			return false;
+		void onNotify( const EventState &eventState ) {
+			if( eventState.event.type == sf::Event::LostFocus ) {
+				stopDragging( false );
+			}
 		}
 
 		std::string getHelp(const std::string &prefix /* = std::string */ ) {
-			return prefix + "click+drag with mouse to move, and WASD, Space and Ctrl for precise moving; keep shift pressed for faster movement\n";
+			return prefix + "click+drag with mouse to transform, and WASD, Space and Ctrl for precise transformation; keep shift pressed for faster transformation; use the mouse wheel to change precise transformation granularity\n";
 		}
 	};
 
-	struct Rotating : VerboseEventHandler {
-
+	struct Selecting : Mode {
+		Selecting( Editor *editor ) : Mode( editor ) {}
 	};
 
-	struct Resizing : VerboseEventHandler {
-
+	struct Placing : Mode {
+		Placing( Editor *editor ) : Mode( editor ) {}
 	};
 
-	VerboseEventDispatcher dispatcher;
-	VerboseEventRouter router;
+	struct Moving : TransformMode {
+		Moving( Editor *editor ) : TransformMode( editor ) {}
+
+		virtual void transform( const Eigen::Vector3f &relativeMovement ) {
+			const auto translation = Eigen::Translation3f( editor->camera->getViewRotation().transpose() * relativeMovement );
+			editor->obb.transformation = translation * editor->obb.transformation;
+		}
+	};
+
+	struct Rotating : TransformMode {
+		Rotating( Editor *editor ) : TransformMode( editor ) {}
+
+		void transform( const Eigen::Vector3f &relativeMovement ) {
+			const Vector3f offset = editor->obb.transformation.translation();
+
+			const auto rotation =
+				Eigen::AngleAxisf( relativeMovement.z(), Vector3f::UnitZ() ) *
+				Eigen::AngleAxisf( -relativeMovement.y(), Vector3f::UnitX() ) *
+				Eigen::AngleAxisf( relativeMovement.x(), Vector3f::UnitY());
+
+			editor->obb.transformation = Eigen::Translation3f( offset ) * rotation * Eigen::Translation3f( -offset ) * editor->obb.transformation;
+		}
+	};
+
+	struct Resizing : Mode {
+		OBB storedOBB;
+		Eigen::Vector3f mask, hitPoint;
+
+		float transformSpeed;
+
+		Resizing( Editor *editor ) : Mode( editor ), transformSpeed( 0.01 ) {}
+		
+		void storeState() {
+			storedOBB = editor->obb;
+		}
+
+		void restoreState() {
+			editor->obb = storedOBB;
+		}
+
+		bool setCornerMasks( int x, int y ) {
+			// TODO: get window/viewport size [9/28/2012 kirschan2]
+			// camera property?
+			const sf::Vector2i size( eventSystem.exclusiveMode.window->getSize() );
+			const float xh = float( x ) / size.x * 2 - 1;
+			const float yh = -(float( y ) / size.y * 2 - 1);
+
+			const Eigen::Vector4f nearPlanePoint( xh, yh, -1.0, 1.0 );
+			const Eigen::Vector3f direction = ((editor->camera->getProjectionMatrix() * editor->camera->getViewTransformation().matrix()).inverse() * nearPlanePoint).hnormalized() - editor->camera->getPosition();
+			
+			//Eigen::Vector3f hitPoint;
+			if( intersectRayWithOBB( editor->obb, editor->camera->getPosition(), direction, hitPoint ) ) {
+				const Eigen::Vector3f boxHitPoint = editor->obb.transformation.inverse() * hitPoint;
+
+				// determine the nearest plane, edge whatever
+				const Eigen::Vector3f p = boxHitPoint.cwiseQuotient( editor->obb.size / 2.0 );
+
+				// TODO: if we click near the center of a face we should behave just like below [9/28/2012 kirschan2]
+				int maskFlag = 0;
+				for( int i = 0 ; i < 3 ; i++ ) {
+					if( fabs( p[i] ) > 0.9 ) {
+						maskFlag |= 7 - (1<<i);
+					}	
+				}
+
+				mask.setZero();
+				for( int i = 0 ; i < 3 ; i++ ) {
+					if( maskFlag & (1<<i) ) {
+						mask[i] = (p[i] > 0.0) * 2 - 1;
+					}
+				}
+			}
+			else {
+				const auto objectDirection = editor->obb.transformation.translation() - editor->camera->getPosition();
+				hitPoint = editor->camera->getPosition() + 
+					direction.normalized() / direction.normalized().dot( objectDirection ) * objectDirection.squaredNorm();
+				hitPoint = editor->obb.transformation.inverse() * hitPoint;
+				const Eigen::Vector3f boxHitPoint = nearestPointOnAABoxToPoint( -editor->obb.size / 2, editor->obb.size / 2, hitPoint );
+				//hitPoint = editor->obb.transformation * boxHitPoint;
+
+				// determine the nearest plane, edge whatever
+				const Eigen::Vector3f p = boxHitPoint.cwiseQuotient( editor->obb.size / 2.0 );
+
+				int maskFlag = 0;
+				for( int i = 0 ; i < 3 ; i++ ) {
+					if( fabs( p[i] ) > 0.9 ) {
+						maskFlag |= 1<<i;
+					}	
+				}
+
+				mask.setZero();
+				for( int i = 0 ; i < 3 ; i++ ) {
+					if( maskFlag & (1<<i) ) {
+						mask[i] = (p[i] > 0.0) * 2 - 1;
+					}
+				}
+			}			
+
+			return true;
+		}
+
+		void onMouse( EventState &eventState ) {
+			switch( eventState.event.type ) {
+			case sf::Event::MouseWheelMoved:
+				transformSpeed *= std::pow( 1.5f, (float) eventState.event.mouseWheel.delta );
+				break;
+			case sf::Event::MouseButtonPressed:
+				if( eventState.event.mouseButton.button == sf::Mouse::Button::Left && setCornerMasks( eventState.event.mouseButton.x, eventState.event.mouseButton.y ) ) {
+					startDragging();
+					eventState.accept();
+				}
+				break;
+			case sf::Event::MouseButtonReleased:
+				if( eventState.event.mouseButton.button == sf::Mouse::Button::Left ) {
+					stopDragging( true );
+				}
+				break;
+			}
+
+			eventState.accept();
+		}
+
+		void onKeyboard( EventState &eventState ) {
+			if( eventState.event.type == sf::Event::KeyPressed && eventState.event.key.code == sf::Keyboard::Escape && dragging ) {
+				stopDragging( false );
+			}
+			// always consume keys we handle in update
+			switch( eventState.event.key.code ) {
+			case sf::Keyboard::Escape:
+			case sf::Keyboard::LShift:
+			case sf::Keyboard::LControl:
+				eventState.accept();
+				break;
+			}
+		}
+
+		void transform( const Eigen::Vector3f &relativeMovement, bool fixCenter ) {
+			const Vector3f boxDelta = editor->obb.transformation.inverse().linear() * editor->camera->getViewRotation().transpose() * relativeMovement;
+			editor->obb.size += boxDelta.cwiseProduct( mask );
+			editor->obb.size = editor->obb.size.cwiseMax( Vector3f::Constant( 1.0 ) );
+			
+			if( !fixCenter ) {
+				const Vector3f centerShift = boxDelta.cwiseProduct( mask.cwiseAbs() ) / 2;
+				editor->obb.transformation = editor->obb.transformation * Eigen::Translation3f( centerShift );
+			}
+		}
+
+		void onUpdate( EventSystem &eventSystem, const float frameDuration, const float elapsedTime ) {
+			if( !selected ) {
+				return;
+			}
+
+			if( dragging ) {
+				const sf::Vector2i draggedDelta = popMouseDelta();
+
+				// TODO: get camera viewport size
+				Eigen::Vector3f relativeMovement( draggedDelta.x, -draggedDelta.y, 0.0f );
+				relativeMovement *= transformSpeed;
+
+				if( sf::Keyboard::isKeyPressed( sf::Keyboard::LShift ) ) {
+					relativeMovement *= 4;
+				}
+
+				transform( relativeMovement, sf::Keyboard::isKeyPressed( sf::Keyboard::LControl ) );
+			}
+		}
+
+		void render() {
+			DebugRender::begin();
+			DebugRender::setPosition( hitPoint );
+			DebugRender::drawAbstractSphere( 0.5 );
+			DebugRender::end();
+		}
+	};
+
+	EventDispatcher dispatcher;
+	TemplateEventRouter<Mode> modes;
 
 	Selecting selecting;
 	Placing placing;
@@ -279,55 +496,72 @@ struct Editor : VerboseEventHandler {
 	Rotating rotating;
 	Resizing resizing;
 
-	Mode *target;
+	Editor() 
+		: 
+			EventDispatcher( "Editor" ),
+			modes( "Mode" ),
+			dispatcher( "" ),
+			selecting( this ),
+			placing( this ),
+			moving( this ),
+			rotating( this ),
+			resizing( this )
+			 {}
 
-	Editor() : target( nullptr ), VerboseEventHandler( "Editor" ) {}
+	void selectMode( Mode *mode ) {
+		modes.setTarget( mode );
+		eventSystem.setCapture( mode,  FT_KEYBOARD );
+	}
 
 	void init() {
-		dispatcher.eventHandlers.push_back( make_nonallocated_shared( router ) );
+		modes.addEventHandler( make_nonallocated_shared( selecting ) );
+		modes.addEventHandler( make_nonallocated_shared( placing ) );
+		modes.addEventHandler( make_nonallocated_shared( moving ) );
+		modes.addEventHandler( make_nonallocated_shared( rotating ) );
+		modes.addEventHandler( make_nonallocated_shared( resizing ) );
 
-		dispatcher.eventHandlers.push_back( new KeyAction( "enter selection mode", sf::Keyboard::F6, [&] () {
-			router.target = target = &selecting;
+		addEventHandler( make_nonallocated_shared( modes ) );
+
+		addEventHandler( std::make_shared<KeyAction>( "enter selection mode", sf::Keyboard::F6, [&] () {
+			selectMode( &selecting );
 		} ) );
-		dispatcher.eventHandlers.push_back( new KeyAction( "enter placement mode", sf::Keyboard::F7, [&] () {
-			router.target = target = &placing;
+		addEventHandler( std::make_shared<KeyAction>( "enter placement mode", sf::Keyboard::F7, [&] () {
+			selectMode( &placing );
 		} ) );
-		dispatcher.eventHandlers.push_back( new KeyAction( "enter movement mode", sf::Keyboard::F8, [&] () {
-			router.target = target = &moving;
+		addEventHandler( std::make_shared<KeyAction>( "enter movement mode", sf::Keyboard::F8, [&] () {
+			selectMode( &moving );
 		} ) );
-		dispatcher.eventHandlers.push_back( new KeyAction( "enter rotation mode", sf::Keyboard::F9, [&] () {
-			router.target = target = &rotating;
+		addEventHandler( std::make_shared<KeyAction>( "enter rotation mode", sf::Keyboard::F9, [&] () {
+			selectMode( &rotating );
 		} ) );
-		dispatcher.eventHandlers.push_back( new KeyAction( "enter resize mode", sf::Keyboard::F10, [&] () {
-			router.target = target = &resizing;
+		addEventHandler( std::make_shared<KeyAction>( "enter resize mode", sf::Keyboard::F10, [&] () {
+			selectMode( &resizing );
 		} ) );
-		dispatcher.eventHandlers.push_back( new KeyAction( "enter free-look mode", sf::Keyboard::F12, [&] () {
-			router.target = target = &resizing;
+		addEventHandler( std::make_shared<KeyAction>( "enter free-look mode", sf::Keyboard::F5, [&] () {
+			selectMode( nullptr );
 		} ) );
-	
-		router.eventHandlers.push_back( make_nonallocated_shared( selecting ) );
-		router.eventHandlers.push_back( make_nonallocated_shared( placing ) );
-		router.eventHandlers.push_back( make_nonallocated_shared( moving ) );
-		router.eventHandlers.push_back( make_nonallocated_shared( rotating ) );
-		router.eventHandlers.push_back( make_nonallocated_shared( resizing ) );
+
+		obb.transformation.setIdentity();
+		obb.size.setConstant( 3.0 );
 	}
 
-	void render {
+	void render() {
 		DebugRender::begin();
-		DebugRender::setTransformation( oob.transformation );
-		DebugRender::drawBox( oob.size );
+		DebugRender::setTransformation( obb.transformation );
+		DebugRender::drawBox( obb.size );
 		DebugRender::end();
 
-		if( target ) {
-			target->render();
+		if( modes.target ) {
+			modes.target->render();
 		}
 	}
-
 };
 #endif
 
+EventSystem eventSystem;
+
 void real_main() {
-	sf::RenderWindow window( sf::VideoMode( 640, 480 ), "sgsSceneViewer", sf::Style::Default, sf::ContextSettings(24, 8, 0, 4, 2, false,true, false) );
+	sf::RenderWindow window( sf::VideoMode( 640, 480 ), "AOP", sf::Style::Default, sf::ContextSettings(24, 8, 0, 4, 2, false,true, false) );
 	glewInit();
 
 	glutil::RegisterDebugOutput( glutil::STD_OUT );
@@ -351,60 +585,46 @@ void real_main() {
 	// The main loop - ends as soon as the window is closed
 	sf::Clock frameClock, clock;
 
-	SGSSceneRenderer sgsSceneRenderer;
-	OptixRenderer optixRenderer;
-	SGSScene sgsScene;
-	RenderContext renderContext;
-	renderContext.setDefault();
+	SGSInterface::World world;
+	SGSInterface::View view;
+	view.renderContext.setDefault();
 
-	{
-		boost::timer::auto_cpu_timer timer( "SGSSceneRenderer: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
-
-		sgsSceneRenderer.reloadShaders();
-
-		const char *scenePath = "P:\\sgs\\sg_and_sgs_source\\survivor\\__GameData\\Editor\\Save\\Survivor_original_mission_editorfiles\\test\\scene.glscene";
-		{
-			Serializer::BinaryReader reader( scenePath );
-			Serializer::read( reader, sgsScene );
-		}
-
-		const char *cachePath = "scene.sgsRendererCache";
-		sgsSceneRenderer.processScene( make_nonallocated_shared( sgsScene ), cachePath );
-	}
-	{
-		boost::timer::auto_cpu_timer timer( "OptixRenderer: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
-
-		optixRenderer.init( make_nonallocated_shared( sgsSceneRenderer ) );
-	}
+	const char *scenePath = "P:\\sgs\\sg_and_sgs_source\\survivor\\__GameData\\Editor\\Save\\Survivor_original_mission_editorfiles\\test\\scene.glscene";
+	//world.init( scenePath );
 
 	EventDispatcher eventDispatcher( "Root:" );
-	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( cameraInputControl ) );
+	eventDispatcher.addEventHandler( make_nonallocated_shared( cameraInputControl ) );
+	
+	registerConsoleHelpAction( eventDispatcher );
 
-	EventSystem eventSystem;
 	eventSystem.rootHandler = make_nonallocated_shared( eventDispatcher );
 	eventSystem.exclusiveMode.window = make_nonallocated_shared( window );
-	
+
 	EventDispatcher verboseEventDispatcher( "sub" );
 	eventDispatcher.addEventHandler( make_nonallocated_shared( verboseEventDispatcher ) );
 
-	registerConsoleHelpAction( eventDispatcher );
+	Editor editor;
+	editor.camera = &camera;
+	editor.init();
+	
+	eventDispatcher.addEventHandler( make_nonallocated_shared( editor ) );
 
-	KeyAction reloadShadersAction( "reload shaders", sf::Keyboard::R, [&] () { sgsSceneRenderer.reloadShaders(); } );
+	KeyAction reloadShadersAction( "reload shaders", sf::Keyboard::R, [&] () { world.sceneRenderer.reloadShaders(); } );
 	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( reloadShadersAction ) );
 
-	BoolVariableToggle showBoundingSpheresToggle( "show bounding spheres",sgsSceneRenderer.debug.showBoundingSpheres, sf::Keyboard::B );
+	BoolVariableToggle showBoundingSpheresToggle( "show bounding spheres", world.sceneRenderer.debug.showBoundingSpheres, sf::Keyboard::B );
 	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( showBoundingSpheresToggle ) );
 
-	BoolVariableToggle showTerrainBoundingSpheresToggle( "show terrain bounding spheres",sgsSceneRenderer.debug.showTerrainBoundingSpheres, sf::Keyboard::N );
+	BoolVariableToggle showTerrainBoundingSpheresToggle( "show terrain bounding spheres",world.sceneRenderer.debug.showTerrainBoundingSpheres, sf::Keyboard::N );
 	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( showTerrainBoundingSpheresToggle ) );
 
-	BoolVariableToggle updateRenderListsToggle( "updateRenderLists",sgsSceneRenderer.debug.updateRenderLists, sf::Keyboard::C );
+	BoolVariableToggle updateRenderListsToggle( "updateRenderLists",world.sceneRenderer.debug.updateRenderLists, sf::Keyboard::C );
 	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( updateRenderListsToggle ) );
 
-	IntVariableControl disabledObjectIndexControl( "disabledModelIndex", renderContext.disabledModelIndex, -1, sgsScene.modelNames.size(), sf::Keyboard::Numpad7, sf::Keyboard::Numpad1 );
+	IntVariableControl disabledObjectIndexControl( "disabledModelIndex", view.renderContext.disabledModelIndex, -1, world.scene.modelNames.size(), sf::Keyboard::Numpad7, sf::Keyboard::Numpad1 );
 	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( disabledObjectIndexControl ) );
 
-	IntVariableControl disabledInstanceIndexControl( "disabledInstanceIndex",renderContext.disabledInstanceIndex, -1, sgsScene.numSceneObjects, sf::Keyboard::Numpad9, sf::Keyboard::Numpad3 );
+	IntVariableControl disabledInstanceIndexControl( "disabledInstanceIndex",view.renderContext.disabledInstanceIndex, -1, world.scene.numSceneObjects, sf::Keyboard::Numpad9, sf::Keyboard::Numpad3 );
 	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( disabledInstanceIndexControl ) );
 
 	//DebugWindowManager debugWindowManager;
@@ -465,7 +685,7 @@ void real_main() {
 		std::cout << "num probes: " << totalCount << "\n";
 	}
 #endif
-	
+
 	while (true)
 	{
 		// Activate the window for OpenGL rendering
@@ -495,27 +715,25 @@ void real_main() {
 
 		{
 			boost::timer::cpu_timer renderTimer;
-			sgsSceneRenderer.renderShadowmap( renderContext );
 
-			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			view.updateFromCamera( camera );
+			//world.renderViewFrame( view );
 
-			// OpenGL drawing commands go here...
-			glMatrixMode( GL_PROJECTION );
-			glLoadMatrix( camera.getProjectionMatrix() );
-			glMultMatrix( camera.getViewTransformation().matrix() );
+			//probeVisualization.render();
 
-			glMatrixMode( GL_MODELVIEW );
-			// TODO: move this into the render functions [9/23/2012 kirschan2]
-			glLoadIdentity();
-
-			sgsSceneRenderer.render( camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition(), renderContext );
-
-			//probeVisualization.render();		
-
-			selectObjectsByModelID( sgsSceneRenderer, renderContext.disabledModelIndex );
+			/*selectObjectsByModelID( world.sceneRenderer, view.renderContext.disabledModelIndex );
 			glDisable( GL_DEPTH_TEST );
 			selectionDR.render();
-			glEnable( GL_DEPTH_TEST );
+			glEnable( GL_DEPTH_TEST );*/
+
+			glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+			glMatrixMode( GL_PROJECTION );
+			glLoadMatrix( view.viewerContext.projectionView );
+
+			glMatrixMode( GL_MODELVIEW );
+			glLoadIdentity();
+
+			editor.render();
 
 			//const ViewerContext viewerContext = { camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() };
 			//optixRenderer.renderPinholeCamera( viewerContext, renderContext );

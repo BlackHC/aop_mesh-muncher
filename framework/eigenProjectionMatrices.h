@@ -131,6 +131,23 @@ namespace Eigen {
 		return (view * Translation3f( -position )).matrix();
 	}
 
+	void unprojectAxes( const Vector3f &eye, const Matrix4f &projectionViewMatrix, Vector3f &u, Vector3f &v, Vector3f &w ) {
+		Eigen::Matrix4f inverseProjectionView = projectionViewMatrix.inverse();
+
+		// this works with all usual projection matrices (where x and y don't have any effect on z and w in clip space)
+		// determine u, v, and w by unprojecting (x,y,-1,1) from clip space to world space
+				
+		// this is the w coordinate of the unprojected coordinates
+		const float unprojectedW = inverseProjectionView(3,3) - inverseProjectionView(3,2);
+		
+		// divide the homogeneous affine matrix by the projected w
+		// see R1 page for deduction
+		Eigen::Matrix< float, 3, 4> inverseProjectionView34 = inverseProjectionView.topLeftCorner<3,4>() / unprojectedW;
+		u = inverseProjectionView34.col(0);
+		v = inverseProjectionView34.col(1);
+		w = inverseProjectionView34.col(3) - inverseProjectionView34.col(2) - eye;
+	}
+
 	// projection matrix to frustum planes
 	// the planes point inward, ie plane . (v 1) >= 0 for v inside the frustum
 	typedef Matrix< float, 6, 4, RowMajor > FrustumPlanesMatrixf;

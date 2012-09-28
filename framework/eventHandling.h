@@ -286,7 +286,9 @@ private:
 	sf::Vector2i lastMousePosition;
 };
 
-struct EventSystem {
+extern EventSystem eventSystem;
+
+struct EventSystem {	
 	EventHandler *keyboardFocusHandler, *mouseFocusHandler;
 	EventHandler *exclusiveHandler;
 
@@ -525,14 +527,15 @@ struct EventSystem {
 	}
 };
 
-struct EventDispatcher : EventHandler {
-	std::vector<std::shared_ptr<EventHandler>> eventHandlers;
+template< typename BaseEventHandler, typename BaseDispatcher = EventHandler >
+struct TemplateEventDispatcher : BaseDispatcher {
+	std::vector<std::shared_ptr<BaseEventHandler>> eventHandlers;
 
-	const char *name;
+	std::string name;
 
-	EventDispatcher( const char *name ) : name( name ) {}
+	TemplateEventDispatcher( const char *name ) : name( name ) {}
 
-	void addEventHandler( const std::shared_ptr<EventHandler> &handler ) {
+	void addEventHandler( const std::shared_ptr<BaseEventHandler> &handler ) {
 		eventHandlers.push_back( handler );
 		handler->parent = this;
 	}
@@ -575,7 +578,14 @@ struct EventDispatcher : EventHandler {
 	}
 
 	std::string getHelp( const std::string &prefix = std::string() ) {
-		const std::string subPrefix = prefix + "\t";
+		std::string subPrefix;
+		if( !name.empty() ) {
+			subPrefix = prefix + "\t";
+		}
+		else {
+			subPrefix = prefix;
+		}
+
 		return 
 			prefix + name + "\n" +
 			boost::join( 
@@ -589,15 +599,16 @@ struct EventDispatcher : EventHandler {
 	}
 };
 
-struct EventRouter : EventHandler {
-	std::vector<std::shared_ptr<EventHandler>> eventHandlers;
-	EventHandler *target;
+template< typename BaseEventHandler, typename BaseRouter = EventHandler >
+struct TemplateEventRouter : BaseRouter {
+	std::vector<std::shared_ptr<BaseEventHandler>> eventHandlers;
+	BaseEventHandler *target;
 
-	const char *name;
+	std::string name;
 
-	EventRouter( const char *name ) : name( name ) {}
+	TemplateEventRouter( const char *name ) : name( name ), target( nullptr ) {}
 
-	void addEventHandler( const std::shared_ptr<EventHandler> &handler ) {
+	void addEventHandler( const std::shared_ptr<BaseEventHandler> &handler ) {
 		eventHandlers.push_back( handler );
 		handler->parent = this;
 	}
@@ -612,6 +623,7 @@ struct EventRouter : EventHandler {
 		for( auto eventHandler = eventHandlers.rbegin() ; eventHandler != eventHandlers.rend() && !eventState.hasAccepted() ; ++eventHandler ) {
 			if( eventHandler->get() == target ) {
 				eventHandler->get()->onKeyboard( eventState );
+				return;
 			}
 		}
 	}
@@ -620,6 +632,7 @@ struct EventRouter : EventHandler {
 		for( auto eventHandler = eventHandlers.rbegin() ; eventHandler != eventHandlers.rend() && !eventState.hasAccepted() ; ++eventHandler ) {
 			if( eventHandler->get() == target ) {
 				eventHandler->get()->onMouse( eventState );
+				return;
 			}
 		}
 	}
@@ -643,7 +656,7 @@ struct EventRouter : EventHandler {
 		}
 	}
 
-	void setTarget( EventHandler *handler ) {
+	void setTarget( BaseEventHandler *handler ) {
 		if( target ) {
 			target->onUnselected();
 		}
@@ -654,7 +667,13 @@ struct EventRouter : EventHandler {
 	}
 
 	std::string getHelp( const std::string &prefix = std::string() ) {
-		const std::string subPrefix = prefix + "\t";
+		std::string subPrefix;
+		if( !name.empty() ) {
+			subPrefix = prefix + "\t";
+		}
+		else {
+			subPrefix = prefix;
+		}
 
 		for( auto eventHandler = eventHandlers.begin() ; eventHandler != eventHandlers.end() ; ++eventHandler ) {
 			if( eventHandler->get() == target ) {
@@ -672,3 +691,11 @@ struct EventRouter : EventHandler {
 		return prefix + name + ": inactive\n";
 	}
 };
+
+// TODO: add previous node implementation [9/28/2012 kirschan2]
+
+template struct TemplateEventDispatcher<EventHandler>;
+typedef TemplateEventDispatcher<EventHandler> EventDispatcher;
+
+template struct TemplateEventRouter<EventHandler>;
+typedef TemplateEventRouter<EventHandler> EventRouter;
