@@ -107,9 +107,6 @@ struct DisplayListVisualizationWindow : std::enable_shared_from_this<DisplayList
 struct TextureVisualizationWindow : std::enable_shared_from_this<TextureVisualizationWindow>, DebugWindowBase {
 	GL::Texture2D texture;
 
-	Camera camera;
-	CameraInputControl cameraInputControl;
-	
 	TextureVisualizationWindow() {}
 
 	void init( const std::string &caption ) {
@@ -119,15 +116,6 @@ struct TextureVisualizationWindow : std::enable_shared_from_this<TextureVisualiz
 		glEnable(GL_DEPTH_TEST);
 		glDepthMask(GL_TRUE);
 		glClearDepth(1.f);
-
-		// init the camera
-		camera.perspectiveProjectionParameters.aspect = 640.0f / 480.0f;
-		camera.perspectiveProjectionParameters.FoV_y = 75.0f;
-		camera.perspectiveProjectionParameters.zNear = 0.1f;
-		camera.perspectiveProjectionParameters.zFar = 500.0f;
-
-		// input camera input control
-		cameraInputControl.init( make_nonallocated_shared(camera), make_nonallocated_shared(window) );
 	}
 
 	typedef float Seconds;
@@ -148,19 +136,13 @@ struct TextureVisualizationWindow : std::enable_shared_from_this<TextureVisualiz
 				}
 
 				if( event.type == sf::Event::Resized ) {
-					camera.perspectiveProjectionParameters.aspect = float( event.size.width ) / event.size.height;
 					glViewport( 0, 0, event.size.width, event.size.height );
 				}
-
-				cameraInputControl.handleEvent( event );
 			}
 
 			if( !window.isOpen() ) {
 				return;
 			}
-
-			cameraInputControl.update( deltaTime, false );
-			//update( frameClock.restart().asSeconds(), clock.getElapsedTime().asSeconds() );
 
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 

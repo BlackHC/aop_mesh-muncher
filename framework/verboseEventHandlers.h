@@ -1,3 +1,4 @@
+#pragma once
 #include "eventHandling.h"
 
 #include <boost/format.hpp>
