@@ -1047,3 +1047,57 @@ struct DefaultConstructible {
 };
 
 BOOST_STATIC_ASSERT( Serializer::detail::is_default_constructible<DefaultConstructible>::value );
+
+//////////////////////////////////////////////////////////////////////////
+// move-only object
+
+#include <boost/noncopyable.hpp>
+
+namespace MoveOnly {
+	struct MO : boost::noncopyable {
+		int x;
+		int y;
+
+		MO() {}
+		MO( int x ) : x( x ), y( y ) {}
+		MO( MO &&other ) : x( other.x ), y( other.y ) {}
+
+		MO & operator = ( MO &&other ) {
+			x = other.x;
+			y = other.y;
+
+			return *this;
+		}
+
+		SERIALIZER_DEFAULT_IMPL( (x)(y) )
+	};
+
+	template< typename Reader, typename Writer >
+	void MoveOnly( const char *filename ) {
+		std::vector< MO > ref;
+
+		for( int i = 0 ; i < 100 ; i++ ) {
+			ref.emplace_back( MO(i) );
+		}
+	
+		{
+			Writer writer( filename );
+
+			Serializer::put( writer, ref );
+		}
+
+		{
+			Reader reader( filename );
+
+			decltype( ref ) test;
+			Serializer::get( reader, test );
+
+			for( int i = 0 ; i < 100 ; i++ ) {
+				ASSERT_EQ( test[i].x, ref[i].x );
+				ASSERT_EQ( test[i].y, ref[i].y );
+			}
+		}
+	}
+
+	TextBinaryTest( MoveOnly );
+}

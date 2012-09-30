@@ -38,7 +38,7 @@ using namespace Eigen;
 
 #include "editor.h"
 
-//#include "candidateFinderInterface.h"
+#include "candidateFinderInterface.h"
 
 void visualizeProbes( float resolution, const std::vector< SGSInterface::Probe > &probes );
 
@@ -131,6 +131,9 @@ struct MouseDelta {
 
 #endif
 
+
+
+// TODO: this should get its own file [9/30/2012 kirschan2]
 EventSystem *EventHandler::eventSystem;
 
 void real_main() {

@@ -1,5 +1,5 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
-PROJECT(serializerTest)
+PROJECT(Test_serializer)
 
 INCLUDE_DIRECTORIES(
 	${Boost_INCLUDE_DIR}
@@ -8,7 +8,7 @@ INCLUDE_DIRECTORIES(
 	../wml
 	)
 
-ADD_EXECUTABLE(serializerTest
+ADD_EXECUTABLE(Test_serializer
 	serializer.h
 	serializer_eigen.h
 	serializer_std.h
@@ -18,4 +18,4 @@ ADD_EXECUTABLE(serializerTest
 	../wml/wml.h
 	)
 
-TARGET_LINK_LIBRARIES(serializerTest ${Boost_LIBRARIES})
+TARGET_LINK_LIBRARIES(Test_serializer ${Boost_LIBRARIES})

@@ -19,6 +19,13 @@ struct Editor : EventDispatcher {
 	};
 
 	struct ITransformer {
+		enum Type {
+			T_OBB,
+			T_SGS
+		} type;
+		
+		ITransformer( Type type ) : type( type ) {}
+
 		virtual Eigen::Vector3f getSize() = 0;
 		virtual void setSize( const Eigen::Vector3f &size ) = 0;
 
@@ -32,32 +39,33 @@ struct Editor : EventDispatcher {
 	};
 
 	struct OBBTransformer : ITransformer {
-		std::shared_ptr< OBB > obb;
+		int index;
+		Editor *editor;
 
-		OBBTransformer( const std::shared_ptr< OBB > &obb ) : obb( obb ) {}
+		OBBTransformer( Editor *editor, int index ) : ITransformer( T_OBB ), editor( editor ), index( index ) {}
 
 		Eigen::Vector3f getSize() {
-			return obb->size;
+			return editor->volumes->get( index )->size;
 		}
 
 		void setSize( const Eigen::Vector3f &size ) {
-			obb->size = size;
+			editor->volumes->get( index )->size = size;
 		}
 
 		OBB::Transformation getTransformation() {
-			return obb->transformation;
+			return editor->volumes->get( index )->transformation;
 		}
 
 		void setTransformation( const OBB::Transformation &transformation ) {
-			obb->transformation = transformation;
+			editor->volumes->get( index )->transformation = transformation;
 		}
 
 		OBB getOBB() {
-			return *obb;
+			return *editor->volumes->get( index );
 		}
 
 		void setOBB( const OBB &newObb ) {
-			*obb = newObb;
+			*editor->volumes->get( index ) = newObb;
 		}
 
 		bool canResize() {
@@ -71,7 +79,8 @@ struct Editor : EventDispatcher {
 
 		SGSInstanceTransformer( Editor *editor, int instanceIndex )
 			:
-		instanceIndex( instanceIndex ),
+			ITransformer( T_SGS ),
+			instanceIndex( instanceIndex ),
 			editor( editor )
 		{}
 
@@ -121,6 +130,7 @@ struct Editor : EventDispatcher {
 
 	SGSInterface::View *view;
 	SGSInterface::World *world;
+	Volumes *volumes;
 
 	struct Mode : NullEventHandler {
 		Editor *editor;

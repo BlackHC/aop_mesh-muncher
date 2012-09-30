@@ -96,6 +96,7 @@ CUDA_ADD_EXECUTABLE(aop
 	optixEigenInterop.h
 	probeVisualization.cpp
 	candidateFinderInterface.h
+	candidateFinder.cpp
 	editor.h
 	editor.cpp
 	)
