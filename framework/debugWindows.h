@@ -30,6 +30,7 @@ struct DisplayListVisualizationWindow : std::enable_shared_from_this<DisplayList
 	GL::DisplayList displayList;
 	Camera camera;
 	CameraInputControl cameraInputControl;
+	EventSystem eventSystem;
 
 	void init( const std::string &caption ) {
 		window.create( sf::VideoMode( 640, 480 ), caption.c_str(), sf::Style::Default, sf::ContextSettings(42) );
@@ -46,7 +47,10 @@ struct DisplayListVisualizationWindow : std::enable_shared_from_this<DisplayList
 		camera.perspectiveProjectionParameters.zFar = 500.0f;
 
 		// input camera input control
-		cameraInputControl.init( make_nonallocated_shared(camera), make_nonallocated_shared(window) );
+		cameraInputControl.init( make_nonallocated_shared(camera) );
+
+		eventSystem.rootHandler = make_nonallocated_shared( cameraInputControl );
+		eventSystem.exclusiveMode.window = make_nonallocated_shared( window );
 	}
 
 	void update( const Seconds deltaTime, const Seconds elapsedTime ) {
@@ -70,14 +74,14 @@ struct DisplayListVisualizationWindow : std::enable_shared_from_this<DisplayList
 					glViewport( 0, 0, event.size.width, event.size.height );
 				}
 
-				cameraInputControl.handleEvent( event );
+				eventSystem.processEvent( event );
 			}
 
 			if( !window.isOpen() ) {
 				return;
 			}
 
-			cameraInputControl.update( deltaTime, false );
+			eventSystem.update( deltaTime, elapsedTime );
 			//update( frameClock.restart().asSeconds(), clock.getElapsedTime().asSeconds() );
 
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);

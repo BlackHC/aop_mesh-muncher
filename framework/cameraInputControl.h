@@ -40,6 +40,12 @@ struct CameraInputControl : EventHandler {
 				eventState.accept();
 			}
 			break;
+		case sf::Event::MouseButtonReleased:
+			if( eventState.event.mouseButton.button == sf::Mouse::Left ) {
+				eventState.setCapture( nullptr, FT_EXCLUSIVE );
+				eventState.accept();
+			}
+			break;
 		case sf::Event::MouseWheelMoved:
 			if( eventState.isExclusive( this ) ) {
 				moveSpeed *= std::pow( 1.5f, (float) eventState.event.mouseWheel.delta );

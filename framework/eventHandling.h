@@ -117,6 +117,8 @@ struct EventState {
 struct EventSystem;
 
 struct EventHandler {
+	static EventSystem *eventSystem;
+
 	EventHandler *parent;
 
 	// global event
@@ -286,8 +288,6 @@ private:
 	sf::Vector2i lastMousePosition;
 };
 
-extern EventSystem eventSystem;
-
 struct EventSystem {	
 	EventHandler *keyboardFocusHandler, *mouseFocusHandler;
 	EventHandler *exclusiveHandler;
@@ -407,7 +407,18 @@ struct EventSystem {
 		}
 	}
 
+	struct EventSystemScope {
+		EventSystemScope( EventSystem *eventSystem ) {
+			EventHandler::eventSystem = eventSystem;
+		}
+		~EventSystemScope() {
+			EventHandler::eventSystem = nullptr;
+		}
+	};
+
 	bool processEvent( const sf::Event &event ) {
+		EventSystemScope scope( this );
+
 		// are we in exclusive mode?
 		if( exclusiveHandler ) {
 			sf::Event adaptedEvent = event;
@@ -523,6 +534,8 @@ struct EventSystem {
 	}
 
 	void update( const float frameDuration, const float elapsedTime ) {
+		EventSystemScope scope( this );
+
 		rootHandler->onUpdate( *this, frameDuration, elapsedTime );
 	}
 };

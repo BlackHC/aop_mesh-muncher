@@ -262,12 +262,6 @@ void real_main() {
 	testInstance.transformation.setIdentity();
 	sgsSceneRenderer.addInstance( testInstance );
 
-	{
-		boost::timer::auto_cpu_timer timer;
-		optixRenderer.compileContext();
-	}
-	
-
 	while (true)
 	{
 		// Activate the window for OpenGL rendering

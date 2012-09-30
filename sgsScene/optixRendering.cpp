@@ -229,54 +229,48 @@ void SGSSceneRenderer::initOptix( OptixRenderer *optixRenderer ) {
 
 	optixRenderer->addSceneChild( optix.staticScene );
 	optixRenderer->addSceneChild( optix.dynamicScene );
+}
 
-	// cache
+static const char *optixCacheFilename = "scene.optixCache";
+
+bool SGSSceneRenderer::loadOptixCache() {
+	Optix::Cache cache;
+
 	{
-		Optix::Cache cache;
-		bool cacheChanged = false;
+		boost::timer::auto_cpu_timer timer( "initOptix; load cache: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
 
-		const char *optixCacheFilename = "scene.optixCache";
-		{
-			boost::timer::auto_cpu_timer timer( "initOptix; load cache: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
-
-			Serializer::BinaryReader reader( optixCacheFilename, sizeof Optix::Cache );
-			if( reader.valid() ) {
-				reader.get( cache );
-			}
-
-			if( cache.magicStamp != scene->numSceneVertices ) {
-				cache = Optix::Cache();
-
-				cache.magicStamp = scene->numSceneVertices;
-			}
+		Serializer::BinaryReader reader( optixCacheFilename, sizeof Optix::Cache );
+		if( reader.valid() ) {
+			reader.get( cache );
 		}
 
-		if( cache.staticSceneAccelerationCache.empty() ) {
-			boost::timer::auto_cpu_timer timer( "initOptix; build acceleration structure: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
-
-			// build the static scene acceleration tree
-			optixRenderer->context->launch( 0, 0 );
-
-			int size;
-			size = optix.staticAcceleration->getDataSize();
-			cache.staticSceneAccelerationCache.resize( size );
-			optix.staticAcceleration->getData( &cache.staticSceneAccelerationCache.front() );
-
-			cacheChanged = true;
-		}
-		else {
-			// load from the cache
-			optix.staticAcceleration->setData( &cache.staticSceneAccelerationCache.front(), cache.staticSceneAccelerationCache.size() );
-		}
-
-		// dump the cache?
-		if( cacheChanged ) {
-			boost::timer::auto_cpu_timer timer( "initOptix; write cache: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
-			
-			Serializer::BinaryWriter writer( optixCacheFilename, sizeof Optix::Cache );
-			writer.put( cache );
+		if( cache.magicStamp != scene->numSceneVertices ) {
+			cache = Optix::Cache();
+//			cache.magicStamp = scene->numSceneVertices;
 		}
 	}
+
+	if( !cache.staticSceneAccelerationCache.empty() ) {
+		// load from the cache
+		optix.staticAcceleration->setData( &cache.staticSceneAccelerationCache.front(), cache.staticSceneAccelerationCache.size() );
+		return true;
+	}
+	return false;
+}
+
+void SGSSceneRenderer::writeOptixCache() {
+	Optix::Cache cache;
+	cache.magicStamp = scene->numSceneVertices;
+
+	int size;
+	size = optix.staticAcceleration->getDataSize();
+	cache.staticSceneAccelerationCache.resize( size );
+	optix.staticAcceleration->getData( &cache.staticSceneAccelerationCache.front() );
+
+	boost::timer::auto_cpu_timer timer( "initOptix; write cache: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
+			
+	Serializer::BinaryWriter writer( optixCacheFilename, sizeof Optix::Cache );
+	writer.put( cache );
 }
 
 void SGSSceneRenderer::refillDynamicOptixBuffers() {
@@ -284,6 +278,7 @@ void SGSSceneRenderer::refillDynamicOptixBuffers() {
 	int numIndices = 0;
 	int numSubObjects = 0;
 
+	// set numVertices, numIndices and numSubObjects
 	for( int instanceIndex = 0 ; instanceIndex < instances.size() ; instanceIndex++ ) {
 		const SGSScene::Model &model = scene->models[ instances[ instanceIndex ].modelId ];
 		
@@ -296,16 +291,18 @@ void SGSSceneRenderer::refillDynamicOptixBuffers() {
 		}
 	}
 
+	// resize the buffers
 	optix.dynamicObjects.indexBuffer->setSize( numIndices );
 	optix.dynamicObjects.indexBuffer->validate();
 
 	optix.dynamicObjects.vertexBuffer->setSize( numVertices );
 	optix.dynamicObjects.vertexBuffer->validate();
 
-	optix.dynamicObjects.geometry->setPrimitiveCount ( numIndices / 3 );
+	const int numPrimitives = numIndices / 3;
+	optix.dynamicObjects.geometry->setPrimitiveCount ( numPrimitives );
 
 	optix.dynamicObjects.materialInfos->setSize( numSubObjects );
-	optix.dynamicObjects.materialIndices->setSize( numVertices );
+	optix.dynamicObjects.materialIndices->setSize( numPrimitives );
 
 	auto materialInfos = (OptixProgramInterface::MaterialInfo *) optix.dynamicObjects.materialInfos->map();	
 	auto materialIndices = (int *) optix.dynamicObjects.materialIndices->map();
@@ -316,13 +313,13 @@ void SGSSceneRenderer::refillDynamicOptixBuffers() {
 	int globalIndexIndex = 0;
 	int globalSubObjectIndex = 0;
 
+	// compile all instances into the dynamic buffers
 	for( int instanceIndex = 0 ; instanceIndex < instances.size() ; instanceIndex++ ) {
 		const Instance &instance = instances[ instanceIndex ];
 		const SGSScene::Model &model = scene->models[ instance.modelId ];
 
-		Eigen::Matrix3f normalTransformation = instance.transformation.topLeftCorner<3,3>().inverse().transpose();
+		Eigen::Matrix3f normalTransformation = instance.transformation.linear().inverse().transpose();
 
-		numSubObjects += model.numSubObjects;
 		const int endSubObject = model.startSubObject + model.numSubObjects;
 		for( int subObjectIndex = model.startSubObject ; subObjectIndex < endSubObject ; ++subObjectIndex ) {
 			const SGSScene::SubObject &subObject = scene->subObjects[ subObjectIndex ];
@@ -338,7 +335,7 @@ void SGSSceneRenderer::refillDynamicOptixBuffers() {
 
 			// set the material indices
 			const int startPrimitive = globalIndexIndex / 3;
-			const int endPrimitive = globalIndexIndex + subObject.numIndices / 3;
+			const int endPrimitive = startPrimitive + subObject.numIndices / 3;
 			std::fill( materialIndices + startPrimitive, materialIndices + endPrimitive, globalSubObjectIndex );
 
 			int startVertex = globalVertexIndex;
@@ -349,7 +346,7 @@ void SGSSceneRenderer::refillDynamicOptixBuffers() {
 				auto &instanceVertex = vertices[ globalVertexIndex++ ];
 
 				instanceVertex = modelVertex;
-				Eigen::Vector3f::Map( instanceVertex.position ) = (instance.transformation * Eigen::Vector3f::Map( instanceVertex.position ).homogeneous()).eval().hnormalized();
+				Eigen::Vector3f::Map( instanceVertex.position ) = instance.transformation * Eigen::Vector3f::Map( instanceVertex.position );
 				Eigen::Vector3f::Map( instanceVertex.normal ) = normalTransformation * Eigen::Vector3f::Map( instanceVertex.normal );
 			}
 
@@ -367,9 +364,11 @@ void SGSSceneRenderer::refillDynamicOptixBuffers() {
 	optix.dynamicObjects.vertexBuffer->unmap();
 	optix.dynamicObjects.indexBuffer->unmap();
 
+	// register the dynamic scene
 	optix.dynamicScene->setChildCount( 1 );
 	optix.dynamicScene->setChild( 0, optix.dynamicObjects.geometryInstance );
 
+	// the acceleration structure is invalid now
 	optix.dynamicAcceleration->markDirty();
 }
 
@@ -446,15 +445,21 @@ void OptixRenderer::init( const std::shared_ptr< SGSSceneRenderer > &sgsSceneRen
 	// init the output texture
 	SimpleGL::setLinearMinMag( debugTexture );
 
-	// init our main object source
-	sgsSceneRenderer->initOptix( this );
-
 	// validate all objects
 	scene->validate ();
 	acceleration->validate();
 	context->validate();
 
+	// init our main object source
+	sgsSceneRenderer->initOptix( this );
+
+	bool cacheLoaded = sgsSceneRenderer->loadOptixCache();
+
 	compileContext();
+
+	if( !cacheLoaded ) {
+		sgsSceneRenderer->writeOptixCache();
+	}
 }
 
 void OptixRenderer::setRenderContext( const RenderContext &renderContext ) {
@@ -535,6 +540,15 @@ void OptixRenderer::compileContext()  {
 	const char* e;
 	rtContextGetErrorString (context->get(), r, &e);
 	std::cout << e;
+
+	{
+		boost::timer::auto_cpu_timer timer( "compileContext; test launch all entry points: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
+
+		// build the static scene acceleration tree
+		context->launch( OptixProgramInterface::renderPinholeCameraView, 0, 0 );
+		context->launch( OptixProgramInterface::sampleProbes, 0 );
+		context->launch( OptixProgramInterface::selectFromPinholeCamera, 0 );
+	}
 }
 
 void OptixRenderer::createHemisphereSamples( optix::float3 *hemisphereSamples ) {

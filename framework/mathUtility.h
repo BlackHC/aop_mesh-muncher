@@ -98,18 +98,19 @@ inline Eigen::Vector3f farthestPointOnAABoxToPoint( const Eigen::Vector3f &min, 
 }
 
 // unit cube is [-1,1]**3
-bool intersectRayWithUnitCube( const Eigen::Vector3f &position, const Eigen::Vector3f &direction, Eigen::Vector3f &hitPoint );
-bool intersectRayWithAABB( const Eigen::AlignedBox3f &box, const Eigen::Vector3f &position, const Eigen::Vector3f &direction, Eigen::Vector3f &hitPoint );
+bool intersectRayWithUnitCube( const Eigen::Vector3f &position, const Eigen::Vector3f &direction, Eigen::Vector3f *hitPoint = nullptr, float *hitT = nullptr );
+bool intersectRayWithAABB( const Eigen::AlignedBox3f &box, const Eigen::Vector3f &position, const Eigen::Vector3f &direction, Eigen::Vector3f *hitPoint = nullptr, float *hitT = nullptr );
+bool intersectRayWithOBB( const OBB &obb, const Eigen::Vector3f &position, const Eigen::Vector3f &direction, Eigen::Vector3f *hitPoint = nullptr, float *hitT = nullptr );
 
 inline const Eigen::Vector3f flipSign( const Eigen::Vector3f &v, const Eigen::Vector3f &c ) {
-	return Eigen::Vector3f( 
+	return Eigen::Vector3f(
 		(c[0] > 0.0) ? v[0] : -v[0],
 		(c[1] > 0.0) ? v[1] : -v[1],
 		(c[2] > 0.0) ? v[2] : -v[2]
 	);
 }
 
-inline bool intersectRayWithUnitCube( const Eigen::Vector3f &position, const Eigen::Vector3f &direction, Eigen::Vector3f &hitPoint ) {
+inline bool intersectRayWithUnitCube( const Eigen::Vector3f &position, const Eigen::Vector3f &direction, Eigen::Vector3f *hitPoint, float *hitT ) {
 	using namespace Eigen;
 
 	// we use the symmetry around the origin
@@ -121,7 +122,10 @@ inline bool intersectRayWithUnitCube( const Eigen::Vector3f &position, const Eig
 	const float OneEpsilon = 1.000005;
 
 	if( symPosition.maxCoeff() < OneEpsilon ) {
-		hitPoint = position;
+		if( hitPoint )
+			*hitPoint = position;
+		if( hitT )
+			*hitT = 0.0f;
 		return true;
 	}
 
@@ -137,22 +141,43 @@ inline bool intersectRayWithUnitCube( const Eigen::Vector3f &position, const Eig
 	}
 
 	if( t[0] >= 0.0f ) {
-		hitPoint = position + direction * t[0];
-		if( fabs( hitPoint[1] ) < OneEpsilon && fabs( hitPoint[2] ) < OneEpsilon ) {
+		auto point = position + direction * t[0];
+
+		if( fabs( point[1] ) < OneEpsilon && fabs( point[2] ) < OneEpsilon ) {
+			if( hitPoint ) {
+				*hitPoint = point;
+			}
+			if( hitT ) {
+				*hitT = t[0];
+			}
 			return true;
 		}
 	}
 
 	if( t[1] >= 0.0f ) {
-		hitPoint = position + direction * t[1];
-		if( fabs( hitPoint[0] ) < OneEpsilon && fabs( hitPoint[2] ) < OneEpsilon ) {
+		auto point = position + direction * t[1];
+
+		if( fabs( point[0] ) < OneEpsilon && fabs( point[2] ) < OneEpsilon ) {
+			if( hitPoint ) {
+				*hitPoint = point;
+			}
+			if( hitT ) {
+				*hitT = t[1];
+			}
 			return true;
 		}
 	}
 
 	if( t[2] >= 0.0f ) {
-		hitPoint = position + direction * t[2];
-		if( fabs( hitPoint[0] ) < OneEpsilon && fabs( hitPoint[1] ) < OneEpsilon) {
+		auto point = position + direction * t[2];
+
+		if( fabs( point[0] ) < OneEpsilon && fabs( point[1] ) < OneEpsilon) {
+			if( hitPoint ) {
+				*hitPoint = point;
+			}
+			if( hitT ) {
+				*hitT = t[2];
+			}
 			return true;
 		}
 	}
@@ -160,7 +185,7 @@ inline bool intersectRayWithUnitCube( const Eigen::Vector3f &position, const Eig
 	return false;
 }
 
-inline bool intersectRayWithAABB( const Eigen::AlignedBox3f &box, const Eigen::Vector3f &position, const Eigen::Vector3f &direction, Eigen::Vector3f &hitPoint ) {
+inline bool intersectRayWithAABB( const Eigen::AlignedBox3f &box, const Eigen::Vector3f &position, const Eigen::Vector3f &direction, Eigen::Vector3f *hitPoint, float *hitT ) {
 	using namespace Eigen;
 
 	// box to world
@@ -169,15 +194,18 @@ inline bool intersectRayWithAABB( const Eigen::AlignedBox3f &box, const Eigen::V
 	const Vector3f transformedDirection = invTransformation.linear() * direction;
 	const Vector3f transformedPosition = invTransformation * position;
 
-	if( intersectRayWithUnitCube( transformedPosition, transformedDirection, hitPoint ) ) {
+	if( intersectRayWithUnitCube( transformedPosition, transformedDirection, hitPoint, hitT ) ) {
 		// transform back
-		hitPoint = transformation * hitPoint;
+		if( hitPoint ) {
+			*hitPoint = transformation * *hitPoint;
+		}
+
 		return true;
 	}
 	return false;
 }
 
-inline bool intersectRayWithOBB( const OBB &obb, const Eigen::Vector3f &position, const Eigen::Vector3f &direction, Eigen::Vector3f &hitPoint ) {
+inline bool intersectRayWithOBB( const OBB &obb, const Eigen::Vector3f &position, const Eigen::Vector3f &direction, Eigen::Vector3f *hitPoint, float *hitT ) {
 	using namespace Eigen;
 
 	// box to world
@@ -186,9 +214,12 @@ inline bool intersectRayWithOBB( const OBB &obb, const Eigen::Vector3f &position
 	const Vector3f transformedDirection = invTransformation.linear() * direction;
 	const Vector3f transformedPosition = invTransformation * position;
 
-	if( intersectRayWithUnitCube( transformedPosition, transformedDirection, hitPoint ) ) {
+	if( intersectRayWithUnitCube( transformedPosition, transformedDirection, hitPoint, hitT ) ) {
 		// transform back
-		hitPoint = transformation * hitPoint;
+		if( hitPoint ) {
+			*hitPoint = transformation * *hitPoint;
+		}
+
 		return true;
 	}
 	return false;
@@ -197,7 +228,7 @@ inline bool intersectRayWithOBB( const OBB &obb, const Eigen::Vector3f &position
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
 // implementation
-// 
+//
 inline Eigen::Vector3i ceil( const Eigen::Vector3f &v ) {
 	return Eigen::Vector3i( (int) ceil( v[0] ), (int) ceil( v[1] ), (int) ceil( v[2] ) );
 }
@@ -217,7 +248,7 @@ template< typename Vector >
 Vector permute_reverse( const Vector &w, const int *permutation ) {
 	Vector v;
 	for( int i = 0 ; i < 3 ; ++i ) {
-		v[ permutation[i] ] = w[i];	
+		v[ permutation[i] ] = w[i];
 	}
 	return v;
 }
@@ -233,9 +264,9 @@ inline Eigen::Matrix4f unpermutedToPermutedMatrix( const int *permutation ) {
 		Eigen::RowVector4f::UnitW() ).finished();
 }
 
-inline OBB makeOBB( const Eigen::Matrix4f &transformation, const Eigen::AlignedBox3f &alignedBox ) {
+inline OBB makeOBB( const Eigen::Affine3f &transformation, const Eigen::AlignedBox3f &alignedBox ) {
 	OBB obb;
-	obb.transformation = Eigen::Affine3f( transformation ) * Eigen::Translation3f( alignedBox.center() );
+	obb.transformation = transformation * Eigen::Translation3f( alignedBox.center() );
 	obb.size = alignedBox.sizes();
 	return obb;
 }

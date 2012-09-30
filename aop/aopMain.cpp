@@ -52,7 +52,7 @@ void selectObjectsByModelID( SGSSceneRenderer &renderer, int modelIndex ) {
 		auto transformation = renderer.getInstanceTransformation( *instanceIndex );
 		auto boundingBox = renderer.getUntransformedInstanceBoundingBox( *instanceIndex );
 
-		selectionDR.setTransformation( transformation );
+		selectionDR.setTransformation( transformation.matrix() );
 		selectionDR.drawAABB( boundingBox.min(), boundingBox.max() );
 	}
 
@@ -113,7 +113,7 @@ void sampleInstances( OptixRenderer &optix, SGSSceneRenderer &renderer, int mode
 
 struct MouseDelta {
 	sf::Vector2i lastPosition;
-	
+
 	void reset() {
 		lastPosition = sf::Mouse::getPosition();
 	}
@@ -127,8 +127,109 @@ struct MouseDelta {
 };
 
 struct Editor : EventDispatcher {
-	OBB obb;
-	Camera *camera;
+	struct ITransformer {
+		virtual Eigen::Vector3f getSize() = 0;
+		virtual void setSize( const Eigen::Vector3f &size ) = 0;
+
+		virtual OBB::Transformation getTransformation() = 0;
+		virtual void setTransformation( const OBB::Transformation &transformation ) = 0;
+
+		virtual OBB getOBB() = 0;
+		virtual void setOBB( const OBB &obb ) = 0;
+
+		virtual bool canResize() = 0;
+	};
+
+	struct OBBTransformer : ITransformer {
+		std::shared_ptr< OBB > obb;
+
+		OBBTransformer( const std::shared_ptr< OBB > &obb ) : obb( obb ) {}
+
+		Eigen::Vector3f getSize() {
+			return obb->size;
+		}
+
+		void setSize( const Eigen::Vector3f &size ) {
+			obb->size = size;
+		}
+
+		OBB::Transformation getTransformation() {
+			return obb->transformation;
+		}
+
+		void setTransformation( const OBB::Transformation &transformation ) {
+			obb->transformation = transformation;
+		}
+
+		OBB getOBB() {
+			return *obb;
+		}
+
+		void setOBB( const OBB &newObb ) {
+			*obb = newObb;
+		}
+
+		bool canResize() {
+			return true;
+		}
+	};
+
+	struct SGSInstanceTransformer : ITransformer {
+		int instanceIndex;
+		Editor *editor;
+
+		SGSInstanceTransformer( Editor *editor, int instanceIndex )
+			:
+			instanceIndex( instanceIndex ),
+			editor( editor )
+		{}
+
+		Eigen::Vector3f getSize() {
+			return editor->world->sceneRenderer.getUntransformedInstanceBoundingBox( instanceIndex ).sizes();
+		}
+
+		void setSize( const Eigen::Vector3f &size ) {
+			// do nothing
+		}
+
+		OBB::Transformation getTransformation() {
+			return
+				editor->world->sceneRenderer.getInstanceTransformation( instanceIndex ) *
+				Eigen::Translation3f( editor->world->sceneRenderer.getUntransformedInstanceBoundingBox( instanceIndex ).center() )
+			;
+		}
+
+		void setTransformation( const OBB::Transformation &transformation ) {
+			if( editor->world->sceneRenderer.isDynamicInstance( instanceIndex ) ) {
+				editor->world->sceneRenderer.setInstanceTransformation( 
+					instanceIndex,
+					transformation *
+						Eigen::Translation3f( -editor->world->sceneRenderer.getUntransformedInstanceBoundingBox( instanceIndex ).center() )
+				);
+			}
+		}
+
+		OBB getOBB() {
+			OBB obb;
+			obb.transformation = getTransformation();
+			obb.size = getSize();
+			return obb;
+		}
+
+		void setOBB( const OBB &obb ) {
+			setTransformation( obb.transformation );
+		}
+
+		bool canResize() {
+			return false;
+		}
+	};
+
+	std::shared_ptr< ITransformer > transformer;
+	std::vector< OBB > obbs;
+
+	SGSInterface::View *view;
+	SGSInterface::World *world;
 
 	struct Mode : NullEventHandler {
 		Editor *editor;
@@ -144,11 +245,9 @@ struct Editor : EventDispatcher {
 		}
 
 		virtual void render() {}
-
 		virtual void storeState() {}
-
 		virtual void restoreState() {}
-		
+
 		void startDragging() {
 			if( dragging ) {
 				return;
@@ -196,14 +295,14 @@ struct Editor : EventDispatcher {
 
 		virtual void transform( const Eigen::Vector3f &relativeMovement ) = 0;
 
-		TransformMode( Editor *editor ) : Mode( editor ), transformSpeed( 1.0f ) {}
+		TransformMode( Editor *editor ) : Mode( editor ), transformSpeed( 0.1f ) {}
 
 		void storeState() {
-			storedTransformation = editor->obb.transformation;
+			storedTransformation = editor->transformer->getTransformation();
 		}
 
 		void restoreState() {
-			editor->obb.transformation = storedTransformation;
+			editor->transformer->setTransformation( storedTransformation );
 		}
 
 		virtual void onMouse( EventState &eventState ) {
@@ -287,7 +386,7 @@ struct Editor : EventDispatcher {
 				if( sf::Keyboard::isKeyPressed( sf::Keyboard::LShift ) ) {
 					relativeMovement *= 4;
 				}
-				relativeMovement *= 0.1;
+				relativeMovement *= 0.01;
 
 				transform( relativeMovement );
 			}
@@ -304,20 +403,95 @@ struct Editor : EventDispatcher {
 		}
 	};
 
+	void convertScreenToHomogeneous( int x, int y, float &xh, float &yh ) {
+		const sf::Vector2i size( eventSystem.exclusiveMode.window->getSize() );
+		xh = float( x ) / size.x * 2 - 1;
+		yh = -(float( y ) / size.y * 2 - 1);
+	}
+
 	struct Selecting : Mode {
 		Selecting( Editor *editor ) : Mode( editor ) {}
+
+		void onMouse( EventState &eventState ) {
+			if( eventState.event.type == sf::Event::MouseButtonPressed && eventState.event.mouseButton.button == sf::Mouse::Left ) {
+				editor->transformer.reset();
+				
+				float xh, yh;
+				editor->convertScreenToHomogeneous( eventState.event.mouseButton.x, eventState.event.mouseButton.y, xh, yh );
+
+				// duplicate from resizing [9/30/2012 kirschan2]
+				const Eigen::Vector4f nearPlanePoint( xh, yh, -1.0, 1.0 );
+				const Eigen::Vector3f direction = ((editor->view->viewerContext.projectionView.inverse() * nearPlanePoint).hnormalized() - editor->view->viewerContext.worldViewerPosition).normalized();
+
+				float bestT;
+				OBB *bestOBB = nullptr;
+				for( auto obb = editor->obbs.begin() ; obb != editor->obbs.end() ; ++obb ) {
+					float t;
+					if( intersectRayWithOBB( *obb, editor->view->viewerContext.worldViewerPosition, direction, nullptr, &t ) ) {
+						if( !bestOBB || bestT > t ) {
+							bestT = t;
+							bestOBB = &*obb;
+						}
+					}
+				}
+
+				// NOTE: this all only works if direction is normalized, so we can compare hitDistance with bestT! [9/30/2012 kirschan2]
+				SGSInterface::SelectionResult result;
+				if( editor->world->selectFromView( *editor->view, xh, yh, &result ) && result.objectIndex != SGSInterface::SelectionResult::SELECTION_INDEX_TERRAIN ) {
+					if( !bestOBB || result.hitDistance < bestT) {
+						bestOBB = nullptr;
+						editor->transformer = std::make_shared< SGSInstanceTransformer >( editor, result.objectIndex );
+					}
+				}
+
+				if( bestOBB ) {
+					editor->transformer = std::make_shared< OBBTransformer >( make_nonallocated_shared(*bestOBB) );
+				}
+			}
+			eventState.accept();
+		}
 	};
 
 	struct Placing : Mode {
 		Placing( Editor *editor ) : Mode( editor ) {}
+
+		void onMouse( EventState &eventState ) {
+			if( eventState.event.type == sf::Event::MouseButtonPressed && eventState.event.mouseButton.button == sf::Mouse::Left ) {
+				float xh, yh;
+				editor->convertScreenToHomogeneous( eventState.event.mouseButton.x, eventState.event.mouseButton.y, xh, yh );
+
+				SGSInterface::SelectionResult result;
+				if( editor->world->selectFromView( *editor->view, xh, yh, &result ) ) {
+					const auto transformation = editor->transformer->getTransformation();
+					editor->transformer->setTransformation(
+						Eigen::Translation3f( Eigen::map( result.hitPosition) ) * transformation.linear()
+					);
+				}
+			}
+			eventState.accept();
+		}
 	};
+
+	Eigen::Vector3f getScaledRelativeViewMovement( const Eigen::Vector3f &relativeMovement ) {
+		Eigen::Vector3f u, v, w;
+		Eigen::unprojectAxes( view->viewerContext.worldViewerPosition, view->viewerContext.projectionView, u, v, w );
+
+		const float scale = w.dot( transformer->getTransformation().translation() - view->viewerContext.worldViewerPosition ) / w.squaredNorm();
+
+		return
+			u * scale * relativeMovement.x() +
+			v * scale * relativeMovement.y() +
+			w * scale * relativeMovement.z()
+		;
+	}
 
 	struct Moving : TransformMode {
 		Moving( Editor *editor ) : TransformMode( editor ) {}
 
 		virtual void transform( const Eigen::Vector3f &relativeMovement ) {
-			const auto translation = Eigen::Translation3f( editor->camera->getViewRotation().transpose() * relativeMovement );
-			editor->obb.transformation = translation * editor->obb.transformation;
+			const Eigen::Translation3f translation( editor->getScaledRelativeViewMovement( relativeMovement ) );
+
+			editor->transformer->setTransformation( translation * editor->transformer->getTransformation() );
 		}
 	};
 
@@ -325,90 +499,89 @@ struct Editor : EventDispatcher {
 		Rotating( Editor *editor ) : TransformMode( editor ) {}
 
 		void transform( const Eigen::Vector3f &relativeMovement ) {
-			const Vector3f offset = editor->obb.transformation.translation();
-
 			const auto rotation =
-				Eigen::AngleAxisf( relativeMovement.z(), Vector3f::UnitZ() ) *
-				Eigen::AngleAxisf( -relativeMovement.y(), Vector3f::UnitX() ) *
-				Eigen::AngleAxisf( relativeMovement.x(), Vector3f::UnitY());
+				Eigen::AngleAxisf( relativeMovement.z(), editor->view->viewAxes.col(2) ) *
+				Eigen::AngleAxisf( relativeMovement.y(), editor->view->viewAxes.col(0) ) *
+				Eigen::AngleAxisf( relativeMovement.x(), editor->view->viewAxes.col(1) )
+				;
 
-			editor->obb.transformation = Eigen::Translation3f( offset ) * rotation * Eigen::Translation3f( -offset ) * editor->obb.transformation;
+			const Vector3f translation = editor->transformer->getTransformation().translation();
+
+			editor->transformer->setTransformation(
+				Eigen::Translation3f( translation ) *
+				rotation *
+				Eigen::Translation3f( -translation ) *
+				editor->transformer->getTransformation()
+			);
 		}
 	};
 
 	struct Resizing : Mode {
 		OBB storedOBB;
-		Eigen::Vector3f mask, hitPoint;
+
+		Eigen::Vector3f mask, invertedMask;
+		Eigen::Vector3f hitPoint;
 
 		float transformSpeed;
 
 		Resizing( Editor *editor ) : Mode( editor ), transformSpeed( 0.01 ) {}
-		
+
 		void storeState() {
-			storedOBB = editor->obb;
+			storedOBB = editor->transformer->getOBB();
 		}
 
 		void restoreState() {
-			editor->obb = storedOBB;
+			editor->transformer->setOBB( storedOBB );
 		}
 
 		bool setCornerMasks( int x, int y ) {
 			// TODO: get window/viewport size [9/28/2012 kirschan2]
 			// camera property?
-			const sf::Vector2i size( eventSystem.exclusiveMode.window->getSize() );
-			const float xh = float( x ) / size.x * 2 - 1;
-			const float yh = -(float( y ) / size.y * 2 - 1);
+			float xh, yh;
+			editor->convertScreenToHomogeneous( x, y, xh, yh );
 
 			const Eigen::Vector4f nearPlanePoint( xh, yh, -1.0, 1.0 );
-			const Eigen::Vector3f direction = ((editor->camera->getProjectionMatrix() * editor->camera->getViewTransformation().matrix()).inverse() * nearPlanePoint).hnormalized() - editor->camera->getPosition();
-			
+			const Eigen::Vector3f direction = (editor->view->viewerContext.projectionView.inverse() * nearPlanePoint).hnormalized() - editor->view->viewerContext.worldViewerPosition;
+
+			const OBB objectOBB = editor->transformer->getOBB();
+
+			Eigen::Vector3f boxHitPoint;
 			//Eigen::Vector3f hitPoint;
-			if( intersectRayWithOBB( editor->obb, editor->camera->getPosition(), direction, hitPoint ) ) {
-				const Eigen::Vector3f boxHitPoint = editor->obb.transformation.inverse() * hitPoint;
-
-				// determine the nearest plane, edge whatever
-				const Eigen::Vector3f p = boxHitPoint.cwiseQuotient( editor->obb.size / 2.0 );
-
-				// TODO: if we click near the center of a face we should behave just like below [9/28/2012 kirschan2]
-				int maskFlag = 0;
-				for( int i = 0 ; i < 3 ; i++ ) {
-					if( fabs( p[i] ) > 0.9 ) {
-						maskFlag |= 7 - (1<<i);
-					}	
-				}
-
-				mask.setZero();
-				for( int i = 0 ; i < 3 ; i++ ) {
-					if( maskFlag & (1<<i) ) {
-						mask[i] = (p[i] > 0.0) * 2 - 1;
-					}
-				}
+			if( intersectRayWithOBB( objectOBB, editor->view->viewerContext.worldViewerPosition, direction, &hitPoint ) ) {
+				boxHitPoint = objectOBB.transformation.inverse() * hitPoint;
 			}
 			else {
-				const auto objectDirection = editor->obb.transformation.translation() - editor->camera->getPosition();
-				hitPoint = editor->camera->getPosition() + 
+				const auto objectDirection = objectOBB.transformation.translation() - editor->view->viewerContext.worldViewerPosition;
+				hitPoint = editor->view->viewerContext.worldViewerPosition +
 					direction.normalized() / direction.normalized().dot( objectDirection ) * objectDirection.squaredNorm();
-				hitPoint = editor->obb.transformation.inverse() * hitPoint;
-				const Eigen::Vector3f boxHitPoint = nearestPointOnAABoxToPoint( -editor->obb.size / 2, editor->obb.size / 2, hitPoint );
-				//hitPoint = editor->obb.transformation * boxHitPoint;
+				hitPoint = objectOBB.transformation.inverse() * hitPoint;
+				boxHitPoint = nearestPointOnAABoxToPoint( -objectOBB.size / 2, objectOBB.size / 2, hitPoint );
+				hitPoint = objectOBB.transformation * boxHitPoint;
+			}
 
-				// determine the nearest plane, edge whatever
-				const Eigen::Vector3f p = boxHitPoint.cwiseQuotient( editor->obb.size / 2.0 );
+			// determine the nearest plane, edge whatever
+			const Eigen::Vector3f p = boxHitPoint.cwiseQuotient( objectOBB.size / 2.0 );
 
-				int maskFlag = 0;
-				for( int i = 0 ; i < 3 ; i++ ) {
-					if( fabs( p[i] ) > 0.9 ) {
-						maskFlag |= 1<<i;
-					}	
+			int maskFlag = 0;
+			for( int i = 0 ; i < 3 ; i++ ) {
+				// 20% border
+				if( fabs( p[i] ) > 0.6 ) {
+					maskFlag |= 1<<i;
 				}
+			}
 
-				mask.setZero();
-				for( int i = 0 ; i < 3 ; i++ ) {
-					if( maskFlag & (1<<i) ) {
-						mask[i] = (p[i] > 0.0) * 2 - 1;
-					}
+			mask.setZero();
+			invertedMask.setZero();
+
+			for( int i = 0 ; i < 3 ; i++ ) {
+				float value = (p[i] > 0.0) * 2 - 1;
+				if( maskFlag & (1<<i) ) {
+					mask[i] = value;
 				}
-			}			
+				else {
+					invertedMask[i] = value;
+				}
+			}
 
 			return true;
 		}
@@ -448,15 +621,23 @@ struct Editor : EventDispatcher {
 			}
 		}
 
-		void transform( const Eigen::Vector3f &relativeMovement, bool fixCenter ) {
-			const Vector3f boxDelta = editor->obb.transformation.inverse().linear() * editor->camera->getViewRotation().transpose() * relativeMovement;
-			editor->obb.size += boxDelta.cwiseProduct( mask );
-			editor->obb.size = editor->obb.size.cwiseMax( Vector3f::Constant( 1.0 ) );
-			
+		void transform( const Eigen::Vector3f &relativeMovement, bool fixCenter, bool invertMask ) {
+			const Eigen::Vector3f &localMask = invertMask ? invertedMask : mask;
+
+			OBB objectOBB = editor->transformer->getOBB();
+
+			const Vector3f boxDelta =
+				objectOBB.transformation.inverse().linear() *
+				editor->getScaledRelativeViewMovement( relativeMovement );
+			objectOBB.size += boxDelta.cwiseProduct( localMask );
+			objectOBB.size = objectOBB.size.cwiseMax( Vector3f::Constant( 1.0 ) );
+
 			if( !fixCenter ) {
-				const Vector3f centerShift = boxDelta.cwiseProduct( mask.cwiseAbs() ) / 2;
-				editor->obb.transformation = editor->obb.transformation * Eigen::Translation3f( centerShift );
+				const Vector3f centerShift = boxDelta.cwiseProduct( localMask.cwiseAbs() ) / 2;
+				objectOBB.transformation = objectOBB.transformation * Eigen::Translation3f( centerShift );
 			}
+
+			editor->transformer->setOBB( objectOBB );
 		}
 
 		void onUpdate( EventSystem &eventSystem, const float frameDuration, const float elapsedTime ) {
@@ -475,7 +656,7 @@ struct Editor : EventDispatcher {
 					relativeMovement *= 4;
 				}
 
-				transform( relativeMovement, sf::Keyboard::isKeyPressed( sf::Keyboard::LControl ) );
+				transform( relativeMovement, sf::Keyboard::isKeyPressed( sf::Keyboard::LControl ), sf::Keyboard::isKeyPressed( sf::Keyboard::LAlt ) );
 			}
 		}
 
@@ -496,8 +677,8 @@ struct Editor : EventDispatcher {
 	Rotating rotating;
 	Resizing resizing;
 
-	Editor() 
-		: 
+	Editor()
+		:
 			EventDispatcher( "Editor" ),
 			modes( "Mode" ),
 			dispatcher( "" ),
@@ -526,29 +707,50 @@ struct Editor : EventDispatcher {
 			selectMode( &selecting );
 		} ) );
 		addEventHandler( std::make_shared<KeyAction>( "enter placement mode", sf::Keyboard::F7, [&] () {
-			selectMode( &placing );
+			if( transformer ) {
+				selectMode( &placing );
+			}
 		} ) );
 		addEventHandler( std::make_shared<KeyAction>( "enter movement mode", sf::Keyboard::F8, [&] () {
-			selectMode( &moving );
+			if( transformer ) {
+				selectMode( &moving );
+			}
 		} ) );
 		addEventHandler( std::make_shared<KeyAction>( "enter rotation mode", sf::Keyboard::F9, [&] () {
-			selectMode( &rotating );
+			if( transformer ) {
+				selectMode( &rotating );
+			}
 		} ) );
 		addEventHandler( std::make_shared<KeyAction>( "enter resize mode", sf::Keyboard::F10, [&] () {
-			selectMode( &resizing );
+			if( transformer && transformer->canResize() ) {
+				selectMode( &resizing );
+			}
 		} ) );
 		addEventHandler( std::make_shared<KeyAction>( "enter free-look mode", sf::Keyboard::F5, [&] () {
 			selectMode( nullptr );
 		} ) );
 
+		OBB obb;
 		obb.transformation.setIdentity();
 		obb.size.setConstant( 3.0 );
+		
+		obbs.push_back( obb );
 	}
 
 	void render() {
 		DebugRender::begin();
-		DebugRender::setTransformation( obb.transformation );
-		DebugRender::drawBox( obb.size );
+		DebugRender::setColor( Eigen::Vector3f::UnitX() );
+		if( transformer ) {
+			DebugRender::setTransformation( transformer->getTransformation() );
+			DebugRender::drawBox( transformer->getSize() );
+		}
+
+		// render obbs
+		DebugRender::setColor( Eigen::Vector3f::Constant( 1.0 ) );
+		for( auto obb = obbs.begin() ; obb != obbs.end() ; ++obb ) {
+			DebugRender::setTransformation( obb->transformation );
+			DebugRender::drawBox( obb->size );	
+		}		
 		DebugRender::end();
 
 		if( modes.target ) {
@@ -558,7 +760,7 @@ struct Editor : EventDispatcher {
 };
 #endif
 
-EventSystem eventSystem;
+EventSystem *EventHandler::eventSystem;
 
 void real_main() {
 	sf::RenderWindow window( sf::VideoMode( 640, 480 ), "AOP", sf::Style::Default, sf::ContextSettings(24, 8, 0, 4, 2, false,true, false) );
@@ -590,13 +792,14 @@ void real_main() {
 	view.renderContext.setDefault();
 
 	const char *scenePath = "P:\\sgs\\sg_and_sgs_source\\survivor\\__GameData\\Editor\\Save\\Survivor_original_mission_editorfiles\\test\\scene.glscene";
-	//world.init( scenePath );
+	world.init( scenePath );
 
 	EventDispatcher eventDispatcher( "Root:" );
 	eventDispatcher.addEventHandler( make_nonallocated_shared( cameraInputControl ) );
-	
+
 	registerConsoleHelpAction( eventDispatcher );
 
+	EventSystem eventSystem;
 	eventSystem.rootHandler = make_nonallocated_shared( eventDispatcher );
 	eventSystem.exclusiveMode.window = make_nonallocated_shared( window );
 
@@ -604,9 +807,10 @@ void real_main() {
 	eventDispatcher.addEventHandler( make_nonallocated_shared( verboseEventDispatcher ) );
 
 	Editor editor;
-	editor.camera = &camera;
+	editor.world = &world;
+	editor.view = &view;
 	editor.init();
-	
+
 	eventDispatcher.addEventHandler( make_nonallocated_shared( editor ) );
 
 	KeyAction reloadShadersAction( "reload shaders", sf::Keyboard::R, [&] () { world.sceneRenderer.reloadShaders(); } );
@@ -649,9 +853,9 @@ void real_main() {
 	renderDuration.setCharacterSize( 10 );
 
 	Instance testInstance;
-	testInstance.modelId = 1;
+	testInstance.modelId = 0;
 	testInstance.transformation.setIdentity();
-	//sgsSceneRenderer.addInstance( testInstance );
+	world.sceneRenderer.addInstance( testInstance );
 
 	ProbeGenerator::initDirections();
 
@@ -716,8 +920,6 @@ void real_main() {
 		{
 			boost::timer::cpu_timer renderTimer;
 
-			view.updateFromCamera( camera );
-			//world.renderViewFrame( view );
 
 			//probeVisualization.render();
 
@@ -733,10 +935,11 @@ void real_main() {
 			glMatrixMode( GL_MODELVIEW );
 			glLoadIdentity();
 
+			view.updateFromCamera( camera );
+			world.renderViewFrame( view );
 			editor.render();
 
-			//const ViewerContext viewerContext = { camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() };
-			//optixRenderer.renderPinholeCamera( viewerContext, renderContext );
+			//world.renderOptixViewFrame( view );
 
 			renderDuration.setString( renderTimer.format() );
 			window.pushGLStates();

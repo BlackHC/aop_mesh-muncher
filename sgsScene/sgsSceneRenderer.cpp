@@ -432,6 +432,22 @@ void SGSSceneRenderer::renderShadowmap( const RenderContext &renderContext ) {
 		terrainMesh.vao.unbind();
 	}
 
+	// render dynamic objects
+	{
+		staticObjectsMesh.vao.bind();
+
+		glPushMatrix();
+		for( int instanceIndex = 0 ; instanceIndex < instances.size() ; ++instanceIndex ) {
+			const Instance &instance = instances[ instanceIndex ];
+			if( renderContext.disabledModelIndex != instance.modelId && renderContext.disabledInstanceIndex != scene->objects.size() + instanceIndex ) {
+				drawInstance( instances[ instanceIndex ] );
+			}
+		}
+		glPopMatrix();
+
+		staticObjectsMesh.vao.unbind();
+	}
+
 	{
 		staticObjectsMesh.vao.bind();
 
@@ -603,12 +619,14 @@ void SGSSceneRenderer::render( const Eigen::Matrix4f &projectionView, const Eige
 
 		staticObjectsMesh.vao.bind();
 		
+		glPushMatrix();
 		for( int instanceIndex = 0 ; instanceIndex < instances.size() ; ++instanceIndex ) {
 			const Instance &instance = instances[ instanceIndex ];
 			if( renderContext.disabledModelIndex != instance.modelId && renderContext.disabledInstanceIndex != scene->objects.size() + instanceIndex ) {
 				drawInstance( instances[ instanceIndex ] );
 			}
 		}
+		glPopMatrix();
 
 		staticObjectsMesh.vao.unbind();
 	}
@@ -810,13 +828,16 @@ void SGSSceneRenderer::drawModel( SGSScene::Model &model ) {
 }
 
 void SGSSceneRenderer::drawInstance( Instance &instance ) {
-	glMatrixLoad( GL_MODELVIEW, instance.transformation );
+	glMatrixLoad( GL_MODELVIEW, instance.transformation.matrix() );
 	drawModel( scene->models[ instance.modelId ] );
 }
 
-void SGSSceneRenderer::addInstance( const Instance &instance ) {
-	instances.push_back( instance );
+int SGSSceneRenderer::addInstance( const Instance &instance ) {
+	int instanceIndex = instances.size() + scene->numSceneObjects;
 
+	instances.push_back( instance );
 	refillDynamicOptixBuffers();
+
+	return instanceIndex;
 }
 

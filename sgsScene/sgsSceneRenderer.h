@@ -38,15 +38,10 @@ struct OptixRenderer;
 
 struct Instance {
 	// object to world
-	Eigen::Matrix4f transformation;
+	Eigen::Affine3f transformation;
 
 	int modelId;
 };
-
-
-
-// TODO: -> own file [9/20/2012 kirschan2]
-
 
 struct SGSSceneRenderer {
 	struct Optix {
@@ -156,7 +151,7 @@ struct SGSSceneRenderer {
 		}
 	};
 
-	ObjectMesh staticObjectsMesh, dynamicObjectsMesh;
+	ObjectMesh staticObjectsMesh;
 	TerrainMesh terrainMesh;
 	
 	// one display list per sub object
@@ -225,17 +220,31 @@ struct SGSSceneRenderer {
 
 	void render( const Eigen::Matrix4f &projectionView, const Eigen::Vector3f &worldViewerPosition, const RenderContext &renderContext );
 
+	//////////////////////////////////////////////////////////////////////////
+	// TOOD: move optix specific code into its own class [9/30/2012 kirschan2]
 	void initOptix( OptixRenderer *optixRenderer );
+	bool loadOptixCache();
+	void writeOptixCache();
+	void refillDynamicOptixBuffers();
+	//////////////////////////////////////////////////////////////////////////
 
 	std::vector< Instance > instances;
 
-	void addInstance( const Instance &instance );
+	bool isDynamicInstance( int instanceIndex ) {
+		return instanceIndex >= scene->numSceneObjects;
+	}
 
-	void refillDynamicOptixBuffers();
+	int addInstance( const Instance &instance );
 
-	Eigen::Matrix4f getInstanceTransformation( int instanceIndex ) {
+	void setInstanceTransformation( int instanceIndex, const Eigen::Affine3f &transformation ) {
+		instances[ instanceIndex - scene->numSceneObjects ].transformation = transformation;
+
+		refillDynamicOptixBuffers();
+	}
+
+	Eigen::Affine3f getInstanceTransformation( int instanceIndex ) const {
 		if( instanceIndex < scene->objects.size() ) {
-			return Eigen::Matrix4f::Map( scene->objects[ instanceIndex ].transformation );
+			return Eigen::Affine3f( Eigen::Matrix4f::Map( scene->objects[ instanceIndex ].transformation ) );
 		}
 		else {
 			instanceIndex -= scene->objects.size();

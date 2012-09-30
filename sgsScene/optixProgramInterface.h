@@ -52,8 +52,8 @@ struct ProbeContext {
 // miss is -2, -2
 struct SelectionResult {
 	enum {
-		SELECTION_INDEX_TERRAIN = -2,
-		SELECTION_INDEX_MISS = -1,
+		SELECTION_INDEX_TERRAIN = -1,
+		SELECTION_INDEX_MISS = -2,
 		SELECTION_INDEX_STACK_OVERFLOW = -3
 	};
 
@@ -64,6 +64,10 @@ struct SelectionResult {
 	optix::float3 hitPosition; 
 
 	float hitDistance;
+
+	bool hasHit() {
+		return objectIndex >= SELECTION_INDEX_TERRAIN;
+	}
 };
 
 #define _numProbeSamples 31

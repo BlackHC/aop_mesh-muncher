@@ -102,7 +102,7 @@ sgsMesh:
 
 	code::
 		void meshShader() {
-			worldPosition = gl_Vertex.xyz;
+			worldPosition = (gl_ModelViewMatrix * gl_Vertex).xyz;
 			worldNormal = gl_Normal;
 			//gl_Position = sunShadowProjection * gl_Vertex; 
 			gl_Position = ftransform();
