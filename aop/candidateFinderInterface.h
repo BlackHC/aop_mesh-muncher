@@ -7,8 +7,6 @@
 
 #include <math.h>
 
-#include <serializer.h>
-
 #include "optixProgramInterface.h"
 
 #include <Eigen/Eigen>
@@ -23,11 +21,55 @@ struct ProbeDatabase {
 	std::vector< ProbeContext > probeContexts;
 };*/
 
+/*
+struct NestedOutput {
+	static int currentIndentation;
+	int indentation;
 
+	template< typename T >
+	std::ostream & operator << ( const T & value ) {
 
+	}
+};*/
+
+#include <boost/format.hpp>
+
+struct AutoTimer {
+	static int currentIndentation;
+	int myIndentation;
+	boost::timer::cpu_timer timer;
+
+	AutoTimer( const char *function, const std::string &msg = std::string() ) : myIndentation( currentIndentation++ ) {
+		std::cerr << std::string( myIndentation, ' ' ) << function;
+		if( !msg.empty() ) {
+			std::cerr << ", " << msg;
+		}
+		std::cerr << ":\n";
+	}
+
+	std::string indentation() const {
+		return std::string( myIndentation + 1, ' ' );
+	}
+
+	~AutoTimer() {
+		--currentIndentation;
+		timer.stop();
+		std::cerr << indentation() << timer.format( 6, "* %ws wall, %us user + %ss system = %ts CPU (%p%)\n" ) << "\n";
+	}
+};
+
+int AutoTimer::currentIndentation;
+
+#define _AUTO_TIMER_MERGE_2( x, y ) x ## y
+#define _AUTO_TIMER_MERGE( x, y ) _AUTO_TIMER_MERGE_2( x, y ) 
+#define AUTO_TIMER_FOR_FUNCTION(...) AutoTimer _AUTO_TIMER_MERGE( _auto_timer, __COUNTER__ )( __FUNCTION__, __VA_ARGS__ )
+#define AUTO_TIMER_NAMED( name, ... ) AutoTimer name( __FUNCTION__, __VA_ARGS__ )
+#define AUTO_TIMER_DEFAULT( ... ) AutoTimer autoTimer( __FUNCTION__, __VA_ARGS__ )
+
+#include <boost/lexical_cast.hpp>
 
 // TODO: append _full [9/26/2012 kirschan2]
-inline bool probeContext_lexicographicalLess( const ProbeContext &a, const ProbeContext &b ) {
+__forceinline__ bool probeContext_lexicographicalLess( const ProbeContext &a, const ProbeContext &b ) {
 	return
 		boost::make_tuple( a.hitCounter, a.distance, a.color.x, a.color.y, a.color.z )
 		<
@@ -54,8 +96,6 @@ struct ProbeDataset {
 
 	std::vector<int> hitCounterLowerBounds;
 
-	//SERIALIZER_DEFAULT_IMPL( (probes)(probeContexts)(hitCounterLowerBounds) )
-
 	ProbeDataset() {}
 
 	ProbeDataset( ProbeDataset &&other ) : probes( std::move( other.probes ) ), probeContexts( std::move( other.probeContexts ) ) {}
@@ -67,11 +107,21 @@ struct ProbeDataset {
 		return *this;
 	}
 
+	ProbeDataset clone() const {
+		ProbeDataset cloned;
+		cloned.probes = probes;
+		cloned.probeContexts = probeContexts;
+		cloned.hitCounterLowerBounds = hitCounterLowerBounds;
+		return cloned;
+	}
+
 	int size() const {
 		return (int) probes.size();
 	}
 
 	void sort() {
+		AUTO_TIMER_FOR_FUNCTION();
+
 		using namespace generic;
 
 		const auto iterator_begin = make_sort_permute_iter( probeContexts.begin(), probes.begin() );
@@ -85,9 +135,10 @@ struct ProbeDataset {
 	}
 
 	void setHitCounterLowerBounds() {
-		// improvement idea: use a binary search like algorithm
-		boost::timer::auto_cpu_timer timer;
+		AUTO_TIMER_FOR_FUNCTION();
 
+		// improvement idea: use a binary search like algorithm
+		
 		// 0..numProbeSamples are valid hitCounter values
 		// we store one additional end() lower bound for simple interval calculations
 		hitCounterLowerBounds.reserve( OptixProgramInterface::numProbeSamples + 2 );
@@ -123,6 +174,8 @@ struct ProbeDataset {
 	}
 
 	static ProbeDataset merge( const ProbeDataset &first, const ProbeDataset &second ) {
+		AUTO_TIMER_DEFAULT( boost::str( boost::format( "with %i + %i = %i probes ") % first.size() % second.size() % (first.size() + second.size()) ) );
+
 		using namespace generic;
 
 		ProbeDataset result;
@@ -150,6 +203,8 @@ struct ProbeDataset {
 	}
 
 	static ProbeDataset mergeMultiple( const std::vector< ProbeDataset* > &datasets) {
+		AUTO_TIMER_DEFAULT( boost::str( boost::format( "with %i datasets" ) % datasets.size() ) );
+
 		using namespace generic;
 
 		// best performance when using binary merges:
@@ -172,6 +227,8 @@ struct ProbeDataset {
 			totalCount += (int) (*dataset)->probes.size();
 		}
 
+		std::cerr << autoTimer.indentation() << "merging " << totalCount << " probes\n"; 
+
 		ProbeDataset result;
 
 		// reserve enough space for all probes
@@ -184,6 +241,7 @@ struct ProbeDataset {
 			boost::push_back( result.probeContexts, (*dataset)->probeContexts );
 		}
 
+		// stable sorting everything is the next best alternative to doing it manually :)
 		{
 			const auto iterator_begin = make_sort_permute_iter( result.probeContexts.begin(), result.probes.begin() );
 			const auto iterator_end = make_sort_permute_iter( result.probeContexts.end(), result.probes.end() );
@@ -197,6 +255,11 @@ struct ProbeDataset {
 
 		return std::move( result );
 	}
+
+private:
+	// better error messages than with boost::noncopyable
+	ProbeDataset( const ProbeDataset &other );
+	ProbeDataset & operator = ( const ProbeDataset &other );
 };
 
 #if 0
@@ -233,12 +296,12 @@ struct ProbeContextTolerance {
 
 	float occusionTolerance;
 	float colorTolerance;
+	// this should be the resolution of the probes
 	float distanceTolerance;
 
 	void setDefault() {
 		occusionTolerance = 0.125;
 		colorTolerance = 0.25;
-		// this should be the resolution of the probes
 		distanceTolerance = 0.25;
 	}
 };
@@ -247,6 +310,12 @@ struct CandidateFinder {
 	typedef int Id;
 	typedef std::vector<Id> Ids;
 
+	struct Query;
+
+	std::shared_ptr<Query> createQuery() {
+		return std::shared_ptr< Query >( new Query( this ) );
+	}
+
 	struct Query {
 		typedef std::shared_ptr<Query> Ptr;
 
@@ -254,7 +323,6 @@ struct CandidateFinder {
 			int id;
 			int numMatches;
 		};
-
 		typedef std::vector<MatchInfo> MatchInfos;
 
 		void setProbeContextTolerance( const ProbeContextTolerance &pct ) {
@@ -266,11 +334,13 @@ struct CandidateFinder {
 		}
 
 		void execute() {
-			// TODO: assert matchInfos.empty [9/27/2012 kirschan2]
+			if( !matchInfos.empty() ) {
+				throw std::logic_error( "matchInfos is not empty!" );
+			}
 
 			processDataset();
 
-			// this can be easily parallelized
+			// NOTE: this can be easily parallelized
 			for( int id = 0 ; id < parent->idDatasets.size() ; id++ ) {
 				MatchInfo result = matchAgainst( id );
 				if( result.numMatches > 0 ) {
@@ -279,11 +349,9 @@ struct CandidateFinder {
 			}
 		}
 
-		MatchInfos getCandidates() {
+		const MatchInfos & getCandidates() const {
 			return matchInfos;
 		}
-
-		Query( const CandidateFinder *parent ) : parent( parent ) {}
 
 	protected:
 		typedef ProbeDataset::IntRange IntRange;
@@ -298,11 +366,14 @@ struct CandidateFinder {
 #endif
 
 		MatchInfo matchAgainst( int id ) {
+			AUTO_TIMER_FOR_FUNCTION( "id = " + boost::lexical_cast<std::string>( id ) );
+
 			// idea:
 			//	use a binary search approach to generate only needed subranges
 
 			// TODO: rename idDataset to idDatabase? [9/26/2012 kirschan2]
 			const ProbeDataset &idDataset = parent->idDatasets[id].mergedDataset;
+
 			// we can compare the different occlusion ranges against each other, after including the tolerance
 
 			// TODO: is it better to make both ranges about equally big or not?
@@ -316,7 +387,7 @@ struct CandidateFinder {
 			// only second needs to be sorted
 			std::vector< OverlappedRange > overlappedRanges;
 			overlappedRanges.reserve( OptixProgramInterface::numProbeSamples );
-			for( int occulsionLevel = 0 ; occulsionLevel < OptixProgramInterface::numProbeSamples ; occulsionLevel++ ) {
+			for( int occulsionLevel = 0 ; occulsionLevel <= OptixProgramInterface::numProbeSamples ; occulsionLevel++ ) {
 				const int leftToleranceLevel = std::max( 0, occulsionLevel - occlusionTolerance );
 				const int rightToleranceLevel = std::min( occulsionLevel + occlusionTolerance, OptixProgramInterface::numProbeSamples );
 
@@ -328,6 +399,7 @@ struct CandidateFinder {
 					continue;
 				}
 
+				// store the range for later
 				overlappedRanges.push_back( std::make_pair( idRange, queryRange ) );
 			}
 
@@ -349,7 +421,7 @@ struct CandidateFinder {
 				const ProbeContext &refContext = idDataset.probeContexts[ refIndex ];
 
 				for( int queryIndex = overlappedRange.second.first ; queryIndex < overlappedRange.second.second ; ++queryIndex ) {
-					const ProbeContext &queryContext = dataset.probeContexts[ refIndex ];
+					const ProbeContext &queryContext = dataset.probeContexts[ queryIndex ];
 
 					if( matchDistanceAndColor( refContext, queryContext ) ) {
 						matchInfo.numMatches++;
@@ -358,8 +430,8 @@ struct CandidateFinder {
 			}
 		}
 
-		bool matchDistanceAndColor( const ProbeContext &refContext, const ProbeContext &queryContext ) {
-			if( fabs( refContext.distance - queryContext.distance ) >= probeContextTolerance.distanceTolerance ) {
+		__forceinline__ bool matchDistanceAndColor( const ProbeContext &refContext, const ProbeContext &queryContext ) {
+			if( fabs( refContext.distance - queryContext.distance ) > probeContextTolerance.distanceTolerance ) {
 				return false;
 			}
 
@@ -368,7 +440,8 @@ struct CandidateFinder {
 				refContext.color.y - queryContext.color.y,
 				refContext.color.z - queryContext.color.z
 			);
-			if( colorDistance.squaredNorm() >= probeContextTolerance.colorTolerance * probeContextTolerance.colorTolerance * (1<<16) ) {
+			// TODO: cache the last value? [10/1/2012 kirschan2]
+			if( colorDistance.squaredNorm() > probeContextTolerance.colorTolerance * probeContextTolerance.colorTolerance * (1<<16) ) {
 				return false;
 			}
 			return true;
@@ -389,7 +462,8 @@ struct CandidateFinder {
 #endif
 
 		void processDataset() {
-			boost::timer::auto_cpu_timer querySortTimer;
+			AUTO_TIMER_FOR_FUNCTION();
+
 			dataset.sort();
 			dataset.setHitCounterLowerBounds();
 		}
@@ -402,20 +476,19 @@ struct CandidateFinder {
 		ProbeContextTolerance probeContextTolerance;
 
 		MatchInfos matchInfos;
+
+	private:
+		Query( const CandidateFinder *parent ) : parent( parent ) {}
+
+		friend std::shared_ptr<Query> CandidateFinder::createQuery();
 	};
 
-	// not a shared pointer because it could contain a lot of data and we do not want that dangling around (better crash)
-	Query* createQuery() {
-		return new Query( this );
-	}
-
 	void reserveIds( Id maxId ) {
-		idDatasets.resize( maxId );
+		idDatasets.resize( maxId + 1 );
 	}
 
 	void addDataset( Id id, ProbeDataset &&dataset ) {
-		// TODO: error handling [9/26/2012 kirschan2]
-		idDatasets[ id ].insertQueue.emplace_back( dataset );
+		idDatasets[ id ].insertQueue.emplace_back( std::move( dataset ) );
 	}
 
 	void integrateDatasets() {
@@ -424,14 +497,14 @@ struct CandidateFinder {
 		}
 	}
 
-	static const int CACHE_FORMAT_VERSION = 0;
+	// see candidateFinderCache.cpp
+	bool loadCache( const char *filename );
+	void storeCache( const char *filename );
 
-private:
+public:
 	struct IdDatasets {
 		std::vector<ProbeDataset> insertQueue;
 		ProbeDataset mergedDataset;
-
-		//SERIALIZER_DEFAULT_IMPL( (insertQueue)(mergedDataset) )
 
 		IdDatasets() {}
 		IdDatasets( IdDatasets &&other ) : insertQueue( std::move( other.insertQueue ) ), mergedDataset( std::move( other.mergedDataset ) ) {}
@@ -445,10 +518,10 @@ private:
 			if( insertQueue.empty() ) {
 				return;
 			}
-
-			int totalCount = 0;
+			
 			{
-				boost::timer::auto_cpu_timer querySortTimer;
+				AUTO_TIMER_DEFAULT( "sort queue");
+				int totalCount = 0;
 
 				for( auto dataset = insertQueue.begin() ; dataset != insertQueue.end() ; ++dataset ) {
 					dataset->sort();
@@ -457,20 +530,13 @@ private:
 					totalCount += dataset->size();
 				}
 
-				std::cout << "processed queue of " << totalCount << " probes:\n\t";
+				std::cerr << autoTimer.indentation() << "processed queue of " << totalCount << " probes\n";
 			}
 
-			{
-				boost::timer::auto_cpu_timer mergeTimer;
-				totalCount += mergedDataset.size();
-
-				std::cout << "merging " << totalCount << " probes:\n\t";
-
-				if( insertQueue.size() == 1 ) {
-					mergedDataset = ProbeDataset::merge( mergedDataset, insertQueue[0] );
-					return;
-				}
-
+			if( insertQueue.size() == 1 ) {
+				mergedDataset = ProbeDataset::merge( mergedDataset, insertQueue[0] );
+			}
+			else {
 				// create a pointer vector with all datasets
 				std::vector< ProbeDataset * > datasets;
 				datasets.reserve( 1 + insertQueue.size() );
@@ -480,18 +546,23 @@ private:
 					datasets.push_back( &*dataset );
 				}
 
+				// merge them all
 				mergedDataset = std::move( ProbeDataset::mergeMultiple( datasets ) );
 
+				// reset the queue
 				insertQueue.clear();
 			}
 
+			// set the hitcounter bounds
 			mergedDataset.setHitCounterLowerBounds();
 		}
+
+	private:
+		// better error messages than with boost::noncopyable
+		IdDatasets( const IdDatasets &other );
+		IdDatasets & operator = ( const IdDatasets &other );
 	};
 
+private:
 	std::vector<IdDatasets> idDatasets;
-
-public:
-	bool loadCache( const char *filename );
-	void storeCache( const char *filename );
 };

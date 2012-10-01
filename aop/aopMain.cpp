@@ -233,38 +233,56 @@ void real_main() {
 
 	ProbeGenerator::initDirections();
 
-#if 0
-	renderContext.disabledModelIndex = 0;
+#if 1
+	CandidateFinder candidateFinder;
+	candidateFinder.reserveIds(0);
+	view.renderContext.disabledModelIndex = 0;
 	DebugRender::DisplayList probeVisualization;
 	{
-		auto instanceIndices = sgsSceneRenderer.getModelInstances( 0 );
+		auto instanceIndices = world.sceneRenderer.getModelInstances( 0 );
 
 		int totalCount = 0;
 
 		for( auto instanceIndex = instanceIndices.begin() ; instanceIndex != instanceIndices.end() ; ++instanceIndex ) {
 			boost::timer::auto_cpu_timer timer( "ProbeSampling, batch: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
 
-			std::vector<SGSInterface::Probe> probes, transformedProbes;
+			ProbeDataset dataset;
+			std::vector<SGSInterface::Probe> transformedProbes;
 
-			SGSInterface::generateProbes( *instanceIndex, 0.25, sgsSceneRenderer, probes, transformedProbes );
-
-			std::vector< OptixRenderer::ProbeContext > probeContexts;
+			world.generateProbes( *instanceIndex, 0.25, dataset.probes, transformedProbes );
 
 			std::cout << "sampling " << transformedProbes.size() << " probes in one batch:\n\t";
-			//optixRenderer.sampleProbes( transformedProbes, probeContexts, renderContext );
+			world.optixRenderer.sampleProbes( transformedProbes, dataset.probeContexts, view.renderContext );
+
+			candidateFinder.addDataset(0, std::move( dataset ) );
 
 			totalCount += transformedProbes.size();
 
-			probeVisualization.beginCompileAndAppend();
+			/*probeVisualization.beginCompileAndAppend();
 			visualizeProbes( 0.25, transformedProbes );
-			probeVisualization.endCompile();
+			probeVisualization.endCompile();*/
 		}
 
 		std::cout << "num probes: " << totalCount << "\n";
+
+		candidateFinder.integrateDatasets();
 	}
 #endif
 
-	view.renderContext.disabledModelIndex = 0;
+	view.renderContext.disabledModelIndex = -1;
+
+	return;
+
+	Editor::VectorVolumes volumes;
+	editor.volumes = &volumes;
+	
+	{
+		OBB obb;
+		obb.transformation.setIdentity();
+		obb.size.setConstant( 3.0 );
+		
+		volumes.obbs.push_back( obb );
+	}
 
 	while (true)
 	{

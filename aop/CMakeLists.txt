@@ -40,6 +40,7 @@ INCLUDE_DIRECTORIES(
 	../volume
 	../sgsScene
 	../generic
+	../gtest
 )
 
 # ../gtest/gtest_main.cc
@@ -97,9 +98,22 @@ CUDA_ADD_EXECUTABLE(aop
 	probeVisualization.cpp
 	candidateFinderInterface.h
 	candidateFinder.cpp
+	candidateFinderCache.cpp
 	editor.h
 	editor.cpp
 	)
+
+ADD_EXECUTABLE(Test_aop
+	candidateFinderInterface.h
+	candidateFinder.cpp
+	candidateFinderCache.cpp
+
+	test_candidateFinder.cpp
+
+	../gtest/gtest_main.cc
+	../gtest/gtest-all.cc
+	)
+
 
 # The test application uses niven core, so link against it
 TARGET_LINK_LIBRARIES(aop ${ANTTWEAKBAR_LIBRARY})
@@ -111,3 +125,11 @@ TARGET_LINK_LIBRARIES(aop ${SOIL_LIBRARY})
 TARGET_LINK_LIBRARIES(aop ${optix_LIBRARY})
 
 #TARGET_LINK_LIBRARIES(aop ${GWEN_LIBRARY})
+
+TARGET_LINK_LIBRARIES(Test_aop ${ANTTWEAKBAR_LIBRARY})
+TARGET_LINK_LIBRARIES(Test_aop ${SFML_LIBRARIES})
+TARGET_LINK_LIBRARIES(Test_aop ${OPENGL_LIBRARIES})
+
+TARGET_LINK_LIBRARIES(Test_aop ${Boost_LIBRARIES})
+TARGET_LINK_LIBRARIES(Test_aop ${SOIL_LIBRARY})
+TARGET_LINK_LIBRARIES(Test_aop ${optix_LIBRARY})

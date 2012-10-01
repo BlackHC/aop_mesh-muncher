@@ -18,6 +18,18 @@ struct Editor : EventDispatcher {
 		virtual OBB *get( int index ) = 0;
 	};
 
+	struct VectorVolumes : Volumes {
+		std::vector<OBB> obbs;
+
+		int getCount() {
+			return obbs.size();
+		}
+
+		OBB *get( int index ) {
+			return &obbs[ index ];
+		}
+	};
+
 	struct ITransformer {
 		enum Type {
 			T_OBB,
@@ -36,6 +48,8 @@ struct Editor : EventDispatcher {
 		virtual void setOBB( const OBB &obb ) = 0;
 
 		virtual bool canResize() = 0;
+
+		virtual ~ITransformer() {}
 	};
 
 	struct OBBTransformer : ITransformer {
@@ -140,6 +154,7 @@ struct Editor : EventDispatcher {
 		//MouseDelta dragDelta;
 
 		Mode( Editor *editor ) : editor( editor ), dragging( false ), selected( false ) {}
+		virtual ~Mode() {}
 
 		sf::Vector2i popMouseDelta() {
 			return eventSystem->exclusiveMode.popMouseDelta();

@@ -37,12 +37,6 @@ void Editor::init() {
 	addEventHandler( std::make_shared<KeyAction>( "enter free-look mode", sf::Keyboard::F5, [&] () {
 		selectMode( nullptr );
 	} ) );
-
-	OBB obb;
-	obb.transformation.setIdentity();
-	obb.size.setConstant( 3.0 );
-
-	obbs.push_back( obb );
 }
 
 void Editor::render() {
@@ -204,13 +198,15 @@ void Editor::Selecting::onMouse( EventState &eventState ) {
 		const Eigen::Vector3f direction = ((editor->view->viewerContext.projectionView.inverse() * nearPlanePoint).hnormalized() - editor->view->viewerContext.worldViewerPosition).normalized();
 
 		float bestT;
-		OBB *bestOBB = nullptr;
-		for( auto obb = editor->obbs.begin() ; obb != editor->obbs.end() ; ++obb ) {
+		int bestOBB = -1;
+		for( int obbIndex = 0 ; obbIndex < editor->volumes->getCount() ; obbIndex++ ) {
+			const OBB *obb = editor->volumes->get( obbIndex );
 			float t;
+
 			if( intersectRayWithOBB( *obb, editor->view->viewerContext.worldViewerPosition, direction, nullptr, &t ) ) {
-				if( !bestOBB || bestT > t ) {
+				if( bestOBB == -1 || bestT > t ) {
 					bestT = t;
-					bestOBB = &*obb;
+					bestOBB = obbIndex;
 				}
 			}
 		}
@@ -218,14 +214,14 @@ void Editor::Selecting::onMouse( EventState &eventState ) {
 		// NOTE: this all only works if direction is normalized, so we can compare hitDistance with bestT! [9/30/2012 kirschan2]
 		SGSInterface::SelectionResult result;
 		if( editor->world->selectFromView( *editor->view, xh, yh, &result ) && result.objectIndex != SGSInterface::SelectionResult::SELECTION_INDEX_TERRAIN ) {
-			if( !bestOBB || result.hitDistance < bestT) {
-				bestOBB = nullptr;
+			if( bestOBB == -1 || result.hitDistance < bestT) {
+				bestOBB = -1;
 				editor->transformer = std::make_shared< SGSInstanceTransformer >( editor, result.objectIndex );
 			}
 		}
 
-		if( bestOBB ) {
-			editor->transformer = std::make_shared< OBBTransformer >( make_nonallocated_shared(*bestOBB) );
+		if( bestOBB != -1 ) {
+			editor->transformer = std::make_shared< OBBTransformer >( editor, bestOBB );
 		}
 	}
 	eventState.accept();

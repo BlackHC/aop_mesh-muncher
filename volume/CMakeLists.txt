@@ -1,5 +1,5 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
-PROJECT(TestGrid)
+PROJECT(Test_grid)
 
 # niven is built with RTTI disabled (/GR-) and unicode-aware
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /GR- /D_UNICODE")
