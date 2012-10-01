@@ -37,8 +37,13 @@ using namespace Eigen;
 #include "mathUtility.h"
 
 #include "editor.h"
+#include "anttwbargroup.h"
+#include "antTweakBarEventHandler.h"
 
+#include "autoTimer.h"
 #include "candidateFinderInterface.h"
+
+std::weak_ptr<AntTweakBarEventHandler::GlobalScope> AntTweakBarEventHandler::globalScope;
 
 void visualizeProbes( float resolution, const std::vector< SGSInterface::Probe > &probes );
 
@@ -61,55 +66,7 @@ void selectObjectsByModelID( SGSSceneRenderer &renderer, int modelIndex ) {
 	selectionDR.end();
 }
 
-DebugRender::CombinedCalls probeDumps;
 
-void sampleInstances( OptixRenderer &optix, SGSSceneRenderer &renderer, int modelIndex ) {
-	SGSSceneRenderer::InstanceIndices indices = renderer.getModelInstances( modelIndex );
-
-	std::vector< OptixRenderer::ProbeContext > probeContexts;
-	std::vector< OptixRenderer::Probe > probes;
-
-	for( int instanceIndexIndex = 0 ; instanceIndexIndex < indices.size() ; ++instanceIndexIndex ) {
-		const auto &instanceIndex = indices[ instanceIndexIndex ];
-
-		RenderContext renderContext;
-		renderContext.disabledModelIndex = -1;
-		renderContext.disabledInstanceIndex = instanceIndex;
-
-		// create probes
-		std::vector< OptixRenderer::Probe > localProbes;
-
-		const float resolution = 1;
-		auto boundingBox = renderer.getUntransformedInstanceBoundingBox( instanceIndex );
-		auto transformation = Eigen::Affine3f( renderer.getInstanceTransformation( instanceIndex ) );
-		auto mapping = createIndexMapping( ceil( boundingBox.sizes() / resolution ),boundingBox.min(), resolution );
-
-		auto center = transformation * boundingBox.center();
-		for( auto iterator = mapping.getIterator() ; iterator.hasMore() ; ++iterator ) {
-			OptixRenderer::Probe probe;
-			auto probePosition = Eigen::Vector3f::Map( &probe.position.x );
-			auto probeDirection = Eigen::Vector3f::Map( &probe.direction.x );
-			probePosition = transformation * mapping.getPosition( iterator.getIndex3() );
-			probeDirection = (probePosition - center).normalized();
-			localProbes.push_back( probe );
-		}
-
-		std::vector< OptixRenderer::ProbeContext > localProbeContexts;
-		optix.sampleProbes( localProbes, localProbeContexts, renderContext );
-
-		boost::push_back( probes, localProbes );
-		boost::push_back( probeContexts, localProbeContexts );
-	}
-
-	probeDumps.begin();
-	for( int probeContextIndex = 0 ; probeContextIndex < probeContexts.size() ; ++probeContextIndex ) {
-		const auto &probeContext = probeContexts[ probeContextIndex ];
-		probeDumps.setPosition( Eigen::Vector3f::Map( &probes[ probeContextIndex ].position.x ) );
-		glColor4ubv( &probeContext.color.x );
-		probeDumps.drawVectorCone( probeContext.distance * Eigen::Vector3f::Map( &probes[ probeContextIndex ].direction.x ), probeContexts.front().distance * 0.25, 1 + float( probeContext.hitCounter ) / OptixProgramInterface::numProbeSamples * 15 );
-	}
-	probeDumps.end();
-}
 
 #if 1
 
@@ -131,6 +88,34 @@ struct MouseDelta {
 
 #endif
 
+void sampleInstances( SGSInterface::World &world, CandidateFinder &candidateFinder, int modelIndex ) {
+	AUTO_TIMER_FOR_FUNCTION();
+
+	RenderContext renderContext;
+	renderContext.setDefault();
+	renderContext.disabledModelIndex = modelIndex;
+
+	auto instanceIndices = world.sceneRenderer.getModelInstances( 0 );
+	
+	int totalCount = 0;
+
+	for( auto instanceIndex = instanceIndices.begin() ; instanceIndex != instanceIndices.end() ; ++instanceIndex ) {
+		ProbeDataset dataset;
+		std::vector<SGSInterface::Probe> transformedProbes;
+	
+		world.generateProbes( *instanceIndex, 0.25, dataset.probes, transformedProbes );
+	
+		AUTO_TIMER_DEFAULT( boost::str( boost::format( "batch with %i probes" ) % transformedProbes.size() ) );
+		std::cout << "sampling " << transformedProbes.size() << " probes in one batch:\n\t";
+		world.optixRenderer.sampleProbes( transformedProbes, dataset.probeContexts, renderContext );
+	
+		candidateFinder.addDataset(modelIndex, std::move( dataset ) );
+	
+		totalCount += transformedProbes.size();
+	}
+	
+	std::cerr << Indentation::get() << "total sampled probes: " << totalCount << "\n";
+}
 
 
 // TODO: this should get its own file [9/30/2012 kirschan2]
@@ -169,23 +154,13 @@ void real_main() {
 	world.init( scenePath );
 
 	EventDispatcher eventDispatcher( "Root:" );
-	eventDispatcher.addEventHandler( make_nonallocated_shared( cameraInputControl ) );
-
-	registerConsoleHelpAction( eventDispatcher );
-
+	
 	EventSystem eventSystem;
 	eventSystem.rootHandler = make_nonallocated_shared( eventDispatcher );
 	eventSystem.exclusiveMode.window = make_nonallocated_shared( window );
 
-	EventDispatcher verboseEventDispatcher( "sub" );
+/*	EventDispatcher verboseEventDispatcher( "sub" );
 	eventDispatcher.addEventHandler( make_nonallocated_shared( verboseEventDispatcher ) );
-
-	Editor editor;
-	editor.world = &world;
-	editor.view = &view;
-	editor.init();
-
-	eventDispatcher.addEventHandler( make_nonallocated_shared( editor ) );
 
 	KeyAction reloadShadersAction( "reload shaders", sf::Keyboard::R, [&] () { world.sceneRenderer.reloadShaders(); } );
 	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( reloadShadersAction ) );
@@ -203,7 +178,22 @@ void real_main() {
 	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( disabledObjectIndexControl ) );
 
 	IntVariableControl disabledInstanceIndexControl( "disabledInstanceIndex",view.renderContext.disabledInstanceIndex, -1, world.scene.numSceneObjects, sf::Keyboard::Numpad9, sf::Keyboard::Numpad3 );
-	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( disabledInstanceIndexControl ) );
+	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( disabledInstanceIndexControl ) );*/
+
+	AntTweakBarEventHandler antTweakBarEventHandler;
+	antTweakBarEventHandler.init( window );
+	// register anttweakbar first because it actually manages its own focus
+	eventDispatcher.addEventHandler( make_nonallocated_shared( antTweakBarEventHandler ) );
+	
+	registerConsoleHelpAction( eventDispatcher );
+	eventDispatcher.addEventHandler( make_nonallocated_shared( cameraInputControl ) );
+
+	Editor editor;
+	editor.world = &world;
+	editor.view = &view;
+	editor.init();
+
+	eventDispatcher.addEventHandler( make_nonallocated_shared( editor ) );
 
 	DebugWindowManager debugWindowManager;
 
@@ -233,7 +223,7 @@ void real_main() {
 
 	ProbeGenerator::initDirections();
 
-#if 1
+#if 0
 	CandidateFinder candidateFinder;
 	candidateFinder.reserveIds(0);
 	view.renderContext.disabledModelIndex = 0;
@@ -267,11 +257,10 @@ void real_main() {
 
 		candidateFinder.integrateDatasets();
 	}
-#endif
-
 	view.renderContext.disabledModelIndex = -1;
 
 	return;
+#endif
 
 	Editor::VectorVolumes volumes;
 	editor.volumes = &volumes;
@@ -284,6 +273,8 @@ void real_main() {
 		volumes.obbs.push_back( obb );
 	}
 
+	AntTWBarGroup group( "test" );
+	
 	while (true)
 	{
 		// Activate the window for OpenGL rendering
@@ -340,12 +331,13 @@ void real_main() {
 			window.resetGLStates();
 			window.draw( renderDuration );
 			window.popGLStates();
-
-			// End the current frame and display its contents on screen
-			window.display();
-
-			debugWindowManager.update();
 		}
+
+		antTweakBarEventHandler.render();
+		// End the current frame and display its contents on screen
+		window.display();
+
+		debugWindowManager.update();
 
 	}
 };

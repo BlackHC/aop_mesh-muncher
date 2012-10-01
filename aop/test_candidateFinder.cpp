@@ -262,7 +262,7 @@ TEST( CandidateFinder, oneTolerance ) {
 	}
 }
 
-#if 0
+#if 1
 TEST( CandidateFinder, big ) {
 	ProbeDataset dataset, testDataset;
 

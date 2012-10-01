@@ -6,6 +6,8 @@ PROJECT(aop)
 
 # niven is built with RTTI disabled (/GR-) and unicode-aware
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /GR- /D_UNICODE")
+# get rid of /RTC
+STRING (REGEX REPLACE "/RTC(su|[1su])" "" CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}")
 
 # windows.h sucks..
 # and turn on multiprocessor compilation
@@ -18,6 +20,7 @@ ADD_OPENMP_FLAGS()
 FIND_PACKAGE(OpenGL)
 FIND_PACKAGE(Cuda)
 FIND_PACKAGE(OptiX)
+FIND_PACKAGE(AntTweakBar REQUIRED)
 
 MESSAGE( "CUDA PTX Target: '${CUDA_GENERATED_OUTPUT_DIR}'" )
 
@@ -58,6 +61,15 @@ CUDA_ADD_EXECUTABLE(aop
 	../framework/glslPipeline.h
 	../framework/glslPipeline.cpp
 	../framework/mathUtility.h
+
+	../framework/autoTimer.h
+	../framework/autoTimer.cpp
+
+	../framework/antTweakBarEventHandler.h
+	../framework/twEventSFML20.cpp
+	../framework/anttwbarcollection.h
+	../framework/anttwbargroup.h
+	../framework/anttwbargroup.cpp
 
 	../glutil/Debug.cpp
 	../glutil/Debug.h
@@ -112,8 +124,13 @@ ADD_EXECUTABLE(Test_aop
 
 	../gtest/gtest_main.cc
 	../gtest/gtest-all.cc
-	)
+)
 
+SET_SOURCE_FILES_PROPERTIES(
+	candidateFinder.cpp
+	PROPERTIES
+	COMPILE_FLAGS "/Ox /Ob2 /Oi /Ot"
+)
 
 # The test application uses niven core, so link against it
 TARGET_LINK_LIBRARIES(aop ${ANTTWEAKBAR_LIBRARY})
@@ -133,3 +150,12 @@ TARGET_LINK_LIBRARIES(Test_aop ${OPENGL_LIBRARIES})
 TARGET_LINK_LIBRARIES(Test_aop ${Boost_LIBRARIES})
 TARGET_LINK_LIBRARIES(Test_aop ${SOIL_LIBRARY})
 TARGET_LINK_LIBRARIES(Test_aop ${optix_LIBRARY})
+
+SOURCE_GROUP( "aop" REGULAR_EXPRESSION "[^/\\]*$" )
+SOURCE_GROUP( "build" REGULAR_EXPRESSION "../build/[^/\\]*" )
+SOURCE_GROUP( "framework" REGULAR_EXPRESSION "../framework/[^/]*" )
+SOURCE_GROUP( "sgsScene" REGULAR_EXPRESSION "../sgsScene/[^/]*" )
+SOURCE_GROUP( "glutil" REGULAR_EXPRESSION "../glutil/[^/]*" )
+SOURCE_GROUP( "wml" REGULAR_EXPRESSION "../wml/[^/]*" )
+SOURCE_GROUP( "texturePacker" REGULAR_EXPRESSION "../texturePacker/[^/]*" )
+SOURCE_GROUP( "generic" REGULAR_EXPRESSION "../generic/[^/]*" )

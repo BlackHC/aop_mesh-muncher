@@ -147,13 +147,14 @@ struct Editor : EventDispatcher {
 	Volumes *volumes;
 
 	struct Mode : NullEventHandler {
+		const char *name;
 		Editor *editor;
 
 		bool dragging;
 		bool selected;
 		//MouseDelta dragDelta;
 
-		Mode( Editor *editor ) : editor( editor ), dragging( false ), selected( false ) {}
+		Mode( Editor *editor, const char *name ) : editor( editor ), name( name ), dragging( false ), selected( false ) {}
 		virtual ~Mode() {}
 
 		sf::Vector2i popMouseDelta() {
@@ -211,7 +212,7 @@ struct Editor : EventDispatcher {
 
 		virtual void transform( const Eigen::Vector3f &relativeMovement ) = 0;
 
-		TransformMode( Editor *editor ) : Mode( editor ), transformSpeed( 0.1f ) {}
+		TransformMode( Editor *editor, const char *name ) : Mode( editor, name ), transformSpeed( 0.1f ) {}
 
 		void storeState();
 		void restoreState();
@@ -222,34 +223,42 @@ struct Editor : EventDispatcher {
 		void onNotify( const EventState &eventState );
 
 		std::string getHelp(const std::string &prefix /* = std::string */ ) {
-			return prefix + "click+drag with mouse to transform, and WASD, Space and Ctrl for precise transformation; keep shift pressed for faster transformation; use the mouse wheel to change precise transformation granularity\n";
+			return prefix + name + ": click+drag with mouse to transform, and WASD, Space and Ctrl for precise transformation; keep shift pressed for faster transformation; use the mouse wheel to change precise transformation granularity\n";
 		}
 	};
 
 	void convertScreenToHomogeneous( int x, int y, float &xh, float &yh );
 
 	struct Selecting : Mode {
-		Selecting( Editor *editor ) : Mode( editor ) {}
+		Selecting( Editor *editor, const char *name ) : Mode( editor, name ) {}
 
 		void onMouse( EventState &eventState );
+
+		std::string getHelp( const std::string &prefix /* = std::string */ ) {
+			return prefix + name;
+		}
 	};
 
 	struct Placing : Mode {
-		Placing( Editor *editor ) : Mode( editor ) {}
+		Placing( Editor *editor, const char *name ) : Mode( editor, name ) {}
 
 		void onMouse( EventState &eventState );
+
+		std::string getHelp( const std::string &prefix /* = std::string */ ) {
+			return prefix + name;
+		}
 	};
 
 	Eigen::Vector3f getScaledRelativeViewMovement( const Eigen::Vector3f &relativeMovement );
 
 	struct Moving : TransformMode {
-		Moving( Editor *editor ) : TransformMode( editor ) {}
+		Moving( Editor *editor, const char *name ) : TransformMode( editor, name ) {}
 
 		virtual void transform( const Eigen::Vector3f &relativeMovement );
 	};
 
 	struct Rotating : TransformMode {
-		Rotating( Editor *editor ) : TransformMode( editor ) {}
+		Rotating( Editor *editor, const char *name ) : TransformMode( editor, name ) {}
 
 		void transform( const Eigen::Vector3f &relativeMovement );
 	};
@@ -262,7 +271,7 @@ struct Editor : EventDispatcher {
 
 		float transformSpeed;
 
-		Resizing( Editor *editor ) : Mode( editor ), transformSpeed( 0.01 ) {}
+		Resizing( Editor *editor, const char *name ) : Mode( editor, name ), transformSpeed( 0.01 ) {}
 
 		void storeState();
 		void restoreState();
@@ -277,7 +286,7 @@ struct Editor : EventDispatcher {
 		void render();
 
 		std::string getHelp(const std::string &prefix /* = std::string */ ) {
-			return prefix + "click+drag with mouse to resize, Ctrl for symmetric resizing, Alt to invert the affected axes, keep shift pressed for faster resizing; use the mouse wheel to change precise transformation granularity\n";
+			return prefix + name + ": click+drag with mouse to resize, Ctrl for symmetric resizing, Alt to invert the affected axes, keep shift pressed for faster resizing; use the mouse wheel to change precise transformation granularity\n";
 		}
 	};
 
@@ -295,11 +304,11 @@ struct Editor : EventDispatcher {
 		EventDispatcher( "Editor" ),
 		modes( "Mode" ),
 		dispatcher( "" ),
-		selecting( this ),
-		placing( this ),
-		moving( this ),
-		rotating( this ),
-		resizing( this )
+		selecting( this, "Select" ),
+		placing( this, "Place" ),
+		moving( this, "Move" ),
+		rotating( this, "Rotate" ),
+		resizing( this, "Resize" )
 	{}
 
 	void selectMode( Mode *mode );

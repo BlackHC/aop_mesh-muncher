@@ -690,15 +690,7 @@ struct TemplateEventRouter : BaseRouter {
 
 		for( auto eventHandler = eventHandlers.begin() ; eventHandler != eventHandlers.end() ; ++eventHandler ) {
 			if( eventHandler->get() == target ) {
-				return prefix + name + "\n" +
-					boost::join( 
-						eventHandlers |
-							boost::adaptors::reversed |
-							boost::adaptors::transformed( std::bind( &EventHandler::getHelp, std::placeholders::_1, subPrefix ) )
-						,
-						""
-					)
-				;
+				return prefix + name + "\n" + target->getHelp( subPrefix );
 			}
 		}
 		return prefix + name + ": inactive\n";
