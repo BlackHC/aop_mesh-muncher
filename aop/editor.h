@@ -22,7 +22,7 @@ struct Editor : EventDispatcher {
 		std::vector<OBB> obbs;
 
 		int getCount() {
-			return obbs.size();
+			return (int) obbs.size();
 		}
 
 		OBB *get( int index ) {
@@ -271,7 +271,7 @@ struct Editor : EventDispatcher {
 
 		float transformSpeed;
 
-		Resizing( Editor *editor, const char *name ) : Mode( editor, name ), transformSpeed( 0.01 ) {}
+		Resizing( Editor *editor, const char *name ) : Mode( editor, name ), transformSpeed( 0.01f ) {}
 
 		void storeState();
 		void restoreState();

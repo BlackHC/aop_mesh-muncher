@@ -100,13 +100,13 @@ void Editor::TransformMode::onMouse( EventState &eventState ) {
 		eventState.accept();
 		break;
 	case sf::Event::MouseButtonPressed:
-		if( eventState.event.mouseButton.button == sf::Mouse::Button::Left ) {
+		if( eventState.event.mouseButton.button == sf::Mouse::Left ) {
 			startDragging();
 			eventState.accept();
 		}
 		break;
 	case sf::Event::MouseButtonReleased:
-		if( eventState.event.mouseButton.button == sf::Mouse::Button::Left ) {
+		if( eventState.event.mouseButton.button == sf::Mouse::Left ) {
 			stopDragging( true );
 			eventState.accept();
 		}

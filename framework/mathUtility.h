@@ -118,8 +118,8 @@ inline bool intersectRayWithUnitCube( const Eigen::Vector3f &position, const Eig
 	const Vector3f symPosition = flipSign( position, position );
 	const Vector3f symDirection = flipSign( direction, position );
 
-	const float epsilon = 0.000005;
-	const float OneEpsilon = 1.000005;
+	const float epsilon = 0.000005f;
+	const float OneEpsilon = 1.000005f;
 
 	if( symPosition.maxCoeff() < OneEpsilon ) {
 		if( hitPoint )
@@ -133,10 +133,10 @@ inline bool intersectRayWithUnitCube( const Eigen::Vector3f &position, const Eig
 	float t[3];
 	for( int i = 0 ; i < 3 ; i++ ) {
 		if( symDirection[i] != 0.0 ) {
-			t[i] = (1.0 - symPosition[i]) / symDirection[i];
+			t[i] = float( (1.0 - symPosition[i]) / symDirection[i] );
 		}
 		else {
-			t[i] = -1.0;
+			t[i] = -1.0f;
 		}
 	}
 

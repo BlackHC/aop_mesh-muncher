@@ -1,12 +1,12 @@
-#include "candidateFinderInterface.h"
-
 #define SERIALIZER_SUPPORT_STL
 #include <serializer.h>
 
-SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeDataset, (probes)(probeContexts)(hitCounterLowerBounds) )
-	SERIALIZER_DEFAULT_EXTERN_IMPL( CandidateFinder::IdDatasets, (insertQueue)(mergedDataset) )
+#include "candidateFinderInterface.h"
 
-	SERIALIZER_ENABLE_RAW_MODE_EXTERN( Probe );
+SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeDataset, (probes)(probeContexts)(hitCounterLowerBounds) )
+SERIALIZER_DEFAULT_EXTERN_IMPL( CandidateFinder::IdDatasets, (insertQueue)(mergedDataset) )
+
+SERIALIZER_ENABLE_RAW_MODE_EXTERN( Probe );
 SERIALIZER_ENABLE_RAW_MODE_EXTERN( ProbeContext );
 
 const int CACHE_FORMAT_VERSION = 0;

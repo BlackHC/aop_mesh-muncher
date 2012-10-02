@@ -207,7 +207,7 @@ struct Program {
 	}
 
 	static void mergeDependencies( std::vector< const Shader * > &merged, const std::vector< const Shader * > &source ) {
-		int searchSize = merged.size();
+		int searchSize = (int) merged.size();
 		for(int index = 0 ; index < source.size() ; index++ ) {
 			if( std::find( merged.begin(), merged.end() + searchSize, source[ index ] ) == merged.end() ) {
 				merged.push_back( source[ index ] );

@@ -247,7 +247,7 @@ struct SGSSceneRenderer {
 			return Eigen::Affine3f( Eigen::Matrix4f::Map( scene->objects[ instanceIndex ].transformation ) );
 		}
 		else {
-			instanceIndex -= scene->objects.size();
+			instanceIndex -= int( scene->objects.size() );
 			return instances[ instanceIndex ].transformation;
 		}
 	}
@@ -272,7 +272,7 @@ struct SGSSceneRenderer {
 			return scene->objects[ instanceIndex ].modelId;
 		}
 		else {
-			instanceIndex -= scene->objects.size();
+			instanceIndex -= int( scene->objects.size() );
 			return instances[ instanceIndex ].modelId;
 		}
 	}
@@ -297,7 +297,7 @@ struct SGSSceneRenderer {
 		}
 		for( int instanceIndex = 0 ; instanceIndex < instances.size() ; ++instanceIndex ) {
 			if( instances[ instanceIndex ].modelId == modelIndex ) {
-				indices.push_back( scene->objects.size() + instanceIndex );
+				indices.push_back( GLsizei( scene->objects.size() + instanceIndex ) );
 			}
 		}
 
