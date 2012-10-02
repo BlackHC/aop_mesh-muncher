@@ -1,3 +1,3 @@
-#include "anttwbarcollection.h"
+#include "antTWBarUI.h"
 
-AntTWBarUI::UniqueID::ID AntTWBarUI::UniqueID::elementCounter;
+AntTWBarUI::UniqueID::ID AntTWBarUI::UniqueID::idCounter;

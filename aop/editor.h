@@ -140,7 +140,6 @@ struct Editor : EventDispatcher {
 	};
 
 	std::shared_ptr< ITransformer > transformer;
-	std::vector< OBB > obbs;
 
 	SGSInterface::View *view;
 	SGSInterface::World *world;

@@ -4,9 +4,11 @@
 
 #include "aopSettings.h"
 
-SERIALIZER_DEFAULT_EXTERN_IMPL( aop::Settings::NamedCameraState, (name)(position)(direction) );
 SERIALIZER_DEFAULT_EXTERN_IMPL( OBB, (transformation)(size) );
-SERIALIZER_DEFAULT_EXTERN_IMPL( aop::Settings::NamedTargetVolume, (name)(volume) );
+
+SERIALIZER_EXTERN_IMPL( aop::Settings::NamedCameraState, name, (position)(direction), );
+SERIALIZER_EXTERN_IMPL( aop::Settings::NamedTargetVolume, name, (volume), );
+
 SERIALIZER_DEFAULT_EXTERN_IMPL( aop::Settings, (views)(volumes) );
 
 namespace aop {

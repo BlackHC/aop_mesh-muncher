@@ -546,7 +546,7 @@ struct TemplateEventDispatcher : BaseDispatcher {
 
 	std::string name;
 
-	TemplateEventDispatcher( const char *name ) : name( name ) {}
+	TemplateEventDispatcher( const char *name = "" ) : name( name ) {}
 
 	void addEventHandler( const std::shared_ptr<BaseEventHandler> &handler ) {
 		eventHandlers.push_back( handler );
@@ -619,7 +619,7 @@ struct TemplateEventRouter : BaseRouter {
 
 	std::string name;
 
-	TemplateEventRouter( const char *name ) : name( name ), target( nullptr ) {}
+	TemplateEventRouter( const char *name = "" ) : name( name ), target( nullptr ) {}
 
 	void addEventHandler( const std::shared_ptr<BaseEventHandler> &handler ) {
 		eventHandlers.push_back( handler );

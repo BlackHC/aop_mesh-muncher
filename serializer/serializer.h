@@ -852,6 +852,24 @@ namespace Serializer {
 	}
 }
 
+#define _SERIALIZER_STD_EXTERN_GET_GLOBAL( r, data, field ) Serializer::getGlobalEnum( reader, value. field );
+#define _SERIALIZER_STD_EXTERN_PUT_GLOBAL( r, data, field ) Serializer::putGlobalEnum( writer, value. field );
+#define SERIALIZER_EXTERN_IMPL( type, primaryKey, fieldSeq, globalEnumSeq ) \
+	namespace Serializer { \
+		template< typename Reader > \
+		void read( Reader &reader, type &value ) { \
+			Serializer::getAsKey( reader, BOOST_PP_STRINGIZE( primaryKey ), value. primaryKey ); \
+			BOOST_PP_SEQ_FOR_EACH( _SERIALIZER_STD_EXTERN_GET, BOOST_PP_NIL, fieldSeq ) \
+			BOOST_PP_SEQ_FOR_EACH( _SERIALIZER_STD_EXTERN_GET_GLOBAL, BOOST_PP_NIL, globalEnumSeq ) \
+		} \
+		template< typename Writer > \
+		void write( Writer &writer, const type &value ) { \
+			Serializer::putAsKey( writer, BOOST_PP_STRINGIZE( primaryKey ), value. primaryKey ); \
+			BOOST_PP_SEQ_FOR_EACH( _SERIALIZER_STD_EXTERN_PUT, BOOST_PP_NIL, fieldSeq ) \
+			BOOST_PP_SEQ_FOR_EACH( _SERIALIZER_STD_EXTERN_PUT_GLOBAL, BOOST_PP_NIL, globalEnumSeq ) \
+		} \
+	}
+
 #ifdef SERIALIZER_SUPPORT_STL
 #	include "serializer_std.h"
 #endif

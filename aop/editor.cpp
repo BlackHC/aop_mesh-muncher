@@ -46,13 +46,6 @@ void Editor::render() {
 		DebugRender::setTransformation( transformer->getTransformation() );
 		DebugRender::drawBox( transformer->getSize() );
 	}
-
-	// render obbs
-	DebugRender::setColor( Eigen::Vector3f::Constant( 1.0 ) );
-	for( auto obb = obbs.begin() ; obb != obbs.end() ; ++obb ) {
-		DebugRender::setTransformation( obb->transformation );
-		DebugRender::drawBox( obb->size );	
-	}		
 	DebugRender::end();
 
 	if( modes.target ) {

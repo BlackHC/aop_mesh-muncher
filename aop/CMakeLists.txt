@@ -68,8 +68,7 @@ CUDA_ADD_EXECUTABLE(aop
 	../framework/antTweakBarEventHandler.h
 	../framework/twEventSFML20.cpp
 	../framework/anttwbarcollection.h
-	../framework/anttwbargroup.h
-	../framework/anttwbargroup.cpp
+	../framework/anttwbarui.h
 	../framework/anttwbarui.cpp
 
 	../glutil/Debug.cpp
