@@ -70,6 +70,7 @@ CUDA_ADD_EXECUTABLE(aop
 	../framework/anttwbarcollection.h
 	../framework/anttwbargroup.h
 	../framework/anttwbargroup.cpp
+	../framework/anttwbarui.cpp
 
 	../glutil/Debug.cpp
 	../glutil/Debug.h
@@ -101,6 +102,8 @@ CUDA_ADD_EXECUTABLE(aop
 
 	../generic/sort_permute_iter.h
 
+	aopSettings.h
+	aopSettingsStorage.cpp
 	aopMain.cpp
 	probeGenerator.h
 	probeGenerator.cpp

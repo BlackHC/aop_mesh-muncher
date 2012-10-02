@@ -39,9 +39,12 @@ using namespace Eigen;
 #include "editor.h"
 #include "anttwbargroup.h"
 #include "antTweakBarEventHandler.h"
+#include "anttwbarcollection.h"
 
 #include "autoTimer.h"
 #include "candidateFinderInterface.h"
+#include "aopSettings.h"
+
 
 std::weak_ptr<AntTweakBarEventHandler::GlobalScope> AntTweakBarEventHandler::globalScope;
 
@@ -111,7 +114,7 @@ void sampleInstances( SGSInterface::World &world, CandidateFinder &candidateFind
 	
 		candidateFinder.addDataset(modelIndex, std::move( dataset ) );
 	
-		totalCount += transformedProbes.size();
+		totalCount += (int) transformedProbes.size();
 	}
 	
 	std::cerr << Indentation::get() << "total sampled probes: " << totalCount << "\n";
@@ -121,20 +124,153 @@ void sampleInstances( SGSInterface::World &world, CandidateFinder &candidateFind
 // TODO: this should get its own file [9/30/2012 kirschan2]
 EventSystem *EventHandler::eventSystem;
 
+namespace aop {
+	struct Application {
+		Camera mainCamera;
+		CameraInputControl mainCameraInputControl;
+
+		SGSInterface::World world;
+		SGSInterface::View cameraView;
+
+		Settings settings;
+
+		struct NamedTargetVolumeView {
+			Application *application;
+
+			typedef aop::Settings::NamedTargetVolume Type;
+
+			NamedTargetVolumeView( Application *application ) : application( application ) {}
+
+			template< typename Accessor >
+			void create( AntTWBarUI::Container *container, Accessor &accessor ) const {
+				container->add( 
+					AntTWBarUI::makeSharedVariable(
+					"Name", 
+					AntTWBarUI::makeMemberAccessor( accessor, &aop::Settings::NamedTargetVolume::name )
+					)
+				);
+				container->add(
+					AntTWBarUI::makeSharedButton(
+					"Select",
+					[] () { std::cout << "select called\n"; }
+					)
+				);
+			}
+		};
+
+		struct NamedCameraStateView {
+			Application *application;
+
+			typedef aop::Settings::NamedCameraState Type;
+
+			NamedCameraStateView( Application *application ) : application( application ) {}
+
+			template< typename Accessor >
+			void create( AntTWBarUI::Container *container, Accessor &accessor ) const {
+				container->add( 
+					AntTWBarUI::makeSharedVariable(
+						"Name", 
+						AntTWBarUI::makeMemberAccessor( accessor, &aop::Settings::NamedCameraState::name )
+					)
+				);
+				container->add(
+					AntTWBarUI::makeSharedButton(
+						"Use",
+						[&, this] () {
+							accessor.pull().pushTo( this->application->mainCamera );							
+						}
+					)
+				);
+				container->add(
+					AntTWBarUI::makeSharedButton(
+						"Replace",
+						[&, this] () { 
+							accessor.pull().pullFrom( this->application->mainCamera );
+							accessor.push();
+						}
+					)
+				);
+			}
+		};
+
+		struct MainUI {
+			Application *application;
+			AntTWBarUI::SimpleContainer ui;
+			
+			MainUI( Application *application ) : application( application ) {
+				ui.setName( "aop" );
+				ui.add( AntTWBarUI::makeSharedButton( "Load settings", [this] { this->application->settings.load(); } ) );
+				ui.add( AntTWBarUI::makeSharedButton( "Store settings", [this] { this->application->settings.store(); } ) );
+				//ui.add( AntTWBarUI::makeSharedVector< NamedTargetVolumeView >( "Camera Views", application->settings.volumes) );
+				
+				ui.link();
+			}
+		};
+
+		struct CameraViewsUI {
+			Application *application;
+			
+			AntTWBarUI::SimpleContainer ui;
+			
+			CameraViewsUI( Application *application ) : application( application ) {
+				ui.setName( "Camera views" );
+
+				auto cameraStatesView = AntTWBarUI::makeSharedVector( application->settings.views, NamedCameraStateView( application ) );
+				ui.add( cameraStatesView );
+				ui.add( AntTWBarUI::makeSharedButton( 
+						"Add current view",
+						[application, cameraStatesView] () {
+							application->settings.views.push_back( aop::Settings::NamedCameraState() );
+							application->settings.views.back().pullFrom( application->mainCamera );
+
+							cameraStatesView->updateSize();
+						}
+					)
+				);
+				ui.add( AntTWBarUI::makeSharedButton( 
+						"Clear all",
+						[application, cameraStatesView] () {
+							application->settings.views.clear();
+							cameraStatesView->updateSize();
+						}
+					)
+				);
+				ui.link();
+			}
+		};
+
+		/*struct ModelTypesUI {
+			Application *application;
+
+			AntTWBarUI
+		};*/
+
+		std::unique_ptr< MainUI > mainUI;
+		std::unique_ptr< CameraViewsUI > cameraViewsUI;
+
+		void initCamera() {
+			mainCamera.perspectiveProjectionParameters.aspect = 640.0f / 480.0f;
+			mainCamera.perspectiveProjectionParameters.FoV_y = 75.0f;
+			mainCamera.perspectiveProjectionParameters.zNear = 0.05f;
+			mainCamera.perspectiveProjectionParameters.zFar = 500.0f;
+
+			mainCameraInputControl.init( make_nonallocated_shared( mainCamera ) );
+		}
+
+		void initUI() {
+			mainUI.reset( new MainUI( this ) ) ;
+			cameraViewsUI.reset( new CameraViewsUI( this ) );
+		}
+	};
+}
+
 void real_main() {
 	sf::RenderWindow window( sf::VideoMode( 640, 480 ), "AOP", sf::Style::Default, sf::ContextSettings(24, 8, 0, 4, 2, false,true, false) );
 	glewInit();
 
 	glutil::RegisterDebugOutput( glutil::STD_OUT );
 
-	Camera camera;
-	camera.perspectiveProjectionParameters.aspect = 640.0 / 480.0;
-	camera.perspectiveProjectionParameters.FoV_y = 75.0;
-	camera.perspectiveProjectionParameters.zNear = 0.05;
-	camera.perspectiveProjectionParameters.zFar = 500.0;
-
-	CameraInputControl cameraInputControl;
-	cameraInputControl.init( make_nonallocated_shared(camera) );
+	aop::Application application;
 
 	// Activate the window for OpenGL rendering
 	window.setActive();
@@ -146,12 +282,10 @@ void real_main() {
 	// The main loop - ends as soon as the window is closed
 	sf::Clock frameClock, clock;
 
-	SGSInterface::World world;
-	SGSInterface::View view;
-	view.renderContext.setDefault();
+	application.cameraView.renderContext.setDefault();
 
 	const char *scenePath = "P:\\sgs\\sg_and_sgs_source\\survivor\\__GameData\\Editor\\Save\\Survivor_original_mission_editorfiles\\test\\scene.glscene";
-	world.init( scenePath );
+	application.world.init( scenePath );
 
 	EventDispatcher eventDispatcher( "Root:" );
 	
@@ -186,11 +320,11 @@ void real_main() {
 	eventDispatcher.addEventHandler( make_nonallocated_shared( antTweakBarEventHandler ) );
 	
 	registerConsoleHelpAction( eventDispatcher );
-	eventDispatcher.addEventHandler( make_nonallocated_shared( cameraInputControl ) );
+	eventDispatcher.addEventHandler( make_nonallocated_shared( application.mainCameraInputControl ) );
 
 	Editor editor;
-	editor.world = &world;
-	editor.view = &view;
+	editor.world = &application.world;
+	editor.view = &application.cameraView;
 	editor.init();
 
 	eventDispatcher.addEventHandler( make_nonallocated_shared( editor ) );
@@ -219,7 +353,7 @@ void real_main() {
 	Instance testInstance;
 	testInstance.modelId = 0;
 	testInstance.transformation.setIdentity();
-	world.sceneRenderer.addInstance( testInstance );
+	//world.sceneRenderer.addInstance( testInstance );
 
 	ProbeGenerator::initDirections();
 
@@ -261,20 +395,36 @@ void real_main() {
 
 	return;
 #endif
+	
+	struct Editor_NamedVolumesView : Editor::Volumes {
+		std::vector< aop::Settings::NamedTargetVolume > &volumes;
 
-	Editor::VectorVolumes volumes;
-	editor.volumes = &volumes;
+		Editor_NamedVolumesView( std::vector< aop::Settings::NamedTargetVolume > &volumes  ) : volumes( volumes ) {}
+
+		int getCount() {
+			return (int) volumes.size();
+		}
+
+		OBB *get( int index ) {
+			return &volumes[ index ].volume;
+		}
+	};
+	Editor_NamedVolumesView editor_namedVolumesView( application.settings.volumes );
+	editor.volumes = &editor_namedVolumesView;
 	
 	{
-		OBB obb;
-		obb.transformation.setIdentity();
-		obb.size.setConstant( 3.0 );
-		
-		volumes.obbs.push_back( obb );
-	}
+		aop::Settings::NamedTargetVolume targetVolume;
 
-	AntTWBarGroup group( "test" );
+		targetVolume.name = "test";
+		targetVolume.volume.transformation.setIdentity();
+		targetVolume.volume.size.setConstant( 3.0 );
+		
+		application.settings.volumes.push_back( targetVolume );
+	}
 	
+	application.initCamera();
+	application.initUI();
+
 	while (true)
 	{
 		// Activate the window for OpenGL rendering
@@ -289,7 +439,7 @@ void real_main() {
 				window.close();
 
 			if( event.type == sf::Event::Resized ) {
-				camera.perspectiveProjectionParameters.aspect = float( event.size.width ) / event.size.height;
+				application.mainCamera.perspectiveProjectionParameters.aspect = float( event.size.width ) / event.size.height;
 				glViewport( 0, 0, event.size.width, event.size.height );
 			}
 
@@ -315,13 +465,13 @@ void real_main() {
 
 			glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 			glMatrixMode( GL_PROJECTION );
-			glLoadMatrix( view.viewerContext.projectionView );
+			glLoadMatrix( application.cameraView.viewerContext.projectionView );
 
 			glMatrixMode( GL_MODELVIEW );
 			glLoadIdentity();
 
-			view.updateFromCamera( camera );
-			world.renderViewFrame( view );
+			application.cameraView.updateFromCamera( application.mainCamera );
+			application.world.renderViewFrame( application.cameraView );
 			editor.render();
 
 			//world.renderOptixViewFrame( view );
