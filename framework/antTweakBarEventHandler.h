@@ -11,7 +11,7 @@ struct AntTweakBarEventHandler : public EventHandler {
 	// TODO: name refactoring [10/1/2012 kirschan2]
 	struct GlobalScope : std::enable_shared_from_this<GlobalScope> {
 		GlobalScope() {
-			TwInit(  TW_OPENGL, NULL );
+			TwInit( TW_OPENGL, NULL );
 		}
 		~GlobalScope() {
 			TwTerminate();
