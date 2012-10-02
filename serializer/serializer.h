@@ -373,9 +373,9 @@ namespace Serializer {
 	template< typename Value >
 	typename boost::enable_if_c< !detail::is_default_constructible< Value >::value >::type 
 	get( TextReader &reader, const char *key, Value &value ) {
-			if( !detail::tryGet( reader, key, value ) ) {
-				reader.mapNode->error( boost::str( boost::format( "'%s' not found!") % key ) );
-			}
+		if( !detail::tryGet( reader, key, value ) ) {
+			reader.mapNode->error( boost::str( boost::format( "'%s' not found!") % key ) );
+		}
 	}
 
 	// get value from the object name, if possible, or from a key-value pair

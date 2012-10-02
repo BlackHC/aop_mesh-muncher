@@ -25,6 +25,15 @@ namespace Serializer {
 		struct EigenAlignedBox< Eigen::AlignedBox< _Scalar, _Dim > > {
 			typedef void isEigenType;
 		};
+
+		template<typename T>
+		struct EigenTransform {
+		};
+
+		template< typename _Scalar, int _Dim, int _Mode, int _Options >
+		struct EigenTransform< Eigen::Transform< _Scalar, _Dim, _Mode, _Options > > {
+			typedef void isEigenType;
+		};
 	}
 
 	template< typename Reader, typename X >
@@ -39,6 +48,17 @@ namespace Serializer {
 		typedef detail::EigenMatrixTraits<X>::ArrayPointer ArrayPointer;
 		ArrayPointer array = (ArrayPointer) value.data();
 		write( writer, *array );
+	}
+
+	// Transform
+	template< typename Reader, typename TransformType >
+	typename detail::EigenTransform<TransformType>::isEigenType read( Reader &reader, TransformType &value ) {
+		read( reader, value.matrix() );
+	}
+
+	template< typename Writer, typename TransformType >
+	typename detail::EigenTransform<TransformType>::isEigenType write( Writer &writer, const TransformType &value ) {
+		write( writer, value.matrix() );
 	}
 
 // TODO: add error/warning

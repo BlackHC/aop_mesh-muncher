@@ -187,7 +187,7 @@ void MacroTest( const char *filename ) {
 
 	{
 		Reader reader( filename );
-	
+
 		MacroTestStruct x;
 		Serializer::get( reader, "x", x );
 
@@ -236,7 +236,7 @@ struct FirstKey {
 };
 
 template< typename Reader, typename Writer >
-void MacroFirstKeyIntern( const char *filename ) {	
+void MacroFirstKeyIntern( const char *filename ) {
 	{
 		Writer writer( filename );
 
@@ -411,19 +411,19 @@ namespace Enum {
 	};
 }
 
-template<> 
+template<>
 struct Serializer::Reflection<Enum::EnumB> {
 	static std::pair< const char *, Enum::EnumB > get( int index ) {
 		if( !index-- ) {
-			return std::make_pair( "eb a", Enum::EB_A ); 
+			return std::make_pair( "eb a", Enum::EB_A );
 		}
 		if( !index-- ) {
-			return std::make_pair( "eb b", Enum::EB_B ); 
+			return std::make_pair( "eb b", Enum::EB_B );
 		}
 		if( !index-- ) {
-			return std::make_pair( "eb c", Enum::EB_C ); 
+			return std::make_pair( "eb c", Enum::EB_C );
 		}
-		return std::make_pair( nullptr, Enum::EnumB() ); 
+		return std::make_pair( nullptr, Enum::EnumB() );
 	}
 };
 
@@ -540,14 +540,14 @@ namespace Enum {
 
 template< typename Reader, typename Writer >
 void StdString( const char *filename  ) {
-	{		
+	{
 		Writer writer( filename );
 
 		std::string text = "hello world\nhallo welt";
 		SERIALIZER_PUT_VARIABLE( writer, text );
 	}
 
-	{	
+	{
 		Reader reader( filename );
 
 		std::string text;
@@ -569,7 +569,7 @@ void StdVector_Fundamental( const char *filename ) {
 		for( int i = 0 ; i < 100 ; i++ )
 			seq.push_back( i );
 
-		SERIALIZER_PUT_VARIABLE( writer, seq );			
+		SERIALIZER_PUT_VARIABLE( writer, seq );
 	}
 
 	{
@@ -577,10 +577,10 @@ void StdVector_Fundamental( const char *filename ) {
 
 		std::vector<int> seq;
 
-		SERIALIZER_GET_VARIABLE( reader, seq );	
+		SERIALIZER_GET_VARIABLE( reader, seq );
 
 		for( int i = 0 ; i < 100 ; i++ )
-			ASSERT_EQ( i, seq[i] );		
+			ASSERT_EQ( i, seq[i] );
 	}
 }
 
@@ -621,7 +621,7 @@ struct NonFundamental {
 	int x;
 
 	NonFundamental() {}
-	NonFundamental( int x ) : x( x ) {} 
+	NonFundamental( int x ) : x( x ) {}
 
 	template< typename Reader >
 	void serializer_read( Reader &reader ) {
@@ -659,7 +659,7 @@ void StdVector_NonFundamental( const char *filename  ) {
 
 		std::vector<NonFundamental> seq;
 
-		SERIALIZER_GET_VARIABLE( reader, seq );	
+		SERIALIZER_GET_VARIABLE( reader, seq );
 
 		for( int i = 0 ; i < 100 ; i++ )
 			ASSERT_EQ( i, seq[i].x );
@@ -682,7 +682,7 @@ void StdPair( const char *filename  ) {
 
 	{
 		Reader reader( filename );
-		
+
 		std::pair< int, int > pair( 10, 100 );
 		SERIALIZER_GET_VARIABLE( reader, pair );
 
@@ -859,7 +859,7 @@ struct RawNonFundamental {
 	int x;
 
 	RawNonFundamental() {}
-	RawNonFundamental( int x ) : x( x ) {} 
+	RawNonFundamental( int x ) : x( x ) {}
 };
 
 void read( Serializer::BinaryReader &reader, RawNonFundamental &rnf ) {
@@ -890,7 +890,7 @@ void StdVector_RawNonFundamental( const char *filename ) {
 
 		std::vector<RawNonFundamental> seq;
 
-		EXPECT_NO_FATAL_FAILURE( SERIALIZER_GET_VARIABLE( reader, seq ) );	
+		EXPECT_NO_FATAL_FAILURE( SERIALIZER_GET_VARIABLE( reader, seq ) );
 
 		for( int i = 0 ; i < 100 ; i++ )
 			ASSERT_EQ( i, seq[i].x );
@@ -944,7 +944,7 @@ struct GenericEigenMatrixTest {
 			Writer writer( filename );
 
 			EigenType v = w;
-		
+
 			SERIALIZER_PUT_VARIABLE( writer, v );
 		}
 
@@ -1023,6 +1023,55 @@ TextBinaryTest_EigenAlignedBox( AlignedBox2d );
 TextBinaryTest_EigenAlignedBox( AlignedBox3d );
 TextBinaryTest_EigenAlignedBox( AlignedBox4d );
 
+template< typename EigenType >
+struct GenericEigenTransformTest {
+	template< typename Reader, typename Writer >
+	static void Test( const char *filename  ) {
+		EigenType ref;
+
+		ref.matrix().setRandom();
+
+		{
+			Writer writer( filename );
+
+			EigenType transform = ref;
+
+			SERIALIZER_PUT_VARIABLE( writer, transform );
+		}
+
+		{
+			Reader reader( filename );
+
+			EigenType transform;
+			SERIALIZER_GET_VARIABLE( reader, transform );
+
+			EXPECT_TRUE( transform.isApprox( ref ) );
+		}
+	}
+};
+
+#define TextBinaryTest_EigenTransform( type ) TextBinaryTestEx( GenericEigenTransformTest<Eigen:: type >::Test, type )
+
+TextBinaryTest_EigenTransform( Isometry2f );
+TextBinaryTest_EigenTransform( Isometry3f );
+TextBinaryTest_EigenTransform( Isometry2d );
+TextBinaryTest_EigenTransform( Isometry3d );
+
+TextBinaryTest_EigenTransform( Affine2f );
+TextBinaryTest_EigenTransform( Affine3f );
+TextBinaryTest_EigenTransform( Affine2d );
+TextBinaryTest_EigenTransform( Affine3d );
+
+TextBinaryTest_EigenTransform( AffineCompact2f );
+TextBinaryTest_EigenTransform( AffineCompact3f );
+TextBinaryTest_EigenTransform( AffineCompact2d );
+TextBinaryTest_EigenTransform( AffineCompact3d );
+
+TextBinaryTest_EigenTransform( Projective2f );
+TextBinaryTest_EigenTransform( Projective3f );
+TextBinaryTest_EigenTransform( Projective2d );
+TextBinaryTest_EigenTransform( Projective3d );
+
 //////////////////////////////////////////////////////////////////////////
 // detail tests
 
@@ -1079,7 +1128,7 @@ namespace MoveOnly {
 		for( int i = 0 ; i < 100 ; i++ ) {
 			ref.emplace_back( MO(i) );
 		}
-	
+
 		{
 			Writer writer( filename );
 
