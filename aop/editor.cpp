@@ -39,7 +39,7 @@ void Editor::init() {
 	} ) );
 }
 
-void Editor::renderHighlitOBB( const OBB &obb ) {
+void Editor::renderHighlitOBB( const Obb &obb ) {
 	DebugRender::begin();
 	DebugRender::setTransformation( obb.transformation );
 
@@ -230,7 +230,7 @@ void Editor::Selecting::onMouse( EventState &eventState ) {
 		float bestT;
 		int bestOBB = -1;
 		for( int obbIndex = 0 ; obbIndex < editor->volumes->getCount() ; obbIndex++ ) {
-			const OBB *obb = editor->volumes->get( obbIndex );
+			const Obb *obb = editor->volumes->get( obbIndex );
 			float t;
 
 			if( intersectRayWithOBB( *obb, editor->view->viewerContext.worldViewerPosition, direction, nullptr, &t ) ) {
@@ -350,11 +350,11 @@ void Editor::Rotating::transform( const Eigen::Vector3f &relativeMovement, bool 
 }
 
 void Editor::Resizing::storeState() {
-	storedOBB = editor->selection->getOBB();
+	storedOBB = editor->selection->getObb();
 }
 
 void Editor::Resizing::restoreState() {
-	editor->selection->setOBB( storedOBB );
+	editor->selection->setObb( storedOBB );
 }
 
 bool Editor::Resizing::setCornerMasks( int x, int y ) {
@@ -366,7 +366,7 @@ bool Editor::Resizing::setCornerMasks( int x, int y ) {
 	const Eigen::Vector4f nearPlanePoint( xh, yh, -1.0, 1.0 );
 	const Eigen::Vector3f direction = (editor->view->viewerContext.projectionView.inverse() * nearPlanePoint).hnormalized() - editor->view->viewerContext.worldViewerPosition;
 
-	const OBB objectOBB = editor->selection->getOBB();
+	const Obb objectOBB = editor->selection->getObb();
 
 	Eigen::Vector3f boxHitPoint;
 	//Eigen::Vector3f hitPoint;
@@ -447,7 +447,7 @@ void Editor::Resizing::onKeyboard( EventState &eventState ) {
 void Editor::Resizing::transform( const Eigen::Vector3f &relativeMovement, bool fixCenter, bool invertMask ) {
 	const Eigen::Vector3f &localMask = invertMask ? invertedMask : mask;
 
-	OBB objectOBB = editor->selection->getOBB();
+	Obb objectOBB = editor->selection->getObb();
 
 	const Vector3f boxDelta =
 		objectOBB.transformation.inverse().linear() *
@@ -460,7 +460,7 @@ void Editor::Resizing::transform( const Eigen::Vector3f &relativeMovement, bool 
 		objectOBB.transformation = objectOBB.transformation * Eigen::Translation3f( centerShift );
 	}
 
-	editor->selection->setOBB( objectOBB );
+	editor->selection->setObb( objectOBB );
 }
 
 void Editor::Resizing::onUpdate( EventSystem &eventSystem, const float frameDuration, const float elapsedTime ) {

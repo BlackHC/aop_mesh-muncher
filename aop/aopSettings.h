@@ -26,7 +26,7 @@ namespace aop {
 
 		struct NamedTargetVolume {
 			std::string name;
-			OBB volume;
+			Obb volume;
 		};
 
 		std::vector<NamedCameraState> views;

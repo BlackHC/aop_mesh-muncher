@@ -7,7 +7,7 @@ namespace SGSInterface {
 		const auto &sgsBoundingBox = renderer.getUntransformedInstanceBoundingBox( instanceIndex );
 		const auto &sgsTransformation = renderer.getInstanceTransformation( instanceIndex );
 
-		const OBB obb = makeOBB( sgsTransformation, sgsBoundingBox );
+		const Obb obb = makeOBB( sgsTransformation, sgsBoundingBox );
 		ProbeGenerator::generateInstanceProbes( obb.size, resolution, probes );
 		ProbeGenerator::transformProbes( probes, obb.transformation, transformedProbes );
 	}

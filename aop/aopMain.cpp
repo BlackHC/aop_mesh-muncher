@@ -375,7 +375,7 @@ namespace aop {
 					return (int) volumes.size();
 				}
 
-				OBB *get( int index ) {
+				Obb *get( int index ) {
 					if( index >= volumes.size() ) {
 						return nullptr;
 					}

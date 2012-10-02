@@ -12,8 +12,8 @@ namespace ProbeGenerator {
 	typedef OptixProgramInterface::Probe Probe;
 
 	void initDirections();
-	void transformProbe( const Probe &probe, const OBB::Transformation &transformation, Probe &transformedProbe );
-	void transformProbes( const std::vector<Probe> &probes,const OBB::Transformation &transformation,  std::vector<Probe> &transformedProbes );
+	void transformProbe( const Probe &probe, const Obb::Transformation &transformation, Probe &transformedProbe );
+	void transformProbes( const std::vector<Probe> &probes,const Obb::Transformation &transformation,  std::vector<Probe> &transformedProbes );
 	void generateInstanceProbes( const Eigen::Vector3f &size, const float resolution, std::vector<Probe> &probes );
-	void generateQueryProbes( const OBB &obb, const float resolution, std::vector<Probe> &transformedProbes );
+	void generateQueryProbes( const Obb &obb, const float resolution, std::vector<Probe> &transformedProbes );
 };

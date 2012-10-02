@@ -15,12 +15,12 @@ namespace ProbeGenerator {
 		}
 	}
 
-	static void transformProbe( const Probe &probe, const OBB::Transformation &transformation, Probe &transformedProbe ) {
+	static void transformProbe( const Probe &probe, const Obb::Transformation &transformation, Probe &transformedProbe ) {
 		map( transformedProbe.direction ) = transformation.linear() * map( probe.direction );
 		map( transformedProbe.position ) = transformation * map( probe.position );
 	}
 
-	void transformProbes( const std::vector<Probe> &probes,const OBB::Transformation &transformation,  std::vector<Probe> &transformedProbes ) {
+	void transformProbes( const std::vector<Probe> &probes,const Obb::Transformation &transformation,  std::vector<Probe> &transformedProbes ) {
 		transformedProbes.resize( probes.size() );
 		for( int probeIndex = 0 ; probeIndex < probes.size() ; probeIndex++ ) {
 			transformProbe( probes[ probeIndex ], transformation, transformedProbes[ probeIndex ] );
@@ -49,7 +49,7 @@ namespace ProbeGenerator {
 		}
 	}
 
-	void generateQueryProbes( const OBB &obb, const float resolution, std::vector<Probe> &transformedProbes ) {
+	void generateQueryProbes( const Obb &obb, const float resolution, std::vector<Probe> &transformedProbes ) {
 		const Vector3i probeCount3 = ceil( obb.size / resolution );
 
 		// create the index<->position mapping

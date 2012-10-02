@@ -16,17 +16,17 @@
 struct Editor : EventDispatcher {
 	struct Volumes {
 		virtual int getCount() = 0;
-		virtual OBB *get( int index ) = 0;
+		virtual Obb *get( int index ) = 0;
 	};
 
 	struct VectorVolumes : Volumes {
-		std::vector<OBB> obbs;
+		std::vector<Obb> obbs;
 
 		int getCount() {
 			return (int) obbs.size();
 		}
 
-		OBB *get( int index ) {
+		Obb *get( int index ) {
 			return &obbs[ index ];
 		}
 	};
@@ -37,11 +37,11 @@ struct Editor : EventDispatcher {
 		virtual Eigen::Vector3f getSize() = 0;
 		virtual void setSize( const Eigen::Vector3f &size ) = 0;
 
-		virtual OBB::Transformation getTransformation() = 0;
-		virtual void setTransformation( const OBB::Transformation &transformation ) = 0;
+		virtual Obb::Transformation getTransformation() = 0;
+		virtual void setTransformation( const Obb::Transformation &transformation ) = 0;
 
-		virtual OBB getOBB() = 0;
-		virtual void setOBB( const OBB &obb ) = 0;
+		virtual Obb getObb() = 0;
+		virtual void setObb( const Obb &obb ) = 0;
 
 		virtual bool canResize() = 0;
 		virtual bool canTransform() = 0;
@@ -68,19 +68,19 @@ struct Editor : EventDispatcher {
 			editor->volumes->get( index )->size = size;
 		}
 
-		OBB::Transformation getTransformation() {
+		Obb::Transformation getTransformation() {
 			return editor->volumes->get( index )->transformation;
 		}
 
-		void setTransformation( const OBB::Transformation &transformation ) {
+		void setTransformation( const Obb::Transformation &transformation ) {
 			editor->volumes->get( index )->transformation = transformation;
 		}
 
-		OBB getOBB() {
+		Obb getObb() {
 			return *editor->volumes->get( index );
 		}
 
-		void setOBB( const OBB &newObb ) {
+		void setObb( const Obb &newObb ) {
 			*editor->volumes->get( index ) = newObb;
 		}
 
@@ -93,7 +93,7 @@ struct Editor : EventDispatcher {
 		}
 
 		void render() {
-			Editor::renderHighlitOBB( getOBB() );
+			Editor::renderHighlitOBB( getObb() );
 		}
 
 		void acceptVisitor( SelectionVisitor &visitor );
@@ -117,14 +117,14 @@ struct Editor : EventDispatcher {
 			// do nothing
 		}
 
-		OBB::Transformation getTransformation() {
+		Obb::Transformation getTransformation() {
 			return
 				editor->world->sceneRenderer.getInstanceTransformation( instanceIndex ) *
 				Eigen::Translation3f( editor->world->sceneRenderer.getUntransformedInstanceBoundingBox( instanceIndex ).center() )
 				;
 		}
 
-		void setTransformation( const OBB::Transformation &transformation ) {
+		void setTransformation( const Obb::Transformation &transformation ) {
 			if( editor->world->sceneRenderer.isDynamicInstance( instanceIndex ) ) {
 				editor->world->sceneRenderer.setInstanceTransformation( 
 					instanceIndex,
@@ -134,11 +134,11 @@ struct Editor : EventDispatcher {
 			}
 		}
 
-		OBB getOBB() {
-			return OBB( getTransformation(), getSize() );
+		Obb getObb() {
+			return Obb( getTransformation(), getSize() );
 		}
 
-		void setOBB( const OBB &obb ) {
+		void setObb( const Obb &obb ) {
 			setTransformation( obb.transformation );
 		}
 
@@ -151,7 +151,7 @@ struct Editor : EventDispatcher {
 		}
 
 		void render() {
-			Editor::renderHighlitOBB( getOBB() );
+			Editor::renderHighlitOBB( getObb() );
 		}
 
 		void acceptVisitor( SelectionVisitor &visitor );
@@ -175,18 +175,18 @@ struct Editor : EventDispatcher {
 			throw std::exception( "not implemented!" );
 		}
 
-		virtual OBB::Transformation getTransformation() {
+		virtual Obb::Transformation getTransformation() {
 			throw std::exception( "not implemented!" );
 		}
 
-		virtual void setTransformation( const OBB::Transformation &transformation ) {
+		virtual void setTransformation( const Obb::Transformation &transformation ) {
 			throw std::exception( "not implemented!" );
 		}
 
-		virtual OBB getOBB() {
+		virtual Obb getObb() {
 			throw std::exception( "not implemented!" );
 		}
-		virtual void setOBB( const OBB &obb ) {
+		virtual void setObb( const Obb &obb ) {
 			throw std::exception( "not implemented!" );
 		}
 
@@ -312,7 +312,7 @@ struct Editor : EventDispatcher {
 
 	struct TransformMode : Mode {
 		float transformSpeed;
-		OBB::Transformation storedTransformation;
+		Obb::Transformation storedTransformation;
 
 		virtual void transform( const Eigen::Vector3f &relativeMovement, bool localMode ) = 0;
 
@@ -370,7 +370,7 @@ struct Editor : EventDispatcher {
 	};
 
 	struct Resizing : Mode {
-		OBB storedOBB;
+		Obb storedOBB;
 
 		Eigen::Vector3f mask, invertedMask;
 		Eigen::Vector3f hitPoint;
@@ -422,7 +422,7 @@ struct Editor : EventDispatcher {
 	void init();
 	void render();
 
-	static void renderHighlitOBB( const OBB &obb );
+	static void renderHighlitOBB( const Obb &obb );
 };
 
 
