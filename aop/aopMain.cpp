@@ -45,7 +45,6 @@ using namespace Eigen;
 #include "candidateFinderInterface.h"
 #include "aopSettings.h"
 
-
 std::weak_ptr<AntTweakBarEventHandler::GlobalScope> AntTweakBarEventHandler::globalScope;
 
 void visualizeProbes( float resolution, const std::vector< SGSInterface::Probe > &probes );
@@ -529,9 +528,6 @@ namespace aop {
 
 					cameraView.updateFromCamera( mainCamera );
 
-					// render editor entities first
-					editorWrapper->editor.render();
-
 					world->renderViewFrame( cameraView );
 
 					// render target volumes
@@ -543,6 +539,9 @@ namespace aop {
 						DebugRender::drawBox( namedObb->volume.size );	
 					}		
 					DebugRender::end();
+
+					// render editor entities first
+					editorWrapper->editor.render();
 
 					//world.renderOptixViewFrame( view );
 

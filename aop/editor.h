@@ -209,7 +209,7 @@ struct Editor : EventDispatcher {
 		float transformSpeed;
 		OBB::Transformation storedTransformation;
 
-		virtual void transform( const Eigen::Vector3f &relativeMovement ) = 0;
+		virtual void transform( const Eigen::Vector3f &relativeMovement, bool localMode ) = 0;
 
 		TransformMode( Editor *editor, const char *name ) : Mode( editor, name ), transformSpeed( 0.1f ) {}
 
@@ -222,7 +222,7 @@ struct Editor : EventDispatcher {
 		void onNotify( const EventState &eventState );
 
 		std::string getHelp(const std::string &prefix /* = std::string */ ) {
-			return prefix + name + ": click+drag with mouse to transform, and WASD, Space and Ctrl for precise transformation; keep shift pressed for faster transformation; use the mouse wheel to change precise transformation granularity\n";
+			return prefix + name + ": click+drag with mouse to transform, and WASD, Space and Ctrl for precise transformation; keep shift pressed for faster transformation; use the mouse wheel to change precise transformation granularity; alt for local mode\n";
 		}
 	};
 
@@ -253,13 +253,13 @@ struct Editor : EventDispatcher {
 	struct Moving : TransformMode {
 		Moving( Editor *editor, const char *name ) : TransformMode( editor, name ) {}
 
-		virtual void transform( const Eigen::Vector3f &relativeMovement );
+		virtual void transform( const Eigen::Vector3f &relativeMovement, bool localMode );
 	};
 
 	struct Rotating : TransformMode {
 		Rotating( Editor *editor, const char *name ) : TransformMode( editor, name ) {}
 
-		void transform( const Eigen::Vector3f &relativeMovement );
+		void transform( const Eigen::Vector3f &relativeMovement, bool localMode );
 	};
 
 	struct Resizing : Mode {

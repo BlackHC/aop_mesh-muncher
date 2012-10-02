@@ -40,13 +40,25 @@ void Editor::init() {
 }
 
 void Editor::render() {
-	DebugRender::begin();
-	DebugRender::setColor( Eigen::Vector3f::UnitX() );
 	if( transformer ) {
+		DebugRender::begin();
 		DebugRender::setTransformation( transformer->getTransformation() );
+
+		glDepthMask( GL_FALSE );
+		glDepthFunc( GL_GEQUAL );
+		DebugRender::setColor( Eigen::Vector3f::UnitX() * 0.5f );
+
 		DebugRender::drawBox( transformer->getSize() );
+		
+		glDepthMask( GL_TRUE );
+		glDepthFunc( GL_LEQUAL );
+		DebugRender::setColor( Eigen::Vector3f::UnitX() );
+
+		DebugRender::drawBox( transformer->getSize() );
+
+		DebugRender::end();
 	}
-	DebugRender::end();
+
 
 	if( modes.target ) {
 		modes.target->render();
@@ -115,6 +127,8 @@ void Editor::TransformMode::onUpdate( EventSystem &eventSystem, const float fram
 		return;
 	}
 
+	bool localMode = sf::Keyboard::isKeyPressed( sf::Keyboard::LAlt );
+
 	if( !dragging ) {
 		Eigen::Vector3f relativeMovement = Eigen::Vector3f::Zero();
 		if( sf::Keyboard::isKeyPressed( sf::Keyboard::W ) ) {
@@ -145,7 +159,7 @@ void Editor::TransformMode::onUpdate( EventSystem &eventSystem, const float fram
 			relativeMovement *= 4;
 		}
 
-		transform( relativeMovement );
+		transform( relativeMovement, localMode );
 	}
 	else {
 		const sf::Vector2i draggedDelta = popMouseDelta();
@@ -158,7 +172,7 @@ void Editor::TransformMode::onUpdate( EventSystem &eventSystem, const float fram
 		}
 		relativeMovement *= 0.01;
 
-		transform( relativeMovement );
+		transform( relativeMovement, localMode );
 	}
 }
 
@@ -236,18 +250,36 @@ void Editor::Placing::onMouse( EventState &eventState ) {
 	eventState.accept();
 }
 
-void Editor::Moving::transform( const Eigen::Vector3f &relativeMovement ) {
-	const Eigen::Translation3f translation( editor->getScaledRelativeViewMovement( relativeMovement ) );
-
-	editor->transformer->setTransformation( translation * editor->transformer->getTransformation() );
+void Editor::Moving::transform( const Eigen::Vector3f &relativeMovement, bool localMode ) {
+	if( !localMode ) {
+		const auto scaledRelativeMovement = editor->getScaledRelativeViewMovement( relativeMovement );
+		editor->transformer->setTransformation( Eigen::Translation3f( scaledRelativeMovement ) * editor->transformer->getTransformation() );
+	}
+	else {
+		const auto transformation = editor->transformer->getTransformation();
+		editor->transformer->setTransformation( Eigen::Translation3f( transformation.linear() * relativeMovement ) * transformation );
+	}
 }
 
-void Editor::Rotating::transform( const Eigen::Vector3f &relativeMovement ) {
-	const auto rotation =
-		Eigen::AngleAxisf( relativeMovement.z(), editor->view->viewAxes.col(2) ) *
-		Eigen::AngleAxisf( relativeMovement.y(), editor->view->viewAxes.col(0) ) *
-		Eigen::AngleAxisf( relativeMovement.x(), editor->view->viewAxes.col(1) )
+void Editor::Rotating::transform( const Eigen::Vector3f &relativeMovement, bool localMode ) {
+	Eigen::Affine3f rotation;
+
+	const auto transformation = editor->transformer->getTransformation();
+
+	if( !localMode ) {
+		rotation =
+			Eigen::AngleAxisf( relativeMovement.z(), editor->view->viewAxes.row(2) ) *
+			Eigen::AngleAxisf( relativeMovement.y(), editor->view->viewAxes.row(0) ) *
+			Eigen::AngleAxisf( relativeMovement.x(), editor->view->viewAxes.row(1) )
 		;
+	}
+	else {
+		rotation =
+			Eigen::AngleAxisf( relativeMovement.z(), transformation.linear().col(2) ) *
+			Eigen::AngleAxisf( relativeMovement.y(), transformation.linear().col(0) ) *
+			Eigen::AngleAxisf( relativeMovement.x(), transformation.linear().col(1) )
+		;
+	}
 
 	const Vector3f translation = editor->transformer->getTransformation().translation();
 
@@ -255,8 +287,8 @@ void Editor::Rotating::transform( const Eigen::Vector3f &relativeMovement ) {
 		Eigen::Translation3f( translation ) *
 		rotation *
 		Eigen::Translation3f( -translation ) *
-		editor->transformer->getTransformation()
-		);
+		transformation
+	);
 }
 
 void Editor::Resizing::storeState() {
