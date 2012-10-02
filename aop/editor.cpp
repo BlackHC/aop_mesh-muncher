@@ -15,22 +15,22 @@ void Editor::init() {
 		selectMode( &selecting );
 	} ) );
 	addEventHandler( std::make_shared<KeyAction>( "enter placement mode", sf::Keyboard::F7, [&] () {
-		if( transformer ) {
+		if( selection && selection->canTransform() ) {
 			selectMode( &placing );
 		}
 	} ) );
 	addEventHandler( std::make_shared<KeyAction>( "enter movement mode", sf::Keyboard::F8, [&] () {
-		if( transformer ) {
+		if( selection && selection->canTransform() ) {
 			selectMode( &moving );
 		}
 	} ) );
 	addEventHandler( std::make_shared<KeyAction>( "enter rotation mode", sf::Keyboard::F9, [&] () {
-		if( transformer ) {
+		if( selection && selection->canTransform() ) {
 			selectMode( &rotating );
 		}
 	} ) );
 	addEventHandler( std::make_shared<KeyAction>( "enter resize mode", sf::Keyboard::F10, [&] () {
-		if( transformer && transformer->canResize() ) {
+		if( selection && selection->canResize() ) {
 			selectMode( &resizing );
 		}
 	} ) );
@@ -39,26 +39,29 @@ void Editor::init() {
 	} ) );
 }
 
+void Editor::renderHighlitOBB( const OBB &obb ) {
+	DebugRender::begin();
+	DebugRender::setTransformation( obb.transformation );
+
+	glDepthMask( GL_FALSE );
+	glDepthFunc( GL_GEQUAL );
+	DebugRender::setColor( Eigen::Vector3f::UnitX() * 0.5f );
+
+	DebugRender::drawBox( obb.size );
+
+	glDepthMask( GL_TRUE );
+	glDepthFunc( GL_LEQUAL );
+	DebugRender::setColor( Eigen::Vector3f::UnitX() );
+
+	DebugRender::drawBox( obb.size );
+
+	DebugRender::end();
+}
+
 void Editor::render() {
-	if( transformer ) {
-		DebugRender::begin();
-		DebugRender::setTransformation( transformer->getTransformation() );
-
-		glDepthMask( GL_FALSE );
-		glDepthFunc( GL_GEQUAL );
-		DebugRender::setColor( Eigen::Vector3f::UnitX() * 0.5f );
-
-		DebugRender::drawBox( transformer->getSize() );
-		
-		glDepthMask( GL_TRUE );
-		glDepthFunc( GL_LEQUAL );
-		DebugRender::setColor( Eigen::Vector3f::UnitX() );
-
-		DebugRender::drawBox( transformer->getSize() );
-
-		DebugRender::end();
+	if( selection ) {
+		selection->render();
 	}
-
 
 	if( modes.target ) {
 		modes.target->render();
@@ -81,7 +84,7 @@ Eigen::Vector3f Editor::getScaledRelativeViewMovement( const Eigen::Vector3f &re
 	Eigen::Vector3f u, v, w;
 	Eigen::unprojectAxes( view->viewerContext.worldViewerPosition, view->viewerContext.projectionView, u, v, w );
 
-	const float scale = w.dot( transformer->getTransformation().translation() - view->viewerContext.worldViewerPosition ) / w.squaredNorm();
+	const float scale = w.dot( selection->getTransformation().translation() - view->viewerContext.worldViewerPosition ) / w.squaredNorm();
 
 	return
 		u * scale * relativeMovement.x() +
@@ -91,11 +94,11 @@ Eigen::Vector3f Editor::getScaledRelativeViewMovement( const Eigen::Vector3f &re
 }
 
 void Editor::TransformMode::storeState() {
-	storedTransformation = editor->transformer->getTransformation();
+	storedTransformation = editor->selection->getTransformation();
 }
 
 void Editor::TransformMode::restoreState() {
-	editor->transformer->setTransformation( storedTransformation );
+	editor->selection->setTransformation( storedTransformation );
 }
 
 void Editor::TransformMode::onMouse( EventState &eventState ) {
@@ -193,9 +196,29 @@ void Editor::TransformMode::onNotify( const EventState &eventState ) {
 	}
 }
 
+void Editor::Selecting::onKeyboard( EventState &eventState ) {
+	switch( eventState.event.key.code ) {
+	case sf::Keyboard::Escape:
+		editor->selection.reset();
+		eventState.accept();
+		break;
+	case sf::Keyboard::LShift:
+	case sf::Keyboard::LAlt:
+	case sf::Keyboard::LControl:
+		eventState.accept();
+		break;
+	}
+}
+
 void Editor::Selecting::onMouse( EventState &eventState ) {
+	bool selectModel = sf::Keyboard::isKeyPressed( sf::Keyboard::LAlt );
+	bool inclusiveToggleSelection = sf::Keyboard::isKeyPressed( sf::Keyboard::LShift );
+	bool removeFromSelection = sf::Keyboard::isKeyPressed( sf::Keyboard::LControl );
+
 	if( eventState.event.type == sf::Event::MouseButtonPressed && eventState.event.mouseButton.button == sf::Mouse::Left ) {
-		editor->transformer.reset();
+		if( !inclusiveToggleSelection && !removeFromSelection ) {
+			editor->selection.reset();
+		}
 
 		float xh, yh;
 		editor->convertScreenToHomogeneous( eventState.event.mouseButton.x, eventState.event.mouseButton.y, xh, yh );
@@ -223,12 +246,47 @@ void Editor::Selecting::onMouse( EventState &eventState ) {
 		if( editor->world->selectFromView( *editor->view, xh, yh, &result ) && result.objectIndex != SGSInterface::SelectionResult::SELECTION_INDEX_TERRAIN ) {
 			if( bestOBB == -1 || result.hitDistance < bestT) {
 				bestOBB = -1;
-				editor->transformer = std::make_shared< SGSInstanceTransformer >( editor, result.objectIndex );
+				
+				if( !selectModel ) {
+					editor->selection = std::make_shared< SGSInstanceSelection >( editor, result.objectIndex );
+				}
+				else {
+					struct Selector : SelectionVisitor {
+						Editor *editor;
+						int modelIndex;
+						bool removeFromSelection;
+
+						Selector( Editor *editor, int modelIndex, bool removeFromSelection ) : 
+							editor( editor ),
+							modelIndex( modelIndex ),
+							removeFromSelection( removeFromSelection ) 
+						{}
+
+						void visit() {
+							editor->selection = std::make_shared< SGSMultiModelSelection >( editor, modelIndex );
+						}
+
+						void visit( ISelection *selection ) {
+							visit();
+						}
+
+						void visit( SGSMultiModelSelection *modelSelection ) {
+							auto found = boost::find( modelSelection->modelIndices, modelIndex );
+							if( !removeFromSelection && found == modelSelection->modelIndices.end() ) {
+								modelSelection->modelIndices.push_back( modelIndex );	
+							}
+							else if( found != modelSelection->modelIndices.end() ) {
+								modelSelection->modelIndices.erase( found );
+							}
+						}
+					};
+					Selector( editor, result.modelIndex, removeFromSelection ).dispatch( editor->selection.get() );
+				}
 			}
 		}
 
 		if( bestOBB != -1 ) {
-			editor->transformer = std::make_shared< OBBTransformer >( editor, bestOBB );
+			editor->selection = std::make_shared< ObbSelection >( editor, bestOBB );
 		}
 	}
 	eventState.accept();
@@ -241,8 +299,8 @@ void Editor::Placing::onMouse( EventState &eventState ) {
 
 		SGSInterface::SelectionResult result;
 		if( editor->world->selectFromView( *editor->view, xh, yh, &result ) ) {
-			const auto transformation = editor->transformer->getTransformation();
-			editor->transformer->setTransformation(
+			const auto transformation = editor->selection->getTransformation();
+			editor->selection->setTransformation(
 				Eigen::Translation3f( Eigen::map( result.hitPosition) ) * transformation.linear()
 				);
 		}
@@ -253,18 +311,18 @@ void Editor::Placing::onMouse( EventState &eventState ) {
 void Editor::Moving::transform( const Eigen::Vector3f &relativeMovement, bool localMode ) {
 	if( !localMode ) {
 		const auto scaledRelativeMovement = editor->getScaledRelativeViewMovement( relativeMovement );
-		editor->transformer->setTransformation( Eigen::Translation3f( scaledRelativeMovement ) * editor->transformer->getTransformation() );
+		editor->selection->setTransformation( Eigen::Translation3f( scaledRelativeMovement ) * editor->selection->getTransformation() );
 	}
 	else {
-		const auto transformation = editor->transformer->getTransformation();
-		editor->transformer->setTransformation( Eigen::Translation3f( transformation.linear() * relativeMovement ) * transformation );
+		const auto transformation = editor->selection->getTransformation();
+		editor->selection->setTransformation( Eigen::Translation3f( transformation.linear() * relativeMovement ) * transformation );
 	}
 }
 
 void Editor::Rotating::transform( const Eigen::Vector3f &relativeMovement, bool localMode ) {
 	Eigen::Affine3f rotation;
 
-	const auto transformation = editor->transformer->getTransformation();
+	const auto transformation = editor->selection->getTransformation();
 
 	if( !localMode ) {
 		rotation =
@@ -281,9 +339,9 @@ void Editor::Rotating::transform( const Eigen::Vector3f &relativeMovement, bool 
 		;
 	}
 
-	const Vector3f translation = editor->transformer->getTransformation().translation();
+	const Vector3f translation = editor->selection->getTransformation().translation();
 
-	editor->transformer->setTransformation(
+	editor->selection->setTransformation(
 		Eigen::Translation3f( translation ) *
 		rotation *
 		Eigen::Translation3f( -translation ) *
@@ -292,11 +350,11 @@ void Editor::Rotating::transform( const Eigen::Vector3f &relativeMovement, bool 
 }
 
 void Editor::Resizing::storeState() {
-	storedOBB = editor->transformer->getOBB();
+	storedOBB = editor->selection->getOBB();
 }
 
 void Editor::Resizing::restoreState() {
-	editor->transformer->setOBB( storedOBB );
+	editor->selection->setOBB( storedOBB );
 }
 
 bool Editor::Resizing::setCornerMasks( int x, int y ) {
@@ -308,7 +366,7 @@ bool Editor::Resizing::setCornerMasks( int x, int y ) {
 	const Eigen::Vector4f nearPlanePoint( xh, yh, -1.0, 1.0 );
 	const Eigen::Vector3f direction = (editor->view->viewerContext.projectionView.inverse() * nearPlanePoint).hnormalized() - editor->view->viewerContext.worldViewerPosition;
 
-	const OBB objectOBB = editor->transformer->getOBB();
+	const OBB objectOBB = editor->selection->getOBB();
 
 	Eigen::Vector3f boxHitPoint;
 	//Eigen::Vector3f hitPoint;
@@ -389,7 +447,7 @@ void Editor::Resizing::onKeyboard( EventState &eventState ) {
 void Editor::Resizing::transform( const Eigen::Vector3f &relativeMovement, bool fixCenter, bool invertMask ) {
 	const Eigen::Vector3f &localMask = invertMask ? invertedMask : mask;
 
-	OBB objectOBB = editor->transformer->getOBB();
+	OBB objectOBB = editor->selection->getOBB();
 
 	const Vector3f boxDelta =
 		objectOBB.transformation.inverse().linear() *
@@ -402,7 +460,7 @@ void Editor::Resizing::transform( const Eigen::Vector3f &relativeMovement, bool 
 		objectOBB.transformation = objectOBB.transformation * Eigen::Translation3f( centerShift );
 	}
 
-	editor->transformer->setOBB( objectOBB );
+	editor->selection->setOBB( objectOBB );
 }
 
 void Editor::Resizing::onUpdate( EventSystem &eventSystem, const float frameDuration, const float elapsedTime ) {

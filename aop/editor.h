@@ -11,6 +11,7 @@
 
 #include <SFML/Window.hpp>
 #include <SFML/Graphics.hpp>
+#include "boost/range/algorithm/find.hpp"
 
 struct Editor : EventDispatcher {
 	struct Volumes {
@@ -30,14 +31,9 @@ struct Editor : EventDispatcher {
 		}
 	};
 
-	struct ITransformer {
-		enum Type {
-			T_OBB,
-			T_SGS
-		} type;
-		
-		ITransformer( Type type ) : type( type ) {}
+	struct SelectionVisitor;
 
+	struct ISelection {
 		virtual Eigen::Vector3f getSize() = 0;
 		virtual void setSize( const Eigen::Vector3f &size ) = 0;
 
@@ -48,15 +44,21 @@ struct Editor : EventDispatcher {
 		virtual void setOBB( const OBB &obb ) = 0;
 
 		virtual bool canResize() = 0;
+		virtual bool canTransform() = 0;
 
-		virtual ~ITransformer() {}
+		// the selection renders whatever border it wants itself
+		virtual void render() = 0;
+
+		virtual ~ISelection() {}
+
+		virtual void acceptVisitor( SelectionVisitor &visitor ) = 0;
 	};
 
-	struct OBBTransformer : ITransformer {
+	struct ObbSelection : ISelection {
 		int index;
 		Editor *editor;
 
-		OBBTransformer( Editor *editor, int index ) : ITransformer( T_OBB ), editor( editor ), index( index ) {}
+		ObbSelection( Editor *editor, int index ) : editor( editor ), index( index ) {}
 
 		Eigen::Vector3f getSize() {
 			return editor->volumes->get( index )->size;
@@ -85,15 +87,24 @@ struct Editor : EventDispatcher {
 		bool canResize() {
 			return true;
 		}
+
+		bool canTransform() {
+			return true;
+		}
+
+		void render() {
+			Editor::renderHighlitOBB( getOBB() );
+		}
+
+		void acceptVisitor( SelectionVisitor &visitor );
 	};
 
-	struct SGSInstanceTransformer : ITransformer {
+	struct SGSInstanceSelection : ISelection {
 		int instanceIndex;
 		Editor *editor;
 
-		SGSInstanceTransformer( Editor *editor, int instanceIndex )
+		SGSInstanceSelection( Editor *editor, int instanceIndex )
 			:
-			ITransformer( T_SGS ),
 			instanceIndex( instanceIndex ),
 			editor( editor )
 		{}
@@ -124,10 +135,7 @@ struct Editor : EventDispatcher {
 		}
 
 		OBB getOBB() {
-			OBB obb;
-			obb.transformation = getTransformation();
-			obb.size = getSize();
-			return obb;
+			return OBB( getTransformation(), getSize() );
 		}
 
 		void setOBB( const OBB &obb ) {
@@ -137,9 +145,106 @@ struct Editor : EventDispatcher {
 		bool canResize() {
 			return false;
 		}
+
+		bool canTransform() {
+			return true;
+		}
+
+		void render() {
+			Editor::renderHighlitOBB( getOBB() );
+		}
+
+		void acceptVisitor( SelectionVisitor &visitor );
 	};
 
-	std::shared_ptr< ITransformer > transformer;
+	struct SGSMultiModelSelection : ISelection {
+		Editor *editor;
+		std::vector<int> modelIndices;
+
+		SGSMultiModelSelection( Editor *editor, int modelIndex ) :
+			editor( editor ) 
+		{
+			modelIndices.push_back( modelIndex );
+		}
+
+		// TODO: this is design fail: we should use multiple interfaces for all this and then use visitors [10/2/2012 kirschan2]
+		virtual Eigen::Vector3f getSize() {
+			throw std::exception( "not implemented!" );
+		}
+		virtual void setSize( const Eigen::Vector3f &size ) {
+			throw std::exception( "not implemented!" );
+		}
+
+		virtual OBB::Transformation getTransformation() {
+			throw std::exception( "not implemented!" );
+		}
+
+		virtual void setTransformation( const OBB::Transformation &transformation ) {
+			throw std::exception( "not implemented!" );
+		}
+
+		virtual OBB getOBB() {
+			throw std::exception( "not implemented!" );
+		}
+		virtual void setOBB( const OBB &obb ) {
+			throw std::exception( "not implemented!" );
+		}
+
+		bool canResize() {
+			return false;
+		}
+
+		bool canTransform() {
+			return false;
+		}
+
+		void render() {
+			// TODO: we could use a display list to speed things up [10/2/2012 kirschan2]
+			// we walk the scene manually and render obbs for all instances that match
+			const int numInstances = editor->world->sceneRenderer.getNumInstances();
+			for( int instanceIndex = 0 ; instanceIndex < numInstances ; instanceIndex++ ) {
+				const int modelIndex = editor->world->sceneRenderer.getModelIndex( instanceIndex );
+
+				if( boost::range::find( modelIndices, modelIndex ) != modelIndices.end() ) {
+					Editor::renderHighlitOBB( makeOBB( editor->world->sceneRenderer.getInstanceTransformation( instanceIndex ), editor->world->sceneRenderer.getModelBoundingBox( modelIndex ) ) );
+				}
+			}
+		}
+
+		void acceptVisitor( SelectionVisitor &visitor );
+	};
+
+	// NOTE: modified visitor pattern to handle the no object case as well [10/2/2012 kirschan2]
+	struct SelectionVisitor {
+		virtual void visit() {}
+
+		void dispatch( ISelection *selection ) {
+			if( selection ) {
+				selection->acceptVisitor( *this );
+			}
+			else {
+				visit();
+			}
+		}
+
+		virtual void visit( ISelection *selection ) {}
+
+		virtual void visit( ObbSelection *obbSelection ) {
+			visit( (ISelection *) obbSelection );
+		}
+
+		virtual void visit( SGSInstanceSelection *instanceSelection ) {
+			visit( (ISelection *) instanceSelection );
+		}
+
+		virtual void visit( SGSMultiModelSelection *modelSelection ) {
+			visit( (ISelection *) modelSelection );
+		}
+
+		virtual ~SelectionVisitor() {}
+	};
+
+	std::shared_ptr< ISelection > selection;
 
 	SGSInterface::View *view;
 	SGSInterface::World *world;
@@ -231,6 +336,8 @@ struct Editor : EventDispatcher {
 	struct Selecting : Mode {
 		Selecting( Editor *editor, const char *name ) : Mode( editor, name ) {}
 
+		void onKeyboard(  EventState &eventState );
+
 		void onMouse( EventState &eventState );
 
 		std::string getHelp( const std::string &prefix /* = std::string */ ) {
@@ -314,4 +421,23 @@ struct Editor : EventDispatcher {
 
 	void init();
 	void render();
+
+	static void renderHighlitOBB( const OBB &obb );
 };
+
+
+//////////////////////////////////////////////////////////////////////////
+// visitor
+
+inline void Editor::SGSInstanceSelection::acceptVisitor( SelectionVisitor &visitor ) {
+	visitor.visit( this );
+}
+
+inline void Editor::ObbSelection::acceptVisitor( SelectionVisitor &visitor ) {
+	visitor.visit( this );
+}
+
+void Editor::SGSMultiModelSelection::acceptVisitor( SelectionVisitor &visitor ) {
+	visitor.visit( this );
+}
+

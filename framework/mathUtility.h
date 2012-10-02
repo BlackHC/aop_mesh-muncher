@@ -7,6 +7,12 @@ struct OBB {
 	// origin box to world (without scaling)
 	Transformation transformation;
 	Eigen::Vector3f size;
+
+	OBB() {}
+	OBB( const Transformation &transformation, const Eigen::Vector3f &size ) :
+		transformation( transformation ),
+		size( size ) {
+	}
 };
 
 // z: 9, x: 9, y: 8
@@ -265,8 +271,8 @@ inline Eigen::Matrix4f unpermutedToPermutedMatrix( const int *permutation ) {
 }
 
 inline OBB makeOBB( const Eigen::Affine3f &transformation, const Eigen::AlignedBox3f &alignedBox ) {
-	OBB obb;
-	obb.transformation = transformation * Eigen::Translation3f( alignedBox.center() );
-	obb.size = alignedBox.sizes();
-	return obb;
+	return OBB(
+		transformation * Eigen::Translation3f( alignedBox.center() ),
+		alignedBox.sizes()
+	);
 }
