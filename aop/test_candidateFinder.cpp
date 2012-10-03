@@ -108,7 +108,7 @@ TEST( ProbeDataset, setHitCounterLowerBounds ) {
 	}
 }
 
-TEST( SimpleProbeDataset, subSet ) {
+TEST( SortedProbeDataset, subSet ) {
 	RawProbeDataset rawDataset;
 
 	for( int i = 0 ; i < 1000 ; i++ ) {
@@ -119,18 +119,18 @@ TEST( SimpleProbeDataset, subSet ) {
 	}
 	rawDataset.probes.resize( 2000 );
 
-	SimpleProbeDataset dataset( std::move( rawDataset ) );
+	SortedProbeDataset dataset( std::move( rawDataset ) );
 
 	dataset.subSet( std::make_pair( 0, 2000 ) );
 
-	SimpleProbeDataset scratch = dataset.subSet( std::make_pair( 0, 2000 ) );
+	SortedProbeDataset scratch = dataset.subSet( std::make_pair( 0, 2000 ) );
 
 	for( int j = 0 ; j < 2000 ; j++ ) {
 		ASSERT_EQ( j, scratch.getProbeContexts()[j].distance );
 	}
 }
 
-TEST( SimpleProbeDataset, merge ) {
+TEST( SortedProbeDataset, merge ) {
 	RawProbeDataset first, second;
 
 	for( int i = 0 ; i < 1000 ; i++ ) {
@@ -140,7 +140,7 @@ TEST( SimpleProbeDataset, merge ) {
 	first.probes.resize( 1000 );
 	second.probes.resize( 1000 );
 
-	SimpleProbeDataset result = SimpleProbeDataset::merge( std::move( first ), std::move( second ) );
+	SortedProbeDataset result = SortedProbeDataset::merge( std::move( first ), std::move( second ) );
 
 	for( int j = 0 ; j < 2000 ; j++ ) {
 		ASSERT_EQ( j, result.getProbeContexts()[j].distance );
@@ -149,7 +149,7 @@ TEST( SimpleProbeDataset, merge ) {
 
 TEST( ProbeDataset, mergeMultiple ) {
 	const int numDatasets = 10;
-	SimpleProbeDataset datasets[numDatasets];
+	SortedProbeDataset datasets[numDatasets];
 
 	for( int j = 0 ; j < numDatasets ; j++ ) {
 		RawProbeDataset rawDataset;
@@ -160,12 +160,12 @@ TEST( ProbeDataset, mergeMultiple ) {
 		datasets[j] = std::move( rawDataset );
 	}
 	
-	std::vector< const SimpleProbeDataset * > pDatasets;
+	std::vector< const SortedProbeDataset * > pDatasets;
 	for( int j = 0 ; j < numDatasets ; j++ ) {
 		pDatasets.push_back( &datasets[j] );
 	}
 
-	SimpleProbeDataset result = SimpleProbeDataset::mergeMultiple( pDatasets );
+	SortedProbeDataset result = SortedProbeDataset::mergeMultiple( pDatasets );
 
 	for( int j = 0 ; j < numDatasets * 1000 ; j++ ) {
 		ASSERT_EQ( j, result.getProbeContexts()[j].distance );
@@ -174,14 +174,14 @@ TEST( ProbeDataset, mergeMultiple ) {
 
 TEST( ProbeDataset, mergeMultiple_empty ) {
 	const int numDatasets = 10;
-	SimpleProbeDataset datasets[numDatasets];
+	SortedProbeDataset datasets[numDatasets];
 
-	std::vector< const SimpleProbeDataset * > pDatasets;
+	std::vector< const SortedProbeDataset * > pDatasets;
 	for( int j = 0 ; j < numDatasets ; j++ ) {
 		pDatasets.push_back( &datasets[j] );
 	}
 
-	SimpleProbeDataset result = SimpleProbeDataset::mergeMultiple( pDatasets );
+	SortedProbeDataset result = SortedProbeDataset::mergeMultiple( pDatasets );
 
 	ASSERT_EQ( result.size(), 0 );
 }
@@ -198,7 +198,7 @@ TEST( ProbeDatabase, zeroTolerance ) {
 	rawDataset.probes.resize( rawDataset.probeContexts.size() );
 	rawTestDataset.probes.resize( rawTestDataset.probeContexts.size() );
 
-	SimpleProbeDataset dataset( std::move( rawDataset ) ), testDataset( std::move( rawTestDataset ) );
+	SortedProbeDataset dataset( std::move( rawDataset ) ), testDataset( std::move( rawTestDataset ) );
 
 	ProbeDatabase candidateFinder;
 	candidateFinder.reserveIds( 0 );
@@ -256,7 +256,7 @@ TEST( ProbeDatabase, oneTolerance ) {
 	rawDataset.probes.resize( rawDataset.probeContexts.size() );
 	rawTestDataset.probes.resize( rawTestDataset.probeContexts.size() );
 
-	SimpleProbeDataset dataset( std::move( rawDataset ) ), testDataset( std::move( rawTestDataset ) );
+	SortedProbeDataset dataset( std::move( rawDataset ) ), testDataset( std::move( rawTestDataset ) );
 
 	ProbeDatabase candidateFinder;
 	candidateFinder.reserveIds( 0 );
@@ -311,7 +311,7 @@ TEST( ProbeDatabase, big ) {
 	rawDataset.probes.resize( rawDataset.probeContexts.size() );
 	rawTestDataset.probes.resize( rawTestDataset.probeContexts.size() );
 
-	SimpleProbeDataset dataset( std::move( rawDataset ) ), testDataset( std::move( rawTestDataset ) );
+	SortedProbeDataset dataset( std::move( rawDataset ) ), testDataset( std::move( rawTestDataset ) );
 
 	ProbeDatabase candidateFinder;
 	candidateFinder.reserveIds( 0 );

@@ -32,14 +32,14 @@ struct NestedOutput {
 	}
 };*/
 
-struct SimpleProbeDataset;
+struct SortedProbeDataset;
 struct ProbeDataset;
 
 namespace Serializer {
 	template< typename Reader >
-	void read( Reader &reader, SimpleProbeDataset &value );
+	void read( Reader &reader, SortedProbeDataset &value );
 	template< typename Writer >
-	void write( Writer &writer, const SimpleProbeDataset &value );
+	void write( Writer &writer, const SortedProbeDataset &value );
 
 	template< typename Reader >
 	void read( Reader &reader, ProbeDataset &value );
@@ -89,6 +89,13 @@ struct RawProbeDataset {
 	{
 	}
 
+	RawProbeDataset & operator = ( RawProbeDataset &&other ) {
+		probes = std::move( other.probes );
+		probeContexts = std::move( other.probeContexts );
+
+		return *this;
+	}
+
 	RawProbeDataset clone() const {
 		RawProbeDataset cloned;
 		cloned.probes = probes;
@@ -110,74 +117,77 @@ private:
 
 // no further preprocessed information
 // invariant: sorted
-struct SimpleProbeDataset {
-	SimpleProbeDataset() {}
+struct SortedProbeDataset {
+	SortedProbeDataset() {}
 
-	SimpleProbeDataset( RawProbeDataset &&other ) :
-		probes( std::move( other.probes ) ),
-		probeContexts( std::move( other.probeContexts ) )
+	SortedProbeDataset( RawProbeDataset &&other ) :
+		data( std::move( other ) )
 	{
-		sort();
+		data.sort();
 	}
 
-	SimpleProbeDataset( SimpleProbeDataset &&other ) :
-		probes( std::move( other.probes ) ),
-		probeContexts( std::move( other.probeContexts ) )
+	SortedProbeDataset( SortedProbeDataset &&other ) :
+		data( std::move( other.data ) )
 	{
 	}
 
-	SimpleProbeDataset & operator = ( SimpleProbeDataset &&other ) {
-		probes = std::move( other.probes );
-		probeContexts = std::move( other.probeContexts );
+	SortedProbeDataset & operator = ( SortedProbeDataset &&other ) {
+		data = std::move( other.data );
 
 		return *this;
 	}
 
-	SimpleProbeDataset clone() const {
-		SimpleProbeDataset cloned;
-		cloned.probes = probes;
-		cloned.probeContexts = probeContexts;
+	SortedProbeDataset clone() const {
+		SortedProbeDataset cloned;
+		cloned.data = data.clone();
 		return cloned;
 	}
 
 	int size() const {
-		return (int) probes.size();
+		return data.size();
 	}
 
-	static SimpleProbeDataset merge( const SimpleProbeDataset &first, const SimpleProbeDataset &second );
-	static SimpleProbeDataset mergeMultiple( const std::vector< const SimpleProbeDataset* > &datasets);
+	static SortedProbeDataset merge( const SortedProbeDataset &first, const SortedProbeDataset &second );
+	static SortedProbeDataset mergeMultiple( const std::vector< const SortedProbeDataset* > &datasets);
 
-	SimpleProbeDataset subSet( const std::pair< int, int > &range ) const;
+	SortedProbeDataset subSet( const std::pair< int, int > &range ) const;
 
 	const std::vector< Probe > &getProbes() const {
-		return probes;
+		return data.probes;
 	}
 
 	const std::vector< ProbeContext > &getProbeContexts() const {
-		return probeContexts;
+		return data.probeContexts;
 	}
 
 private:
+	std::vector< Probe > &probes() {
+		return data.probes;
+	}
+
+	std::vector< ProbeContext > &probeContexts() {
+		return data.probeContexts;
+	}
+
 	void sort();
 
-	std::vector< Probe > probes;
-	std::vector< ProbeContext > probeContexts;
+	RawProbeDataset data;
 
 	template< typename Reader >
-	friend void Serializer::read( Reader &reader, SimpleProbeDataset &value );
+	friend void Serializer::read( Reader &reader, SortedProbeDataset &value );
 	template< typename Writer >
-	friend void Serializer::write( Writer &writer, const SimpleProbeDataset &value );
+	friend void Serializer::write( Writer &writer, const SortedProbeDataset &value );
 
 private:
 	// better error messages than with boost::noncopyable
-	SimpleProbeDataset( const SimpleProbeDataset &other );
-	SimpleProbeDataset & operator = ( const SimpleProbeDataset &other );
+	SortedProbeDataset( const SortedProbeDataset &other );
+	SortedProbeDataset & operator = ( const SortedProbeDataset &other );
 };
 
 // this dataset creates auxiliary structures automatically
 // invariant: sorted and hitCounterLowerBounds is correctly set
 struct ProbeDataset {
-	SimpleProbeDataset data;
+	SortedProbeDataset data;
 
 	const std::vector< Probe > &getProbes() const {
 		return data.getProbes();
@@ -191,13 +201,12 @@ struct ProbeDataset {
 
 	ProbeDataset() {}
 
-	ProbeDataset( SimpleProbeDataset &&other ) :
+	ProbeDataset( SortedProbeDataset &&other ) :
 		data( std::move( other ) ),
 		hitCounterLowerBounds()
 	{
 		setHitCounterLowerBounds();
 	}
-
 
 	ProbeDataset( ProbeDataset &&other ) :
 		data( std::move( other.data ) ),
@@ -316,7 +325,7 @@ struct ProbeDatabase {
 			probeContextTolerance = pct;
 		}
 
-		void setQueryDataset( SimpleProbeDataset &&dataset ) {
+		void setQueryDataset( SortedProbeDataset &&dataset ) {
 			this->dataset = std::move( dataset );
 		}
 
@@ -408,7 +417,7 @@ struct ProbeDatabase {
 
 			// sort the ranges into two new vectors
 			// idea: use a global scratch space to avoid recurring allocations?
-			SimpleProbeDataset scratch = dataset.data.subSet( overlappedRange.second );
+			const SortedProbeDataset scratch = dataset.data.subSet( overlappedRange.second );
 
 			const int querySize = scratch.size();
 			int queryIndex = 0;
@@ -526,7 +535,7 @@ struct ProbeDatabase {
 		idDatasets.resize( maxId + 1 );
 	}
 
-	void addDataset( Id id, SimpleProbeDataset &&dataset ) {
+	void addDataset( Id id, SortedProbeDataset &&dataset ) {
 		idDatasets[ id ].insertQueue.emplace_back( std::move( dataset ) );
 	}
 
@@ -542,7 +551,7 @@ struct ProbeDatabase {
 
 public:
 	struct IdDatasets {
-		std::vector<SimpleProbeDataset> insertQueue;
+		std::vector<SortedProbeDataset> insertQueue;
 		ProbeDataset mergedDataset;
 
 		IdDatasets() {}
@@ -573,11 +582,11 @@ public:
 			}*/
 
 			if( insertQueue.size() == 1 ) {
-				mergedDataset = std::move( SimpleProbeDataset::merge( mergedDataset.data, insertQueue[0] ) );
+				mergedDataset = std::move( SortedProbeDataset::merge( mergedDataset.data, insertQueue[0] ) );
 			}
 			else {
 				// create a pointer vector with all datasets
-				std::vector< const SimpleProbeDataset * > datasets;
+				std::vector< const SortedProbeDataset * > datasets;
 				datasets.reserve( 1 + insertQueue.size() );
 
 				datasets.push_back( &mergedDataset.data );
@@ -586,7 +595,7 @@ public:
 				}
 
 				// merge them all
-				mergedDataset = std::move( SimpleProbeDataset::mergeMultiple( datasets ) );
+				mergedDataset = std::move( SortedProbeDataset::mergeMultiple( datasets ) );
 
 				// reset the queue
 				insertQueue.clear();

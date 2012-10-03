@@ -15,7 +15,8 @@ namespace Serializer {
 		}
 	}*/
 
-SERIALIZER_DEFAULT_EXTERN_IMPL( SimpleProbeDataset, (probes)(probeContexts) )
+SERIALIZER_DEFAULT_EXTERN_IMPL( RawProbeDataset, (probes)(probeContexts) )
+SERIALIZER_DEFAULT_EXTERN_IMPL( SortedProbeDataset, (data) )
 SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeDataset, (data)(hitCounterLowerBounds) )
 SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeDatabase::IdDatasets, (insertQueue)(mergedDataset) )
 

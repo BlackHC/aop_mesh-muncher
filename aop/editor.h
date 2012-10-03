@@ -443,7 +443,7 @@ inline void Editor::ObbSelection::acceptVisitor( SelectionVisitor &visitor ) {
 	visitor.visit( this );
 }
 
-void Editor::SGSMultiModelSelection::acceptVisitor( SelectionVisitor &visitor ) {
+inline void Editor::SGSMultiModelSelection::acceptVisitor( SelectionVisitor &visitor ) {
 	visitor.visit( this );
 }
 
