@@ -122,6 +122,9 @@ ADD_EXECUTABLE(Test_aop
 	candidateFinder.cpp
 	candidateFinderCache.cpp
 
+	../framework/autoTimer.h
+	../framework/autoTimer.cpp
+
 	test_candidateFinder.cpp
 
 	../gtest/gtest_main.cc

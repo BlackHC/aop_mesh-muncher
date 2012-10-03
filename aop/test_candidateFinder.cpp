@@ -152,7 +152,7 @@ TEST( ProbeDataset, mergeMultiple_empty ) {
 	ASSERT_EQ( result.size(), 0 );
 }
 
-TEST( CandidateFinder, zeroTolerance ) {
+TEST( ProbeDatabase, zeroTolerance ) {
 	ProbeDataset dataset, testDataset;
 
 	// init the dataset
@@ -165,7 +165,7 @@ TEST( CandidateFinder, zeroTolerance ) {
 	dataset.probes.resize( dataset.probeContexts.size() );
 	testDataset.probes.resize( dataset.probeContexts.size() );
 
-	CandidateFinder candidateFinder;
+	ProbeDatabase candidateFinder;
 	candidateFinder.reserveIds( 0 );
 	candidateFinder.addDataset( 0, dataset.clone() );
 	candidateFinder.integrateDatasets();
@@ -182,7 +182,7 @@ TEST( CandidateFinder, zeroTolerance ) {
 
 		query->execute();
 
-		CandidateFinder::Query::MatchInfos matchInfos = query->getCandidates();
+		ProbeDatabase::Query::MatchInfos matchInfos = query->getCandidates();
 
 		ASSERT_EQ( matchInfos.size(), 1 );
 		EXPECT_EQ( matchInfos[0].numMatches, 5000 );
@@ -201,7 +201,7 @@ TEST( CandidateFinder, zeroTolerance ) {
 
 		query->execute();
 
-		CandidateFinder::Query::MatchInfos matchInfos = query->getCandidates();
+		ProbeDatabase::Query::MatchInfos matchInfos = query->getCandidates();
 
 		ASSERT_EQ( matchInfos.size(), 1 );
 		EXPECT_EQ( matchInfos[0].numMatches, 2500 );
@@ -209,7 +209,7 @@ TEST( CandidateFinder, zeroTolerance ) {
 	}
 }
 
-TEST( CandidateFinder, oneTolerance ) {
+TEST( ProbeDatabase, oneTolerance ) {
 	ProbeDataset dataset, testDataset;
 
 	// init the dataset
@@ -222,7 +222,7 @@ TEST( CandidateFinder, oneTolerance ) {
 	dataset.probes.resize( dataset.probeContexts.size() );
 	testDataset.probes.resize( dataset.probeContexts.size() );
 
-	CandidateFinder candidateFinder;
+	ProbeDatabase candidateFinder;
 	candidateFinder.reserveIds( 0 );
 	candidateFinder.addDataset( 0, dataset.clone() );
 	candidateFinder.integrateDatasets();
@@ -239,7 +239,7 @@ TEST( CandidateFinder, oneTolerance ) {
 
 		query->execute();
 
-		CandidateFinder::Query::MatchInfos matchInfos = query->getCandidates();
+		ProbeDatabase::Query::MatchInfos matchInfos = query->getCandidates();
 
 		ASSERT_EQ( matchInfos.size(), 1 );
 		EXPECT_EQ( matchInfos[0].numMatches, 2*2000 + 3*3000 );
@@ -254,7 +254,7 @@ TEST( CandidateFinder, oneTolerance ) {
 
 		query->execute();
 
-		CandidateFinder::Query::MatchInfos matchInfos = query->getCandidates();
+		ProbeDatabase::Query::MatchInfos matchInfos = query->getCandidates();
 
 		ASSERT_EQ( matchInfos.size(), 1 );
 		EXPECT_EQ( matchInfos[0].numMatches, (2*2000 + 3*3000) / 2 );
@@ -263,7 +263,7 @@ TEST( CandidateFinder, oneTolerance ) {
 }
 
 #if 1
-TEST( CandidateFinder, big ) {
+TEST( ProbeDatabase, big ) {
 	ProbeDataset dataset, testDataset;
 
 	// init the dataset
@@ -276,7 +276,7 @@ TEST( CandidateFinder, big ) {
 	dataset.probes.resize( dataset.probeContexts.size() );
 	testDataset.probes.resize( dataset.probeContexts.size() );
 
-	CandidateFinder candidateFinder;
+	ProbeDatabase candidateFinder;
 	candidateFinder.reserveIds( 0 );
 	candidateFinder.addDataset( 0, dataset.clone() );
 	candidateFinder.integrateDatasets();
@@ -293,7 +293,7 @@ TEST( CandidateFinder, big ) {
 
 		query->execute();
 
-		CandidateFinder::Query::MatchInfos matchInfos = query->getCandidates();
+		ProbeDatabase::Query::MatchInfos matchInfos = query->getCandidates();
 
 		ASSERT_EQ( matchInfos.size(), 1 );
 		EXPECT_EQ( matchInfos[0].numMatches, 600000 );
@@ -311,7 +311,7 @@ TEST( CandidateFinder, big ) {
 
 		query->execute();
 
-		CandidateFinder::Query::MatchInfos matchInfos = query->getCandidates();
+		ProbeDatabase::Query::MatchInfos matchInfos = query->getCandidates();
 
 		ASSERT_EQ( matchInfos.size(), 1 );
 		EXPECT_EQ( matchInfos[0].numMatches, 300000 );

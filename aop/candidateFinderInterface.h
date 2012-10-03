@@ -67,11 +67,16 @@ struct ProbeDataset {
 
 	ProbeDataset() {}
 
-	ProbeDataset( ProbeDataset &&other ) : probes( std::move( other.probes ) ), probeContexts( std::move( other.probeContexts ) ) {}
+	ProbeDataset( ProbeDataset &&other ) :
+		probes( std::move( other.probes ) ),
+		probeContexts( std::move( other.probeContexts ) ),
+		hitCounterLowerBounds( std::move( other.hitCounterLowerBounds ) ) {
+	}
 
 	ProbeDataset & operator = ( ProbeDataset && other ) {
 		probes = std::move( other.probes );
 		probeContexts = std::move( other.probeContexts );
+		hitCounterLowerBounds = std::move( other.hitCounterLowerBounds );
 
 		return *this;
 	}
@@ -154,7 +159,7 @@ struct ProbeContextTolerance {
 	}
 };
 
-struct CandidateFinder {
+struct ProbeDatabase {
 	typedef int Id;
 	typedef std::vector<Id> Ids;
 
@@ -170,6 +175,8 @@ struct CandidateFinder {
 		struct MatchInfo {
 			int id;
 			int numMatches;
+
+			MatchInfo( int id = -1 ) : id( id ), numMatches() {}
 		};
 		typedef std::vector<MatchInfo> MatchInfos;
 
@@ -214,13 +221,17 @@ struct CandidateFinder {
 #endif
 
 		MatchInfo matchAgainst( int id ) {
+			// TODO: rename idDataset to idDatabase? [9/26/2012 kirschan2]
+			const ProbeDataset &idDataset = parent->idDatasets[id].mergedDataset;
+
+			if( idDataset.probes.empty() ) {
+				return MatchInfo( id );
+			}
+
 			AUTO_TIMER_FOR_FUNCTION( "id = " + boost::lexical_cast<std::string>( id ) );
 
 			// idea:
 			//	use a binary search approach to generate only needed subranges
-
-			// TODO: rename idDataset to idDatabase? [9/26/2012 kirschan2]
-			const ProbeDataset &idDataset = parent->idDatasets[id].mergedDataset;
 
 			// we can compare the different occlusion ranges against each other, after including the tolerance
 
@@ -251,10 +262,8 @@ struct CandidateFinder {
 				overlappedRanges.push_back( std::make_pair( idRange, queryRange ) );
 			}
 
-			MatchInfo matchInfo;
+			MatchInfo matchInfo( id );
 			// TODO: add constructor [9/27/2012 kirschan2]
-			matchInfo.id = id;
-			matchInfo.numMatches = 0;
 
 			for( auto rangePair = overlappedRanges.begin() ; rangePair != overlappedRanges.end() ; ++rangePair ) {
 				matchOverlappedRanges( idDataset, *rangePair, matchInfo );
@@ -317,7 +326,7 @@ struct CandidateFinder {
 		}
 
 	protected:
-		const CandidateFinder *parent;
+		const ProbeDatabase *parent;
 
 		ProbeDataset dataset;
 
@@ -326,9 +335,9 @@ struct CandidateFinder {
 		MatchInfos matchInfos;
 
 	private:
-		Query( const CandidateFinder *parent ) : parent( parent ) {}
+		Query( const ProbeDatabase *parent ) : parent( parent ) {}
 
-		friend std::shared_ptr<Query> CandidateFinder::createQuery();
+		friend std::shared_ptr<Query> ProbeDatabase::createQuery();
 	};
 
 	void reserveIds( Id maxId ) {

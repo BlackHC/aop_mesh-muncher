@@ -94,27 +94,46 @@ struct MouseDelta {
 
 
 #endif
+/*
+namespace DebugOptions {
+	bool visualizeInstanceProbes;	
+}
 
-void sampleInstances( SGSInterface::World &world, CandidateFinder &candidateFinder, int modelIndex ) {
+namespace DebugInformation {
+
+}
+
+struct DebugUI {
+
+};*/
+
+const float probeResolution = 0.25;
+
+void sampleInstances( SGSInterface::World *world, ProbeDatabase &candidateFinder, int modelIndex ) {
 	AUTO_TIMER_FOR_FUNCTION();
+	std::cerr << Indentation::get() << "sampling model " << modelIndex << "\n";
 
 	RenderContext renderContext;
 	renderContext.setDefault();
-	renderContext.disabledModelIndex = modelIndex;
+	//renderContext.disabledModelIndex = modelIndex;
 
-	auto instanceIndices = world.sceneRenderer.getModelInstances( 0 );
+	auto instanceIndices = world->sceneRenderer.getModelInstances( modelIndex );
 	
 	int totalCount = 0;
 
-	for( auto instanceIndex = instanceIndices.begin() ; instanceIndex != instanceIndices.end() ; ++instanceIndex ) {
+	for( int i = 0 ; i < instanceIndices.size() ; i++ ) {
+		const int instanceIndex = instanceIndices[ i ];
+
+		renderContext.disabledInstanceIndex = instanceIndex;
+
 		ProbeDataset dataset;
 		std::vector<SGSInterface::Probe> transformedProbes;
 	
-		world.generateProbes( *instanceIndex, 0.25, dataset.probes, transformedProbes );
+		world->generateProbes( instanceIndex, probeResolution, dataset.probes, transformedProbes );
 	
-		AUTO_TIMER_DEFAULT( boost::str( boost::format( "batch with %i probes" ) % transformedProbes.size() ) );
-		std::cout << "sampling " << transformedProbes.size() << " probes in one batch:\n\t";
-		world.optixRenderer.sampleProbes( transformedProbes, dataset.probeContexts, renderContext );
+		AUTO_TIMER_DEFAULT( boost::str( boost::format( "batch with %i probes for instance %i" ) % transformedProbes.size() % instanceIndex ) );
+		
+		world->optixRenderer.sampleProbes( transformedProbes, dataset.probeContexts, renderContext );
 	
 		candidateFinder.addDataset(modelIndex, std::move( dataset ) );
 	
@@ -124,6 +143,37 @@ void sampleInstances( SGSInterface::World &world, CandidateFinder &candidateFind
 	std::cerr << Indentation::get() << "total sampled probes: " << totalCount << "\n";
 }
 
+void queryVolume( SGSInterface::World *world, ProbeDatabase &candidateFinder, const Obb &queryVolume ) {
+	AUTO_TIMER_FOR_FUNCTION();
+
+	RenderContext renderContext;
+	renderContext.setDefault();
+
+	ProbeDataset dataset;
+
+	ProbeGenerator::generateQueryProbes( queryVolume, probeResolution, dataset.probes );
+	
+	{
+		AUTO_TIMER_FOR_FUNCTION( "sampling scene");
+		world->optixRenderer.sampleProbes( dataset.probes, dataset.probeContexts, renderContext );
+	}
+	
+	{
+		auto query = candidateFinder.createQuery();
+		query->setQueryDataset( std::move( dataset ) );
+
+		ProbeContextTolerance pct;
+		pct.setDefault();
+		query->setProbeContextTolerance( pct );
+
+		query->execute();
+
+		const auto &matchInfos = query->getCandidates();
+		for( auto matchInfo = matchInfos.begin() ; matchInfo != matchInfos.end() ; ++matchInfo ) {
+			std::cout << Indentation::get() << matchInfo->id << ": " << matchInfo->numMatches << "\n";
+		}
+	}
+}
 
 // TODO: this should get its own file [9/30/2012 kirschan2]
 EventSystem *EventHandler::eventSystem;
@@ -144,6 +194,8 @@ namespace aop {
 
 		Settings settings;
 
+		ProbeDatabase candidateFinder;
+
 		Application() {}
 
 		struct MainUI {
@@ -151,11 +203,41 @@ namespace aop {
 			AntTWBarUI::SimpleContainer ui;
 			
 			MainUI( Application *application ) : application( application ) {
+				init();
+			}
+
+			void init() {
 				ui.setName( "aop" );
-				ui.add( AntTWBarUI::makeSharedButton( "Load settings", [this] { this->application->settings.load(); } ) );
-				ui.add( AntTWBarUI::makeSharedButton( "Store settings", [this] { this->application->settings.store(); } ) );
+				ui.add( AntTWBarUI::makeSharedButton( "Load settings", [this] { application->settings.load(); } ) );
+				ui.add( AntTWBarUI::makeSharedButton( "Store settings", [this] { application->settings.store(); } ) );
 				//ui.add( AntTWBarUI::makeSharedVector< NamedTargetVolumeView >( "Camera Views", application->settings.volumes) );
-				
+				ui.add( AntTWBarUI::makeSharedSeparator() );
+				ui.add( AntTWBarUI::makeSharedButton( "Sample marked objects", [this] { 
+					 const auto &modelIndices = application->modelTypesUI->markedModels;
+					 for( auto modelIndex = modelIndices.begin() ; modelIndex != modelIndices.end() ; ++modelIndex ) {
+					 	sampleInstances( application->world.get(), application->candidateFinder, *modelIndex );
+					 }
+					 application->candidateFinder.integrateDatasets();
+				} ) );
+				ui.add( AntTWBarUI::makeSharedSeparator() );
+				ui.add( AntTWBarUI::makeSharedButton( "Query volume", [this] () {
+					struct QueryVolumeVisitor : Editor::SelectionVisitor {
+						Application *application;
+
+						QueryVolumeVisitor( Application *application ) : application( application ) {}
+
+						void visit() {
+							std::cerr << "No volume selected!\n";
+						}
+						void visit( Editor::ObbSelection *selection ) {
+							queryVolume( application->world.get(), application->candidateFinder, selection->getObb() );
+						}
+					};
+					QueryVolumeVisitor( application ).dispatch( application->editorWrapper->editor.selection.get() );
+				} ) );
+				ui.add( AntTWBarUI::makeSharedSeparator() );
+				ui.add( AntTWBarUI::makeSharedButton( "Load database", [this] { application->candidateFinder.loadCache( "database"); } ) );
+				ui.add( AntTWBarUI::makeSharedButton( "Store database", [this] { application->candidateFinder.storeCache( "database"); } ) );
 				ui.link();
 			}
 		};
@@ -167,15 +249,13 @@ namespace aop {
 			
 			std::function<void()> update;
 
-			struct NamedTargetVolumeView {
+			struct NamedTargetVolumeView : AntTWBarUI::SimpleStructureFactory< aop::Settings::NamedTargetVolume, NamedTargetVolumeView > {
 				TargetVolumesUI *targetVolumesUI;
-
-				typedef aop::Settings::NamedTargetVolume Type;
 
 				NamedTargetVolumeView( TargetVolumesUI *targetVolumesUI ) : targetVolumesUI( targetVolumesUI ) {}
 
 				template< typename ElementAccessor >
-				void create( AntTWBarUI::Container *container, ElementAccessor &accessor ) const {
+				void setup( AntTWBarUI::Container *container, ElementAccessor &accessor ) const {
 					container->add( 
 						AntTWBarUI::makeSharedVariable(
 							"Name", 
@@ -228,15 +308,13 @@ namespace aop {
 
 			std::function< void() > update;
 
-			struct NamedCameraStateView {
+			struct NamedCameraStateView : AntTWBarUI::SimpleStructureFactory< aop::Settings::NamedCameraState, NamedCameraStateView >{
 				Application *application;
-
-				typedef aop::Settings::NamedCameraState Type;
 
 				NamedCameraStateView( Application *application ) : application( application ) {}
 
 				template< typename Accessor >
-				void create( AntTWBarUI::Container *container, Accessor &accessor ) const {
+				void setup( AntTWBarUI::Container *container, Accessor &accessor ) const {
 					container->add( 
 						AntTWBarUI::makeSharedVariable(
 							"Name", 
@@ -305,15 +383,13 @@ namespace aop {
 
 			std::function<void()> update;
 
-			struct ModelNameView {
+			struct ModelNameView : AntTWBarUI::SimpleStructureFactory< std::string, ModelNameView >{
 				ModelTypesUI *modelTypesUI;
-
-				typedef std::string Type;
 
 				ModelNameView( ModelTypesUI *modelTypesUI ) : modelTypesUI( modelTypesUI ) {}
 				
 				template< typename ElementAccessor >
-				void create( AntTWBarUI::Container *container, ElementAccessor &accessor ) const {
+				void setup( AntTWBarUI::Container *container, ElementAccessor &accessor ) const {
 					container->add( AntTWBarUI::makeSharedButton( accessor.pull(), 
 							[this, &accessor] () {
 								modelTypesUI->toggleMarkedModel( accessor.elementIndex );
@@ -323,15 +399,13 @@ namespace aop {
 				}
 			};
 
-			struct MarkedModelNameView {
+			struct MarkedModelNameView : AntTWBarUI::SimpleStructureFactory< int, MarkedModelNameView > {
 				ModelTypesUI *modelTypesUI;
-
-				typedef int Type;
 
 				MarkedModelNameView( ModelTypesUI *modelTypesUI ) : modelTypesUI( modelTypesUI ) {}
 				
 				template< typename ElementAccessor >
-				void create( AntTWBarUI::Container *container, ElementAccessor &accessor ) const {
+				void setup( AntTWBarUI::Container *container, ElementAccessor &accessor ) const {
 					container->add( AntTWBarUI::makeSharedReadOnlyVariable(
 							"Name",
 							AntTWBarUI::makeExpressionAccessor<std::string>( [&] () -> std::string & { return modelTypesUI->beautifiedModelNames[ accessor.pull() ]; } )
@@ -406,11 +480,11 @@ namespace aop {
 				struct MyConfig {
 					enum { supportRemove = false };
 				};
-				modelsUi = std::make_shared< AntTWBarUI::Vector< ModelNameView, MyConfig > >( "All models", beautifiedModelNames, ModelNameView( this ), true );
+				modelsUi = std::make_shared< AntTWBarUI::Vector< ModelNameView, MyConfig > >( "All models", beautifiedModelNames, ModelNameView( this ), AntTWBarUI::CT_SEPARATOR );
 				modelsUi->link();
 
 				markedModelsUi.setName( "Marked models");
-				auto markedModelsVector = AntTWBarUI::makeSharedVector( "Models", markedModels, MarkedModelNameView( this ), true );
+				auto markedModelsVector = AntTWBarUI::makeSharedVector( "Models", markedModels, MarkedModelNameView( this ), AntTWBarUI::CT_SEPARATOR );
 				markedModelsUi.add( markedModelsVector );
 				markedModelsUi.add( AntTWBarUI::makeSharedSeparator() );
 				markedModelsUi.add( AntTWBarUI::makeSharedButton( "= {}", [this] () {
@@ -521,11 +595,15 @@ namespace aop {
 		}
 	
 		void init() {
+			ProbeGenerator::initDirections();
+
 			initMainWindow();
 			initCamera();
 			initEventHandling();
 
 			initSGSInterface();
+
+			candidateFinder.reserveIds( world->scene.modelNames.size() );
 
 			editorWrapper.reset( new EditorWrapper( this ) );
 
@@ -749,16 +827,6 @@ void main() {
 		aop::Application application;
 
 		application.init();
-
-		{
-			aop::Settings::NamedTargetVolume targetVolume;
-
-			targetVolume.name = "test";
-			targetVolume.volume.transformation.setIdentity();
-			targetVolume.volume.size.setConstant( 3.0 );
-		
-			application.settings.volumes.push_back( targetVolume );
-		}
 
 		application.eventLoop();
 	}
