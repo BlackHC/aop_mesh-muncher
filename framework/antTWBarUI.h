@@ -10,12 +10,19 @@
 namespace AntTWBarUI {
 	// support two creation modes: simply wrap an object or make it more complex by instantiating the UI element yourself
 
+	enum ContainerType {
+		CT_GROUP,
+		CT_SEPARATOR,
+		CT_EMBEDDED
+	};
+
+
 	// TODO: add move most things into a separate detail namespace [10/1/2012 kirschan2]
 	struct UniqueID {
 		typedef unsigned ID;
 		static ID idCounter;
 		const ID id;
-		
+
 		UniqueID() : id( createUniqueID() ) {}
 
 		static ID createUniqueID() {
@@ -57,7 +64,7 @@ namespace AntTWBarUI {
 		}
 
 		void setLabel( const std::string &label ) {
-			TwSetParam( twBar, NULL, "label", TW_PARAM_CSTRING, 1, label.c_str() );
+			TwSetParam( twBar, NULL, "label", TW_PARAM_CSTRING, 1, label.empty() ? " " : label.c_str() );
 		}
 
 		~InternalBar() {
@@ -77,7 +84,7 @@ namespace AntTWBarUI {
 		bool spawned;
 
 		InternalElement() : topLevel( false ), group( nullptr ), bar( nullptr ), spawned( false ) {}
-		
+
 		std::string getQualifiedInternalName() const {
 			return bar->internalName + "/" + internalName;
 		}
@@ -105,11 +112,11 @@ namespace AntTWBarUI {
 			}
 			else {
 				TwSetParam( bar->twBar, internalName.c_str(), "group", TW_PARAM_CSTRING, 1, std::string().c_str() );
-			}			
+			}
 		}
 
 		void setLabel( const std::string &label ) {
-			TwSetParam( bar->twBar, internalName.c_str(), "label", TW_PARAM_CSTRING, 1, label.c_str() );
+			TwSetParam( bar->twBar, internalName.c_str(), "label", TW_PARAM_CSTRING, 1, label.empty() ? " " : label.c_str() );
 		}
 
 		void unnest() {
@@ -196,9 +203,9 @@ namespace AntTWBarUI {
 
 		virtual ~Element() {}
 
-	protected:
-		virtual void doLink() {}
-		virtual void doUnlink() {}
+	private:
+		virtual void doLink() = 0;
+		virtual void doUnlink() = 0;
 
 	private:
 		// returns false, if the new parent is the old parent
@@ -211,14 +218,12 @@ namespace AntTWBarUI {
 	};
 
 	struct Container : Element {
-		typedef Element Base;
-
-		Container( bool embed )
-			: embed( embed ), label( " " ) {
+		Container( ContainerType containerType )
+			: containerType( containerType ), name() {
 		}
 
-		Container( const std::string &name = " " )
-			: embed( false ), label( name ) {
+		Container( const std::string &name = std::string() )
+			: containerType( CT_GROUP ), name( name ) {
 		}
 
 		void add( const std::shared_ptr<Element> &child ) {
@@ -231,91 +236,107 @@ namespace AntTWBarUI {
 		}
 
 		void remove( Element *child ) {
-			auto childPtr = doRemove( child ); 
+			auto childPtr = doRemove( child );
 			if( childPtr ) {
 				childPtr->changeParent( nullptr );
 			}
 		}
 
 		const InternalElement &getGroup() {
-			if( !embed || !parent ) {
+			if( containerType == CT_GROUP || !parent ) {
 				return group;
 			}
-			else /* embed && parent */ { 
+			else /* embed && parent */ {
 				return parent->getGroup();
 			}
 		}
 
 		void setName( const std::string &name ) {
-			label = name;
+			this->name = name;
 		}
 
-	protected:
+	private:
+		virtual void doLinkChildren() = 0;
+		virtual void doUnlinkChildren() = 0;
+
+	private:
 		virtual void doAdd( const std::shared_ptr< Element > &child ) = 0;
 		// returns if the child has been found and removed (ie the important part being if it was in the container)
 		virtual std::shared_ptr< Element > doRemove( Element *child ) = 0;
 
 		virtual void doLink() {
-			Base::doLink();
+			bool addSecondSeperator = false;
 
 			if( getParent() ) {
 				// we have a parent, so we are just a group
 				bar.destroy();
 
-				if( !embed ) {
+				if( containerType == CT_GROUP ) {
 					group.nest( getParent()->getGroup() );
-					dummyElement.nest( group );
-					dummyElement.makeSeparator( "visible=false" );
-					
+					seperatorElement.nest( group );
+					seperatorElement.makeSeparator( "visible=false" );
+
 					group.makeGroup();
-					group.setLabel( label );
+					group.setLabel( name );
 				}
 				else {
-					dummyElement.nest( getParent()->getGroup() );
-					dummyElement.makeSeparator( std::string() );
+					seperatorElement.nest( getParent()->getGroup() );
+
+					if( containerType == CT_EMBEDDED ) {
+						seperatorElement.makeSeparator( "visible=false" );
+					}
+					else {
+						seperatorElement.makeSeparator( std::string() );
+						addSecondSeperator = true;
+					}
 				}
 			}
 			else {
 				// we are the bar!
 				bar.create();
-				bar.setLabel( label );
+				bar.setLabel( name );
 
 				group.nest( bar );
+			}
+
+			doLinkChildren();
+
+			if( addSecondSeperator ) {
+				seperatorElement2.nest( getParent()->getGroup() );
+				seperatorElement2.makeSeparator( std::string() );
 			}
 		}
 
 		virtual void doUnlink() {
+			doUnlinkChildren();
+
+			seperatorElement.unnest();
+			seperatorElement2.unnest();
+			group.unnest();
+
 			// unlink myself
 			if( bar.hasBar() ) {
 				bar.unlink();
-			} 
-			else {
-				// unlink the dummy element
-				dummyElement.unnest();
-				group.unnest();
 			}
-
-			Base::doUnlink();
 		}
 
 	private:
-		bool embed;
-		std::string label;
+		ContainerType containerType;
+		std::string name;
 
 		InternalBar bar;
 
 		InternalElement group;
-		InternalElement dummyElement;
+		InternalElement seperatorElement;
+		InternalElement seperatorElement2;
 	};
 
 	struct SimpleContainer : Container {
-		typedef Container Base;
-
-		SimpleContainer( bool embed )
-			: Container( embed ) {
+		SimpleContainer( ContainerType containerType )
+			: Container( containerType ) {
 		}
 
-		SimpleContainer( const std::string &name = " " )
+		SimpleContainer( const std::string &name = std::string() )
 			: Container( name ) {
 		}
 
@@ -350,22 +371,18 @@ namespace AntTWBarUI {
 			return std::shared_ptr< Element >();
 		}
 
-		virtual void doLink() {
-			Base::doLink();
-
+		virtual void doLinkChildren() {
 			// link children
 			for( auto child = children.begin() ; child != children.end() ; ++child ) {
-				child->get()->link();	
+				child->get()->link();
 			}
 		}
 
-		virtual void doUnlink() {
+		virtual void doUnlinkChildren() {
 			// unlink the children
 			for( auto child = children.begin() ; child != children.end() ; ++child ) {
-				child->get()->unlink();	
+				child->get()->unlink();
 			}
-
-			Base::doUnlink();
 		}
 
 	private:
@@ -422,10 +439,12 @@ namespace AntTWBarUI {
 
 	private:
 		void doLink() {
-			Base::doLink();
-
 			element.nest( getParent()->getGroup() );
 			element.makeSeparator( def );
+		}
+
+		void doUnlink() {
+			element.unnest();
 		}
 
 		InternalElement element;
@@ -445,14 +464,12 @@ namespace AntTWBarUI {
 			:
 			name( element, name ),
 			callback( callback ),
-			def( def ) 
+			def( def )
 		{
 		}
 
 	private:
 		void doLink() {
-			Base::doLink();
-
 			element.nest( getParent()->getGroup() );
 			element.makeButton( (TwButtonCallback) Button::execute, (void*) this, def );
 			name.link();
@@ -460,8 +477,6 @@ namespace AntTWBarUI {
 
 		void doUnlink() {
 			element.unnest();
-
-			Base::doUnlink();
 		}
 
 		static void TW_CALL execute(Button &me) {
@@ -549,13 +564,53 @@ namespace AntTWBarUI {
 	}
 
 #if 0
-	struct TypeView {
-		typedef Type Type;
+	struct StructureFactory {
+		typedef ... Type;
 
 		template< typename Accessor >
-		void create( Container *container, Accessor &accessor ) const;
-	};
+		std::shared_ptr< ViewType > makeShared( Accessor &&accessor, ContainerType containerType = CT_GROUP ) const;
+	}
 #endif
+
+	template< typename _Type, template< typename Accessor > class _ViewType >
+	struct StructureTypeFactory {
+		typedef _Type Type;
+
+		template< typename Accessor >
+		std::shared_ptr< _ViewType > makeShared( Accessor &&accessor, ContainerType containerType = CT_GROUP ) const {
+			return std::make_shared< _ViewType< Accessor > >( std::move( accessor ), containerType );
+		}
+	};
+
+	template< typename Accessor >
+	struct Structure : SimpleContainer {
+		Accessor accessor;
+
+		Structure( Accessor &&accessor, ContainerType containerType = CT_GROUP ) :
+			SimpleContainer( containerType ),
+			accessor( std::move( accessor ) ) 
+		{
+		}
+	};
+
+	template< typename _Type, typename _BaseType >
+	struct SimpleStructureFactory {
+		typedef _Type Type;
+
+		template< typename Accessor >
+		std::shared_ptr< Container > makeShared( Accessor &&accessor, ContainerType containerType = CT_GROUP ) const {
+			auto container = std::make_shared<Structure< Accessor > >( std::move( accessor ), containerType );
+
+			static_cast<const _BaseType*>(this)->setup( container.get(), container->accessor );
+
+			return container;
+		}
+
+#if 0
+		template< typename Accessor >
+		void setup( Container *container, Accessor &accessor ) const;
+#endif
+	};
 
 #if 0
 	template< typename Type >
@@ -622,7 +677,7 @@ namespace AntTWBarUI {
 		CallbackAccessor( const Getter &getter, const Setter &setter ) : getter( getter ), setter( setter ) {}
 
 		Type & pull() {
-			getter( shadow ); 
+			getter( shadow );
 		}
 
 		void push() const {
@@ -638,7 +693,6 @@ namespace AntTWBarUI {
 	// only standard anttweakbar types are supported
 	template< typename Accessor, bool readOnly = false >
 	struct Variable : Element {
-		typedef Element Base;
 		typedef typename Accessor::Type Type;
 
 		Accessor accessor;
@@ -649,14 +703,12 @@ namespace AntTWBarUI {
 			:
 			name( element, name ),
 			accessor( std::move( accessor ) ),
-			def( def ) 
+			def( def )
 		{
 		}
-		
+
 	private:
 		void doLink() {
-			Base::doLink();
-
 			element.nest( getParent()->getGroup() );
 			const int type = detail::TypeMapper< Type >::Type;
 			if( type == TW_TYPE_UNDEF ) {
@@ -674,8 +726,6 @@ namespace AntTWBarUI {
 
 		void doUnlink() {
 			element.unnest();
-
-			Base::doUnlink();
 		}
 
 		static void TW_CALL staticGet(Type &value, Variable &me) {
@@ -721,24 +771,7 @@ namespace AntTWBarUI {
 	}
 
 	//////////////////////////////////////////////////////////////////////////
-	template< typename Accessor, typename TypeView >
-	struct StructuredVariable : SimpleContainer {
-		Accessor accessor;
-		
-		StructuredVariable( Accessor &&accessor, const TypeView &typeView, bool embed = false ) : SimpleContainer( embed ), accessor( std::move( accessor ) ) {
-			typeView.create<Accessor>( this, this->accessor );
-		}
-	};
 
-	template< typename TypeView, typename Accessor >
-	std::shared_ptr< StructuredVariable< Accessor, TypeView > > makeSharedVariableView( Accessor &&accessor, const TypeView &typeView, bool embed = false ) {
-		return std::make_shared< StructuredVariable< Accessor, TypeView > >( std::move( accessor ), typeView, embed );
-	}
-
-	template< typename TypeView, typename Accessor >
-	std::shared_ptr< StructuredVariable< Accessor, TypeView > > makeSharedVariableView( Accessor &&accessor, bool embed = false ) {
-		return std::make_shared< StructuredVariable< Accessor, TypeView > >( std::move( accessor ), TypeView(), embed );
-	}
 
 	template< typename _Type >
 	struct ElementAccessor {
@@ -761,7 +794,7 @@ namespace AntTWBarUI {
 		void push() {}
 	};
 
-	template< typename BaseAccessor, typename MemberType > 
+	template< typename BaseAccessor, typename MemberType >
 	struct MemberAccessor {
 		typedef MemberType Type;
 		typedef typename BaseAccessor::Type BaseType;
@@ -794,32 +827,31 @@ namespace AntTWBarUI {
 		static const bool supportRemove = true;
 	};
 
-	template< class TypeView, class Config = VectorConfigDefault >
+	template< class StructureFactory, class Config = VectorConfigDefault >
 	struct Vector : SimpleContainer {
-		typedef typename TypeView::Type Type;
+		typedef typename StructureFactory::Type Type;
 		typedef ElementAccessor< Type > ElementAccessor;
-		typedef StructuredVariable< ElementAccessor, TypeView > StructuredVariable;
 
 		std::vector< Type > &elements;
-		bool embedElements;
+		ContainerType elementContainerType;
 
-		TypeView typeView;
-		
-		Vector( std::vector< Type > &elements, TypeView &&typeView, bool embedElements = false, bool embed = false )
-			: 
-			SimpleContainer( embed ),
-			typeView( std::move( typeView ) ),
-			embedElements( embedElements ),
+		StructureFactory structureFactory;
+
+		Vector( std::vector< Type > &elements, StructureFactory &&structureFactory, ContainerType elementContainerType = CT_GROUP, ContainerType containerType = CT_GROUP )
+			:
+			SimpleContainer( containerType ),
+			structureFactory( std::move( structureFactory ) ),
+			elementContainerType( elementContainerType ),
 			elements( elements )
 			{
 			updateSize();
 		}
 
-		Vector( const std::string &name, std::vector< Type > &elements, TypeView &&typeView, bool embedElements = false )
-			: 
+		Vector( const std::string &name, std::vector< Type > &elements, StructureFactory &&structureFactory, ContainerType elementContainerType = CT_GROUP )
+			:
 			SimpleContainer( name ),
-			typeView( std::move( typeView ) ),
-			embedElements( embedElements ),
+			structureFactory( std::move( structureFactory ) ),
+			elementContainerType( elementContainerType ),
 			elements( elements )
 			{
 			updateSize();
@@ -829,9 +861,10 @@ namespace AntTWBarUI {
 			while( size() < elements.size() ) {
 				const int index = (int) size();
 
-				auto elementView = makeSharedVariableView( ElementAccessor( elements, index ), typeView, embedElements );
+				auto elementView = structureFactory.makeShared( ElementAccessor( elements, index ), elementContainerType );
+
 				if( Config::supportRemove ) {
-					elementView->add( makeSharedButton( 
+					elementView->add( makeSharedButton(
 							"Remove",
 							[this, index] () {
 								elements.erase( elements.begin() + index );
@@ -840,6 +873,7 @@ namespace AntTWBarUI {
 						)
 					);
 				}
+
 				add( elementView );
 			}
 			while( size() > elements.size() ) {
@@ -848,43 +882,43 @@ namespace AntTWBarUI {
 		}
 	};
 
-	template< class TypeView >
-	Vector< TypeView > makeVector( std::vector< typename TypeView::Type > &elements, bool embedElements = false, bool embed = false ) {
-		return Vector< TypeView >( elements, TypeView(), embedElements, embed );
+	template< class StructureFactory >
+	Vector< StructureFactory > makeVector( std::vector< typename StructureFactory::Type > &elements, ContainerType elementContainerType = CT_GROUP, ContainerType containerType = CT_GROUP ) {
+		return Vector< StructureFactory >( elements, StructureFactory(), elementContainerType, containerType );
 	}
 
-	template< class TypeView >
-	Vector< TypeView > makeVector( const std::string &name, std::vector< typename TypeView::Type > &elements, bool embedElements = false ) {
-		return Vector< TypeView >( name, elements, TypeView(), embedElements );
+	template< class StructureFactory >
+	Vector< StructureFactory > makeVector( const std::string &name, std::vector< typename StructureFactory::Type > &elements, ContainerType elementContainerType = CT_GROUP ) {
+		return Vector< StructureFactory >( name, elements, StructureFactory(), elementContainerType );
 	}
 
-	template< class TypeView >
-	Vector< TypeView > makeVector( std::vector< typename TypeView::Type > &elements, TypeView &&typeView, bool embedElements = false, bool embed = false ) {
-		return Vector< TypeView >( elements, std::move( typeView ), embedElements, embed );
+	template< class StructureFactory >
+	Vector< StructureFactory > makeVector( std::vector< typename StructureFactory::Type > &elements, StructureFactory &&structureFactory, ContainerType elementContainerType = CT_GROUP, ContainerType containerType = CT_GROUP ) {
+		return Vector< StructureFactory >( elements, std::move( structureFactory ), elementContainerType, containerType );
 	}
 
-	template< class TypeView >
-	Vector< TypeView > makeVector( const std::string &name, std::vector< typename TypeView::Type > &elements, TypeView &&typeView, bool embedElements = false ) {
-		return Vector< TypeView >( name, elements, std::move( typeView ), embedElements );
+	template< class StructureFactory >
+	Vector< StructureFactory > makeVector( const std::string &name, std::vector< typename StructureFactory::Type > &elements, StructureFactory &&structureFactory, ContainerType elementContainerType = CT_GROUP ) {
+		return Vector< StructureFactory >( name, elements, std::move( structureFactory ), elementContainerType );
 	}
 
-	template< class TypeView >
-	std::shared_ptr< Vector< TypeView > > makeSharedVector( std::vector< typename TypeView::Type > &elements, bool embedElements = false, bool embed = false ) {
-		return std::make_shared< Vector< TypeView > >( elements, TypeView(), embedElements, embed );
+	template< class StructureFactory >
+	std::shared_ptr< Vector< StructureFactory > > makeSharedVector( std::vector< typename StructureFactory::Type > &elements, ContainerType elementContainerType = CT_GROUP, ContainerType containerType = CT_GROUP ) {
+		return std::make_shared< Vector< StructureFactory > >( elements, StructureFactory(), elementContainerType, containerType );
 	}
 
-	template< class TypeView >
-	std::shared_ptr< Vector< TypeView > > makeSharedVector( const std::string &name, std::vector< typename TypeView::Type > &elements, bool embedElements = false ) {
-		return std::make_shared< Vector< TypeView > >( name, elements, TypeView(), embedElements );
+	template< class StructureFactory >
+	std::shared_ptr< Vector< StructureFactory > > makeSharedVector( const std::string &name, std::vector< typename StructureFactory::Type > &elements, ContainerType elementContainerType = CT_GROUP ) {
+		return std::make_shared< Vector< StructureFactory > >( name, elements, StructureFactory(), elementContainerType );
 	}
 
-	template< class TypeView >
-	std::shared_ptr< Vector< TypeView > > makeSharedVector( std::vector< typename TypeView::Type > &elements, TypeView &&typeView, bool embedElements = false, bool embed = false ) {
-		return std::make_shared< Vector< TypeView > >( elements, std::move( typeView ), embedElements, embed );
+	template< class StructureFactory >
+	std::shared_ptr< Vector< StructureFactory > > makeSharedVector( std::vector< typename StructureFactory::Type > &elements, StructureFactory &&structureFactory, ContainerType elementContainerType = CT_GROUP, ContainerType containerType = CT_GROUP ) {
+		return std::make_shared< Vector< StructureFactory > >( elements, std::move( structureFactory ), elementContainerType, containerType );
 	}
 
-	template< class TypeView >
-	std::shared_ptr< Vector< TypeView > > makeSharedVector( const std::string &name, std::vector< typename TypeView::Type > &elements, TypeView &&typeView, bool embedElements = false ) {
-		return std::make_shared< Vector< TypeView > >( name, elements, std::move( typeView ), embedElements );
+	template< class StructureFactory >
+	std::shared_ptr< Vector< StructureFactory > > makeSharedVector( const std::string &name, std::vector< typename StructureFactory::Type > &elements, StructureFactory &&structureFactory, ContainerType elementContainerType = CT_GROUP ) {
+		return std::make_shared< Vector< StructureFactory > >( name, elements, std::move( structureFactory ), elementContainerType );
 	}
 }
