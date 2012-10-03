@@ -18,6 +18,9 @@ TEST( probeContext_lexicographicalLess, order ) {
 
 		ASSERT_TRUE( probeContext_lexicographicalLess( a, b ) );
 		ASSERT_FALSE( probeContext_lexicographicalLess( b, a ) );
+
+		ASSERT_TRUE( probeContext_lexicographicalLess_startWithDistance( a, b ) );
+		ASSERT_FALSE( probeContext_lexicographicalLess_startWithDistance( b, a ) );
 	}
 	{
 		a.hitCounter = b.hitCounter = 10;
@@ -28,6 +31,9 @@ TEST( probeContext_lexicographicalLess, order ) {
 
 		ASSERT_TRUE( probeContext_lexicographicalLess( a, b ) );
 		ASSERT_FALSE( probeContext_lexicographicalLess( b, a ) );
+
+		ASSERT_TRUE( probeContext_lexicographicalLess_startWithDistance( a, b ) );
+		ASSERT_FALSE( probeContext_lexicographicalLess_startWithDistance( b, a ) );
 	}
 	{
 		a.hitCounter = b.hitCounter = 10;
@@ -40,6 +46,9 @@ TEST( probeContext_lexicographicalLess, order ) {
 
 		ASSERT_TRUE( probeContext_lexicographicalLess( a, b ) );
 		ASSERT_FALSE( probeContext_lexicographicalLess( b, a ) );
+
+		ASSERT_TRUE( probeContext_lexicographicalLess_startWithDistance( a, b ) );
+		ASSERT_FALSE( probeContext_lexicographicalLess_startWithDistance( b, a ) );
 	}
 	{
 		a.hitCounter = b.hitCounter = 10;
@@ -53,6 +62,9 @@ TEST( probeContext_lexicographicalLess, order ) {
 
 		ASSERT_TRUE( probeContext_lexicographicalLess( a, b ) );
 		ASSERT_FALSE( probeContext_lexicographicalLess( b, a ) );
+
+		ASSERT_TRUE( probeContext_lexicographicalLess_startWithDistance( a, b ) );
+		ASSERT_FALSE( probeContext_lexicographicalLess_startWithDistance( b, a ) );
 	}
 }
 
@@ -67,22 +79,21 @@ ProbeContext makeProbeContext( int hitCounter, float distance = 10 ) {
 }
 
 TEST( ProbeDataset, setHitCounterLowerBounds ) {
-	ProbeDataset dataset;
+	RawProbeDataset rawDataset;
 
 	const int minHitCounter = 3;
-	const int maxHitCounter = OptixProgramInterface::numProbeSamples - 3; 
+	const int maxHitCounter = OptixProgramInterface::numProbeSamples - 3;
 
 	const int bucketSize = 5;
 
 	for( int i = minHitCounter ; i <= maxHitCounter ; i++ ) {
 		for( int j = bucketSize - 1 ; j >= 0 ; j-- ) {
-			dataset.probeContexts.push_back( makeProbeContext( i, j ) );
+			rawDataset.probeContexts.push_back( makeProbeContext( i, j ) );
 		}
 	}
-	dataset.probes.resize( dataset.probeContexts.size() );
+	rawDataset.probes.resize( rawDataset.probeContexts.size() );
 
-	dataset.sort();
-	dataset.setHitCounterLowerBounds();
+	ProbeDataset dataset( std::move( rawDataset ) );
 
 	ASSERT_EQ( dataset.hitCounterLowerBounds.size(), OptixProgramInterface::numProbeSamples + 2 );
 	for( int i = 0 ; i < minHitCounter ; i++ ) {
@@ -93,12 +104,34 @@ TEST( ProbeDataset, setHitCounterLowerBounds ) {
 		EXPECT_EQ( dataset.hitCounterLowerBounds[i], lowerBound );
 	}
 	for( int i = maxHitCounter + 1 ; i <= OptixProgramInterface::numProbeSamples + 1 ; ++i ) {
-		EXPECT_EQ( dataset.hitCounterLowerBounds[i], dataset.probeContexts.size() );
+		EXPECT_EQ( dataset.hitCounterLowerBounds[i], dataset.size() );
 	}
 }
 
-TEST( ProbeDataset, merge ) {
-	ProbeDataset first, second;
+TEST( SimpleProbeDataset, subSet ) {
+	RawProbeDataset rawDataset;
+
+	for( int i = 0 ; i < 1000 ; i++ ) {
+		rawDataset.probeContexts.push_back( makeProbeContext( 1, 2 * i ) );
+	}
+	for( int i = 0 ; i < 1000 ; i++ ) {
+		rawDataset.probeContexts.push_back( makeProbeContext( 0, 2*i + 1 ) );
+	}
+	rawDataset.probes.resize( 2000 );
+
+	SimpleProbeDataset dataset( std::move( rawDataset ) );
+
+	dataset.subSet( std::make_pair( 0, 2000 ) );
+
+	SimpleProbeDataset scratch = dataset.subSet( std::make_pair( 0, 2000 ) );
+
+	for( int j = 0 ; j < 2000 ; j++ ) {
+		ASSERT_EQ( j, scratch.getProbeContexts()[j].distance );
+	}
+}
+
+TEST( SimpleProbeDataset, merge ) {
+	RawProbeDataset first, second;
 
 	for( int i = 0 ; i < 1000 ; i++ ) {
 		first.probeContexts.push_back( makeProbeContext( 0, 2*i ) );
@@ -107,63 +140,65 @@ TEST( ProbeDataset, merge ) {
 	first.probes.resize( 1000 );
 	second.probes.resize( 1000 );
 
-	ProbeDataset result = ProbeDataset::merge( first, second );
+	SimpleProbeDataset result = SimpleProbeDataset::merge( std::move( first ), std::move( second ) );
 
 	for( int j = 0 ; j < 2000 ; j++ ) {
-		ASSERT_EQ( j, result.probeContexts[j].distance );
+		ASSERT_EQ( j, result.getProbeContexts()[j].distance );
 	}
 }
 
 TEST( ProbeDataset, mergeMultiple ) {
 	const int numDatasets = 10;
-	ProbeDataset datasets[numDatasets];
+	SimpleProbeDataset datasets[numDatasets];
 
 	for( int j = 0 ; j < numDatasets ; j++ ) {
+		RawProbeDataset rawDataset;
 		for( int i = 0 ; i < 1000 ; i++ ) {
-			datasets[j].probeContexts.push_back( makeProbeContext( 0, numDatasets * i + j ) );	
+			rawDataset.probeContexts.push_back( makeProbeContext( 0, numDatasets * i + j ) );
 		}
-		datasets[j].probes.resize( 1000 );
+		rawDataset.probes.resize( 1000 );
+		datasets[j] = std::move( rawDataset );
 	}
 	
-
-	std::vector< ProbeDataset * > pDatasets;
+	std::vector< const SimpleProbeDataset * > pDatasets;
 	for( int j = 0 ; j < numDatasets ; j++ ) {
 		pDatasets.push_back( &datasets[j] );
 	}
 
-	ProbeDataset result = ProbeDataset::mergeMultiple( pDatasets );
+	SimpleProbeDataset result = SimpleProbeDataset::mergeMultiple( pDatasets );
 
 	for( int j = 0 ; j < numDatasets * 1000 ; j++ ) {
-		ASSERT_EQ( j, result.probeContexts[j].distance );
+		ASSERT_EQ( j, result.getProbeContexts()[j].distance );
 	}
 }
 
 TEST( ProbeDataset, mergeMultiple_empty ) {
 	const int numDatasets = 10;
-	ProbeDataset datasets[numDatasets];
+	SimpleProbeDataset datasets[numDatasets];
 
-	std::vector< ProbeDataset * > pDatasets;
+	std::vector< const SimpleProbeDataset * > pDatasets;
 	for( int j = 0 ; j < numDatasets ; j++ ) {
 		pDatasets.push_back( &datasets[j] );
 	}
 
-	ProbeDataset result = ProbeDataset::mergeMultiple( pDatasets );
+	SimpleProbeDataset result = SimpleProbeDataset::mergeMultiple( pDatasets );
 
 	ASSERT_EQ( result.size(), 0 );
 }
 
 TEST( ProbeDatabase, zeroTolerance ) {
-	ProbeDataset dataset, testDataset;
-
 	// init the dataset
+	RawProbeDataset rawDataset, rawTestDataset;
 	for( int i = 0 ; i < 1000 ; i++ ) {
 		for( int j = 0 ; j < 5 ; j++ ) {
-			dataset.probeContexts.push_back( makeProbeContext( j, i ) );
-			testDataset.probeContexts.push_back( makeProbeContext( j, 500 + i ) );
+			rawDataset.probeContexts.push_back( makeProbeContext( j, i ) );
+			rawTestDataset.probeContexts.push_back( makeProbeContext( j, 500 + i ) );
 		}
 	}
-	dataset.probes.resize( dataset.probeContexts.size() );
-	testDataset.probes.resize( dataset.probeContexts.size() );
+	rawDataset.probes.resize( rawDataset.probeContexts.size() );
+	rawTestDataset.probes.resize( rawTestDataset.probeContexts.size() );
+
+	SimpleProbeDataset dataset( std::move( rawDataset ) ), testDataset( std::move( rawTestDataset ) );
 
 	ProbeDatabase candidateFinder;
 	candidateFinder.reserveIds( 0 );
@@ -174,7 +209,7 @@ TEST( ProbeDatabase, zeroTolerance ) {
 		auto query = candidateFinder.createQuery();
 
 		query->setQueryDataset( dataset.clone() );
-		
+
 		ProbeContextTolerance pct;
 		pct.occusionTolerance = 0;
 		pct.distanceTolerance = 0;
@@ -210,17 +245,18 @@ TEST( ProbeDatabase, zeroTolerance ) {
 }
 
 TEST( ProbeDatabase, oneTolerance ) {
-	ProbeDataset dataset, testDataset;
-
 	// init the dataset
+	RawProbeDataset rawDataset, rawTestDataset;
 	for( int i = 0 ; i < 1000 ; i++ ) {
 		for( int j = 0 ; j < 5 ; j++ ) {
-			dataset.probeContexts.push_back( makeProbeContext( j, i ) );
-			testDataset.probeContexts.push_back( makeProbeContext( j, 500 + i ) );
+			rawDataset.probeContexts.push_back( makeProbeContext( j, i ) );
+			rawTestDataset.probeContexts.push_back( makeProbeContext( j, 500 + i ) );
 		}
 	}
-	dataset.probes.resize( dataset.probeContexts.size() );
-	testDataset.probes.resize( dataset.probeContexts.size() );
+	rawDataset.probes.resize( rawDataset.probeContexts.size() );
+	rawTestDataset.probes.resize( rawTestDataset.probeContexts.size() );
+
+	SimpleProbeDataset dataset( std::move( rawDataset ) ), testDataset( std::move( rawTestDataset ) );
 
 	ProbeDatabase candidateFinder;
 	candidateFinder.reserveIds( 0 );
@@ -242,7 +278,7 @@ TEST( ProbeDatabase, oneTolerance ) {
 		ProbeDatabase::Query::MatchInfos matchInfos = query->getCandidates();
 
 		ASSERT_EQ( matchInfos.size(), 1 );
-		EXPECT_EQ( matchInfos[0].numMatches, 2*2000 + 3*3000 );
+		EXPECT_EQ( matchInfos[0].numMatches, 2*2*1000 + 3*3*1000 );
 		EXPECT_EQ( matchInfos[0].id, 0 );
 	}
 
@@ -257,24 +293,25 @@ TEST( ProbeDatabase, oneTolerance ) {
 		ProbeDatabase::Query::MatchInfos matchInfos = query->getCandidates();
 
 		ASSERT_EQ( matchInfos.size(), 1 );
-		EXPECT_EQ( matchInfos[0].numMatches, (2*2000 + 3*3000) / 2 );
+		EXPECT_EQ( matchInfos[0].numMatches, 2*2*500 + 3*3*500 );
 		EXPECT_EQ( matchInfos[0].id, 0 );
 	}
 }
 
 #if 1
 TEST( ProbeDatabase, big ) {
-	ProbeDataset dataset, testDataset;
-
 	// init the dataset
+	RawProbeDataset rawDataset, rawTestDataset;
 	for( int i = 0 ; i < 20000 ; i++ ) {
 		for( int j = 0 ; j < 30 ; j++ ) {
-			dataset.probeContexts.push_back( makeProbeContext( j, i ) );
-			testDataset.probeContexts.push_back( makeProbeContext( j, 10000 + i ) );
+			rawDataset.probeContexts.push_back( makeProbeContext( j, i ) );
+			rawTestDataset.probeContexts.push_back( makeProbeContext( j, 10000 + i ) );
 		}
 	}
-	dataset.probes.resize( dataset.probeContexts.size() );
-	testDataset.probes.resize( dataset.probeContexts.size() );
+	rawDataset.probes.resize( rawDataset.probeContexts.size() );
+	rawTestDataset.probes.resize( rawTestDataset.probeContexts.size() );
+
+	SimpleProbeDataset dataset( std::move( rawDataset ) ), testDataset( std::move( rawTestDataset ) );
 
 	ProbeDatabase candidateFinder;
 	candidateFinder.reserveIds( 0 );

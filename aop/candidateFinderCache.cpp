@@ -3,7 +3,20 @@
 
 #include "candidateFinderInterface.h"
 
-SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeDataset, (probes)(probeContexts)(hitCounterLowerBounds) )
+/*
+namespace Serializer {
+		template< typename Reader >
+		void read( Reader &reader, type &value ) {
+			
+		}
+		template< typename Writer > \
+		void write( Writer &writer, const type &value ) {
+			
+		}
+	}*/
+
+SERIALIZER_DEFAULT_EXTERN_IMPL( SimpleProbeDataset, (probes)(probeContexts) )
+SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeDataset, (data)(hitCounterLowerBounds) )
 SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeDatabase::IdDatasets, (insertQueue)(mergedDataset) )
 
 SERIALIZER_ENABLE_RAW_MODE_EXTERN( Probe );

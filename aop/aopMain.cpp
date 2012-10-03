@@ -126,16 +126,16 @@ void sampleInstances( SGSInterface::World *world, ProbeDatabase &candidateFinder
 
 		renderContext.disabledInstanceIndex = instanceIndex;
 
-		ProbeDataset dataset;
+		RawProbeDataset rawDataset;
 		std::vector<SGSInterface::Probe> transformedProbes;
 	
-		world->generateProbes( instanceIndex, probeResolution, dataset.probes, transformedProbes );
+		world->generateProbes( instanceIndex, probeResolution, rawDataset.probes, transformedProbes );
 	
 		AUTO_TIMER_DEFAULT( boost::str( boost::format( "batch with %i probes for instance %i" ) % transformedProbes.size() % instanceIndex ) );
 		
-		world->optixRenderer.sampleProbes( transformedProbes, dataset.probeContexts, renderContext );
+		world->optixRenderer.sampleProbes( transformedProbes, rawDataset.probeContexts, renderContext );
 	
-		candidateFinder.addDataset(modelIndex, std::move( dataset ) );
+		candidateFinder.addDataset(modelIndex, std::move( rawDataset ) );
 	
 		totalCount += (int) transformedProbes.size();
 	}
@@ -149,18 +149,18 @@ void queryVolume( SGSInterface::World *world, ProbeDatabase &candidateFinder, co
 	RenderContext renderContext;
 	renderContext.setDefault();
 
-	ProbeDataset dataset;
+	RawProbeDataset rawDataset;
 
-	ProbeGenerator::generateQueryProbes( queryVolume, probeResolution, dataset.probes );
+	ProbeGenerator::generateQueryProbes( queryVolume, probeResolution, rawDataset.probes );
 	
 	{
 		AUTO_TIMER_FOR_FUNCTION( "sampling scene");
-		world->optixRenderer.sampleProbes( dataset.probes, dataset.probeContexts, renderContext );
+		world->optixRenderer.sampleProbes( rawDataset.probes, rawDataset.probeContexts, renderContext );
 	}
 	
 	{
 		auto query = candidateFinder.createQuery();
-		query->setQueryDataset( std::move( dataset ) );
+		query->setQueryDataset( std::move( rawDataset ) );
 
 		ProbeContextTolerance pct;
 		pct.setDefault();

@@ -472,7 +472,7 @@ namespace AntTWBarUI {
 		std::string def;
 	};
 
-	std::shared_ptr< Separator > makeSharedSeparator( const std::string &def = std::string() ) {
+	inline std::shared_ptr< Separator > makeSharedSeparator( const std::string &def = std::string() ) {
 		return std::make_shared< Separator >( def );
 	}
 
@@ -512,7 +512,7 @@ namespace AntTWBarUI {
 		std::function<void()> callback;
 	};
 
-	std::shared_ptr< Button > makeSharedButton( const std::string &name, const std::function<void()> &callback, const std::string &def = std::string() ) {
+	inline std::shared_ptr< Button > makeSharedButton( const std::string &name, const std::function<void()> &callback, const std::string &def = std::string() ) {
 		return std::make_shared< Button >( name, callback, def );
 	}
 

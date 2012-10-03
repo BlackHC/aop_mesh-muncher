@@ -32,6 +32,20 @@ struct NestedOutput {
 	}
 };*/
 
+struct SimpleProbeDataset;
+struct ProbeDataset;
+
+namespace Serializer {
+	template< typename Reader >
+	void read( Reader &reader, SimpleProbeDataset &value );
+	template< typename Writer >
+	void write( Writer &writer, const SimpleProbeDataset &value );
+
+	template< typename Reader >
+	void read( Reader &reader, ProbeDataset &value );
+	template< typename Writer >
+	void write( Writer &writer, const ProbeDataset &value );
+}
 
 #include <autoTimer.h>
 
@@ -45,47 +59,40 @@ __forceinline__ bool probeContext_lexicographicalLess( const ProbeContext &a, co
 		boost::make_tuple( b.hitCounter, b.distance, b.color.x, a.color.y, a.color.z );
 }
 
-#if 0
 inline bool probeContext_lexicographicalLess_startWithDistance( const ProbeContext &a, const ProbeContext &b ) {
 	return
 		boost::make_tuple( a.distance, a.color.x, a.color.y, a.color.z )
 		<
 		boost::make_tuple( b.distance, b.color.x, a.color.y, a.color.z );
 }
-#endif
 
 //////////////////////////////////////////////////////////////////////////
 #include <sort_permute_iter.h>
 #include "boost/range/algorithm/sort.hpp"
 #include <boost/iterator/counting_iterator.hpp>
 
-struct ProbeDataset {
+struct RawProbeDataset {
 	std::vector< Probe > probes;
 	std::vector< ProbeContext > probeContexts;
 
-	std::vector<int> hitCounterLowerBounds;
+	RawProbeDataset() {}
 
-	ProbeDataset() {}
+	RawProbeDataset( std::vector< Probe > &&probes, std::vector< ProbeContext > &&probeContexts ) :
+		probes( std::move( probes ) ),
+		probeContexts( std::move( probeContexts ) )
+	{
+	}
 
-	ProbeDataset( ProbeDataset &&other ) :
+	RawProbeDataset( RawProbeDataset &&other ) :
 		probes( std::move( other.probes ) ),
-		probeContexts( std::move( other.probeContexts ) ),
-		hitCounterLowerBounds( std::move( other.hitCounterLowerBounds ) ) {
+		probeContexts( std::move( other.probeContexts ) )
+	{
 	}
 
-	ProbeDataset & operator = ( ProbeDataset && other ) {
-		probes = std::move( other.probes );
-		probeContexts = std::move( other.probeContexts );
-		hitCounterLowerBounds = std::move( other.hitCounterLowerBounds );
-
-		return *this;
-	}
-
-	ProbeDataset clone() const {
-		ProbeDataset cloned;
+	RawProbeDataset clone() const {
+		RawProbeDataset cloned;
 		cloned.probes = probes;
 		cloned.probeContexts = probeContexts;
-		cloned.hitCounterLowerBounds = hitCounterLowerBounds;
 		return cloned;
 	}
 
@@ -95,7 +102,126 @@ struct ProbeDataset {
 
 	void sort();
 
-	void setHitCounterLowerBounds();
+private:
+	// better error messages than with boost::noncopyable
+	RawProbeDataset( const RawProbeDataset &other );
+	RawProbeDataset & operator = ( const RawProbeDataset &other );
+};
+
+// no further preprocessed information
+// invariant: sorted
+struct SimpleProbeDataset {
+	SimpleProbeDataset() {}
+
+	SimpleProbeDataset( RawProbeDataset &&other ) :
+		probes( std::move( other.probes ) ),
+		probeContexts( std::move( other.probeContexts ) )
+	{
+		sort();
+	}
+
+	SimpleProbeDataset( SimpleProbeDataset &&other ) :
+		probes( std::move( other.probes ) ),
+		probeContexts( std::move( other.probeContexts ) )
+	{
+	}
+
+	SimpleProbeDataset & operator = ( SimpleProbeDataset &&other ) {
+		probes = std::move( other.probes );
+		probeContexts = std::move( other.probeContexts );
+
+		return *this;
+	}
+
+	SimpleProbeDataset clone() const {
+		SimpleProbeDataset cloned;
+		cloned.probes = probes;
+		cloned.probeContexts = probeContexts;
+		return cloned;
+	}
+
+	int size() const {
+		return (int) probes.size();
+	}
+
+	static SimpleProbeDataset merge( const SimpleProbeDataset &first, const SimpleProbeDataset &second );
+	static SimpleProbeDataset mergeMultiple( const std::vector< const SimpleProbeDataset* > &datasets);
+
+	SimpleProbeDataset subSet( const std::pair< int, int > &range ) const;
+
+	const std::vector< Probe > &getProbes() const {
+		return probes;
+	}
+
+	const std::vector< ProbeContext > &getProbeContexts() const {
+		return probeContexts;
+	}
+
+private:
+	void sort();
+
+	std::vector< Probe > probes;
+	std::vector< ProbeContext > probeContexts;
+
+	template< typename Reader >
+	friend void Serializer::read( Reader &reader, SimpleProbeDataset &value );
+	template< typename Writer >
+	friend void Serializer::write( Writer &writer, const SimpleProbeDataset &value );
+
+private:
+	// better error messages than with boost::noncopyable
+	SimpleProbeDataset( const SimpleProbeDataset &other );
+	SimpleProbeDataset & operator = ( const SimpleProbeDataset &other );
+};
+
+// this dataset creates auxiliary structures automatically
+// invariant: sorted and hitCounterLowerBounds is correctly set
+struct ProbeDataset {
+	SimpleProbeDataset data;
+
+	const std::vector< Probe > &getProbes() const {
+		return data.getProbes();
+	}
+
+	const std::vector< ProbeContext > &getProbeContexts() const {
+		return data.getProbeContexts();
+	}
+
+	std::vector<int> hitCounterLowerBounds;
+
+	ProbeDataset() {}
+
+	ProbeDataset( SimpleProbeDataset &&other ) :
+		data( std::move( other ) ),
+		hitCounterLowerBounds()
+	{
+		setHitCounterLowerBounds();
+	}
+
+
+	ProbeDataset( ProbeDataset &&other ) :
+		data( std::move( other.data ) ),
+		hitCounterLowerBounds( std::move( other.hitCounterLowerBounds ) )
+	{
+	}
+
+	ProbeDataset & operator = ( ProbeDataset && other ) {
+		data = std::move( other.data );
+		hitCounterLowerBounds = std::move( other.hitCounterLowerBounds );
+
+		return *this;
+	}
+
+	ProbeDataset clone() const {
+		ProbeDataset cloned;
+		cloned.data = data.clone();
+		cloned.hitCounterLowerBounds = hitCounterLowerBounds;
+		return cloned;
+	}
+
+	int size() const {
+		return (int) data.size();
+	}
 
 	typedef std::pair< int, int > IntRange;
 	IntRange getOcclusionRange( int level ) const {
@@ -107,8 +233,14 @@ struct ProbeDataset {
 		return std::make_pair( hitCounterLowerBounds[leftLevel], hitCounterLowerBounds[ rightLevel + 1 ] );
 	}
 
-	static ProbeDataset merge( const ProbeDataset &first, const ProbeDataset &second );
-	static ProbeDataset mergeMultiple( const std::vector< ProbeDataset* > &datasets);
+private:
+	void setHitCounterLowerBounds();
+
+	template< typename Reader >
+	friend void Serializer::read( Reader &reader, ProbeDataset &value );
+	template< typename Writer >
+	friend void Serializer::write( Writer &writer, const ProbeDataset &value );
+
 private:
 	// better error messages than with boost::noncopyable
 	ProbeDataset( const ProbeDataset &other );
@@ -184,7 +316,7 @@ struct ProbeDatabase {
 			probeContextTolerance = pct;
 		}
 
-		void setQueryDataset( ProbeDataset &&dataset ) {
+		void setQueryDataset( SimpleProbeDataset &&dataset ) {
 			this->dataset = std::move( dataset );
 		}
 
@@ -192,8 +324,6 @@ struct ProbeDatabase {
 			if( !matchInfos.empty() ) {
 				throw std::logic_error( "matchInfos is not empty!" );
 			}
-
-			processDataset();
 
 			// NOTE: this can be easily parallelized
 			for( int id = 0 ; id < parent->idDatasets.size() ; id++ ) {
@@ -224,7 +354,7 @@ struct ProbeDatabase {
 			// TODO: rename idDataset to idDatabase? [9/26/2012 kirschan2]
 			const ProbeDataset &idDataset = parent->idDatasets[id].mergedDataset;
 
-			if( idDataset.probes.empty() ) {
+			if( idDataset.size() == 0 ) {
 				return MatchInfo( id );
 			}
 
@@ -236,6 +366,8 @@ struct ProbeDatabase {
 			// we can compare the different occlusion ranges against each other, after including the tolerance
 
 			// TODO: is it better to make both ranges about equally big or not?
+			// its better they are equal
+
 			// assuming that the query set is smaller, we enlarge it, to have less items to sort then vice-versa
 			// we could determine this at runtime...
 			// if( idDatasets.size() > dataset.size() ) {...} else {...}
@@ -251,10 +383,10 @@ struct ProbeDatabase {
 				const int rightToleranceLevel = std::min( occulsionLevel + occlusionTolerance, OptixProgramInterface::numProbeSamples );
 
 				const ProbeDataset::IntRange idRange = idDataset.getOcclusionRange( occulsionLevel );
-				const ProbeDataset::IntRange queryRange = idDataset.getOcclusionRange( leftToleranceLevel, rightToleranceLevel );
+				const ProbeDataset::IntRange queryRange = dataset.getOcclusionRange( leftToleranceLevel, rightToleranceLevel );
 
 				// is one of the ranges empty? if so, we don't need to check it at all
-				if( idRange.first == idRange.second || queryRange.first == idRange.second ) {
+				if( idRange.first == idRange.second || queryRange.first == queryRange.second ) {
 					continue;
 				}
 
@@ -263,8 +395,6 @@ struct ProbeDatabase {
 			}
 
 			MatchInfo matchInfo( id );
-			// TODO: add constructor [9/27/2012 kirschan2]
-
 			for( auto rangePair = overlappedRanges.begin() ; rangePair != overlappedRanges.end() ; ++rangePair ) {
 				matchOverlappedRanges( idDataset, *rangePair, matchInfo );
 			}
@@ -272,31 +402,90 @@ struct ProbeDatabase {
 			return matchInfo;
 		}
 
+		// only second needs to be sorted
 		void matchOverlappedRanges( const ProbeDataset &idDataset, const OverlappedRange &overlappedRange, MatchInfo &matchInfo ) {
-			// TODO: brute force vs sorting -- use both depending on range size [9/27/2012 kirschan2]
-			for( int refIndex = overlappedRange.first.first ; refIndex < overlappedRange.first.second ; ++refIndex ) {
-				const ProbeContext &refContext = idDataset.probeContexts[ refIndex ];
+			// assert: the range is not empty
 
-				for( int queryIndex = overlappedRange.second.first ; queryIndex < overlappedRange.second.second ; ++queryIndex ) {
-					const ProbeContext &queryContext = dataset.probeContexts[ queryIndex ];
+			// sort the ranges into two new vectors
+			// idea: use a global scratch space to avoid recurring allocations?
+			SimpleProbeDataset scratch = dataset.data.subSet( overlappedRange.second );
 
-					if( matchDistanceAndColor( refContext, queryContext ) ) {
+			const int querySize = scratch.size();
+			int queryIndex = 0;
+
+			const int endRefIndex = overlappedRange.first.second;
+			int refIndex = overlappedRange.first.first;
+
+			ProbeContext queryContext = scratch.getProbeContexts()[ queryIndex ];
+
+			for( ; queryIndex < querySize - 1 ; queryIndex++ ) {
+				const ProbeContext nextQueryContext = scratch.getProbeContexts()[ queryIndex + 1 ];
+				int nextStartRefIndex = refIndex;
+
+				const float minDistance = queryContext.distance - probeContextTolerance.distanceTolerance;
+				const float maxDistance = queryContext.distance + probeContextTolerance.distanceTolerance;
+				const float minNextDistance = nextQueryContext.distance - probeContextTolerance.distanceTolerance;
+
+				// assert: minDistance <= minNextDistance
+
+				for( ; refIndex < endRefIndex ; refIndex++ ) {
+					const ProbeContext &refContext = idDataset.getProbeContexts()[ refIndex ];
+
+					// distance too small?
+					if( refContext.distance < minDistance ) {
+						// then the next one is too far away as well
+						nextStartRefIndex = refIndex + 1;
+						continue;
+					}
+
+					// if nextQueryContext can't use this probe, the next ref context might be the first one it likes
+					if( refContext.distance < minNextDistance ) {
+						// set it to the next ref context
+						nextStartRefIndex = refIndex + 1;
+					}
+					// else:
+					//  nextStartRefIndex points to the first ref content the next query context might match
+
+					// are we past our interval
+					if( refContext.distance > maxDistance ) {
+						// enough for this probe, do the next
+						break;
+					}
+
+					if( matchColor( refContext, queryContext ) ) {
 						matchInfo.numMatches++;
 					}
+				}
+
+				queryContext = nextQueryContext;
+				refIndex = nextStartRefIndex;
+			}
+
+			// process the last element
+			for( ; refIndex < endRefIndex ; refIndex++ ) {
+				const ProbeContext &refContext = idDataset.getProbeContexts()[ refIndex ];
+
+				// distance too small?
+				if( refContext.distance < queryContext.distance - probeContextTolerance.distanceTolerance ) {
+					continue;
+				}
+				if( refContext.distance > queryContext.distance + probeContextTolerance.distanceTolerance ) {
+					// done
+					break;
+				}
+
+				if( matchColor( refContext, queryContext ) ) {
+					matchInfo.numMatches++;
 				}
 			}
 		}
 
-		__forceinline__ bool matchDistanceAndColor( const ProbeContext &refContext, const ProbeContext &queryContext ) {
-			if( fabs( refContext.distance - queryContext.distance ) > probeContextTolerance.distanceTolerance ) {
-				return false;
-			}
-
+		__forceinline__ bool matchColor( const ProbeContext &refContext, const ProbeContext &queryContext ) {
 			Eigen::Vector3i colorDistance(
 				refContext.color.x - queryContext.color.x,
 				refContext.color.y - queryContext.color.y,
 				refContext.color.z - queryContext.color.z
-			);
+				);
 			// TODO: cache the last value? [10/1/2012 kirschan2]
 			if( colorDistance.squaredNorm() > probeContextTolerance.colorTolerance * probeContextTolerance.colorTolerance * (1<<16) ) {
 				return false;
@@ -318,13 +507,6 @@ struct ProbeDatabase {
 		}
 #endif
 
-		void processDataset() {
-			AUTO_TIMER_FOR_FUNCTION();
-
-			dataset.sort();
-			dataset.setHitCounterLowerBounds();
-		}
-
 	protected:
 		const ProbeDatabase *parent;
 
@@ -344,7 +526,7 @@ struct ProbeDatabase {
 		idDatasets.resize( maxId + 1 );
 	}
 
-	void addDataset( Id id, ProbeDataset &&dataset ) {
+	void addDataset( Id id, SimpleProbeDataset &&dataset ) {
 		idDatasets[ id ].insertQueue.emplace_back( std::move( dataset ) );
 	}
 
@@ -360,7 +542,7 @@ struct ProbeDatabase {
 
 public:
 	struct IdDatasets {
-		std::vector<ProbeDataset> insertQueue;
+		std::vector<SimpleProbeDataset> insertQueue;
 		ProbeDataset mergedDataset;
 
 		IdDatasets() {}
@@ -376,7 +558,7 @@ public:
 				return;
 			}
 
-			{
+			/*{
 				AUTO_TIMER_DEFAULT( "sort queue");
 				int totalCount = 0;
 
@@ -388,30 +570,27 @@ public:
 				}
 
 				std::cerr << autoTimer.indentation() << "processed queue of " << totalCount << " probes\n";
-			}
+			}*/
 
 			if( insertQueue.size() == 1 ) {
-				mergedDataset = ProbeDataset::merge( mergedDataset, insertQueue[0] );
+				mergedDataset = std::move( SimpleProbeDataset::merge( mergedDataset.data, insertQueue[0] ) );
 			}
 			else {
 				// create a pointer vector with all datasets
-				std::vector< ProbeDataset * > datasets;
+				std::vector< const SimpleProbeDataset * > datasets;
 				datasets.reserve( 1 + insertQueue.size() );
 
-				datasets.push_back( &mergedDataset );
+				datasets.push_back( &mergedDataset.data );
 				for( auto dataset = insertQueue.begin() ; dataset != insertQueue.end() ; ++dataset ) {
 					datasets.push_back( &*dataset );
 				}
 
 				// merge them all
-				mergedDataset = std::move( ProbeDataset::mergeMultiple( datasets ) );
+				mergedDataset = std::move( SimpleProbeDataset::mergeMultiple( datasets ) );
 
 				// reset the queue
 				insertQueue.clear();
 			}
-
-			// set the hitcounter bounds
-			mergedDataset.setHitCounterLowerBounds();
 		}
 
 	private:
