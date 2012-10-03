@@ -231,7 +231,7 @@ struct SGSSceneRenderer {
 	std::vector< Instance > instances;
 
 	int getNumInstances() const {
-		return scene->numSceneObjects + instances.size();
+		return int( scene->numSceneObjects + instances.size() );
 	}
 
 	bool isDynamicInstance( int instanceIndex ) {

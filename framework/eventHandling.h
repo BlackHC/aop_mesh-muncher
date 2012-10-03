@@ -110,7 +110,7 @@ struct EventState {
 	EventState( const sf::Event &event ) : event( event ), previousHandler( nullptr ) {}
 
 	bool isExclusive( const EventHandler *handler ) const {
-		return bool( getCapture( handler ) & FT_EXCLUSIVE );
+		return (getCapture( handler ) & FT_EXCLUSIVE) != 0;
 	}
 };
 

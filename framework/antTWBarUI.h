@@ -571,6 +571,8 @@ namespace AntTWBarUI {
 
 		Type &variable;
 
+		ReferenceAccessor( Type &variable ) : variable( variable ) {}
+
 		Type & pull() {
 			return variable;
 		}
@@ -580,6 +582,34 @@ namespace AntTWBarUI {
 	};
 
 	template< typename _Type >
+	ReferenceAccessor< _Type > makeReferenceAccessor( _Type &variable ) {
+		return ReferenceAccessor< _Type >( variable );
+	}
+
+	template< typename _Type >
+	struct ExpressionAccessor {
+		typedef _Type Type;
+
+		typedef std::function< _Type & () > LExpression;
+
+		LExpression lExpression;
+
+		ExpressionAccessor( const LExpression &lExpression ) : lExpression( lExpression ) {}
+
+		_Type & pull() {
+			return lExpression();
+		}
+
+		void push() {
+		}
+	};
+
+	template< typename _Type >
+	ExpressionAccessor< _Type > makeExpressionAccessor( const typename ExpressionAccessor<_Type>::LExpression &lExpression ) {
+		return ExpressionAccessor< _Type >( lExpression );
+	}
+
+	/*template< typename _Type >
 	struct CallbackAccessor {
 		typedef _Type Type;
 
@@ -601,12 +631,12 @@ namespace AntTWBarUI {
 
 	private:
 		Type shadow;
-	};
+	};*/
 
 	//////////////////////////////////////////////////////////////////////////
 
 	// only standard anttweakbar types are supported
-	template< typename Accessor >
+	template< typename Accessor, bool readOnly = false >
 	struct Variable : Element {
 		typedef Element Base;
 		typedef typename Accessor::Type Type;
@@ -634,10 +664,10 @@ namespace AntTWBarUI {
 				std::cerr << "TW_TYPE_UNDEF, unsupported type!";
 			}
 			else if( type == TW_TYPE_STDSTRING ) {
-				element.makeVariableCB( (TwType) TW_TYPE_CDSTRING, (TwGetVarCallback) Variable::staticGetStdString, (TwSetVarCallback) Variable::staticSetStdString, (void*) this, def );
+				element.makeVariableCB( (TwType) TW_TYPE_CDSTRING, (TwGetVarCallback) Variable::staticGetStdString, (TwSetVarCallback) (readOnly ? nullptr : Variable::staticSetStdString), (void*) this, def );
 			}
 			else {
-				element.makeVariableCB( (TwType) type, (TwGetVarCallback) Variable::staticGet, (TwSetVarCallback) Variable::staticSet, (void*) this, def );
+				element.makeVariableCB( (TwType) type, (TwGetVarCallback) Variable::staticGet, (TwSetVarCallback) (readOnly ? nullptr : Variable::staticSet), (void*) this, def );
 			}
 			name.link();
 		}
@@ -680,6 +710,16 @@ namespace AntTWBarUI {
 		return std::make_shared< Variable< Accessor > >( name, std::move( accessor ), def );
 	}
 
+	template< typename Accessor >
+	Variable< Accessor, true > makeReadOnlyVariable( const std::string &name, Accessor &&accessor, const std::string &def = std::string() ) {
+		return Variable< Accessor, true >( name, std::move( accessor ), def );
+	}
+
+	template< typename Accessor >
+	std::shared_ptr< Variable< Accessor, true > > makeSharedReadOnlyVariable( const std::string &name, Accessor &&accessor, const std::string &def = std::string() ) {
+		return std::make_shared< Variable< Accessor, true > >( name, std::move( accessor ), def );
+	}
+
 	//////////////////////////////////////////////////////////////////////////
 	template< typename Accessor, typename TypeView >
 	struct StructuredVariable : SimpleContainer {
@@ -699,7 +739,6 @@ namespace AntTWBarUI {
 	std::shared_ptr< StructuredVariable< Accessor, TypeView > > makeSharedVariableView( Accessor &&accessor, bool embed = false ) {
 		return std::make_shared< StructuredVariable< Accessor, TypeView > >( std::move( accessor ), TypeView(), embed );
 	}
-
 
 	template< typename _Type >
 	struct ElementAccessor {

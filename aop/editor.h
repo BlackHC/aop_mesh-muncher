@@ -156,7 +156,7 @@ struct Editor : EventDispatcher {
 
 		void acceptVisitor( SelectionVisitor &visitor );
 	};
-
+		
 	struct SGSMultiModelSelection : ISelection {
 		Editor *editor;
 		std::vector<int> modelIndices;
@@ -165,6 +165,12 @@ struct Editor : EventDispatcher {
 			editor( editor ) 
 		{
 			modelIndices.push_back( modelIndex );
+		}
+
+		SGSMultiModelSelection( Editor *editor, std::vector<int> modelIndices ) :
+			editor( editor ),
+			modelIndices( modelIndices )
+		{
 		}
 
 		// TODO: this is design fail: we should use multiple interfaces for all this and then use visitors [10/2/2012 kirschan2]

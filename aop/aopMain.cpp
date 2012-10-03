@@ -45,6 +45,11 @@ using namespace Eigen;
 #include "candidateFinderInterface.h"
 #include "aopSettings.h"
 
+#include "boost/range/algorithm_ext/push_back.hpp"
+#include "boost/range/algorithm/unique.hpp"
+#include "boost/range/algorithm/sort.hpp"
+#include "boost/range/algorithm_ext/erase.hpp"
+
 std::weak_ptr<AntTweakBarEventHandler::GlobalScope> AntTweakBarEventHandler::globalScope;
 
 void visualizeProbes( float resolution, const std::vector< SGSInterface::Probe > &probes );
@@ -292,10 +297,13 @@ namespace aop {
 		struct ModelTypesUI {
 			Application *application;
 
-			AntTWBarUI::SimpleContainer ui;
+			std::shared_ptr< AntTWBarUI::SimpleContainer > modelsUi;
+			AntTWBarUI::SimpleContainer markedModelsUi;
 
 			std::vector< std::string > beautifiedModelNames;
 			std::vector< int > markedModels;
+
+			std::function<void()> update;
 
 			struct ModelNameView {
 				ModelTypesUI *modelTypesUI;
@@ -307,31 +315,30 @@ namespace aop {
 				template< typename ElementAccessor >
 				void create( AntTWBarUI::Container *container, ElementAccessor &accessor ) const {
 					container->add( AntTWBarUI::makeSharedButton( accessor.pull(), 
-							[this, accessor] () {
-								modelTypesUI->mark( accessor.elementIndex );
+							[this, &accessor] () {
+								modelTypesUI->toggleMarkedModel( accessor.elementIndex );
 							}
 						)
 					);
 				}
 			};
 
-			/*struct MarkedModelNameView {
+			struct MarkedModelNameView {
 				ModelTypesUI *modelTypesUI;
 
 				typedef int Type;
 
-				ModelNameView( ModelTypesUI *modelTypesUI ) : modelTypesUI( modelTypesUI ) {}
+				MarkedModelNameView( ModelTypesUI *modelTypesUI ) : modelTypesUI( modelTypesUI ) {}
 				
 				template< typename ElementAccessor >
 				void create( AntTWBarUI::Container *container, ElementAccessor &accessor ) const {
-					container->add( AntTWBarUI::makeSharedButton( accessor.pull(), 
-							[this, accessor] () {
-								modelTypesUI->unmark( accessor. );
-							}
+					container->add( AntTWBarUI::makeSharedReadOnlyVariable(
+							"Name",
+							AntTWBarUI::makeExpressionAccessor<std::string>( [&] () -> std::string & { return modelTypesUI->beautifiedModelNames[ accessor.pull() ]; } )
 						)
 					);
 				}
-			};*/
+			};
 
 			void beautifyModelNames() {
 				for( auto filePath = application->world->scene.modelNames.begin() ; filePath != application->world->scene.modelNames.end() ; ++filePath ) {
@@ -344,20 +351,86 @@ namespace aop {
 				}
 			}
 
-			void mark( int index ) {
-				// TODO:
+			void toggleMarkedModel( int index ) {
+				auto found = boost::find( markedModels, index );
+				if( found == markedModels.end() ) {
+					markedModels.push_back( index );
+				}
+				else {
+					markedModels.erase( found );
+				}
+				boost::sort( markedModels );
+			}
+
+			void replaceMarkedModels( const std::vector<int> modelIndices ) {
+				markedModels = modelIndices;
+				validateMarkedModels();
+			}
+
+			void validateMarkedModels() {
+				boost::erase( markedModels, boost::unique< boost::return_found_end>( boost::sort( markedModels ) ) );
+			}
+
+			void appendMarkedModels( const std::vector<int> modelIndices ) {
+				boost::push_back( markedModels, modelIndices );
+				validateMarkedModels();
 			}
 
 			ModelTypesUI( Application *application ) : application( application ) {
+				init();
+			}
+
+			struct ReplaceWithSelectionVisitor : Editor::SelectionVisitor {
+				ModelTypesUI *modelTypesUI;
+
+				ReplaceWithSelectionVisitor( ModelTypesUI *modelTypesUI ) : modelTypesUI( modelTypesUI ) {}
+
+				void visit( Editor::SGSMultiModelSelection *selection ) {
+					modelTypesUI->replaceMarkedModels( selection->modelIndices );
+				}
+			};
+
+			struct AppendSelectionVisitor : Editor::SelectionVisitor {
+				ModelTypesUI *modelTypesUI;
+
+				AppendSelectionVisitor( ModelTypesUI *modelTypesUI ) : modelTypesUI( modelTypesUI ) {}
+
+				void visit( Editor::SGSMultiModelSelection *selection ) {
+					modelTypesUI->appendMarkedModels( selection->modelIndices );
+				}
+			};
+
+			void init() {
 				beautifyModelNames();
 
 				struct MyConfig {
 					enum { supportRemove = false };
 				};
-				ui.add( std::make_shared< AntTWBarUI::Vector< ModelNameView, MyConfig > >( "Models", beautifiedModelNames, ModelNameView( this ), true ) );
-				//ui.add( )
-				ui.add( AntTWBarUI::makeSharedButton( "Unmark all", [] () {} ) );
-				ui.link();
+				modelsUi = std::make_shared< AntTWBarUI::Vector< ModelNameView, MyConfig > >( "All models", beautifiedModelNames, ModelNameView( this ), true );
+				modelsUi->link();
+
+				markedModelsUi.setName( "Marked models");
+				auto markedModelsVector = AntTWBarUI::makeSharedVector( "Models", markedModels, MarkedModelNameView( this ), true );
+				markedModelsUi.add( markedModelsVector );
+				markedModelsUi.add( AntTWBarUI::makeSharedSeparator() );
+				markedModelsUi.add( AntTWBarUI::makeSharedButton( "= {}", [this] () {
+					markedModels.clear();
+				} ) );				
+				markedModelsUi.add( AntTWBarUI::makeSharedButton( "= selection", [this] () {
+					ReplaceWithSelectionVisitor( this ).dispatch( application->editorWrapper->editor.selection.get() );
+				} ) );
+				markedModelsUi.add( AntTWBarUI::makeSharedButton( "+= selection", [this] () {
+					AppendSelectionVisitor( this ).dispatch( application->editorWrapper->editor.selection.get() );
+				} ) );
+				markedModelsUi.add( AntTWBarUI::makeSharedSeparator() );
+				markedModelsUi.add( AntTWBarUI::makeSharedButton( "selection =", [this] () {
+					application->editorWrapper->editor.selection = std::make_shared<Editor::SGSMultiModelSelection>( &application->editorWrapper->editor, markedModels );
+				} ) );
+				markedModelsUi.link();
+
+				update = [markedModelsVector] () {
+					markedModelsVector->updateSize();
+				};
 			}
 		};
 
@@ -445,12 +518,8 @@ namespace aop {
 
 			registerConsoleHelpAction( eventDispatcher );
 			eventDispatcher.addEventHandler( make_nonallocated_shared( mainCameraInputControl ) );
-
-			antTweakBarEventHandler.init( mainWindow );
-			// register anttweakbar first because it actually manages its own focus
-			eventDispatcher.addEventHandler( make_nonallocated_shared( antTweakBarEventHandler ) );
 		}
-
+	
 		void init() {
 			initMainWindow();
 			initCamera();
@@ -460,12 +529,17 @@ namespace aop {
 
 			editorWrapper.reset( new EditorWrapper( this ) );
 
+			// register anttweakbar first because it actually manages its own focus
+			antTweakBarEventHandler.init( mainWindow );
+			eventDispatcher.addEventHandler( make_nonallocated_shared( antTweakBarEventHandler ) );
+
 			initUI();
 		}
 
 		void updateUI() {
 			targetVolumesUI->update();
 			cameraViewsUI->update();
+			modelTypesUI->update();
 		}
 
 		void eventLoop() {
@@ -493,7 +567,7 @@ namespace aop {
 						glViewport( 0, 0, event.size.width, event.size.height );
 
 						auto view = mainWindow.getView();
-						view.reset( sf::FloatRect( 0.0f, 0.0f, event.size.width, event.size.height ) );
+						view.reset( sf::FloatRect( 0.0f, 0.0f, (float) event.size.width, (float) event.size.height ) );
 						mainWindow.setView( view );
 					}
 
