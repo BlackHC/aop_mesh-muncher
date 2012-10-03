@@ -68,6 +68,8 @@ struct SGSSceneRenderer {
 		optix::TextureSampler objectTextureSampler;
 
 		struct Cache {
+			static const int VERSION = 1;
+
 			int magicStamp;
 			std::vector<unsigned char> staticSceneAccelerationCache;
 			std::vector<std::vector<unsigned char>> prototypesAccelerationCache;
@@ -158,6 +160,8 @@ struct SGSSceneRenderer {
 	GL::ScopedDisplayLists materialDisplayLists;
 
 	struct Cache {
+		static const int VERSION = 1;
+
 		struct TextureDump {
 			int width;
 			int height;

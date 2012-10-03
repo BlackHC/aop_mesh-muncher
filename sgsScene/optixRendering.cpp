@@ -239,7 +239,7 @@ bool SGSSceneRenderer::loadOptixCache() {
 	{
 		boost::timer::auto_cpu_timer timer( "initOptix; load cache: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
 
-		Serializer::BinaryReader reader( optixCacheFilename, sizeof Optix::Cache );
+		Serializer::BinaryReader reader( optixCacheFilename, Optix::Cache::VERSION );
 		if( reader.valid() ) {
 			reader.get( cache );
 		}
@@ -269,7 +269,7 @@ void SGSSceneRenderer::writeOptixCache() {
 
 	boost::timer::auto_cpu_timer timer( "initOptix; write cache: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
 			
-	Serializer::BinaryWriter writer( optixCacheFilename, sizeof Optix::Cache );
+	Serializer::BinaryWriter writer( optixCacheFilename, Optix::Cache::VERSION );
 	writer.put( cache );
 }
 

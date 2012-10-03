@@ -89,16 +89,23 @@ RT_PROGRAM void eye_closestHit() {
 	}
 }
 
-#if 0
-// could be used to avoid subtraces
+// check this in anyhit.. only few objects will be disabled, so it doesn't make sense to check for it in intersect
+// which will be hit for every triangle
+__device__ bool checkObjectDisabled() {
+	return materialInfo.objectIndex == disabledObjectIndex || materialInfo.modelIndex == disabledModelIndex;
+}
 RT_PROGRAM void eye_anyHit() {
-	if( getTexel().w < 0.05 ) {
+	if( checkObjectDisabled() ) {
 		rtIgnoreIntersection();
 	}
 }
-#endif
 
 RT_PROGRAM void shadow_anyHit() {
+	if( checkObjectDisabled() ) {
+		rtIgnoreIntersection();
+		return;
+	}
+
 	switch( materialInfo.alphaType ) {
 	default:
 	case MaterialInfo::AT_NONE:
@@ -127,6 +134,11 @@ RT_PROGRAM void shadow_anyHit() {
 }
 
 RT_PROGRAM void selection_anyHit() {
+	if( checkObjectDisabled() ) {
+		rtIgnoreIntersection();
+		return;
+	}
+
 	float alpha = 1.0;
 	switch( materialInfo.alphaType ) {
 	default:
@@ -158,11 +170,6 @@ RT_PROGRAM void selection_closestHit() {
 
 RT_PROGRAM void intersect( int primIdx )
 {
-	MaterialInfo &minfo = materialInfos[ materialIndices[ primIdx ] ];
-	if( minfo.objectIndex == disabledObjectIndex || minfo.modelIndex == disabledModelIndex ) {
-		return;
-	}
-
 	int3 v_idx = indexBuffer[primIdx];
 
 	float3 p0 = vertexBuffer[ v_idx.x ].position;
@@ -189,8 +196,8 @@ RT_PROGRAM void intersect( int primIdx )
 			float2 t2 = vertexBuffer[ t_idx.z ].uv[0];
 			texCoord = ( t1*beta + t2*gamma + t0*(1.0f-beta-gamma) );
 
-			materialInfo = minfo;
-
+			materialInfo = materialInfos[ materialIndices[ primIdx ] ];
+				
 			rtReportIntersection(0);
 		}
 	}

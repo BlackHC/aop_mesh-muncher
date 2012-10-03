@@ -143,7 +143,7 @@ void SGSSceneRenderer::processScene( const std::shared_ptr<SGSScene> &scene, con
 	Cache cache;
 	{
 		boost::timer::auto_cpu_timer timer( "processScene; load cache: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
-		Serializer::BinaryReader reader( cacheFilename, sizeof Cache );
+		Serializer::BinaryReader reader( cacheFilename, Cache::VERSION );
 		if( reader.valid() ) {
 			reader.get( cache );
 		}
@@ -215,7 +215,7 @@ void SGSSceneRenderer::processScene( const std::shared_ptr<SGSScene> &scene, con
 	if( cacheChanged ) {
 		boost::timer::auto_cpu_timer timer( "processScene; store cache: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
 
-		Serializer::BinaryWriter writer( cacheFilename, sizeof Cache );
+		Serializer::BinaryWriter writer( cacheFilename, Cache::VERSION );
 		writer.put( cache );
 	}
 }
