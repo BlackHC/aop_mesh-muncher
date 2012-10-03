@@ -40,8 +40,8 @@ namespace Serializer {
 			return;
 		}
 
-		unsigned int startIndex = (unsigned int) collection.size();
-		collection.reserve( startIndex + size );
+		collection.clear();
+		collection.reserve( size );
 
 		if( !detail::can_be_dumped<Value>::value ) {
 			for( unsigned int i = 0 ; i < size ; ++i ) {
@@ -52,8 +52,8 @@ namespace Serializer {
 		}
 		else {
 			// speed up pods :)
-			collection.resize( startIndex + size );
-			fread( &collection[startIndex], sizeof( Value ), size, reader.handle );
+			collection.resize( size );
+			fread( &collection.front(), sizeof( Value ), size, reader.handle );
 		}
 	}
 
@@ -67,7 +67,9 @@ namespace Serializer {
 	template< typename Value >
 	void read( TextReader &reader, std::vector<Value> &collection ) {
 		int size = (int) reader.mapNode->size();
-		collection.reserve( collection.size() + size );
+
+		collection.clear();
+		collection.reserve( size );
 
 		for( int i = 0 ; i < size ; ++i ) {
 			Value value;
@@ -92,7 +94,7 @@ namespace Serializer {
 		unsigned int size;
 		read( reader, size );
 
-		unsigned int startIndex = (unsigned int) collection.size();
+		collection.clear();
 
 		for( unsigned int i = 0 ; i < size ; ++i ) {
 			Value value;
@@ -112,6 +114,8 @@ namespace Serializer {
 	void read( TextReader &reader, std::list<Value> &collection ) {
 		int size = (int) reader.mapNode->size();
 		
+		collection.clear();
+
 		for( int i = 0 ; i < size ; ++i ) {
 			Value value;
 			get( reader, value );
@@ -195,6 +199,8 @@ namespace Serializer {
 		unsigned int size;
 		read( reader, size );
 
+		collection.clear();
+
 		for( unsigned int i = 0 ; i < size ; ++i ) {
 			std::pair< Key, Value > pair;
 			read( reader, pair );
@@ -212,6 +218,8 @@ namespace Serializer {
 	template< typename Key, typename Value >
 	void read( TextReader &reader, std::map< Key, Value > &collection ) {
 		int size = (int) reader.mapNode->size();
+
+		collection.clear();
 
 		for( int i = 0 ; i < size ; ++i ) {
 			std::pair< Key, Value > pair;

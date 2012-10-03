@@ -120,7 +120,6 @@ namespace Serializer {
 			put( version );
 		}
 
-
 		~BinaryWriter() {
 			if( handle ) {
 				fclose( handle );
