@@ -201,11 +201,16 @@ namespace AntTWBarUI {
 			return parent;
 		}
 
+		void refresh() {
+			doRefresh();
+		}
+
 		virtual ~Element() {}
 
 	private:
 		virtual void doLink() = 0;
 		virtual void doUnlink() = 0;
+		virtual void doRefresh() = 0;
 
 	private:
 		// returns false, if the new parent is the old parent
@@ -254,6 +259,9 @@ namespace AntTWBarUI {
 		void setName( const std::string &name ) {
 			this->name = name;
 		}
+
+	protected:
+		virtual void doRefresh() {}
 
 	private:
 		virtual void doLinkChildren() = 0;
@@ -355,6 +363,11 @@ namespace AntTWBarUI {
 		}
 
 	protected:
+		virtual void doRefresh() {
+			refreshChildren();
+		}
+
+	private:
 		void doAdd( const std::shared_ptr<Element> &child ) {
 			children.push_back( child );
 		}
@@ -382,6 +395,12 @@ namespace AntTWBarUI {
 			// unlink the children
 			for( auto child = children.begin() ; child != children.end() ; ++child ) {
 				child->get()->unlink();
+			}
+		}
+
+		void refreshChildren() {
+			for( auto child = children.begin() ; child != children.end() ; ++child ) {
+				child->get()->refresh();
 			}
 		}
 
@@ -447,6 +466,8 @@ namespace AntTWBarUI {
 			element.unnest();
 		}
 
+		void doRefresh() {}
+
 		InternalElement element;
 		std::string def;
 	};
@@ -478,6 +499,8 @@ namespace AntTWBarUI {
 		void doUnlink() {
 			element.unnest();
 		}
+
+		void doRefresh() {}
 
 		static void TW_CALL execute(Button &me) {
 			me.callback();
@@ -728,6 +751,8 @@ namespace AntTWBarUI {
 			element.unnest();
 		}
 
+		void doRefresh() {}
+
 		static void TW_CALL staticGet(Type &value, Variable &me) {
 			value = me.accessor.pull();
 		}
@@ -768,6 +793,60 @@ namespace AntTWBarUI {
 	template< typename Accessor >
 	std::shared_ptr< Variable< Accessor, true > > makeSharedReadOnlyVariable( const std::string &name, Accessor &&accessor, const std::string &def = std::string() ) {
 		return std::make_shared< Variable< Accessor, true > >( name, std::move( accessor ), def );
+	}
+
+	//////////////////////////////////////////////////////////////////////////
+	template< typename Accessor >
+	struct Label : Element {
+		Accessor nameAccessor;
+
+		Label( Accessor &&nameAccessor, const std::function<void()> &callback, const std::string &def = std::string() )
+			:
+			nameAccessor( std::move( nameAccessor ) ),
+			callback( callback ),
+			def( def )
+		{
+		}
+
+	private:
+		void doLink() {
+			element.nest( getParent()->getGroup() );
+			element.makeButton( (TwButtonCallback) Button::execute, (void*) this, def );
+
+			updateName();
+		}
+
+		void doUnlink() {
+			element.unnest();
+		}
+
+		void doRefresh() {
+			updateName();
+		}
+
+		void updateName() {
+			const auto &name = nameAccessor.pull();
+			if( cachedName != name ) {
+				cachedName = name;
+				element.setLabel( name );
+			}
+		}
+
+		static void TW_CALL execute(Button &me) {
+			me.callback();
+		}
+
+		std::string cachedName;
+
+		InternalElement element;
+		std::string def;
+
+		std::function<void()> callback;
+	};
+
+	template< typename Accessor >
+	std::shared_ptr< Label< Accessor > > makeSharedLabel( Accessor &&nameAccessor, const std::function<void()> &callback, const std::string &def = std::string() ) {
+		return std::make_shared< Label< Accessor > >( std::move( nameAccessor ), callback, def );
 	}
 
 	//////////////////////////////////////////////////////////////////////////
@@ -857,6 +936,14 @@ namespace AntTWBarUI {
 			updateSize();
 		}
 
+	protected:
+		virtual void doRefresh() {
+			SimpleContainer::doRefresh();
+
+			updateSize();
+		}
+
+	private:
 		void updateSize() {
 			while( size() < elements.size() ) {
 				const int index = (int) size();
