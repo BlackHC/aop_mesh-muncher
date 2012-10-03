@@ -240,6 +240,10 @@ namespace aop {
 				ui.add( AntTWBarUI::makeSharedButton( "Store database", [this] { application->candidateFinder.storeCache( "database"); } ) );
 				ui.link();
 			}
+
+			void update() {
+				ui.refresh();
+			}
 		};
 
 		struct TargetVolumesUI {
@@ -247,8 +251,6 @@ namespace aop {
 
 			AntTWBarUI::SimpleContainer ui;
 			
-			std::function<void()> update;
-
 			struct NamedTargetVolumeView : AntTWBarUI::SimpleStructureFactory< aop::Settings::NamedTargetVolume, NamedTargetVolumeView > {
 				TargetVolumesUI *targetVolumesUI;
 
@@ -274,6 +276,10 @@ namespace aop {
 			};
 
 			TargetVolumesUI( Application *application ) : application( application ) {
+				init();
+			}
+
+			void init() {
 				ui.setName( "Query volumes" );
 				auto uiVector = AntTWBarUI::makeSharedVector( "Volumes", application->settings.volumes, NamedTargetVolumeView( this ) );
 				
@@ -290,15 +296,16 @@ namespace aop {
 								;
 
 							this->application->settings.volumes.push_back( volume );
-
-							uiVector->updateSize();
 						}
 					)
 				);
 				ui.link();
-
-				update = [uiVector] () { uiVector->updateSize(); };
 			}
+
+			void update() {
+				ui.refresh();
+			}
+
 		};
 
 		struct CameraViewsUI {
@@ -306,25 +313,32 @@ namespace aop {
 			
 			AntTWBarUI::SimpleContainer ui;
 
-			std::function< void() > update;
-
 			struct NamedCameraStateView : AntTWBarUI::SimpleStructureFactory< aop::Settings::NamedCameraState, NamedCameraStateView >{
 				Application *application;
 
 				NamedCameraStateView( Application *application ) : application( application ) {}
 
-				template< typename Accessor >
-				void setup( AntTWBarUI::Container *container, Accessor &accessor ) const {
+				template< typename ElementAccessor >
+				void setup( AntTWBarUI::Container *container, ElementAccessor &accessor ) const {
 					container->add( 
 						AntTWBarUI::makeSharedVariable(
 							"Name", 
 							AntTWBarUI::makeMemberAccessor( accessor, &aop::Settings::NamedCameraState::name )
 						)
 					);
+					container->add( 
+						AntTWBarUI::makeSharedButton( 
+							"Set default",
+							[&] () {
+								auto &views = application->settings.views;
+								std::swap( views.begin(), views.begin() + accessor.elementIndex );
+							}
+						)
+					);
 					container->add(
 						AntTWBarUI::makeSharedButton(
 							"Use",
-							[&, this] () {
+							[&] () {
 								accessor.pull().pushTo( this->application->mainCamera );							
 							}
 						)
@@ -332,7 +346,7 @@ namespace aop {
 					container->add(
 						AntTWBarUI::makeSharedButton(
 							"Replace",
-							[&, this] () { 
+							[&] () { 
 								accessor.pull().pullFrom( this->application->mainCamera );
 								accessor.push();
 							}
@@ -342,33 +356,36 @@ namespace aop {
 			};
 			
 			CameraViewsUI( Application *application ) : application( application ) {
+				init();
+			}
+
+			void init() {
 				ui.setName( "Camera views" );
 
-				auto cameraStatesView = AntTWBarUI::makeSharedVector( application->settings.views, NamedCameraStateView( application ) );
-				ui.add( cameraStatesView );
 				ui.add( AntTWBarUI::makeSharedButton( 
 						"Add current view",
-						[application, cameraStatesView] () {
+						[this] () {
 							application->settings.views.push_back( aop::Settings::NamedCameraState() );
 							application->settings.views.back().pullFrom( application->mainCamera );
-
-							cameraStatesView->updateSize();
 						}
 					)
 				);
 				ui.add( AntTWBarUI::makeSharedButton( 
 						"Clear all",
-						[application, cameraStatesView] () {
+						[this] () {
 							application->settings.views.clear();
-							cameraStatesView->updateSize();
 						}
 					)
 				);
-				ui.link();
 
-				update = [cameraStatesView] () {
-					cameraStatesView->updateSize();
-				};
+				auto cameraStatesView = AntTWBarUI::makeSharedVector( application->settings.views, NamedCameraStateView( application ) );
+				ui.add( cameraStatesView );
+				
+				ui.link();
+			}
+
+			void update() {
+				ui.refresh();
 			}
 		};
 
@@ -380,8 +397,6 @@ namespace aop {
 
 			std::vector< std::string > beautifiedModelNames;
 			std::vector< int > markedModels;
-
-			std::function<void()> update;
 
 			struct ModelNameView : AntTWBarUI::SimpleStructureFactory< std::string, ModelNameView >{
 				ModelTypesUI *modelTypesUI;
@@ -480,11 +495,11 @@ namespace aop {
 				struct MyConfig {
 					enum { supportRemove = false };
 				};
-				modelsUi = std::make_shared< AntTWBarUI::Vector< ModelNameView, MyConfig > >( "All models", beautifiedModelNames, ModelNameView( this ), AntTWBarUI::CT_SEPARATOR );
+				modelsUi = std::make_shared< AntTWBarUI::Vector< ModelNameView, MyConfig > >( "All models", beautifiedModelNames, ModelNameView( this ), AntTWBarUI::CT_EMBEDDED );
 				modelsUi->link();
 
 				markedModelsUi.setName( "Marked models");
-				auto markedModelsVector = AntTWBarUI::makeSharedVector( "Models", markedModels, MarkedModelNameView( this ), AntTWBarUI::CT_SEPARATOR );
+				auto markedModelsVector = AntTWBarUI::makeSharedVector( "Models", markedModels, MarkedModelNameView( this ), AntTWBarUI::CT_EMBEDDED );
 				markedModelsUi.add( markedModelsVector );
 				markedModelsUi.add( AntTWBarUI::makeSharedSeparator() );
 				markedModelsUi.add( AntTWBarUI::makeSharedButton( "= {}", [this] () {
@@ -501,10 +516,11 @@ namespace aop {
 					application->editorWrapper->editor.selection = std::make_shared<Editor::SGSMultiModelSelection>( &application->editorWrapper->editor, markedModels );
 				} ) );
 				markedModelsUi.link();
+			}
 
-				update = [markedModelsVector] () {
-					markedModelsVector->updateSize();
-				};
+			void update() {
+				modelsUi->refresh();
+				markedModelsUi.refresh();
 			}
 		};
 
@@ -612,12 +628,25 @@ namespace aop {
 			eventDispatcher.addEventHandler( make_nonallocated_shared( antTweakBarEventHandler ) );
 
 			initUI();
+
+			// load settings
+			settings.load();
+			
+			if( !settings.views.empty() ) {
+				settings.views.front().pushTo( mainCamera );
+			}
+
+			if( !settings.volumes.empty() ) {
+				// TODO: add select wrappers to editorWrapper or editor [10/3/2012 kirschan2]
+				editorWrapper->editor.selection = std::make_shared< Editor::ObbSelection >( &editorWrapper->editor, 0 );
+			}
 		}
 
 		void updateUI() {
 			targetVolumesUI->update();
 			cameraViewsUI->update();
 			modelTypesUI->update();
+			mainUI->update();
 		}
 
 		void eventLoop() {
