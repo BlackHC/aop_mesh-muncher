@@ -44,7 +44,9 @@ struct Shader {
 	std::string code;
 	std::string name;
 	std::vector< Member > uniforms, outputs, inputs;
-	std::vector< std::string > dependencies;
+
+	typedef std::vector< std::string > Dependencies;
+	Dependencies dependencies;
 	
 	SERIALIZER_IMPL( name, (code)(uniforms)(outputs)(inputs)(dependencies), (type) );
 
@@ -254,7 +256,7 @@ struct Program {
 
 	}
 
-	bool build( const ShaderCollection &collection ) {
+	bool build( const ShaderCollection &collection/* TODO , Shader::Dependencies customDependencies = Shader::Dependencies()*/ ) {
 		reset();
 
 		GLUtil::glProgramBuilder programBuilder;

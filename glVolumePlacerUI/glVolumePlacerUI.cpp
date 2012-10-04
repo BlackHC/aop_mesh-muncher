@@ -987,7 +987,7 @@ struct Application {
 		}
 	}
 
-	void drawPreview() {
+		void drawPreview() {
 		glMatrixMode( GL_PROJECTION );
 		glLoadMatrix( previewTransformation_.projection );
 
@@ -1042,7 +1042,7 @@ struct Application {
 		cameraInputControl.update( deltaTime, false );
 
 		float angle = elapsedTime * 2 * Math::PI / 10.0;
-		previewTransformation_.world = Affine3f(AngleAxisf( angle, Vector3f::UnitY() )).matrix();		
+		previewTransformation_.world = Affine3f(AngleAxisf( angle, Vector3f::UnitY() )).matrix();
 	}
 
 	void main() {

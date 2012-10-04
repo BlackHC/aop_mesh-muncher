@@ -115,23 +115,30 @@ void SGSSceneRenderer::bakeTerrainTexture( int detailFactor, float textureDetail
 
 void SGSSceneRenderer::reloadShaders() {
 	while( true ) {
-		shaders.shaders.clear();
+		try {
+			shaders.shaders.clear();
 
-		loadShaderCollection( shaders, "sgsScene.shaders" );
+			loadShaderCollection( shaders, "sgsScene.shaders" );
 
-		terrainProgram.surfaceShader = shaders[ "terrain" ];
-		terrainProgram.vertexShader = shaders[ "sgsMesh" ];
+			terrainProgram.surfaceShader = shaders[ "terrain" ];
+			terrainProgram.vertexShader = shaders[ "sgsMesh" ];
 
-		objectProgram.surfaceShader = shaders[ "object" ];
-		objectProgram.vertexShader = shaders[ "sgsMesh" ];
+			objectProgram.surfaceShader = shaders[ "object" ];
+			objectProgram.vertexShader = shaders[ "sgsMesh" ];
 
-		shadowMapProgram.vertexShader = shaders[ "shadowMapMesh" ];
-		shadowMapProgram.surfaceShader = shaders[ "shadowMapSurface" ];
+			previewObjectProgram.surfaceShader = shaders[ "previewObject" ];
+			previewObjectProgram.vertexShader = shaders[ "sgsMesh" ];
 
-		if( terrainProgram.build( shaders ) && objectProgram.build( shaders ) && shadowMapProgram.build( shaders ) ) {
-			break;
+			shadowMapProgram.vertexShader = shaders[ "shadowMapMesh" ];
+			shadowMapProgram.surfaceShader = shaders[ "shadowMapSurface" ];
+
+			if( terrainProgram.build( shaders ) && objectProgram.build( shaders ) && previewObjectProgram.build( shaders ) && shadowMapProgram.build( shaders ) ) {
+				break;
+			}
 		}
-
+		catch( std::exception &e) {
+			std::cerr << e.what() << std::endl;
+		}
 		__debugbreak();
 	}
 }
@@ -554,13 +561,13 @@ void SGSSceneRenderer::render( const Eigen::Matrix4f &projectionView, const Eige
 	sunShadowMap.bind();
 	glActiveTexture( GL_TEXTURE0 );
 
+	glDisable( GL_BLEND );
+	glDisable( GL_ALPHA_TEST );
+
+	glDepthMask( GL_TRUE );
+
 	// terrain rendering
 	{
-		glDisable( GL_BLEND );
-		glDisable( GL_ALPHA_TEST );
-
-		glDepthMask( GL_TRUE );
-
 		bakedTerrainTexture.bind();
 		bakedTerrainTexture.enable();
 		terrainProgram.use();
@@ -631,23 +638,8 @@ void SGSSceneRenderer::render( const Eigen::Matrix4f &projectionView, const Eige
 		staticObjectsMesh.vao.unbind();
 	}
 
-	// make sure this is turned on again, otherwise glClear wont work correctly...
-	glDepthMask( GL_TRUE );
-
+	resetState();
 	{
-		// more state resets for debug rendering
-		glDisable( GL_BLEND );
-		glDisable( GL_ALPHA_TEST );
-		glDisable( GL_CULL_FACE );
-
-		glDepthMask( GL_TRUE );
-		glActiveTexture( GL_TEXTURE1 );
-		Texture2D::unbind();
-		glActiveTexture( GL_TEXTURE0 );
-		Texture2D::unbind();
-
-		Program::useFixed();
-
 		if( debug.showBoundingSpheres ) {
 			debug.boundingSpheres.render();
 		}
@@ -663,6 +655,45 @@ void SGSSceneRenderer::render( const Eigen::Matrix4f &projectionView, const Eige
 		lightFrustum.end();
 	}
 }
+
+void SGSSceneRenderer::resetState() {
+	// make sure this is turned on again, otherwise glClear wont work correctly...
+	glDepthMask( GL_TRUE );
+
+	// more state resets for debug rendering
+	glDisable( GL_BLEND );
+	glDisable( GL_ALPHA_TEST );
+	glDisable( GL_CULL_FACE );
+
+	glDepthMask( GL_TRUE );
+	glActiveTexture( GL_TEXTURE1 );
+	Texture2D::unbind();
+	glActiveTexture( GL_TEXTURE0 );
+	Texture2D::unbind();
+
+	Program::useFixed();
+}
+
+void SGSSceneRenderer::renderModel( const Eigen::Vector3f &worldViewerPosition, int modelIndex ) {
+	glDisable( GL_CULL_FACE );
+	glCullFace( GL_BACK );
+
+	glDisable( GL_BLEND );
+	glDisable( GL_ALPHA_TEST );
+
+	previewObjectProgram.use();
+
+	glUniform( previewObjectProgram.uniformLocations[ "viewerPosition" ], worldViewerPosition );
+
+	staticObjectsMesh.vao.bind();
+
+	drawModel( scene->models[ modelIndex ] );
+
+	staticObjectsMesh.vao.unbind();
+
+	resetState();
+}
+
 
 void SGSSceneRenderer::sortAlphaList( const Eigen::Vector3f &worldViewerPosition ) {
 	boost::sort(
@@ -840,4 +871,3 @@ int SGSSceneRenderer::addInstance( const Instance &instance ) {
 
 	return instanceIndex;
 }
-

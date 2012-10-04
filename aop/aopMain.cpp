@@ -50,6 +50,8 @@ using namespace Eigen;
 #include "boost/range/algorithm/sort.hpp"
 #include "boost/range/algorithm_ext/erase.hpp"
 
+#include "contextHelper.h"
+
 std::weak_ptr<AntTweakBarEventHandler::GlobalScope> AntTweakBarEventHandler::globalScope;
 
 void visualizeProbes( float resolution, const std::vector< SGSInterface::Probe > &probes );
@@ -85,6 +87,61 @@ struct TransformChain {
 		else {
 			globalTransform = localTransform;
 		}
+	}
+
+	Eigen::Vector2f pointToScreen( const Eigen::Vector2f &point ) {
+		return ( globalTransform * Eigen::Vector3f( point[0], point[1], 0.0f ) ).head<2>();
+	}
+
+	Eigen::Vector2f vectorToScreen( const Eigen::Vector2f &point ) {
+		return ( globalTransform.linear() * Eigen::Vector3f( point[0], point[1], 0.0f ) ).head<2>();
+	}
+
+	Eigen::Vector2f screenToPoint( const Eigen::Vector2f &point ) {
+		return ( globalTransform.inverse() * Eigen::Vector3f( point[0], point[1], 0.0f ) ).head<2>();
+	}
+
+	Eigen::Vector2f screenToVector( const Eigen::Vector2f &point ) {
+		return ( globalTransform.inverse().linear() * Eigen::Vector3f( point[0], point[1], 0.0f ) ).head<2>();
+	}
+};
+
+// supports y down coordinates and sets the viewport automatically
+struct ViewportContext : AsExecutionContext< ViewportContext >{
+	// total size
+	int framebufferWidth;
+	int framebufferHeight;
+
+	// viewport
+	int left, top;
+	int width, height;
+
+	ViewportContext( int framebufferWidth, int framebufferHeight ) :
+		framebufferWidth( framebufferWidth ), framebufferHeight( framebufferHeight ),
+		left( 0 ), top( 0 ), width( framebufferWidth ), height( framebufferHeight )
+	{
+		updateGLViewport();
+	}
+
+	ViewportContext( int left, int top, int width, int height ) :
+		left( left ), top( top ), width( width ), height( height )
+	{
+		updateGLViewport();
+	}
+
+	ViewportContext() : AsExecutionContext( ExpectNonEmpty() ) {}
+
+	void pop() {
+		updateGLViewport();
+	}
+
+	void updateGLViewport() {
+		glViewport( left, framebufferHeight - (top + height), width, height );
+	}
+
+	// relative coords are 0..1
+	Eigen::Vector2f screenToViewport( const Eigen::Vector2i &screen ) {
+		return Eigen::Vector2f( (screen[0] - left) / float( width ), (screen[1] - top) / float( height ) );
 	}
 };
 
@@ -156,7 +213,7 @@ struct ButtonWidget : WidgetBase {
 	ButtonWidget() : state() {}
 
 	bool isInArea( const Eigen::Vector2f &globalPosition ) {
-		const Eigen::Vector3f localPosition = transformChain.globalTransform.inverse() * Vector3f( globalPosition[0], globalPosition[1], 0.0 );
+		const Eigen::Vector2f localPosition = transformChain.screenToPoint( globalPosition );
 		if( localPosition[0] >= 0 && localPosition[1] >= 0 &&
 			localPosition[0] <= size[0] && localPosition[1] <= size[1]
 		) {
@@ -251,6 +308,8 @@ private:
 		}
 
 		DebugRender::drawAABB( Vector3f::Zero(), Vector3f( size[0], size[1], 0.0f ) );
+
+		doRenderInside();
 	}
 
 	virtual void onAction() = 0;
@@ -264,6 +323,58 @@ struct DummyButtonWidget : ButtonWidget {
 	void onMouseEnter() {}
 	void onMouseLeave() {}
 	void doRenderInside() {}
+};
+
+struct ModelButtonWidget : ButtonWidget {
+	SGSSceneRenderer *renderer;
+
+	int modelIndex;
+
+
+	float time;
+
+	void doUpdate( EventSystem &eventSystem, const float frameDuration, const float elapsedTime ) {
+		time = elapsedTime;
+	}
+
+	void doRenderInside() {
+		// init the persective matrix
+		glMatrixMode( GL_PROJECTION );
+		glPushMatrix();
+		glLoadMatrix( Eigen::createPerspectiveProjectionMatrix( 75.0, 1.0, 0.001, 100.0 ) );
+
+		glMatrixMode( GL_MODELVIEW );
+		glPushMatrix();
+		const auto worldViewerPosition = Vector3f( 0.0, 4.0, 8.0 );
+		glLoadMatrix( Eigen::createViewerMatrix( worldViewerPosition, -Vector3f::UnitZ(), Vector3f::UnitY() ) );
+
+		float angle = time * 2 * Math::PI / 10.0;
+		glMultMatrix( Affine3f(AngleAxisf( angle, Vector3f::UnitY() )).matrix() );
+
+		// TODO: scissor test [10/4/2012 kirschan2]
+
+		const Eigen::Vector2f realMinCorner = transformChain.pointToScreen( Eigen::Vector2f::Zero() );
+		const Eigen::Vector2f realSize = transformChain.vectorToScreen( size );
+
+		glClear( GL_DEPTH_BUFFER_BIT );
+		glEnable( GL_DEPTH_TEST );
+
+		{
+			ViewportContext viewport( realMinCorner[0], realMinCorner[1], realSize[0], realSize[1] );
+
+			renderer->renderModel( worldViewerPosition, modelIndex );
+		}
+
+		glMatrixMode( GL_PROJECTION );
+		glPopMatrix();
+
+		glMatrixMode( GL_MODELVIEW );
+		glPopMatrix();
+	}
+	
+	void onAction() {}
+	void onMouseEnter() {}
+	void onMouseLeave() {}
 };
 
 #if 1
@@ -818,8 +929,11 @@ namespace aop {
 
 			eventDispatcher.addEventHandler( make_nonallocated_shared( widgetRoot ) );
 
-			auto button = std::make_shared<DummyButtonWidget>();
+			auto button = std::make_shared<ModelButtonWidget>();
 			button->size = Vector2f::Constant( 0.25 );
+			button->modelIndex = 0;
+			button->renderer = &world->sceneRenderer;
+
 			widgetRoot.addEventHandler( button );
 
 			// register anttweakbar first because it actually manages its own focus
@@ -855,6 +969,9 @@ namespace aop {
 
 			sf::Clock frameClock, clock;
 
+			KeyAction reloadShadersAction( "reload shaders", sf::Keyboard::R, [&] () { world->sceneRenderer.reloadShaders(); } );
+			eventDispatcher.addEventHandler( make_nonallocated_shared( reloadShadersAction ) );
+
 			while (true)
 			{
 				// Activate the window for OpenGL rendering
@@ -880,13 +997,16 @@ namespace aop {
 					eventSystem.processEvent( event );
 				}
 
-				updateUI();
-
 				if( !mainWindow.isOpen() ) {
 					break;
 				}
 
 				eventSystem.update( frameClock.restart().asSeconds(), clock.getElapsedTime().asSeconds() );
+
+				const sf::Vector2i windowSize( mainWindow.getSize() );
+				ViewportContext viewportContext( windowSize.x, windowSize.y );
+
+				updateUI();
 
 				{
 					boost::timer::cpu_timer renderTimer;
@@ -929,8 +1049,6 @@ namespace aop {
 					glMatrixMode( GL_PROJECTION );
 					glLoadIdentity();
 
-					const sf::Vector2i windowSize( mainWindow.getSize() );
-
 					glLoadMatrix( Eigen::Scaling<float>( 1.0f, -1.0f, 1.0f) * Eigen::Translation3f( Vector3f( -1.0, -1.0, 0.0 ) ) * Eigen::Scaling<float>( 2.0f / windowSize.x, 2.0f / windowSize.y, 1.0f ) );
 
 					widgetRoot.transformChain.localTransform = Eigen::Scaling<float>( windowSize.x, windowSize.y, 1.0 );
@@ -939,6 +1057,7 @@ namespace aop {
 					glLoadIdentity();
 
 					glDisable( GL_DEPTH_TEST );
+					glClear( GL_DEPTH_BUFFER_BIT );
 
 					widgetRoot.onRender();
 

@@ -31,7 +31,7 @@ void loadShaderCollection( ShaderCollection &library, const char *filename ) {
 		}
 		catch (std::exception &e)
 		{
-			std::cerr << e.what();
+			std::cerr << e.what() << std::endl;
 			__debugbreak();
 		}
 	}
@@ -54,28 +54,31 @@ std::vector< const Shader * > ShaderCollection::resolveDependencies( const Shade
 			current->error( "has cyclic dependency!" );
 		}
 
-		const auto unresolvedDependencies = current->dependencies |
+		const auto unresolvedDependencies =
+			current->dependencies |
 			boost::adaptors::transformed( 
-			[&, this] ( const std::string &name ) -> const Shader * {
-				auto shader = get( name.c_str() );
-				if( !shader ) {
-					current->error( (boost::format( "'%s' not found in collection!") % name).str() );
+				[&, this] ( const std::string &name ) -> const Shader * {
+					auto shader = get( name.c_str() );
+					if( !shader ) {
+						current->error( (boost::format( "'%s' not found in collection!") % name).str() );
+					}
+					if( shader->type != Shader::ST_MODULE ) {
+						current->error( (boost::format( "'%s' is not a module!") % name).str() );
+					}
+					return shader;
 				}
-				if( shader->type != Shader::ST_MODULE ) {
-					current->error( (boost::format( "'%s' is not a module!") % name).str() );
-				}
-				return shader;
-				return nullptr;
-		} ) |
-			boost::adaptors::filtered( [&] (const Shader *shader ) { return boost::find( resolved, current ) == resolved.end(); } );
+			) |
+			boost::adaptors::filtered( [&] (const Shader *shader ) { return boost::find( resolved, shader ) == resolved.end(); } );
 
 		if( boost::empty( unresolvedDependencies ) ) {
 			// all dependencies already resolved, so we can add it
 			// just dont add the shader itself, because it usually is not a module
-			if( current != shader )
+			if( current != shader ) {
 				resolved.push_back( current );
+			}
 		}
 		else {
+			moduleStack.push_back( current );
 			boost::push_back( moduleStack, unresolvedDependencies | boost::adaptors::reversed );
 		}
 	}

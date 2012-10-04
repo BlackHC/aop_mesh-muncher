@@ -56,6 +56,8 @@ void Editor::renderHighlitOBB( const Obb &obb ) {
 	DebugRender::drawBox( obb.size );
 
 	DebugRender::end();
+
+	glDepthFunc( GL_LESS );
 }
 
 void Editor::render() {

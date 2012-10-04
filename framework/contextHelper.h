@@ -6,7 +6,7 @@ struct MyContext : AsExecutionContext<MyContext> {
 	int someValue;
 	int otherValue;
 
-	void setDefault() {		
+	void setDefault() {
 		someValue = 0;
 		otherValue = 1;
 	}
@@ -32,7 +32,7 @@ void funcB() {
 
 void funcA() {
 	std::cout << "funcA\n";
-	// funcB works anyhow because it obtains a default context 
+	// funcB works anyhow because it obtains a default context
 	funcB();
 	// funcC(); would fail here
 
@@ -49,25 +49,71 @@ void funcA() {
 template<typename Context>
 struct AsExecutionContext {
 	static const Context *context;
-	const Context *previous;
 
 	AsExecutionContext() {
 		if( context ) {
-			*static_cast<Context*>(this) = *context;
+			fromNonEmpty();
 		}
 		else {
-			static_cast<Context*>(this)->setDefault();
+			fromEmpty();
 		}
 
-		previous = context;
-		context = static_cast<const Context*>(this);
+		push();
+	}
+
+	struct ExpectEmpty {};
+
+	AsExecutionContext( ExpectEmpty ) {
+		if( context ) {
+			throw std::logic_error( "expected empty context stack!" );
+		}
+
+		fromEmpty();
+		push();
+	}
+
+	struct ExpectNonEmpty {};
+
+	AsExecutionContext( ExpectNonEmpty ) {
+		if( !context ) {
+			throw std::logic_error( "expected nonempty context stack!" );
+		}
+
+		fromNonEmpty();
+		push();
 	}
 
 	~AsExecutionContext() {
-		context = previous;
+		pop();
 	}
 
 	void setDefault() {}
+	// called after the new context has been set
+	void onPush() {}
+	// called after the previous context has been restored
+	void onPop() {}
+
+private:
+	void fromNonEmpty() {
+		*static_cast<Context*>(this) = *context;
+	}
+
+	void fromEmpty() {
+		static_cast<Context*>(this)->setDefault();
+	}
+
+	void push() {
+		previous = context;
+		context = static_cast<const Context*>(this);
+
+		onPush();
+	}
+
+	void pop() {
+		context = previous;
+	}
+
+	const Context *previous;
 };
 
 template<typename Context>
@@ -103,7 +149,7 @@ class Scope {
 // what about inheritance?
 
 /*
-TODO: lean execution context using static 
+TODO: lean execution context using static
 
 template<typename ContextData>
 struct Context {

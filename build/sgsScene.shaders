@@ -1,12 +1,9 @@
-lighting:
+basicLightingFunction:
 	module
 
 	uniforms:
 		viewerPosition		vec3
-		sunShadowTexture	'layout( binding = 1 ) sampler2D'
-		sunShadowProjection mat4
-		sunDirection		vec3
-
+		
 	code::
 		float getDiffuseAttenuation( const vec3 normal, const vec3 lightDirection ) {
 			return abs( dot( normal, lightDirection ) );
@@ -16,9 +13,20 @@ lighting:
 			const vec3 viewerDirection = normalize( viewerPosition - position );
 			const vec3 halfVector = normalize( viewerDirection + lightDirection );
 
-			return abs( dot( halfVector, normal ) );			
+			return abs( dot( halfVector, normal ) );
 		}
 
+sceneLighting:
+	module
+
+	dependencies:
+		basicLightingFunction
+	
+	uniforms:
+		sunShadowTexture	'layout( binding = 1 ) sampler2D'
+		sunShadowProjection	mat4
+
+	code::
 		float shadowMapLookUp( sampler2D shadowMap, const mat4 projectionMatrix, const vec3 position ) {
 			vec4 transformedPosition = projectionMatrix * vec4( position, 1.0 );
 
@@ -26,12 +34,12 @@ lighting:
 			viewportCoords = (viewportCoords + 1) / 2;
 			viewportCoords.z *= 0.9995;
 
-			float refDepth = texture( shadowMap, viewportCoords.xy ).r;			
+			float refDepth = texture( shadowMap, viewportCoords.xy ).r;
 			if( refDepth >= viewportCoords.z )
 				return 1.0;
 			else
 				return 0.0;
-			//return clamp( pow( 1.0 + refDepth - viewportCoords.z, 0.3 ), 0.0, 1.0 );			
+			//return clamp( pow( 1.0 + refDepth - viewportCoords.z, 0.3 ), 0.0, 1.0 );
 		}
 
 		vec4 lightFragment( const vec3 position, const vec3 normal, const vec4 diffuseColor ) {
@@ -48,11 +56,30 @@ lighting:
 			return diffuseColor * (ambientAttenuation +  (1.0 - ambientAttenuation) * shadowMapAttenuation * (diffuseAttenuation + specularAttenuation));
 		}
 
+previewLighting:
+	module
+
+	dependencies:
+		basicLightingFunction
+
+	code::
+		vec4 lightFragment( const vec3 position, const vec3 normal, const vec4 diffuseColor ) {
+			// from position to light
+			const vec3 lightDirection = normalize( vec3( 0.0, 1.0, 1.0 ) );
+			const float diffuseAttenuation = getDiffuseAttenuation( normal, lightDirection ) * 0.8;
+			const float specularAttenuation = pow( getSpecularAttenuation( position, normal, lightDirection ), 18 );
+
+			// make it bright
+			const float ambientAttenuation = 0.5;
+			
+			return diffuseColor * (ambientAttenuation +  (1.0 - ambientAttenuation) * (diffuseAttenuation + specularAttenuation));
+		}
+
 terrain:
 	surfaceShader
 
 	dependencies:
-		lighting
+		sceneLighting
 
 	uniforms:
 		terrainTexture 'layout( binding = 0 ) sampler2D'
@@ -73,7 +100,28 @@ object:
 	surfaceShader
 
 	dependencies:
-		lighting
+		sceneLighting
+
+	inputs:
+		worldPosition	vec3
+		worldNormal		vec3
+
+	uniforms:
+		baseTetxture 'layout( binding = 0 ) sampler2D'
+
+	code::
+		vec4 surfaceShader() {
+			vec4 baseColor = texture( baseTetxture, gl_TexCoord[0].st );
+
+			// add some very simple lighting
+			return lightFragment( worldPosition, worldNormal, baseColor );
+		}
+
+previewObject:
+	surfaceShader
+
+	dependencies:
+		previewLighting
 
 	inputs:
 		worldPosition	vec3
@@ -94,7 +142,7 @@ sgsMesh:
 	vertexShader
 
 	dependencies:
-		lighting
+		sceneLighting
 
 	outputs:
 		worldPosition	vec3

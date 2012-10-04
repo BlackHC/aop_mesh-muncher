@@ -97,7 +97,7 @@ struct SGSSceneRenderer {
 	ScopedTexture2D bakedTerrainTexture;
 
 	ShaderCollection shaders;
-	Program terrainProgram, objectProgram, shadowMapProgram;
+	Program terrainProgram, objectProgram, previewObjectProgram, shadowMapProgram;
 
 	struct Debug {
 		bool showBoundingSpheres, showTerrainBoundingSpheres;
@@ -222,7 +222,11 @@ struct SGSSceneRenderer {
 	void drawModel( SGSScene::Model &model );
 	void drawInstance( Instance &instance );
 
+	void resetState();
 	void render( const Eigen::Matrix4f &projectionView, const Eigen::Vector3f &worldViewerPosition, const RenderContext &renderContext );
+
+	// renders a model at the origin
+	void renderModel( const Eigen::Vector3f &worldViewerPosition, int modelIndex );
 
 	//////////////////////////////////////////////////////////////////////////
 	// TOOD: move optix specific code into its own class [9/30/2012 kirschan2]
@@ -311,4 +315,5 @@ struct SGSSceneRenderer {
 
 		return indices;
 	}
+
 };
