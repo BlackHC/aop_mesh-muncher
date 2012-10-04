@@ -48,7 +48,7 @@ void funcA() {
 // only empty default constructors supported! overwrite setDefault() or similar
 template<typename Context>
 struct AsExecutionContext {
-	static const Context *context;
+	static Context *context;
 
 	AsExecutionContext() {
 		if( context ) {
@@ -104,20 +104,26 @@ private:
 
 	void push() {
 		previous = context;
-		context = static_cast<const Context*>(this);
+		context = static_cast<Context*>(this);
 
-		onPush();
+		static_cast<Context*>(this)->onPush();
 	}
+
+	// TODO: this is half scope half not, mostly bullshit and needs a redesign... ie what are the real aims of this class?
 
 	void pop() {
 		context = previous;
+
+		if( context )  {
+			context->onPop();
+		}
 	}
 
-	const Context *previous;
+	Context *previous;
 };
 
 template<typename Context>
-const Context *AsExecutionContext<Context>::context = nullptr;
+Context *AsExecutionContext<Context>::context = nullptr;
 
 // simple Scope class for a global variable stack
 template<typename Context>

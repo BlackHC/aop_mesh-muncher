@@ -51,6 +51,8 @@ using namespace Eigen;
 #include "boost/range/algorithm_ext/erase.hpp"
 
 #include "contextHelper.h"
+#include "boost/range/algorithm/copy.hpp"
+#include "boost/range/adaptor/transformed.hpp"
 
 std::weak_ptr<AntTweakBarEventHandler::GlobalScope> AntTweakBarEventHandler::globalScope;
 
@@ -89,25 +91,29 @@ struct TransformChain {
 		}
 	}
 
-	Eigen::Vector2f pointToScreen( const Eigen::Vector2f &point ) {
+	void setOffset( const Eigen::Vector2f &offset ) {
+		localTransform = Eigen::Translation3f( Eigen::Vector3f( offset[0], offset[1], 0.0f ) );
+	}
+
+	Eigen::Vector2f pointToScreen( const Eigen::Vector2f &point ) const {
 		return ( globalTransform * Eigen::Vector3f( point[0], point[1], 0.0f ) ).head<2>();
 	}
 
-	Eigen::Vector2f vectorToScreen( const Eigen::Vector2f &point ) {
+	Eigen::Vector2f vectorToScreen( const Eigen::Vector2f &point ) const {
 		return ( globalTransform.linear() * Eigen::Vector3f( point[0], point[1], 0.0f ) ).head<2>();
 	}
 
-	Eigen::Vector2f screenToPoint( const Eigen::Vector2f &point ) {
+	Eigen::Vector2f screenToPoint( const Eigen::Vector2f &point ) const {
 		return ( globalTransform.inverse() * Eigen::Vector3f( point[0], point[1], 0.0f ) ).head<2>();
 	}
 
-	Eigen::Vector2f screenToVector( const Eigen::Vector2f &point ) {
+	Eigen::Vector2f screenToVector( const Eigen::Vector2f &point ) const {
 		return ( globalTransform.inverse().linear() * Eigen::Vector3f( point[0], point[1], 0.0f ) ).head<2>();
 	}
 };
 
 // supports y down coordinates and sets the viewport automatically
-struct ViewportContext : AsExecutionContext< ViewportContext >{
+struct ViewportContext : AsExecutionContext< ViewportContext > {
 	// total size
 	int framebufferWidth;
 	int framebufferHeight;
@@ -131,7 +137,7 @@ struct ViewportContext : AsExecutionContext< ViewportContext >{
 
 	ViewportContext() : AsExecutionContext( ExpectNonEmpty() ) {}
 
-	void pop() {
+	void onPop() {
 		updateGLViewport();
 	}
 
@@ -139,8 +145,12 @@ struct ViewportContext : AsExecutionContext< ViewportContext >{
 		glViewport( left, framebufferHeight - (top + height), width, height );
 	}
 
+	float getAspectRatio() const {
+		return float( framebufferWidth ) / framebufferHeight;
+	}
+
 	// relative coords are 0..1
-	Eigen::Vector2f screenToViewport( const Eigen::Vector2i &screen ) {
+	Eigen::Vector2f screenToViewport( const Eigen::Vector2i &screen ) const {
 		return Eigen::Vector2f( (screen[0] - left) / float( width ), (screen[1] - top) / float( height ) );
 	}
 };
@@ -210,7 +220,9 @@ struct ButtonWidget : WidgetBase {
 
 	Eigen::Vector2f size;
 
-	ButtonWidget() : state() {}
+	ButtonWidget( const Eigen::Vector2f &offset, const Eigen::Vector2f &size ) : state(), size( size ) {
+		transformChain.setOffset( offset );
+	}
 
 	bool isInArea( const Eigen::Vector2f &globalPosition ) {
 		const Eigen::Vector2f localPosition = transformChain.screenToPoint( globalPosition );
@@ -326,35 +338,45 @@ struct DummyButtonWidget : ButtonWidget {
 };
 
 struct ModelButtonWidget : ButtonWidget {
-	SGSSceneRenderer *renderer;
-
+	SGSSceneRenderer &renderer;
 	int modelIndex;
 
-
+	// use to rotate the object continuously
 	float time;
+
+	ModelButtonWidget( const Eigen::Vector2f &offset, const Eigen::Vector2f &size, int modelIndex, SGSSceneRenderer &renderer ) :
+		ButtonWidget( offset, size ),
+		modelIndex( modelIndex ),
+		renderer( renderer ),
+		time( 0 )
+	{}
 
 	void doUpdate( EventSystem &eventSystem, const float frameDuration, const float elapsedTime ) {
 		time = elapsedTime;
 	}
 
 	void doRenderInside() {
+		const Eigen::Vector2f realMinCorner = transformChain.pointToScreen( Eigen::Vector2f::Zero() );
+		const Eigen::Vector2f realSize = transformChain.vectorToScreen( size );
+
 		// init the persective matrix
 		glMatrixMode( GL_PROJECTION );
 		glPushMatrix();
-		glLoadMatrix( Eigen::createPerspectiveProjectionMatrix( 75.0, 1.0, 0.001, 100.0 ) );
+		glLoadMatrix( Eigen::createPerspectiveProjectionMatrix( 60.0, realSize[0] / realSize[1], 0.001, 100.0 ) );
 
 		glMatrixMode( GL_MODELVIEW );
 		glPushMatrix();
-		const auto worldViewerPosition = Vector3f( 0.0, 4.0, 8.0 );
-		glLoadMatrix( Eigen::createViewerMatrix( worldViewerPosition, -Vector3f::UnitZ(), Vector3f::UnitY() ) );
+		const auto worldViewerPosition = Vector3f( 0.0, 1.0, 1.0 );
+		glLoadMatrix( Eigen::createLookAtMatrix( worldViewerPosition, Vector3f::Zero(), Vector3f::UnitY() ) );
+
+		// see note R3 for the computation
+		const Eigen::Vector3f boundingBoxSize =  renderer.getModelBoundingBox(modelIndex).sizes();
+		Eigen::glScale( Vector3f::Constant( sqrt( 2.0 / 3.0 ) / boundingBoxSize.norm() ) );
 
 		float angle = time * 2 * Math::PI / 10.0;
 		glMultMatrix( Affine3f(AngleAxisf( angle, Vector3f::UnitY() )).matrix() );
 
 		// TODO: scissor test [10/4/2012 kirschan2]
-
-		const Eigen::Vector2f realMinCorner = transformChain.pointToScreen( Eigen::Vector2f::Zero() );
-		const Eigen::Vector2f realSize = transformChain.vectorToScreen( size );
 
 		glClear( GL_DEPTH_BUFFER_BIT );
 		glEnable( GL_DEPTH_TEST );
@@ -362,7 +384,7 @@ struct ModelButtonWidget : ButtonWidget {
 		{
 			ViewportContext viewport( realMinCorner[0], realMinCorner[1], realSize[0], realSize[1] );
 
-			renderer->renderModel( worldViewerPosition, modelIndex );
+			renderer.renderModel( worldViewerPosition, modelIndex );
 		}
 
 		glMatrixMode( GL_PROJECTION );
@@ -445,7 +467,7 @@ void sampleInstances( SGSInterface::World *world, ProbeDatabase &candidateFinder
 	std::cerr << Indentation::get() << "total sampled probes: " << totalCount << "\n";
 }
 
-void queryVolume( SGSInterface::World *world, ProbeDatabase &candidateFinder, const Obb &queryVolume ) {
+ProbeDatabase::Query::MatchInfos queryVolume( SGSInterface::World *world, ProbeDatabase &candidateFinder, const Obb &queryVolume ) {
 	AUTO_TIMER_FOR_FUNCTION();
 
 	RenderContext renderContext;
@@ -460,8 +482,8 @@ void queryVolume( SGSInterface::World *world, ProbeDatabase &candidateFinder, co
 		world->optixRenderer.sampleProbes( rawDataset.probes, rawDataset.probeContexts, renderContext );
 	}
 
+	auto query = candidateFinder.createQuery();
 	{
-		auto query = candidateFinder.createQuery();
 		query->setQueryDataset( std::move( rawDataset ) );
 
 		ProbeContextTolerance pct;
@@ -469,12 +491,13 @@ void queryVolume( SGSInterface::World *world, ProbeDatabase &candidateFinder, co
 		query->setProbeContextTolerance( pct );
 
 		query->execute();
-
-		const auto &matchInfos = query->getCandidates();
-		for( auto matchInfo = matchInfos.begin() ; matchInfo != matchInfos.end() ; ++matchInfo ) {
-			std::cout << Indentation::get() << matchInfo->id << ": " << matchInfo->numMatches << "\n";
-		}
 	}
+
+	const auto &matchInfos = query->getCandidates();
+	for( auto matchInfo = matchInfos.begin() ; matchInfo != matchInfos.end() ; ++matchInfo ) {
+		std::cout << Indentation::get() << matchInfo->id << ": " << matchInfo->numMatches << "\n";
+	}
+	return matchInfos;
 }
 
 // TODO: this should get its own file [9/30/2012 kirschan2]
@@ -534,7 +557,21 @@ namespace aop {
 							std::cerr << "No volume selected!\n";
 						}
 						void visit( Editor::ObbSelection *selection ) {
-							queryVolume( application->world.get(), application->candidateFinder, selection->getObb() );
+							auto matchInfos = queryVolume( application->world.get(), application->candidateFinder, selection->getObb() );
+
+							typedef ProbeDatabase::Query::MatchInfo MatchInfo;
+							boost::sort( matchInfos, [] (const MatchInfo &a, MatchInfo &b ) {
+									return a.numMatches > b.numMatches;
+								}
+							);
+
+							std::vector<int> modelIndices;
+							for( auto matchInfo = matchInfos.begin() ; matchInfo != matchInfos.end() ; ++matchInfo ) {
+								modelIndices.push_back( matchInfo->id );	
+							}
+
+							application->candidateSidebar->clear();
+							application->candidateSidebar->addModels( modelIndices );
 						}
 					};
 					QueryVolumeVisitor( application ).dispatch( application->editorWrapper->editor.selection.get() );
@@ -828,6 +865,56 @@ namespace aop {
 			}
 		};
 
+		struct CandidateSidebar {
+			Application *application;
+			
+			WidgetContainer sidebar;
+
+			CandidateSidebar( Application *application ) : application( application ) {
+				init();
+			}
+
+			void init() {				
+				application->widgetRoot.addEventHandler( make_nonallocated_shared( sidebar ) );
+			}
+
+			void clear() {
+				for( auto element = sidebar.eventHandlers.begin() ; element != sidebar.eventHandlers.end() ; ++element ) {
+					application->eventSystem.onEventHandlerRemove( element->get() );
+				}
+				sidebar.eventHandlers.clear();
+			}
+
+			void addModels( std::vector<int> modelIndices ) {
+				const float buttonWidth = 0.1;
+				const float buttonPadding = 0.05;
+
+				// TODO: this was in init but meh
+				sidebar.transformChain.setOffset( Eigen::Vector2f( 1 - buttonPadding - buttonWidth, buttonPadding ) );
+
+				const float buttonHeight = buttonWidth * ViewportContext::context->getAspectRatio();
+				const float buttonHeightWithPadding = buttonHeight + buttonPadding;
+
+				const int maxNumModels = (1.0 - buttonPadding) / buttonHeightWithPadding;
+
+				// add 5 at most
+				const int numModels = std::min<int>( maxNumModels, modelIndices.size() );
+
+				for( int i = 0 ; i < numModels ; i++ ) {
+					const int modelIndex = modelIndices[ i ];
+
+					sidebar.addEventHandler(
+						std::make_shared< ModelButtonWidget >(
+							Eigen::Vector2f( 0.0, i * buttonHeightWithPadding ),
+							Eigen::Vector2f( buttonWidth, buttonHeight ),
+							modelIndex,
+							application->world->sceneRenderer
+						)
+					);
+				}
+			}
+		};
+
 		struct EditorWrapper {
 			Application *application;
 
@@ -866,6 +953,7 @@ namespace aop {
 		std::unique_ptr< TargetVolumesUI > targetVolumesUI;
 		std::unique_ptr< ModelTypesUI > modelTypesUI;
 		std::unique_ptr< EditorWrapper > editorWrapper;
+		std::unique_ptr< CandidateSidebar > candidateSidebar;
 
 		void initCamera() {
 			mainCamera.perspectiveProjectionParameters.aspect = 640.0f / 480.0f;
@@ -881,6 +969,7 @@ namespace aop {
 			cameraViewsUI.reset( new CameraViewsUI( this ) );
 			targetVolumesUI.reset( new TargetVolumesUI( this ) );
 			modelTypesUI.reset( new ModelTypesUI( this ) );
+			candidateSidebar.reset( new CandidateSidebar( this ) );
 		}
 
 		void initMainWindow() {
@@ -929,12 +1018,9 @@ namespace aop {
 
 			eventDispatcher.addEventHandler( make_nonallocated_shared( widgetRoot ) );
 
-			auto button = std::make_shared<ModelButtonWidget>();
-			button->size = Vector2f::Constant( 0.25 );
-			button->modelIndex = 0;
-			button->renderer = &world->sceneRenderer;
+			/*auto button = std::make_shared<ModelButtonWidget>( Vector2f::Constant( 0 ), Vector2f::Constant( 0.25 ), 0, world->sceneRenderer );
 
-			widgetRoot.addEventHandler( button );
+			widgetRoot.addEventHandler( button );*/
 
 			// register anttweakbar first because it actually manages its own focus
 			antTweakBarEventHandler.init( mainWindow );
@@ -972,10 +1058,25 @@ namespace aop {
 			KeyAction reloadShadersAction( "reload shaders", sf::Keyboard::R, [&] () { world->sceneRenderer.reloadShaders(); } );
 			eventDispatcher.addEventHandler( make_nonallocated_shared( reloadShadersAction ) );
 
+			{
+				const sf::Vector2i windowSize( mainWindow.getSize() );
+				ViewportContext viewportContext( windowSize.x, windowSize.y );
+
+				std::vector<int> modelIndices;
+				modelIndices.push_back( 0 );
+				modelIndices.push_back( 1 );
+				modelIndices.push_back( 2 );
+
+				candidateSidebar->addModels( modelIndices );
+			}
+
 			while (true)
 			{
 				// Activate the window for OpenGL rendering
 				mainWindow.setActive();
+
+				const sf::Vector2i windowSize( mainWindow.getSize() );
+				ViewportContext viewportContext( windowSize.x, windowSize.y );
 
 				// Event processing
 				sf::Event event;
@@ -1002,10 +1103,7 @@ namespace aop {
 				}
 
 				eventSystem.update( frameClock.restart().asSeconds(), clock.getElapsedTime().asSeconds() );
-
-				const sf::Vector2i windowSize( mainWindow.getSize() );
-				ViewportContext viewportContext( windowSize.x, windowSize.y );
-
+				
 				updateUI();
 
 				{

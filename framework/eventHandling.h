@@ -362,6 +362,19 @@ struct EventSystem {
 
 	EventSystem() : keyboardFocusHandler( nullptr ), mouseFocusHandler( nullptr ), exclusiveHandler( nullptr ) {}
 
+	void onEventHandlerRemove( const EventHandler *handler ) {
+		if( exclusiveHandler == handler ) {
+			exclusiveHandler = nullptr;
+		}
+		if( keyboardFocusHandler == handler ) {
+			keyboardFocusHandler = nullptr;
+		}
+		if( mouseFocusHandler == handler ) {
+			mouseFocusHandler = nullptr;
+		}
+		// TODO: maybe add a common class for handlers and some callback structure... or use shared_from_this somehow [10/4/2012 kirschan2]
+	}
+
 	FocusType getCapture( const EventHandler *handler ) const {
 		int focusType = 0;
 		if( mouseFocusHandler == handler ) {
@@ -583,6 +596,12 @@ struct TemplateEventDispatcher : BaseDispatcher {
 	std::string name;
 
 	TemplateEventDispatcher( const char *name = "" ) : name( name ) {}
+
+	void clear() {
+		for( auto eventHandler = eventHandlers.rbegin() ; eventHandler != eventHandlers.rend() ; ++eventHandler ) {
+			
+		}
+	}
 
 	void addEventHandler( const std::shared_ptr<BaseEventHandler> &handler ) {
 		eventHandlers.push_back( handler );
