@@ -191,7 +191,7 @@ private:
 			return false;
 		}
 
-		if( event.button == sf::Mouse::Left ) {			
+		if( event.button == sf::Mouse::Left ) {
 			if( pressed ) { 
 				state = STATE_CLICKED;
 				if( onAction ) {

@@ -73,7 +73,198 @@ void selectObjectsByModelID( SGSSceneRenderer &renderer, int modelIndex ) {
 	selectionDR.end();
 }
 
+struct TransformChain {
+	Eigen::Affine3f localTransform, globalTransform;
 
+	TransformChain() : localTransform( Eigen::Affine3f::Identity() ), globalTransform( Eigen::Affine3f::Identity() ) {}
+
+	void update( TransformChain *parent = nullptr ) {
+		if( parent ) {
+			globalTransform = parent->globalTransform * localTransform;
+		}
+		else {
+			globalTransform = localTransform;
+		}
+	}
+};
+
+struct ITransformChain : virtual EventHandler {
+	TransformChain transformChain;
+};
+
+struct IWidget : virtual ITransformChain, virtual EventHandler::WithParentDecl< ITransformChain > {
+	virtual void onRender() = 0;
+};
+
+// TODO: this is a huge cluster fuck (together with WidgetRoot) and way too dependent on implementation details.. [10/4/2012 kirschan2]
+struct WidgetBase : TemplateNullEventHandler< ITransformChain, IWidget > {
+	void onRender() {
+		glPushMatrix();
+		Eigen::glLoadMatrix( transformChain.globalTransform );
+		doRender();
+		glPopMatrix();
+	}
+
+	void onUpdate( EventSystem &eventSystem, const float frameDuration, const float elapsedTime ) {
+		transformChain.update( &parent->transformChain );
+
+		doUpdate( eventSystem, frameDuration, elapsedTime );
+	}
+
+private:
+	virtual void doRender() = 0;
+	virtual void doUpdate( EventSystem &eventSystem, const float frameDuration, const float elapsedTime ) = 0;
+};
+
+struct WidgetContainer : TemplateEventDispatcher< IWidget, EventHandler::WithSimpleParentImpl< ITransformChain, IWidget > > {
+	void onRender() {
+		for( auto eventHandler = eventHandlers.rbegin() ; eventHandler != eventHandlers.rend() ; ++eventHandler ) {
+			eventHandler->get()->onRender();
+		}
+	}
+
+	void onUpdate( EventSystem &eventSystem, const float frameDuration, const float elapsedTime ) {
+		transformChain.update( &parent->transformChain );
+
+		Base::onUpdate( eventSystem, frameDuration, elapsedTime );
+	}
+};
+
+struct WidgetRoot : TemplateEventDispatcher< IWidget, EventHandler::WithSimpleParentImpl<EventHandler, ITransformChain> > {
+	void onRender() {
+		for( auto eventHandler = eventHandlers.rbegin() ; eventHandler != eventHandlers.rend() ; ++eventHandler ) {
+			eventHandler->get()->onRender();
+		}
+	}
+
+	void onUpdate( EventSystem &eventSystem, const float frameDuration, const float elapsedTime ) {
+		transformChain.update();
+
+		Base::onUpdate( eventSystem, frameDuration, elapsedTime );
+	}
+};
+
+struct ButtonWidget : WidgetBase {
+	enum State {
+		STATE_INACTIVE,
+		STATE_HOVER,
+		STATE_CLICKED
+	} state;
+
+	Eigen::Vector2f size;
+
+	ButtonWidget() : state() {}
+
+	bool isInArea( const Eigen::Vector2f &globalPosition ) {
+		const Eigen::Vector3f localPosition = transformChain.globalTransform.inverse() * Vector3f( globalPosition[0], globalPosition[1], 0.0 );
+		if( localPosition[0] >= 0 && localPosition[1] >= 0 &&
+			localPosition[0] <= size[0] && localPosition[1] <= size[1]
+		) {
+			return true;
+		}
+		return false;
+	}
+
+	void setState( State newState ) {
+		if( state == newState ) {
+			return;
+		}
+
+		if( newState == STATE_CLICKED ) {
+			onAction();
+		}
+
+		if( newState == STATE_INACTIVE ) {
+			onMouseLeave();
+		}
+		else if( state == STATE_INACTIVE ) {
+			onMouseEnter();
+		}
+
+		state = newState;
+	}
+
+	void onMouse( EventState &eventState ) {
+		bool hasMouse = eventState.getCapture( this ) == FT_MOUSE;
+		switch( eventState.event.type ) {
+		case sf::Event::MouseMoved:
+			if( isInArea( Eigen::Vector2f( eventState.event.mouseMove.x, eventState.event.mouseMove.y ) ) ) {
+				eventState.setCapture( this, FT_MOUSE );
+
+				if( !hasMouse && state != STATE_CLICKED ) {
+					setState( STATE_HOVER );
+				}
+
+				eventState.accept();
+			}
+			else if( !sf::Mouse::isButtonPressed( sf::Mouse::Left ) ){
+				eventState.setCapture( this, FT_NONE );
+				setState( STATE_INACTIVE );
+			}
+
+			break;
+		case sf::Event::MouseButtonPressed:
+			if( hasMouse ) {
+				onAction();
+				setState( STATE_CLICKED );
+				eventState.accept();
+			}
+			break;
+		case sf::Event::MouseButtonReleased:
+			if( hasMouse ) {
+				eventState.accept();
+			}
+			if( state == STATE_CLICKED ) {
+				if( isInArea( Eigen::Vector2f( eventState.event.mouseButton.x, eventState.event.mouseButton.y ) ) ) {
+					setState( STATE_HOVER );
+				}
+				else {
+					setState( STATE_INACTIVE );
+				}
+			}
+			break;
+		}
+	}
+
+	void doUpdate( EventSystem &eventSystem, const float frameDuration, const float elapsedTime ) {
+	}
+
+	bool acceptFocus( FocusType focusType ) {
+		if( focusType == FT_MOUSE ) {
+			return true;
+		}
+		return false;
+	}
+
+private:
+	void doRender() {
+		switch( state ) {
+		case STATE_HOVER:
+			DebugRender::setColor( Vector3f( 1.0, 1.0, 1.0 ) );
+			break;
+		case STATE_CLICKED:
+			DebugRender::setColor( Vector3f( 1.0, 0.0, 0.0 ) );
+			break;
+		default:
+			DebugRender::setColor( Vector3f( 1.0, 0.0, 1.0 ) );
+			break;
+		}
+
+		DebugRender::drawAABB( Vector3f::Zero(), Vector3f( size[0], size[1], 0.0f ) );
+	}
+
+	virtual void onAction() = 0;
+	virtual void doRenderInside() = 0;
+	virtual void onMouseEnter() = 0;
+	virtual void onMouseLeave() = 0;
+};
+
+struct DummyButtonWidget : ButtonWidget {
+	void onAction() {}
+	void onMouseEnter() {}
+	void onMouseLeave() {}
+	void doRenderInside() {}
+};
 
 #if 1
 
@@ -96,7 +287,7 @@ struct MouseDelta {
 #endif
 /*
 namespace DebugOptions {
-	bool visualizeInstanceProbes;	
+	bool visualizeInstanceProbes;
 }
 
 namespace DebugInformation {
@@ -118,7 +309,7 @@ void sampleInstances( SGSInterface::World *world, ProbeDatabase &candidateFinder
 	//renderContext.disabledModelIndex = modelIndex;
 
 	auto instanceIndices = world->sceneRenderer.getModelInstances( modelIndex );
-	
+
 	int totalCount = 0;
 
 	for( int i = 0 ; i < instanceIndices.size() ; i++ ) {
@@ -128,18 +319,18 @@ void sampleInstances( SGSInterface::World *world, ProbeDatabase &candidateFinder
 
 		RawProbeDataset rawDataset;
 		std::vector<SGSInterface::Probe> transformedProbes;
-	
+
 		world->generateProbes( instanceIndex, probeResolution, rawDataset.probes, transformedProbes );
-	
+
 		AUTO_TIMER_DEFAULT( boost::str( boost::format( "batch with %i probes for instance %i" ) % transformedProbes.size() % instanceIndex ) );
-		
+
 		world->optixRenderer.sampleProbes( transformedProbes, rawDataset.probeContexts, renderContext );
-	
+
 		candidateFinder.addDataset(modelIndex, std::move( rawDataset ) );
-	
+
 		totalCount += (int) transformedProbes.size();
 	}
-	
+
 	std::cerr << Indentation::get() << "total sampled probes: " << totalCount << "\n";
 }
 
@@ -152,12 +343,12 @@ void queryVolume( SGSInterface::World *world, ProbeDatabase &candidateFinder, co
 	RawProbeDataset rawDataset;
 
 	ProbeGenerator::generateQueryProbes( queryVolume, probeResolution, rawDataset.probes );
-	
+
 	{
 		AUTO_TIMER_FOR_FUNCTION( "sampling scene");
 		world->optixRenderer.sampleProbes( rawDataset.probes, rawDataset.probeContexts, renderContext );
 	}
-	
+
 	{
 		auto query = candidateFinder.createQuery();
 		query->setQueryDataset( std::move( rawDataset ) );
@@ -186,6 +377,8 @@ namespace aop {
 		EventDispatcher eventDispatcher;
 		AntTweakBarEventHandler antTweakBarEventHandler;
 
+		WidgetRoot widgetRoot;
+
 		Camera mainCamera;
 		CameraInputControl mainCameraInputControl;
 
@@ -201,7 +394,7 @@ namespace aop {
 		struct MainUI {
 			Application *application;
 			AntTWBarUI::SimpleContainer ui;
-			
+
 			MainUI( Application *application ) : application( application ) {
 				init();
 			}
@@ -212,7 +405,7 @@ namespace aop {
 				ui.add( AntTWBarUI::makeSharedButton( "Store settings", [this] { application->settings.store(); } ) );
 				//ui.add( AntTWBarUI::makeSharedVector< NamedTargetVolumeView >( "Camera Views", application->settings.volumes) );
 				ui.add( AntTWBarUI::makeSharedSeparator() );
-				ui.add( AntTWBarUI::makeSharedButton( "Sample marked objects", [this] { 
+				ui.add( AntTWBarUI::makeSharedButton( "Sample marked objects", [this] {
 					 const auto &modelIndices = application->modelTypesUI->markedModels;
 					 for( auto modelIndex = modelIndices.begin() ; modelIndex != modelIndices.end() ; ++modelIndex ) {
 					 	sampleInstances( application->world.get(), application->candidateFinder, *modelIndex );
@@ -250,7 +443,7 @@ namespace aop {
 			Application *application;
 
 			AntTWBarUI::SimpleContainer ui;
-			
+
 			struct NamedTargetVolumeView : AntTWBarUI::SimpleStructureFactory< aop::Settings::NamedTargetVolume, NamedTargetVolumeView > {
 				TargetVolumesUI *targetVolumesUI;
 
@@ -258,16 +451,16 @@ namespace aop {
 
 				template< typename ElementAccessor >
 				void setup( AntTWBarUI::Container *container, ElementAccessor &accessor ) const {
-					container->add( 
+					container->add(
 						AntTWBarUI::makeSharedVariable(
-							"Name", 
+							"Name",
 							AntTWBarUI::makeMemberAccessor( accessor, &aop::Settings::NamedTargetVolume::name )
 						)
 					);
 					container->add(
 						AntTWBarUI::makeSharedButton(
 							"Select",
-							[] () { 
+							[] () {
 								std::cout << "select called\n";
 							}
 						)
@@ -282,13 +475,13 @@ namespace aop {
 			void init() {
 				ui.setName( "Query volumes" );
 				auto uiVector = AntTWBarUI::makeSharedVector( "Volumes", application->settings.volumes, NamedTargetVolumeView( this ) );
-				
+
 				ui.add( uiVector );
 				ui.add( AntTWBarUI::makeSharedButton( "Add new",
 						[this, uiVector] () {
 							const auto &camera = this->application->mainCamera;
 							aop::Settings::NamedTargetVolume volume;
-							
+
 							volume.volume.size = Eigen::Vector3f::Constant( 5.0 );
 							volume.volume.transformation =
 								Eigen::Translation3f( camera.getPosition() + 5.0 * camera.getDirection() ) *
@@ -310,7 +503,7 @@ namespace aop {
 
 		struct CameraViewsUI {
 			Application *application;
-			
+
 			AntTWBarUI::SimpleContainer ui;
 
 			struct NamedCameraStateView : AntTWBarUI::SimpleStructureFactory< aop::Settings::NamedCameraState, NamedCameraStateView >{
@@ -320,14 +513,14 @@ namespace aop {
 
 				template< typename ElementAccessor >
 				void setup( AntTWBarUI::Container *container, ElementAccessor &accessor ) const {
-					container->add( 
+					container->add(
 						AntTWBarUI::makeSharedVariable(
-							"Name", 
+							"Name",
 							AntTWBarUI::makeMemberAccessor( accessor, &aop::Settings::NamedCameraState::name )
 						)
 					);
-					container->add( 
-						AntTWBarUI::makeSharedButton( 
+					container->add(
+						AntTWBarUI::makeSharedButton(
 							"Set default",
 							[&] () {
 								auto &views = application->settings.views;
@@ -339,14 +532,14 @@ namespace aop {
 						AntTWBarUI::makeSharedButton(
 							"Use",
 							[&] () {
-								accessor.pull().pushTo( this->application->mainCamera );							
+								accessor.pull().pushTo( this->application->mainCamera );
 							}
 						)
 					);
 					container->add(
 						AntTWBarUI::makeSharedButton(
 							"Replace",
-							[&] () { 
+							[&] () {
 								accessor.pull().pullFrom( this->application->mainCamera );
 								accessor.push();
 							}
@@ -354,7 +547,7 @@ namespace aop {
 					);
 				}
 			};
-			
+
 			CameraViewsUI( Application *application ) : application( application ) {
 				init();
 			}
@@ -362,7 +555,7 @@ namespace aop {
 			void init() {
 				ui.setName( "Camera views" );
 
-				ui.add( AntTWBarUI::makeSharedButton( 
+				ui.add( AntTWBarUI::makeSharedButton(
 						"Add current view",
 						[this] () {
 							application->settings.views.push_back( aop::Settings::NamedCameraState() );
@@ -370,7 +563,7 @@ namespace aop {
 						}
 					)
 				);
-				ui.add( AntTWBarUI::makeSharedButton( 
+				ui.add( AntTWBarUI::makeSharedButton(
 						"Clear all",
 						[this] () {
 							application->settings.views.clear();
@@ -380,7 +573,7 @@ namespace aop {
 
 				auto cameraStatesView = AntTWBarUI::makeSharedVector( application->settings.views, NamedCameraStateView( application ) );
 				ui.add( cameraStatesView );
-				
+
 				ui.link();
 			}
 
@@ -402,10 +595,10 @@ namespace aop {
 				ModelTypesUI *modelTypesUI;
 
 				ModelNameView( ModelTypesUI *modelTypesUI ) : modelTypesUI( modelTypesUI ) {}
-				
+
 				template< typename ElementAccessor >
 				void setup( AntTWBarUI::Container *container, ElementAccessor &accessor ) const {
-					container->add( AntTWBarUI::makeSharedButton( accessor.pull(), 
+					container->add( AntTWBarUI::makeSharedButton( accessor.pull(),
 							[this, &accessor] () {
 								modelTypesUI->toggleMarkedModel( accessor.elementIndex );
 							}
@@ -418,7 +611,7 @@ namespace aop {
 				ModelTypesUI *modelTypesUI;
 
 				MarkedModelNameView( ModelTypesUI *modelTypesUI ) : modelTypesUI( modelTypesUI ) {}
-				
+
 				template< typename ElementAccessor >
 				void setup( AntTWBarUI::Container *container, ElementAccessor &accessor ) const {
 					container->add( AntTWBarUI::makeSharedReadOnlyVariable(
@@ -504,7 +697,7 @@ namespace aop {
 				markedModelsUi.add( AntTWBarUI::makeSharedSeparator() );
 				markedModelsUi.add( AntTWBarUI::makeSharedButton( "= {}", [this] () {
 					markedModels.clear();
-				} ) );				
+				} ) );
 				markedModelsUi.add( AntTWBarUI::makeSharedButton( "= selection", [this] () {
 					ReplaceWithSelectionVisitor( this ).dispatch( application->editorWrapper->editor.selection.get() );
 				} ) );
@@ -526,9 +719,9 @@ namespace aop {
 
 		struct EditorWrapper {
 			Application *application;
-			
+
 			Editor editor;
-			
+
 			struct NamedVolumesView : Editor::Volumes {
 				std::vector< aop::Settings::NamedTargetVolume > &volumes;
 
@@ -592,7 +785,7 @@ namespace aop {
 			glClearDepth(1.f);
 		}
 
-		void initSGSInterface() {			
+		void initSGSInterface() {
 			cameraView.renderContext.setDefault();
 
 			world.reset( new SGSInterface::World() );
@@ -609,7 +802,7 @@ namespace aop {
 			registerConsoleHelpAction( eventDispatcher );
 			eventDispatcher.addEventHandler( make_nonallocated_shared( mainCameraInputControl ) );
 		}
-	
+
 		void init() {
 			ProbeGenerator::initDirections();
 
@@ -623,6 +816,12 @@ namespace aop {
 
 			editorWrapper.reset( new EditorWrapper( this ) );
 
+			eventDispatcher.addEventHandler( make_nonallocated_shared( widgetRoot ) );
+
+			auto button = std::make_shared<DummyButtonWidget>();
+			button->size = Vector2f::Constant( 0.25 );
+			widgetRoot.addEventHandler( button );
+
 			// register anttweakbar first because it actually manages its own focus
 			antTweakBarEventHandler.init( mainWindow );
 			eventDispatcher.addEventHandler( make_nonallocated_shared( antTweakBarEventHandler ) );
@@ -631,7 +830,7 @@ namespace aop {
 
 			// load settings
 			settings.load();
-			
+
 			if( !settings.views.empty() ) {
 				settings.views.front().pushTo( mainCamera );
 			}
@@ -717,14 +916,33 @@ namespace aop {
 					DebugRender::setColor( Eigen::Vector3f::Constant( 1.0 ) );
 					for( auto namedObb = settings.volumes.begin() ; namedObb != settings.volumes.end() ; ++namedObb ) {
 						DebugRender::setTransformation( namedObb->volume.transformation );
-						DebugRender::drawBox( namedObb->volume.size );	
-					}		
+						DebugRender::drawBox( namedObb->volume.size );
+					}
 					DebugRender::end();
 
 					// render editor entities first
 					editorWrapper->editor.render();
 
 					//world.renderOptixViewFrame( view );
+
+					// render widgets
+					glMatrixMode( GL_PROJECTION );
+					glLoadIdentity();
+
+					const sf::Vector2i windowSize( mainWindow.getSize() );
+
+					glLoadMatrix( Eigen::Scaling<float>( 1.0f, -1.0f, 1.0f) * Eigen::Translation3f( Vector3f( -1.0, -1.0, 0.0 ) ) * Eigen::Scaling<float>( 2.0f / windowSize.x, 2.0f / windowSize.y, 1.0f ) );
+
+					widgetRoot.transformChain.localTransform = Eigen::Scaling<float>( windowSize.x, windowSize.y, 1.0 );
+
+					glMatrixMode( GL_MODELVIEW );
+					glLoadIdentity();
+
+					glDisable( GL_DEPTH_TEST );
+
+					widgetRoot.onRender();
+
+					glEnable( GL_DEPTH_TEST );
 
 					renderDuration.setString( renderTimer.format() );
 
@@ -750,7 +968,7 @@ void real_main() {
 	application.init();
 
 	// The main loop - ends as soon as the window is closed
-	
+
 
 /*	EventDispatcher verboseEventDispatcher( "sub" );
 	eventDispatcher.addEventHandler( make_nonallocated_shared( verboseEventDispatcher ) );
@@ -790,7 +1008,7 @@ void real_main() {
 	debugWindowManager.windows.push_back( make_nonallocated_shared( mergedTextureWindow ) );
 #endif
 
-	
+
 
 	Instance testInstance;
 	testInstance.modelId = 0;
@@ -837,14 +1055,14 @@ void real_main() {
 
 	return;
 #endif
-	
+
 	{
 		aop::Settings::NamedTargetVolume targetVolume;
 
 		targetVolume.name = "test";
 		targetVolume.volume.transformation.setIdentity();
 		targetVolume.volume.size.setConstant( 3.0 );
-		
+
 		application.settings.volumes.push_back( targetVolume );
 	}
 

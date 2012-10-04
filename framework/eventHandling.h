@@ -120,7 +120,8 @@ struct EventHandler {
 	static EventSystem *eventSystem;
 
 	virtual EventHandler *getParent() const = 0;
-	virtual void setParent( EventHandler *newParent ) = 0;
+	// setParent is only needed Dispatcher and Router
+	//virtual void setParent( EventHandler *newParent ) = 0;
 
 	// global event
 	virtual void onNotify( const EventState &eventState ) = 0;
@@ -145,13 +146,22 @@ struct EventHandler {
 	virtual std::string getHelp( const std::string &prefix = std::string() ) { return std::string(); }
 
 	template< typename ParentType = EventHandler >
+	struct WithParentDecl;
+
+	template< typename ParentType = EventHandler, typename BaseType = EventHandler >
 	struct WithSimpleParentImpl;
 
 	typedef WithSimpleParentImpl<> WithDefaultParentImpl;
+	typedef WithParentDecl<> WithDefaultParentDecl;
 };
 
 template< typename ParentType >
-struct EventHandler::WithSimpleParentImpl : virtual EventHandler {
+struct EventHandler::WithParentDecl : virtual EventHandler {
+	virtual void setParent( ParentType *newParent ) = 0;
+};
+
+template< typename ParentType, typename BaseType >
+struct EventHandler::WithSimpleParentImpl : virtual BaseType, virtual EventHandler::WithParentDecl< ParentType > {
 	ParentType *parent;
 
 	WithSimpleParentImpl( ParentType *parent = nullptr ) : parent( parent ) {}
@@ -160,13 +170,13 @@ struct EventHandler::WithSimpleParentImpl : virtual EventHandler {
 		return parent;
 	}
 
-	virtual void setParent( EventHandler *newParent ) {
+	virtual void setParent( ParentType *newParent ) {
 		parent = newParent;
 	}
 };
 
-template< typename ParentType = EventHandler >
-struct TemplateNullEventHandler : EventHandler::WithSimpleParentImpl< ParentType > {
+template< typename ParentType = EventHandler, typename BaseType = EventHandler >
+struct TemplateNullEventHandler : EventHandler::WithSimpleParentImpl< ParentType, BaseType > {
 	TemplateNullEventHandler( ParentType *parent = nullptr ) : WithSimpleParentImpl( parent ) {}
 
 	virtual void onNotify( const EventState &eventState )  {
@@ -565,8 +575,9 @@ struct EventSystem {
 	}
 };
 
-template< typename BaseEventHandler, typename BaseDispatcher = EventHandler::WithDefaultParentImpl >
+template< typename BaseEventHandler = EventHandler::WithDefaultParentDecl, typename BaseDispatcher = EventHandler::WithDefaultParentImpl >
 struct TemplateEventDispatcher : BaseDispatcher {
+	typedef TemplateEventDispatcher Base;
 	std::vector<std::shared_ptr<BaseEventHandler>> eventHandlers;
 
 	std::string name;
@@ -637,7 +648,7 @@ struct TemplateEventDispatcher : BaseDispatcher {
 	}
 };
 
-template< typename BaseEventHandler, typename BaseRouter = EventHandler::WithDefaultParentImpl >
+template< typename BaseEventHandler = EventHandler::WithDefaultParentDecl, typename BaseRouter = EventHandler::WithDefaultParentImpl >
 struct TemplateEventRouter : BaseRouter {
 	std::vector<std::shared_ptr<BaseEventHandler>> eventHandlers;
 	BaseEventHandler *target;
@@ -724,8 +735,8 @@ struct TemplateEventRouter : BaseRouter {
 
 // TODO: add previous node implementation [9/28/2012 kirschan2]
 
-template struct TemplateEventDispatcher<EventHandler>;
-typedef TemplateEventDispatcher<EventHandler> EventDispatcher;
+template struct TemplateEventDispatcher<>;
+typedef TemplateEventDispatcher<> EventDispatcher;
 
-template struct TemplateEventRouter<EventHandler>;
-typedef TemplateEventRouter<EventHandler> EventRouter;
+template struct TemplateEventRouter<>;
+typedef TemplateEventRouter<> EventRouter;
