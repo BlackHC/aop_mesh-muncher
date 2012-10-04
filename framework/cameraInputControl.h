@@ -4,7 +4,7 @@
 #include "eventHandling.h"
 
 
-struct CameraInputControl : EventHandler {
+struct CameraInputControl : EventHandler::WithDefaultParentImpl {
 	std::shared_ptr<Camera> camera;
 	float moveSpeed;
 

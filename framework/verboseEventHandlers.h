@@ -7,7 +7,8 @@
 #include <boost/algorithm/string/join.hpp>
 #include <boost/range/adaptor/transformed.hpp>
 
-struct VerboseEventWrapper : EventHandler {
+struct VerboseEventWrapper : EventHandler::WithDefaultParentImpl
+{
 	std::shared_ptr<EventHandler> wrappedHandler;
 
 	const char *description;

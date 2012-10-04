@@ -119,7 +119,8 @@ struct EventSystem;
 struct EventHandler {
 	static EventSystem *eventSystem;
 
-	EventHandler *parent;
+	virtual EventHandler *getParent() const = 0;
+	virtual void setParent( EventHandler *newParent ) = 0;
 
 	// global event
 	virtual void onNotify( const EventState &eventState ) = 0;
@@ -136,17 +137,38 @@ struct EventHandler {
 	// virtual update event
 	virtual void onUpdate( EventSystem &eventSystem, const float frameDuration, const float elapsedTime ) = 0;
 
-	EventHandler( EventHandler *parent = nullptr ) : parent( parent ) {}
-
 	// TODO: add a wrapper template class and derive from EventHandler
 	// additional, optional event handlers
 	virtual void onSelected() {};
 	virtual void onUnselected() {};
 
 	virtual std::string getHelp( const std::string &prefix = std::string() ) { return std::string(); }
+
+	template< typename ParentType = EventHandler >
+	struct WithSimpleParentImpl;
+
+	typedef WithSimpleParentImpl<> WithDefaultParentImpl;
 };
 
-struct NullEventHandler : EventHandler {
+template< typename ParentType >
+struct EventHandler::WithSimpleParentImpl : virtual EventHandler {
+	ParentType *parent;
+
+	WithSimpleParentImpl( ParentType *parent = nullptr ) : parent( parent ) {}
+
+	virtual EventHandler * getParent() const {
+		return parent;
+	}
+
+	virtual void setParent( EventHandler *newParent ) {
+		parent = newParent;
+	}
+};
+
+template< typename ParentType = EventHandler >
+struct TemplateNullEventHandler : EventHandler::WithSimpleParentImpl< ParentType > {
+	TemplateNullEventHandler( ParentType *parent = nullptr ) : WithSimpleParentImpl( parent ) {}
+
 	virtual void onNotify( const EventState &eventState )  {
 	}
 
@@ -169,6 +191,9 @@ struct NullEventHandler : EventHandler {
 	virtual void onUpdate( EventSystem &eventSystem, const float frameDuration, const float elapsedTime )  {
 	}
 };
+
+template struct TemplateNullEventHandler<>;
+typedef TemplateNullEventHandler<> NullEventHandler;
 
 struct ExclusiveMode {
 	sf::Vector2i mouseDelta;
@@ -484,7 +509,7 @@ struct EventSystem {
 						}
 
 						// try the parent
-						EventHandler *parentHandler = currentHandler->parent;
+						EventHandler *parentHandler = currentHandler->getParent();
 						if( !parentHandler ) {
 							break;
 						}
@@ -511,7 +536,7 @@ struct EventSystem {
 						}
 
 						// try the parent
-						EventHandler *parentHandler = currentHandler->parent;
+						EventHandler *parentHandler = currentHandler->getParent();
 						if( !parentHandler ) {
 							break;
 						}
@@ -540,7 +565,7 @@ struct EventSystem {
 	}
 };
 
-template< typename BaseEventHandler, typename BaseDispatcher = EventHandler >
+template< typename BaseEventHandler, typename BaseDispatcher = EventHandler::WithDefaultParentImpl >
 struct TemplateEventDispatcher : BaseDispatcher {
 	std::vector<std::shared_ptr<BaseEventHandler>> eventHandlers;
 
@@ -550,7 +575,7 @@ struct TemplateEventDispatcher : BaseDispatcher {
 
 	void addEventHandler( const std::shared_ptr<BaseEventHandler> &handler ) {
 		eventHandlers.push_back( handler );
-		handler->parent = this;
+		handler->setParent( this );
 	}
 
 	void onNotify( const EventState &eventState )  {
@@ -612,7 +637,7 @@ struct TemplateEventDispatcher : BaseDispatcher {
 	}
 };
 
-template< typename BaseEventHandler, typename BaseRouter = EventHandler >
+template< typename BaseEventHandler, typename BaseRouter = EventHandler::WithDefaultParentImpl >
 struct TemplateEventRouter : BaseRouter {
 	std::vector<std::shared_ptr<BaseEventHandler>> eventHandlers;
 	BaseEventHandler *target;
@@ -623,7 +648,7 @@ struct TemplateEventRouter : BaseRouter {
 
 	void addEventHandler( const std::shared_ptr<BaseEventHandler> &handler ) {
 		eventHandlers.push_back( handler );
-		handler->parent = this;
+		handler->setParent( this );
 	}
 
 	void onNotify( const EventState &eventState )  {

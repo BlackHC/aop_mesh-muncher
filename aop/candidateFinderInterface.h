@@ -32,6 +32,7 @@ struct NestedOutput {
 	}
 };*/
 
+// TODO: add a serializer forward header with macros to declare these functions [10/3/2012 kirschan2]
 struct SortedProbeDataset;
 struct ProbeDataset;
 

@@ -7,7 +7,7 @@
 int TW_CALL TwEventSFML20(const sf::Event *event);
 
 // TODO: really support multiple contexts by linking the window to render somehow automatically or by passing it as a parameter [10/1/2012 kirschan2]
-struct AntTweakBarEventHandler : public EventHandler {
+struct AntTweakBarEventHandler : public EventHandler::WithDefaultParentImpl {
 	// TODO: name refactoring [10/1/2012 kirschan2]
 	struct GlobalScope : std::enable_shared_from_this<GlobalScope> {
 		GlobalScope() {
