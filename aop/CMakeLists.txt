@@ -114,9 +114,19 @@ CUDA_ADD_EXECUTABLE(aop
 	candidateFinderInterface.h
 	candidateFinder.cpp
 	candidateFinderCache.cpp
+	
 	editor.h
 	editor.cpp
-	)
+
+	viewportContext.h
+	viewportContext.cpp
+
+	widgets.h
+	widgets.cpp
+
+	modelButtonWidget.h
+	modelButtonWidget.cpp
+)
 
 ADD_EXECUTABLE(Test_aop
 	candidateFinderInterface.h

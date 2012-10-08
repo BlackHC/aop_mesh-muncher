@@ -543,6 +543,29 @@ namespace DebugRender {
 		glEnd();
 	}
 
+	inline void drawQuad( const Eigen::Vector2f &minCorner, const Eigen::Vector2f &maxCorner, bool wireframe = true ) {			
+		if( wireframe ) {
+			glBegin( GL_LINE_LOOP );
+		}
+		else {
+			glBegin( GL_QUADS );
+		}
+
+		//glMultiTexCoord2f( GL_TEXTURE0, 0.0, 0.0 );
+		glVertex3f( minCorner.x(), minCorner.y(), 0.0 );
+
+		//glMultiTexCoord2f( GL_TEXTURE0, 1.0, 0.0 );
+		glVertex3f( maxCorner.x(), minCorner.y(), 0.0 );
+
+		//glMultiTexCoord2f( GL_TEXTURE0, 1.0, 1.0 );
+		glVertex3f( maxCorner.x(), maxCorner.y(), 0.0 );
+
+		//glMultiTexCoord2f( GL_TEXTURE0, 0.0, 1.0 );
+		glVertex3f( minCorner.x(), maxCorner.y(), 0.0 );
+		
+		glEnd();
+	}
+
 	inline void drawTexturedScreenQuad() {			
 		glBegin( GL_QUADS );
 		glMultiTexCoord2f( GL_TEXTURE0, 0.0, 0.0 );

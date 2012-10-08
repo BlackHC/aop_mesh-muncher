@@ -316,7 +316,7 @@ struct ProbeDatabase {
 
 		struct MatchInfo {
 			int id;
-			int numMatches;
+			float numMatches;			
 
 			MatchInfo( int id = -1 ) : id( id ), numMatches() {}
 		};
@@ -408,6 +408,8 @@ struct ProbeDatabase {
 			for( auto rangePair = overlappedRanges.begin() ; rangePair != overlappedRanges.end() ; ++rangePair ) {
 				matchOverlappedRanges( idDataset, *rangePair, matchInfo );
 			}
+
+			matchInfo.numMatches /= idDataset.size();
 
 			return matchInfo;
 		}
