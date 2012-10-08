@@ -12,10 +12,13 @@
 
 #include "aopSettings.h"
 #include "candidateFinderInterface.h"
+#include "editor.h"
 
 namespace aop {
 	struct Application {
 		sf::RenderWindow mainWindow;
+
+		Editor editor;
 
 		EventSystem eventSystem;
 		EventDispatcher eventDispatcher;
@@ -40,17 +43,19 @@ namespace aop {
 		struct CameraViewsUI;
 		struct ModelTypesUI;
 		struct CandidateSidebar;
-		struct EditorWrapper;
+		struct NamedVolumesEditorView;
 
 		std::unique_ptr< MainUI > mainUI;
 		std::unique_ptr< CameraViewsUI > cameraViewsUI;
 		std::unique_ptr< TargetVolumesUI > targetVolumesUI;
 		std::unique_ptr< ModelTypesUI > modelTypesUI;
-		std::unique_ptr< EditorWrapper > editorWrapper;
+
+		std::unique_ptr< NamedVolumesEditorView > namedVolumesEditorView;
 		std::unique_ptr< CandidateSidebar > candidateSidebar;
 
 		void init();
 
+		void initEditor();
 		void initCamera();
 		void initMainWindow();
 		void initSGSInterface();

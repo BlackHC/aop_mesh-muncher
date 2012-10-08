@@ -308,36 +308,20 @@ namespace aop {
 		}
 	};
 
-	struct Application::EditorWrapper {
-		Application *application;
+	struct Application::NamedVolumesEditorView : Editor::Volumes {
+		std::vector< aop::Settings::NamedTargetVolume > &volumes;
 
-		Editor editor;
+		NamedVolumesEditorView( std::vector< aop::Settings::NamedTargetVolume > &volumes  ) : volumes( volumes ) {}
 
-		struct NamedVolumesView : Editor::Volumes {
-			std::vector< aop::Settings::NamedTargetVolume > &volumes;
+		int getCount() {
+			return (int) volumes.size();
+		}
 
-			NamedVolumesView( std::vector< aop::Settings::NamedTargetVolume > &volumes  ) : volumes( volumes ) {}
-
-			int getCount() {
-				return (int) volumes.size();
+		Obb *get( int index ) {
+			if( index >= volumes.size() ) {
+				return nullptr;
 			}
-
-			Obb *get( int index ) {
-				if( index >= volumes.size() ) {
-					return nullptr;
-				}
-				return &volumes[ index ].volume;
-			}
-		};
-		NamedVolumesView namedVolumesView;
-
-		EditorWrapper( Application *application ) : application( application ), namedVolumesView( application->settings.volumes ) {
-			editor.world = application->world.get();
-			editor.view = &application->cameraView;
-			editor.volumes = &namedVolumesView;
-			editor.init();
-
-			application->eventDispatcher.addEventHandler( make_nonallocated_shared( editor ) );
+			return &volumes[ index ].volume;
 		}
 	};
 
@@ -458,14 +442,14 @@ namespace aop {
 				markedModels.clear();
 			} ) );
 			markedModelsUi.add( AntTWBarUI::makeSharedButton( "= selection", [this] () {
-				ReplaceWithSelectionVisitor( this ).dispatch( application->editorWrapper->editor.selection.get() );
+				ReplaceWithSelectionVisitor( this ).dispatch( application->editor.selection.get() );
 			} ) );
 			markedModelsUi.add( AntTWBarUI::makeSharedButton( "+= selection", [this] () {
-				AppendSelectionVisitor( this ).dispatch( application->editorWrapper->editor.selection.get() );
+				AppendSelectionVisitor( this ).dispatch( application->editor.selection.get() );
 			} ) );
 			markedModelsUi.add( AntTWBarUI::makeSharedSeparator() );
 			markedModelsUi.add( AntTWBarUI::makeSharedButton( "selection =", [this] () {
-				application->editorWrapper->editor.selection = std::make_shared<Editor::SGSMultiModelSelection>( &application->editorWrapper->editor, markedModels );
+				application->editor.selection = std::make_shared<Editor::SGSMultiModelSelection>( &application->editor, markedModels );
 			} ) );
 			markedModelsUi.link();
 		}
@@ -525,7 +509,7 @@ namespace aop {
 						application->candidateSidebar->addModels( modelIndices );
 					}
 				};
-				QueryVolumeVisitor( application ).dispatch( application->editorWrapper->editor.selection.get() );
+				QueryVolumeVisitor( application ).dispatch( application->editor.selection.get() );
 			} ) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
 			ui.add( AntTWBarUI::makeSharedButton( "Load database", [this] { application->candidateFinder.loadCache( "database"); } ) );
@@ -755,6 +739,15 @@ namespace aop {
 		eventDispatcher.addEventHandler( make_nonallocated_shared( mainCameraInputControl ) );
 	}
 
+	void Application::initEditor() {
+		editor.world = world.get();
+		editor.view = &cameraView;
+		editor.volumes = namedVolumesEditorView.get();
+		editor.init();
+
+		eventDispatcher.addEventHandler( make_nonallocated_shared( editor ) );
+	}
+
 	void Application::init() {
 		ProbeGenerator::initDirections();
 
@@ -766,13 +759,11 @@ namespace aop {
 
 		candidateFinder.reserveIds( world->scene.modelNames.size() );
 
-		editorWrapper.reset( new EditorWrapper( this ) );
+		namedVolumesEditorView.reset( new NamedVolumesEditorView( settings.volumes ) );
+
+		initEditor();
 
 		eventDispatcher.addEventHandler( make_nonallocated_shared( widgetRoot ) );
-
-		/*auto button = std::make_shared<ModelButtonWidget>( Vector2f::Constant( 0 ), Vector2f::Constant( 0.25 ), 0, world->sceneRenderer );
-
-		widgetRoot.addEventHandler( button );*/
 
 		// register anttweakbar first because it actually manages its own focus
 		antTweakBarEventHandler.init( mainWindow );
@@ -789,7 +780,7 @@ namespace aop {
 
 		if( !settings.volumes.empty() ) {
 			// TODO: add select wrappers to editorWrapper or editor [10/3/2012 kirschan2]
-			editorWrapper->editor.selection = std::make_shared< Editor::ObbSelection >( &editorWrapper->editor, 0 );
+			editor.selection = std::make_shared< Editor::ObbSelection >( &editor, 0 );
 		}
 	}
 
@@ -891,7 +882,7 @@ namespace aop {
 				DebugRender::end();
 
 				// render editor entities first
-				editorWrapper->editor.render();
+				editor.render();
 
 				//world.renderOptixViewFrame( view );
 
