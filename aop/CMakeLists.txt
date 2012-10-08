@@ -63,6 +63,9 @@ CUDA_ADD_EXECUTABLE(aop
 	../framework/mathUtility.h
 	../framework/contextHelper.h
 
+	../framework/logger.h
+	../framework/logger.cpp
+
 	../framework/autoTimer.h
 	../framework/autoTimer.cpp
 

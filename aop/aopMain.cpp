@@ -60,6 +60,7 @@ using namespace Eigen;
 #include "widgets.h"
 #include "modelButtonWidget.h"
 
+#include "logger.h"
 
 std::weak_ptr<AntTweakBarEventHandler::GlobalScope> AntTweakBarEventHandler::globalScope;
 
@@ -151,7 +152,24 @@ struct EigenRotationMatrix : AntTWBarUI::SimpleStructureFactory< Eigen::Matrix3f
 };
 
 
+void aop::Application::TimedLog::init() {
+	rebuildNeeded = true;
+	currentEntryTime = currentElapsedTime = 0.0;
 
+	Log::addSink(
+		[&] ( int scope, const std::string &message, Log::Type type ) -> bool {
+			entries.push_back( aop::Application::TimedLog::Entry() );
+			Entry &entry = entries.back();
+			entry.timestamp = currentEntryTime += 0.5;
+			entry.indentedMessage = Log::Utility::indentString( scope, message );
+
+			rebuildNeeded = true;
+			return true;
+		}
+	);
+
+	renderText.setCharacterSize( 10 );
+}
 
 #if 1
 
@@ -189,7 +207,7 @@ const float probeResolution = 0.25;
 
 void sampleInstances( SGSInterface::World *world, ProbeDatabase &candidateFinder, int modelIndex ) {
 	AUTO_TIMER_FOR_FUNCTION();
-	std::cerr << Indentation::get() << "sampling model " << modelIndex << "\n";
+	log( boost::format( "sampling model %i" ) % modelIndex );
 
 	RenderContext renderContext;
 	renderContext.setDefault();
@@ -218,7 +236,7 @@ void sampleInstances( SGSInterface::World *world, ProbeDatabase &candidateFinder
 		totalCount += (int) transformedProbes.size();
 	}
 
-	std::cerr << Indentation::get() << "total sampled probes: " << totalCount << "\n";
+	log( boost::format( "total sampled probes: %i" ) % totalCount );
 }
 
 ProbeDatabase::Query::MatchInfos queryVolume( SGSInterface::World *world, ProbeDatabase &candidateFinder, const Obb &queryVolume ) {
@@ -249,7 +267,7 @@ ProbeDatabase::Query::MatchInfos queryVolume( SGSInterface::World *world, ProbeD
 
 	const auto &matchInfos = query->getCandidates();
 	for( auto matchInfo = matchInfos.begin() ; matchInfo != matchInfos.end() ; ++matchInfo ) {
-		std::cout << Indentation::get() << matchInfo->id << ": " << matchInfo->numMatches << "\n";
+		log( boost::format( "%i: %f" ) % matchInfo->id % matchInfo->numMatches );
 	}
 	return matchInfos;
 }
@@ -749,6 +767,8 @@ namespace aop {
 	}
 
 	void Application::init() {
+		timedLog.init();
+
 		ProbeGenerator::initDirections();
 
 		initMainWindow();
@@ -793,10 +813,7 @@ namespace aop {
 
 	void Application::eventLoop() {
 		sf::Text renderDuration;
-		renderDuration.setPosition( 0, 0 );
 		renderDuration.setCharacterSize( 10 );
-
-		sf::Clock frameClock, clock;
 
 		KeyAction reloadShadersAction( "reload shaders", sf::Keyboard::R, [&] () { world->sceneRenderer.reloadShaders(); } );
 		eventDispatcher.addEventHandler( make_nonallocated_shared( reloadShadersAction ) );
@@ -848,6 +865,9 @@ namespace aop {
 			eventSystem.update( frameClock.restart().asSeconds(), clock.getElapsedTime().asSeconds() );
 				
 			updateUI();
+
+			timedLog.updateTime( clock.getElapsedTime().asSeconds() );
+			timedLog.updateText();
 
 			{
 				boost::timer::cpu_timer renderTimer;
@@ -905,10 +925,29 @@ namespace aop {
 				glEnable( GL_DEPTH_TEST );
 
 				renderDuration.setString( renderTimer.format() );
-
+				
 				mainWindow.pushGLStates();
 				mainWindow.resetGLStates();
-				mainWindow.draw( renderDuration );
+
+				{
+					const auto height = renderDuration.getLocalBounds().height;
+					renderDuration.setPosition( 0.0, windowSize.y - height );
+					mainWindow.draw( renderDuration );
+				}
+				
+				{
+					const auto height = timedLog.renderText.getLocalBounds().height;
+
+					sf::RectangleShape logBackground;
+					logBackground.setPosition( 0.0, 0.0 );
+					logBackground.setSize( sf::Vector2f( windowSize.x, height ) );
+					logBackground.setFillColor( sf::Color( 20, 20, 20, 128 ) );
+					mainWindow.draw( logBackground );
+
+					timedLog.renderText.setPosition( 0.0, 0.0 );
+					mainWindow.draw( timedLog.renderText );
+				}
+
 				mainWindow.popGLStates();
 			}
 
@@ -918,6 +957,30 @@ namespace aop {
 
 			//debugWindowManager.update();
 		}
+	}
+
+	void Application::updateProgress( float percentage ) {
+		const sf::Vector2i windowSize( mainWindow.getSize() );
+
+		timedLog.updateText();
+		timedLog.renderText.setPosition( 0.0, windowSize.y * 0.9 - timedLog.renderText.getLocalBounds().height );
+
+		mainWindow.pushGLStates();
+		mainWindow.resetGLStates();
+		glClearColor( 0.2, 0.2, 0.2, 1.0 );
+		mainWindow.clear();
+		glClearColor( 0.0, 0.0, 0.0, 0.0 );
+		mainWindow.draw( timedLog.renderText );
+
+		sf::RectangleShape progressBar;
+		progressBar.setPosition( 0.0, windowSize.y * 0.9 );
+		progressBar.setSize( sf::Vector2f( windowSize.x * percentage, windowSize.y * 0.1 ) );
+		progressBar.setFillColor( sf::Color( 100, 255, 100 ) );
+		mainWindow.draw( progressBar );
+
+		mainWindow.popGLStates();
+
+		mainWindow.display();
 	}
 }
 

@@ -3,43 +3,25 @@
 #include <boost/timer/timer.hpp>
 #include <boost/format.hpp>
 
-struct Indentation {
-	static int currentIndentation;
-
-	static std::string get( int sub = 0 ) {
-		return std::string( currentIndentation + sub, ' ' );
-	}
-
-	struct Scope {
-		Scope() {
-			++currentIndentation;
-		}
-
-		~Scope() {
-			--currentIndentation;
-		}
-	};
-};
+#include "logger.h"
 
 struct AutoTimer {
-	Indentation::Scope indentationScope;
+	Log::Scope logScope;
+
 	boost::timer::cpu_timer timer;
 
-	AutoTimer( const char *function, const std::string &msg = std::string() ) {
-		std::cerr << Indentation::get( -1 ) << function;
+	AutoTimer( const std::string &function, const std::string &msg = std::string() ) {
 		if( !msg.empty() ) {
-			std::cerr << ", " << msg;
+			log( function + ", " + msg + ":", logScope.scope - 1 );
 		}
-		std::cerr << ":\n";
-	}
-
-	std::string indentation() {
-		return Indentation::get();
+		else {
+			log( function + ":", logScope.scope - 1 );
+		}
 	}
 
 	~AutoTimer() {
 		timer.stop();
-		std::cerr << indentation() << timer.format( 6, "* %ws wall, %us user + %ss system = %ts CPU (%p%)\n" ) << "\n";
+		log( timer.format( 6, "* %ws wall, %us user + %ss system = %ts CPU (%p%)" ) );
 	}
 };
 

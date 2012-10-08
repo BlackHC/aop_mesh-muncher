@@ -69,7 +69,7 @@ SortedProbeDataset SortedProbeDataset::mergeMultiple( const std::vector< const S
 		totalCount += (int) (*dataset)->size();
 	}
 
-	std::cerr << autoTimer.indentation() << "merging " << totalCount << " probes\n";
+	log( boost::format( "merging %i probes" ) % totalCount );
 
 	SortedProbeDataset mergedDataset;
 

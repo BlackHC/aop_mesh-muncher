@@ -13,9 +13,13 @@
 #include "aopSettings.h"
 #include "candidateFinderInterface.h"
 #include "editor.h"
+#include <deque>
+#include <logger.h>
 
 namespace aop {
 	struct Application {
+		sf::Clock frameClock, clock;
+
 		sf::RenderWindow mainWindow;
 
 		Editor editor;
@@ -65,5 +69,50 @@ namespace aop {
 		void updateUI();
 
 		void eventLoop();
+
+		struct TimedLog {
+			struct Entry {
+				float timestamp;
+				std::string indentedMessage;
+				Entry() {}
+			};
+			std::deque< Entry > entries;
+
+			bool rebuildNeeded;
+
+			sf::Text renderText;
+
+			float currentEntryTime;
+			float currentElapsedTime;
+
+			void init();
+
+			void updateTime( float elapsedTime ) {
+				const float timeOutDuration = 10.0;
+
+				currentEntryTime = currentElapsedTime = elapsedTime;
+
+				while( !entries.empty() && entries.front().timestamp < elapsedTime - timeOutDuration ) {
+					entries.pop_front();
+					rebuildNeeded = true;
+				}
+			}
+
+			void updateText() {
+				if( rebuildNeeded ) {
+					rebuildNeeded = false;
+
+					std::string mergedEntries;
+					for( auto entry = entries.begin() ; entry != entries.end() ; ++entry ) {
+						mergedEntries += entry->indentedMessage;
+					}
+
+					renderText.setString( mergedEntries );
+				}
+			}
+		};
+		TimedLog timedLog;
+
+		void updateProgress( float percentage );
 	};
 }
