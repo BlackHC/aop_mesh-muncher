@@ -102,6 +102,7 @@ CUDA_ADD_EXECUTABLE(aop
 
 	../generic/sort_permute_iter.h
 
+	aopApplication.h
 	aopSettings.h
 	aopSettingsStorage.cpp
 	aopMain.cpp
