@@ -516,6 +516,12 @@ namespace AntTWBarUI {
 		return std::make_shared< Button >( name, callback, def );
 	}
 
+	namespace Types {
+		struct Quat4f {
+			float coeffs[4];
+		};
+	}
+
 	namespace detail {
 		template< typename T >
 		struct TypeMap {
@@ -567,7 +573,7 @@ namespace AntTWBarUI {
 			};
 		};
 
-		typedef float Color4F[4];
+		/*typedef float Color4F[4];
 
 		template<>
 		struct TypeMap< Color4F > {
@@ -582,6 +588,13 @@ namespace AntTWBarUI {
 		struct TypeMap< Direction3F > {
 			enum {
 				Type = TW_TYPE_DIR3F
+			};
+		};*/
+
+		template<>
+		struct TypeMap< Types::Quat4f > {
+			enum {
+				Type = TW_TYPE_QUAT4F
 			};
 		};
 	}
@@ -616,22 +629,22 @@ namespace AntTWBarUI {
 		}
 	};
 
-	template< typename _Type, typename _BaseType >
+	template< typename _Type, typename _Derived >
 	struct SimpleStructureFactory {
 		typedef _Type Type;
 
 		template< typename Accessor >
 		std::shared_ptr< Container > makeShared( Accessor &&accessor, ContainerType containerType = CT_GROUP ) const {
-			auto container = std::make_shared<Structure< Accessor > >( std::move( accessor ), containerType );
+			auto container = std::make_shared< Structure< Accessor > >( std::move( accessor ), containerType );
 
-			static_cast<const _BaseType*>(this)->setup( container.get(), container->accessor );
+			static_cast<const _Derived*>(this)->setup( container.get(), container->accessor );
 
 			return container;
 		}
 
 #if 0
 		template< typename Accessor >
-		void setup( Container *container, Accessor &accessor ) const;
+		void setup( AntTWBarUI::Container *container, Accessor &accessor ) const;
 #endif
 	};
 
@@ -687,7 +700,32 @@ namespace AntTWBarUI {
 		return ExpressionAccessor< _Type >( lExpression );
 	}
 
-	/*template< typename _Type >
+	template< typename _Type, typename _Accessor >
+	struct LinkedExpressionAccessor {
+		typedef _Type Type;
+
+		typedef std::function< _Type & () > LExpression;
+
+		LExpression lExpression;
+		_Accessor &accessor;
+
+		LinkedExpressionAccessor( const LExpression &lExpression, _Accessor &accessor ) : lExpression( lExpression ), accessor( accessor ) {}
+
+		_Type & pull() {
+			return lExpression();
+		}
+
+		void push() {
+			accessor.push();
+		}
+	};
+
+	template< typename _Type, typename _Accessor >
+	LinkedExpressionAccessor< _Type, _Accessor > makeLinkedExpressionAccessor( const typename LinkedExpressionAccessor<_Type, _Accessor>::LExpression &lExpression, _Accessor &accessor ) {
+		return LinkedExpressionAccessor< _Type, _Accessor >( lExpression, accessor );
+	}
+
+	template< typename _Type >
 	struct CallbackAccessor {
 		typedef _Type Type;
 
@@ -701,20 +739,20 @@ namespace AntTWBarUI {
 
 		Type & pull() {
 			getter( shadow );
+			return shadow;
 		}
 
 		void push() const {
 			setter( shadow );
 		}
 
-	private:
 		Type shadow;
-	};*/
+	};
 
 	//////////////////////////////////////////////////////////////////////////
 
 	// only standard anttweakbar types are supported
-	template< typename Accessor, bool readOnly = false >
+	template< typename Accessor, bool readOnly = false, int forcedType = TW_TYPE_UNDEF >
 	struct Variable : Element {
 		typedef typename Accessor::Type Type;
 
@@ -733,7 +771,11 @@ namespace AntTWBarUI {
 	private:
 		void doLink() {
 			element.nest( getParent()->getGroup() );
-			const int type = detail::TypeMapper< Type >::Type;
+			int type = forcedType;
+			if( type == TW_TYPE_UNDEF ) {
+				type = detail::TypeMapper< Type >::Type;
+			}
+
 			if( type == TW_TYPE_UNDEF ) {
 				//error
 				std::cerr << "TW_TYPE_UNDEF, unsupported type!";
@@ -763,11 +805,11 @@ namespace AntTWBarUI {
 		}
 
 		static void TW_CALL staticGetStdString( char **value, Variable &me) {
-			TwCopyCDStringToLibrary( value, me.accessor.pull().c_str() );
+			TwCopyCDStringToLibrary( value, reinterpret_cast<std::string*>(&me.accessor.pull())->c_str() );
 		}
 
 		static void TW_CALL staticSetStdString(const char **value, Variable &me) {
-			me.accessor.pull() = *value;
+			*reinterpret_cast<std::string*>(&me.accessor.pull()) = *value;
 			me.accessor.push();
 		}
 
@@ -793,6 +835,11 @@ namespace AntTWBarUI {
 	template< typename Accessor >
 	std::shared_ptr< Variable< Accessor, true > > makeSharedReadOnlyVariable( const std::string &name, Accessor &&accessor, const std::string &def = std::string() ) {
 		return std::make_shared< Variable< Accessor, true > >( name, std::move( accessor ), def );
+	}
+
+	template< int forcedType, typename Accessor >
+	std::shared_ptr< Variable< Accessor, false, forcedType > > makeSharedVariableWithType( const std::string &name, Accessor &&accessor, const std::string &def = std::string() ) {
+		return std::make_shared< Variable< Accessor, false, forcedType > >( name, std::move( accessor ), def );
 	}
 
 	//////////////////////////////////////////////////////////////////////////

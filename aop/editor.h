@@ -347,7 +347,7 @@ struct Editor : EventDispatcher {
 		void onMouse( EventState &eventState );
 
 		std::string getHelp( const std::string &prefix /* = std::string */ ) {
-			return prefix + name;
+			return prefix + name + "\n";
 		}
 	};
 
@@ -357,7 +357,7 @@ struct Editor : EventDispatcher {
 		void onMouse( EventState &eventState );
 
 		std::string getHelp( const std::string &prefix /* = std::string */ ) {
-			return prefix + name;
+			return prefix + name + "\n";
 		}
 	};
 

@@ -112,6 +112,72 @@ struct TransformChain {
 	}
 };
 
+struct EigenVector3fUIFactory : AntTWBarUI::SimpleStructureFactory< Eigen::Vector3f, EigenVector3fUIFactory > {
+	template< typename Accessor >
+	void setup( AntTWBarUI::Container *container, Accessor &accessor ) const {
+		container->add(
+			AntTWBarUI::makeSharedVariable(
+				"x",
+				AntTWBarUI::makeLinkedExpressionAccessor<float>( 
+					[&] () -> float & {
+						return accessor.pull().x();
+					},
+					accessor
+				)
+			)
+		);
+		container->add(
+			AntTWBarUI::makeSharedVariable(
+				"y",
+				AntTWBarUI::makeLinkedExpressionAccessor<float>(
+					[&] () -> float & {
+						return accessor.pull().y();
+					},
+					accessor
+				)
+			)
+		);
+		container->add(
+			AntTWBarUI::makeSharedVariable(
+				"z",
+				AntTWBarUI::makeLinkedExpressionAccessor<float>(
+					[&] () -> float & {
+						return accessor.pull().z();
+					},
+					accessor
+				)
+			)
+		);
+	}
+};
+
+struct EigenRotationMatrix : AntTWBarUI::SimpleStructureFactory< Eigen::Matrix3f, EigenRotationMatrix > {
+	template< typename Accessor >
+	void setup( AntTWBarUI::Container *container, Accessor &accessor ) const {
+		container->add(
+			AntTWBarUI::makeSharedVariable(
+				"rotation",
+				AntTWBarUI::CallbackAccessor< AntTWBarUI::Types::Quat4f >(
+					[&] ( AntTWBarUI::Types::Quat4f &shadow ) {
+						const Eigen::Quaternionf quat( accessor.pull() );
+						for( int i = 0 ; i < 4 ; i++ ) {
+							shadow.coeffs[i] = quat.coeffs()[i];
+						}
+					},
+					[&] ( const AntTWBarUI::Types::Quat4f &shadow ) {
+						Eigen::Quaternionf quat;
+						for( int i = 0 ; i < 4 ; i++ ) {
+							quat.coeffs()[i] = shadow.coeffs[i];
+						}
+						accessor.pull() = quat.toRotationMatrix();
+						accessor.push();
+					}
+				)
+			)
+		);
+	}
+};
+
 // supports y down coordinates and sets the viewport automatically
 struct ViewportContext : AsExecutionContext< ViewportContext > {
 	// total size
@@ -603,6 +669,32 @@ namespace aop {
 						AntTWBarUI::makeSharedVariable(
 							"Name",
 							AntTWBarUI::makeMemberAccessor( accessor, &aop::Settings::NamedTargetVolume::name )
+						)
+					);
+					container->add(
+						EigenRotationMatrix().makeShared( 
+							AntTWBarUI::CallbackAccessor<Eigen::Matrix3f>(
+								[&] ( Eigen::Matrix3f &shadow ) {
+									shadow = accessor.pull().volume.transformation.linear();
+								},
+								[&] ( const Eigen::Matrix3f &shadow ) {
+									accessor.pull().volume.transformation.linear() = shadow;
+								}
+							),
+							AntTWBarUI::CT_EMBEDDED
+						)
+					);
+					container->add(
+						EigenVector3fUIFactory().makeShared( 
+							AntTWBarUI::CallbackAccessor<Eigen::Vector3f>(
+								[&] ( Eigen::Vector3f &shadow ) {
+									shadow = accessor.pull().volume.transformation.translation();
+								},
+								[&] ( const Eigen::Vector3f &shadow ) {
+									accessor.pull().volume.transformation.translation() = shadow;
+								}
+							),
+							AntTWBarUI::CT_EMBEDDED
 						)
 					);
 					container->add(

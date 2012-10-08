@@ -61,6 +61,7 @@ CUDA_ADD_EXECUTABLE(aop
 	../framework/glslPipeline.h
 	../framework/glslPipeline.cpp
 	../framework/mathUtility.h
+	../framework/contextHelper.h
 
 	../framework/autoTimer.h
 	../framework/autoTimer.cpp
