@@ -28,7 +28,7 @@ namespace ProbeGenerator {
 	}
 
 	void generateInstanceProbes( const Eigen::Vector3f &size, const float resolution, std::vector<Probe> &probes ) {
-		const Vector3i probeCount3 = ceil( size / resolution );
+		const Vector3i probeCount3 = ceil( size / resolution + Eigen::Vector3f::Constant( 1.0f ) );
 
 		// create the index<->position mapping
 		// TODO: add method createCenteredIndexMapping [9/26/2012 kirschan2]
