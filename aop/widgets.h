@@ -101,6 +101,10 @@ struct ButtonWidget : WidgetBase {
 		return false;
 	}
 
+	void loseFocus( FocusType focusType ) {
+		setState( STATE_INACTIVE );
+	}
+
 private:
 	void doRender();
 

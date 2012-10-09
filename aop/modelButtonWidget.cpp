@@ -19,14 +19,23 @@ void ModelButtonWidget::doRenderInside() {
 	glMatrixMode( GL_MODELVIEW );
 	glPushMatrix();
 	const auto worldViewerPosition = Vector3f( 0.0, 1.0, 1.0 );
+
+	const auto boundingBox = renderer.getModelBoundingBox(modelIndex);
+	const auto boundingBoxSize = boundingBox.sizes();
+
+	const float maxWidth = std::max( boundingBoxSize.x(), boundingBoxSize.z() );
+	const float maxDiagonal = sqrt( maxWidth * maxWidth + boundingBoxSize.y() * boundingBoxSize.y() );
+	const float scaleFactor = 2 * sqrt( 2.0 / 3.0 ) / (maxDiagonal * sqrt(2.0));
+
 	glLoadMatrix( Eigen::createLookAtMatrix( worldViewerPosition, Vector3f::Zero(), Vector3f::UnitY() ) );
 
 	// see note R3 for the computation
-	const Eigen::Vector3f boundingBoxSize =  renderer.getModelBoundingBox(modelIndex).sizes();
-	Eigen::glScale( Vector3f::Constant( sqrt( 2.0 / 3.0 ) / boundingBoxSize.norm() ) );
+	Eigen::glScale( Vector3f::Constant( scaleFactor ) );
 
 	float angle = time * 2 * Math::PI / 10.0;
 	glMultMatrix( Affine3f(AngleAxisf( angle, Vector3f::UnitY() )).matrix() );
+
+	glTranslate( -boundingBox.center() );
 
 	// TODO: scissor test [10/4/2012 kirschan2]
 
