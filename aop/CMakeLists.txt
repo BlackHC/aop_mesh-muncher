@@ -66,6 +66,9 @@ CUDA_ADD_EXECUTABLE(aop
 	../framework/logger.h
 	../framework/logger.cpp
 
+	../framework/progressTracker.h
+	../framework/progressTracker.cpp
+
 	../framework/autoTimer.h
 	../framework/autoTimer.cpp
 
@@ -136,6 +139,12 @@ ADD_EXECUTABLE(Test_aop
 	candidateFinderInterface.h
 	candidateFinder.cpp
 	candidateFinderCache.cpp
+
+	../framework/logger.h
+	../framework/logger.cpp
+
+	../framework/progressTracker.h
+	../framework/progressTracker.cpp
 
 	../framework/autoTimer.h
 	../framework/autoTimer.cpp

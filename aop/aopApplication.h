@@ -71,48 +71,113 @@ namespace aop {
 		void eventLoop();
 
 		struct TimedLog {
+			Application *application;
+
 			struct Entry {
-				float timestamp;
-				std::string indentedMessage;
-				Entry() {}
+				float timeStamp;
+				sf::Text renderText;
+				Entry() : timeStamp() {}
 			};
-			std::deque< Entry > entries;
+			std::vector< Entry > entries;
 
-			bool rebuildNeeded;
+			static const int MAX_NUM_ENTRIES = 256;
 
-			sf::Text renderText;
+			template< int limit >
+			struct CycleCounter {
+				int value;
 
-			float currentEntryTime;
-			float currentElapsedTime;
+				CycleCounter() : value() {}
+				CycleCounter( const CycleCounter &other ) : value( other.value ) {}
+
+				void operator ++ () {
+					value = (value + 1) % limit;
+				}
+
+				operator int () const {
+					return value;
+				}
+			};
+			// TODO: dont use a cycle counter - only use it during access to be able to check whether the buffer is empty or not [10/9/2012 kirschan2]
+			CycleCounter< MAX_NUM_ENTRIES > beginEntry, endEntry;
+
+			int size() const {
+				if( endEntry < beginEntry ) {
+					return endEntry + MAX_NUM_ENTRIES - beginEntry;
+				}
+				return endEntry - beginEntry;
+			}
+
+			float totalHeight;
+
+			bool rebuiltNeeded;
+
+			bool notifyApplicationOnMessage;
+
+			TimedLog( Application *application );
 
 			void init();
 
+			// TODO: remove elapsed time and use application->clock [10/9/2012 kirschan2]
 			void updateTime( float elapsedTime ) {
 				const float timeOutDuration = 10.0;
 
-				currentEntryTime = currentElapsedTime = elapsedTime;
-
-				while( !entries.empty() && entries.front().timestamp < elapsedTime - timeOutDuration ) {
-					entries.pop_front();
-					rebuildNeeded = true;
+				while( size() != 0 && entries[ beginEntry ].timeStamp < elapsedTime - timeOutDuration ) {
+					++beginEntry;
+					rebuiltNeeded = true;
 				}
 			}
 
 			void updateText() {
-				if( rebuildNeeded ) {
-					rebuildNeeded = false;
+				if( rebuiltNeeded ) {
+					rebuiltNeeded = false;
 
-					std::string mergedEntries;
-					for( auto entry = entries.begin() ; entry != entries.end() ; ++entry ) {
-						mergedEntries += entry->indentedMessage;
+					float y = 0;
+					for( auto entryIndex = beginEntry ; entryIndex != endEntry ; ++entryIndex ) {
+						Entry &entry = entries[ entryIndex ];
+						entry.renderText.setPosition( 0.0, y );
+						y += entry.renderText.getLocalBounds().height;
 					}
-
-					renderText.setString( mergedEntries );
+					totalHeight = y;
 				}
 			}
-		};
-		TimedLog timedLog;
 
-		void updateProgress( float percentage );
+			void renderEntries() {
+				for( auto entryIndex = beginEntry ; entryIndex != endEntry ; ++entryIndex ) {
+					const Entry &entry = entries[ entryIndex ];
+					application->mainWindow.draw( entry.renderText );
+				}
+			}
+
+			void renderAsNotifications() {
+				const sf::Vector2i windowSize( application->mainWindow.getSize() );
+
+				sf::RectangleShape background;
+				background.setPosition( 0.0, 0.0 );
+				background.setSize( sf::Vector2f( windowSize.x, totalHeight ) );
+				background.setFillColor( sf::Color( 20, 20, 20, 128 ) );
+				application->mainWindow.draw( background );
+
+				renderEntries();
+			}
+
+			void renderAsLog() {
+				const sf::Vector2i windowSize( application->mainWindow.getSize() );
+
+				sf::View view = application->mainWindow.getView();
+				sf::View shiftedView = view;
+				shiftedView.move( 0.0, -(windowSize.y * 0.9 - totalHeight) );
+				application->mainWindow.setView( shiftedView );
+
+				renderEntries();
+
+				application->mainWindow.setView( view );
+			}
+		};
+		std::unique_ptr<TimedLog> timedLog;
+
+		void updateProgress();
+
+		void startLongOperation();
+		void endLongOperation();
 	};
 }

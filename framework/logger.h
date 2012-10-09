@@ -37,6 +37,9 @@ namespace Log {
 		void logError( const boost::format &message );
 	};
 
+	// thread index is unused atm!
+	void initThreadScope( int baseScope, int threadIndex );
+
 	namespace Utility {
 		std::string scopeToIndentation( int scope );
 

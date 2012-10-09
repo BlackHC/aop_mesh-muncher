@@ -61,6 +61,7 @@ using namespace Eigen;
 #include "modelButtonWidget.h"
 
 #include "logger.h"
+#include <progressTracker.h>
 
 std::weak_ptr<AntTweakBarEventHandler::GlobalScope> AntTweakBarEventHandler::globalScope;
 
@@ -151,24 +152,41 @@ struct EigenRotationMatrix : AntTWBarUI::SimpleStructureFactory< Eigen::Matrix3f
 	}
 };
 
+aop::Application::TimedLog::TimedLog( Application *application ) : application( application ) {
+	init();
+}
 
 void aop::Application::TimedLog::init() {
-	rebuildNeeded = true;
-	currentEntryTime = currentElapsedTime = 0.0;
+	notifyApplicationOnMessage = false;
+	rebuiltNeeded = false;
+	totalHeight = 0.0;
+
+	entries.resize( MAX_NUM_ENTRIES );
 
 	Log::addSink(
-		[&] ( int scope, const std::string &message, Log::Type type ) -> bool {
-			entries.push_back( aop::Application::TimedLog::Entry() );
-			Entry &entry = entries.back();
-			entry.timestamp = currentEntryTime += 0.5;
-			entry.indentedMessage = Log::Utility::indentString( scope, message );
+		[this] ( int scope, const std::string &message, Log::Type type ) -> bool {
+			if( this->size() >= MAX_NUM_ENTRIES - 1 ) {
+				++beginEntry;
+			}
+			Entry &entry = entries[endEntry];
+			entry.timeStamp = application->clock.getElapsedTime().asSeconds();
 
-			rebuildNeeded = true;
+			entry.renderText.setCharacterSize( 15 );
+			entry.renderText.setString( Log::Utility::indentString( scope, message ) );
+			
+			++endEntry;
+
+			rebuiltNeeded = true;
+
+			if( notifyApplicationOnMessage ) {
+				application->updateProgress();
+			}
+
 			return true;
 		}
 	);
 
-	renderText.setCharacterSize( 10 );
+	
 }
 
 #if 1
@@ -215,6 +233,8 @@ void sampleInstances( SGSInterface::World *world, ProbeDatabase &candidateFinder
 
 	auto instanceIndices = world->sceneRenderer.getModelInstances( modelIndex );
 
+	ProgressTracker::Context progressTracker( instanceIndices.size() * 3 );
+
 	int totalCount = 0;
 
 	for( int i = 0 ; i < instanceIndices.size() ; i++ ) {
@@ -227,11 +247,17 @@ void sampleInstances( SGSInterface::World *world, ProbeDatabase &candidateFinder
 
 		world->generateProbes( instanceIndex, probeResolution, rawDataset.probes, transformedProbes );
 
+		progressTracker.markFinished();
+
 		AUTO_TIMER_DEFAULT( boost::str( boost::format( "batch with %i probes for instance %i" ) % transformedProbes.size() % instanceIndex ) );
 
 		world->optixRenderer.sampleProbes( transformedProbes, rawDataset.probeContexts, renderContext );
 
+		progressTracker.markFinished();
+
 		candidateFinder.addDataset(modelIndex, std::move( rawDataset ) );
+
+		progressTracker.markFinished();
 
 		totalCount += (int) transformedProbes.size();
 	}
@@ -240,6 +266,8 @@ void sampleInstances( SGSInterface::World *world, ProbeDatabase &candidateFinder
 }
 
 ProbeDatabase::Query::MatchInfos queryVolume( SGSInterface::World *world, ProbeDatabase &candidateFinder, const Obb &queryVolume ) {
+	ProgressTracker::Context progressTracker(4);
+
 	AUTO_TIMER_FOR_FUNCTION();
 
 	RenderContext renderContext;
@@ -249,10 +277,13 @@ ProbeDatabase::Query::MatchInfos queryVolume( SGSInterface::World *world, ProbeD
 
 	ProbeGenerator::generateQueryProbes( queryVolume, probeResolution, rawDataset.probes );
 
+	progressTracker.markFinished();
+
 	{
 		AUTO_TIMER_FOR_FUNCTION( "sampling scene");
 		world->optixRenderer.sampleProbes( rawDataset.probes, rawDataset.probeContexts, renderContext );
 	}
+	progressTracker.markFinished();
 
 	auto query = candidateFinder.createQuery();
 	{
@@ -264,11 +295,14 @@ ProbeDatabase::Query::MatchInfos queryVolume( SGSInterface::World *world, ProbeD
 
 		query->execute();
 	}
+	progressTracker.markFinished();
 
 	const auto &matchInfos = query->getCandidates();
 	for( auto matchInfo = matchInfos.begin() ; matchInfo != matchInfos.end() ; ++matchInfo ) {
 		log( boost::format( "%i: %f" ) % matchInfo->id % matchInfo->numMatches );
 	}
+	progressTracker.markFinished();
+
 	return matchInfos;
 }
 
@@ -493,11 +527,20 @@ namespace aop {
 			//ui.add( AntTWBarUI::makeSharedVector< NamedTargetVolumeView >( "Camera Views", application->settings.volumes) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
 			ui.add( AntTWBarUI::makeSharedButton( "Sample marked objects", [this] {
-					const auto &modelIndices = application->modelTypesUI->markedModels;
-					for( auto modelIndex = modelIndices.begin() ; modelIndex != modelIndices.end() ; ++modelIndex ) {
+				application->startLongOperation();
+
+				const auto &modelIndices = application->modelTypesUI->markedModels;
+
+				ProgressTracker::Context progressTracker( modelIndices.size() + 1 );
+				for( auto modelIndex = modelIndices.begin() ; modelIndex != modelIndices.end() ; ++modelIndex ) {
 					sampleInstances( application->world.get(), application->candidateFinder, *modelIndex );
-					}
-					application->candidateFinder.integrateDatasets();
+					progressTracker.markFinished();
+				}
+				
+				application->candidateFinder.integrateDatasets();
+				progressTracker.markFinished();
+
+				application->endLongOperation();
 			} ) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
 			ui.add( AntTWBarUI::makeSharedButton( "Query volume", [this] () {
@@ -510,7 +553,9 @@ namespace aop {
 						std::cerr << "No volume selected!\n";
 					}
 					void visit( Editor::ObbSelection *selection ) {
+						application->startLongOperation();
 						auto matchInfos = queryVolume( application->world.get(), application->candidateFinder, selection->getObb() );
+						application->endLongOperation();
 
 						typedef ProbeDatabase::Query::MatchInfo MatchInfo;
 						boost::sort( matchInfos, [] (const MatchInfo &a, MatchInfo &b ) {
@@ -767,7 +812,7 @@ namespace aop {
 	}
 
 	void Application::init() {
-		timedLog.init();
+		timedLog.reset( new TimedLog( this ) );
 
 		ProbeGenerator::initDirections();
 
@@ -813,7 +858,7 @@ namespace aop {
 
 	void Application::eventLoop() {
 		sf::Text renderDuration;
-		renderDuration.setCharacterSize( 10 );
+		renderDuration.setCharacterSize( 12 );
 
 		KeyAction reloadShadersAction( "reload shaders", sf::Keyboard::R, [&] () { world->sceneRenderer.reloadShaders(); } );
 		eventDispatcher.addEventHandler( make_nonallocated_shared( reloadShadersAction ) );
@@ -866,12 +911,11 @@ namespace aop {
 				
 			updateUI();
 
-			timedLog.updateTime( clock.getElapsedTime().asSeconds() );
-			timedLog.updateText();
+			timedLog->updateTime( clock.getElapsedTime().asSeconds() );
+			timedLog->updateText();
 
 			{
 				boost::timer::cpu_timer renderTimer;
-
 
 				//probeVisualization.render();
 
@@ -935,18 +979,7 @@ namespace aop {
 					mainWindow.draw( renderDuration );
 				}
 				
-				{
-					const auto height = timedLog.renderText.getLocalBounds().height;
-
-					sf::RectangleShape logBackground;
-					logBackground.setPosition( 0.0, 0.0 );
-					logBackground.setSize( sf::Vector2f( windowSize.x, height ) );
-					logBackground.setFillColor( sf::Color( 20, 20, 20, 128 ) );
-					mainWindow.draw( logBackground );
-
-					timedLog.renderText.setPosition( 0.0, 0.0 );
-					mainWindow.draw( timedLog.renderText );
-				}
+				timedLog->renderAsNotifications();
 
 				mainWindow.popGLStates();
 			}
@@ -959,28 +992,42 @@ namespace aop {
 		}
 	}
 
-	void Application::updateProgress( float percentage ) {
+	void Application::updateProgress() {
 		const sf::Vector2i windowSize( mainWindow.getSize() );
-
-		timedLog.updateText();
-		timedLog.renderText.setPosition( 0.0, windowSize.y * 0.9 - timedLog.renderText.getLocalBounds().height );
 
 		mainWindow.pushGLStates();
 		mainWindow.resetGLStates();
 		glClearColor( 0.2, 0.2, 0.2, 1.0 );
 		mainWindow.clear();
 		glClearColor( 0.0, 0.0, 0.0, 0.0 );
-		mainWindow.draw( timedLog.renderText );
+	
+		timedLog->updateTime( clock.getElapsedTime().asSeconds() );
+		timedLog->updateText();
+		timedLog->renderAsLog();
 
 		sf::RectangleShape progressBar;
-		progressBar.setPosition( 0.0, windowSize.y * 0.9 );
-		progressBar.setSize( sf::Vector2f( windowSize.x * percentage, windowSize.y * 0.1 ) );
-		progressBar.setFillColor( sf::Color( 100, 255, 100 ) );
+		progressBar.setPosition( 0.0, windowSize.y * 0.95 );
+		
+		const float progressPercentage = ProgressTracker::getProgress();
+		progressBar.setSize( sf::Vector2f( windowSize.x * progressPercentage, windowSize.y * 0.05 ) );
+		progressBar.setFillColor( sf::Color( 100 * progressPercentage, 255, 100 * progressPercentage) );
 		mainWindow.draw( progressBar );
 
 		mainWindow.popGLStates();
 
 		mainWindow.display();
+	}
+
+	void Application::startLongOperation() {
+		timedLog->notifyApplicationOnMessage = true;
+		ProgressTracker::onMarkFinished = [&] () {
+			updateProgress();
+		};
+	}
+
+	void Application::endLongOperation() {
+		timedLog->notifyApplicationOnMessage = false;
+		ProgressTracker::onMarkFinished = nullptr;
 	}
 }
 

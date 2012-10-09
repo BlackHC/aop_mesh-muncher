@@ -3,11 +3,16 @@
 #include <vector>
 #include <iostream>
 
+#include <SFML/System/Lock.hpp>
+#include <SFML/System/Mutex.hpp>
+
 namespace Log {
 	namespace {
 		std::vector< std::function< MessageSink > > messageSinks;
 
-		int currentScope;
+		__declspec( thread ) int currentScope;
+
+		sf::Mutex mutex;
 	}
 
 	namespace Utility {
@@ -51,8 +56,14 @@ namespace Log {
 		currentScope--;
 	}
 
+	void initThreadScope( int baseScope, int threadIndex ) {
+		currentScope = baseScope;
+	}
+
 	namespace {
 		void add( int scope, const std::string &message, enum Type type ) {
+			sf::Lock lock( mutex );
+
 			if( !messageSinks.empty() ) {
 				for( auto sink = messageSinks.rbegin() ; sink != messageSinks.rend() ; sink++ ) {
 					if( !(*sink)( scope, message, type ) ) {
