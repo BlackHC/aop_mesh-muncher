@@ -501,7 +501,14 @@ struct NeighborhoodDatabaseV2 {
 				// scores for the current id
 				std::vector<float> idScore( numEntries );
 
-				const auto &queryData = queryDataset.getDistancesById()[ id ];				
+				const auto &queryData = 
+						id < queryDataset.getNumIds()
+					?
+						queryDataset.getDistancesById()[ id ]
+					:
+						emptyDistances
+				;
+
 				const int numQueryBins = queryData.size();
 
 				// (distance, entry, globalInstanceIndex)
