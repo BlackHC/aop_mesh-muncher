@@ -43,6 +43,7 @@ namespace aop {
 
 		ProbeDatabase candidateFinder;
 		NeighborhoodDatabase neighborDatabase;
+		NeighborhoodDatabaseV2 neighborDatabaseV2;
 
 		Application() {}
 

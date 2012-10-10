@@ -65,6 +65,8 @@ using namespace Eigen;
 
 #include "neighborhoodDatabase.h"
 
+const float neighborhoodMaxDistance = 150.0;
+
 std::weak_ptr<AntTweakBarEventHandler::GlobalScope> AntTweakBarEventHandler::globalScope;
 
 void visualizeProbes( float resolution, const std::vector< SGSInterface::Probe > &probes );
@@ -101,6 +103,45 @@ NeighborhoodDatabase::Query::Results queryVolumeNeighbors( SGSInterface::World *
 
 	return results;
 }
+
+//////////////////////////////////////////////////////////////////////////
+// V2
+// 
+
+void sampleAllNeighborsV2( float maxDistance, NeighborhoodDatabaseV2 &database, SGSInterface::World &world ) {
+	AUTO_TIMER_FOR_FUNCTION();
+
+	database.numIds = world.scene.models.size();
+
+	const int numInstances = world.sceneRenderer.getNumInstances();
+
+	for( int instanceIndex = 0 ; instanceIndex < numInstances ; instanceIndex++ ) {
+		auto queryResults = world.sceneGrid.query( 
+			-1,
+			instanceIndex, 
+			world.sceneRenderer.getInstanceTransformation( instanceIndex ).translation(),
+			maxDistance
+		);
+
+		const int modelIndex = world.sceneRenderer.getModelIndex( instanceIndex );
+
+		database.getEntryById( modelIndex ).addInstance( std::move( queryResults ) );
+	}
+}
+
+NeighborhoodDatabaseV2::Query::Results queryVolumeNeighborsV2( SGSInterface::World *world, NeighborhoodDatabaseV2 &database, const Vector3f &position, float maxDistance, float tolerance ) {
+	auto sceneQueryResults = world->sceneGrid.query( -1, -1, position, maxDistance );
+
+	NeighborhoodDatabaseV2::Query query( database, tolerance, std::move( sceneQueryResults ) );
+	auto results = query.execute();
+
+	for( auto result = results.begin() ; result != results.end() ; ++result ) {
+		log( boost::format( "%i: %f" ) % result->second % result->first );
+	}
+
+	return results;
+}
+//////////////////////////////////////////////////////////////////////////
 
 struct EigenVector3fUIFactory : AntTWBarUI::SimpleStructureFactory< Eigen::Vector3f, EigenVector3fUIFactory > {
 	template< typename Accessor >
@@ -648,6 +689,7 @@ namespace aop {
 				};
 				QueryVolumeVisitor( application ).dispatch( application->editor.selection );
 			} ) );
+			ui.add( AntTWBarUI::makeSharedSeparator() );
 			ui.add( AntTWBarUI::makeSharedButton( "Query neighbors", [this] () {
 				struct QueryNeighborsVisitor : Editor::SelectionVisitor {
 					Application *application;
@@ -655,11 +697,36 @@ namespace aop {
 					QueryNeighborsVisitor( Application *application ) : application( application ) {}
 
 					void visit() {
-						std::cerr << "No volume selected!\n";
+						logError( "No volume selected!\n" );
 					}
 					void visit( Editor::ObbSelection *selection ) {
 						application->startLongOperation();
-						auto queryResults = queryVolumeNeighbors( application->world.get(), application->neighborDatabase, selection->getObb().transformation.translation(), 100.0, 1.0 );
+						auto queryResults = queryVolumeNeighbors( application->world.get(), application->neighborDatabase, selection->getObb().transformation.translation(), neighborhoodMaxDistance, 1.0 );
+						application->endLongOperation();
+
+						std::vector<int> modelIndices;
+						for( auto queryResult = queryResults.begin() ; queryResult != queryResults.end() ; ++queryResult ) {
+							modelIndices.push_back( queryResult->second );	
+						}
+
+						application->candidateSidebar->clear();
+						application->candidateSidebar->addModels( modelIndices, selection->getObb().transformation.translation() );
+					}
+				};
+				QueryNeighborsVisitor( application ).dispatch( application->editor.selection );
+			} ) );
+			ui.add( AntTWBarUI::makeSharedButton( "Query neighbors V2", [this] () {
+				struct QueryNeighborsVisitor : Editor::SelectionVisitor {
+					Application *application;
+
+					QueryNeighborsVisitor( Application *application ) : application( application ) {}
+
+					void visit() {
+						logError( "No volume selected!\n" );
+					}
+					void visit( Editor::ObbSelection *selection ) {
+						application->startLongOperation();
+						auto queryResults = queryVolumeNeighborsV2( application->world.get(), application->neighborDatabaseV2, selection->getObb().transformation.translation(), neighborhoodMaxDistance, 1.0 );
 						application->endLongOperation();
 
 						std::vector<int> modelIndices;
@@ -925,7 +992,8 @@ namespace aop {
 		initSGSInterface();
 
 		// TODO: fix parameter order [10/10/2012 kirschan2]
-		sampleAllNeighbors( 100.0, neighborDatabase, *world );
+		sampleAllNeighbors( neighborhoodMaxDistance, neighborDatabase, *world );
+		sampleAllNeighborsV2( neighborhoodMaxDistance, neighborDatabaseV2, *world );
 
 		candidateFinder.reserveIds( world->scene.modelNames.size() );
 
