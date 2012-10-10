@@ -147,3 +147,91 @@ TEST( NeighborhoodDatabase_Query, all ) {
 	EXPECT_FLOAT_EQ( 1.0f, results.front().first );
 	EXPECT_EQ( 1, results.front().second );
 }
+
+//////////////////////////////////////////////////////////////////////////
+// V2
+// 
+
+TEST( NeighborhoodDatabaseV2_SortedDataset, all ) {
+	NeighborhoodDatabaseV2::numIds = 100;
+
+	NeighborhoodDatabaseV2::RawDataset rawDataset;
+
+	for( int id = 100 - 1 ; id >= 0 ; id-- ) {
+		for( int distance = 10 - 1 ; distance >= 0 ; distance-- ) {
+			rawDataset.push_back( std::make_pair( id, float( distance ) ) );
+		}
+	}
+
+	NeighborhoodDatabaseV2::SortedDataset sortedDataset( std::move( rawDataset ) );
+	
+	ASSERT_EQ( 100, sortedDataset.getDistancesById().size() );
+	for( int id = 0 ; id < 100 ; id++ ) {
+		const auto &distances = sortedDataset.getDistancesById()[id];
+		
+		for( int distance = 0 ; distance < 10 ; distance++ ) {
+			EXPECT_FLOAT_EQ( float( distance ), distances[ distance ] );	
+		}
+	}
+}
+
+TEST( NeighborhoodDatabaseV2, getEntryById ) {
+	NeighborhoodDatabaseV2 db;
+
+	auto &a = db.getEntryById( 10 );
+	auto &b = db.getEntryById( 10 );
+
+	ASSERT_EQ( &a, &b );
+
+	auto &c = db.getEntryById( 100 );
+
+	ASSERT_NE( &b, &c );
+}
+
+TEST( NeighborhoodDatabaseV2_Entry, addInstance ) {
+	NeighborhoodDatabaseV2::numIds = 100;
+
+	NeighborhoodDatabaseV2 db;
+
+	auto &entry = db.getEntryById( 1 );
+
+	NeighborhoodDatabaseV2::RawDataset rawDataset;
+
+	for( int id = 100 - 1 ; id >= 0 ; id-- ) {
+		for( int distance = 10 - 1 ; distance >= 0 ; distance-- ) {
+			rawDataset.push_back( std::make_pair( id, float( distance ) ) );
+		}
+	}
+
+	ASSERT_TRUE( entry.instances.empty() );
+
+	entry.addInstance( std::move( rawDataset ) );
+
+	ASSERT_EQ( 1, entry.instances.size() );
+}
+
+TEST( NeighborhoodDatabaseV2_Query, all ) {
+	NeighborhoodDatabaseV2::numIds = 100;
+
+	NeighborhoodDatabaseV2 db;
+
+	auto &entry = db.getEntryById( 1 );
+
+	NeighborhoodDatabaseV2::RawDataset rawDataset;
+
+	for( int id = 100 - 1 ; id >= 0 ; id-- ) {
+		for( int distance = 10 - 1 ; distance >= 0 ; distance-- ) {
+			rawDataset.push_back( std::make_pair( id, float( distance ) ) );
+		}
+	}
+
+	entry.addInstance( std::move( NeighborhoodDatabaseV2::RawDataset( rawDataset ) ) );
+
+	NeighborhoodDatabaseV2::Query query( db, 2.0, std::move( rawDataset ) );
+
+	const auto results = query.execute();
+
+	ASSERT_EQ( 1, results.size() );
+	EXPECT_FLOAT_EQ( 1.0f, results.front().first );
+	EXPECT_EQ( 1, results.front().second );
+}
