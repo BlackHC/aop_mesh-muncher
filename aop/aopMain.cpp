@@ -92,6 +92,8 @@ void sampleAllNeighbors( float maxDistance, NeighborhoodDatabase &database, SGSI
 }
 
 NeighborhoodDatabase::Query::Results queryVolumeNeighbors( SGSInterface::World *world, NeighborhoodDatabase &database, const Vector3f &position, float maxDistance, float tolerance ) {
+	AUTO_TIMER_FOR_FUNCTION();
+
 	auto sceneQueryResults = world->sceneGrid.query( -1, -1, position, maxDistance );
 
 	NeighborhoodDatabase::Query query( database, tolerance, maxDistance, std::move( sceneQueryResults ) );
@@ -125,11 +127,13 @@ void sampleAllNeighborsV2( float maxDistance, NeighborhoodDatabaseV2 &database, 
 
 		const int modelIndex = world.sceneRenderer.getModelIndex( instanceIndex );
 
-		database.getEntryById( modelIndex ).addInstance( std::move( queryResults ) );
+		database.addInstance( modelIndex, std::move( queryResults ) );
 	}
 }
 
 NeighborhoodDatabaseV2::Query::Results queryVolumeNeighborsV2( SGSInterface::World *world, NeighborhoodDatabaseV2 &database, const Vector3f &position, float maxDistance, float tolerance ) {
+	AUTO_TIMER_FOR_FUNCTION();
+
 	auto sceneQueryResults = world->sceneGrid.query( -1, -1, position, maxDistance );
 
 	NeighborhoodDatabaseV2::Query query( database, tolerance, std::move( sceneQueryResults ) );

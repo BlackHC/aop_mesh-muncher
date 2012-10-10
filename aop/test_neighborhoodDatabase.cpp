@@ -153,8 +153,6 @@ TEST( NeighborhoodDatabase_Query, all ) {
 // 
 
 TEST( NeighborhoodDatabaseV2_SortedDataset, all ) {
-	NeighborhoodDatabaseV2::numIds = 100;
-
 	NeighborhoodDatabaseV2::RawDataset rawDataset;
 
 	for( int id = 100 - 1 ; id >= 0 ; id-- ) {
@@ -189,11 +187,9 @@ TEST( NeighborhoodDatabaseV2, getEntryById ) {
 }
 
 TEST( NeighborhoodDatabaseV2_Entry, addInstance ) {
-	NeighborhoodDatabaseV2::numIds = 100;
-
 	NeighborhoodDatabaseV2 db;
 
-	auto &entry = db.getEntryById( 1 );
+	const auto &constEntry = db.getEntryById( 1 );
 
 	NeighborhoodDatabaseV2::RawDataset rawDataset;
 
@@ -203,19 +199,15 @@ TEST( NeighborhoodDatabaseV2_Entry, addInstance ) {
 		}
 	}
 
-	ASSERT_TRUE( entry.instances.empty() );
+	ASSERT_TRUE( constEntry.instances.empty() );
 
-	entry.addInstance( std::move( rawDataset ) );
+	db.addInstance( 1, std::move( rawDataset ) );
 
-	ASSERT_EQ( 1, entry.instances.size() );
+	ASSERT_EQ( 1, constEntry.instances.size() );
 }
 
 TEST( NeighborhoodDatabaseV2_Query, all ) {
-	NeighborhoodDatabaseV2::numIds = 100;
-
 	NeighborhoodDatabaseV2 db;
-
-	auto &entry = db.getEntryById( 1 );
 
 	NeighborhoodDatabaseV2::RawDataset rawDataset;
 
@@ -225,7 +217,7 @@ TEST( NeighborhoodDatabaseV2_Query, all ) {
 		}
 	}
 
-	entry.addInstance( std::move( NeighborhoodDatabaseV2::RawDataset( rawDataset ) ) );
+	db.addInstance( 1, std::move( NeighborhoodDatabaseV2::RawDataset( rawDataset ) ) );
 
 	NeighborhoodDatabaseV2::Query query( db, 2.0, std::move( rawDataset ) );
 

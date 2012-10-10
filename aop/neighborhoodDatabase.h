@@ -391,15 +391,12 @@ struct NeighborhoodDatabaseV2 {
 	typedef int Id;
 	static const int INVALID_ID = -1;
 
-	static int numIds;
-
 	typedef std::vector< float > Distances;
 
 	typedef std::pair< Id, float > IdDistancePair;
-	typedef std::vector< IdDistancePair > RawDataset;
-
 	typedef std::pair< float, Id > DistanceIdPair;
-
+	
+	typedef std::vector< IdDistancePair > RawDataset;
 	typedef std::vector< Distances > DistancesById; // index with [id]!
 	
 	// make sure we add entries for all IDs for later
@@ -407,6 +404,14 @@ struct NeighborhoodDatabaseV2 {
 		SortedDataset( RawDataset &&rawDataset ) {
 			boost::sort( rawDataset );
 
+			if( rawDataset.empty() ) {
+				numIds = 0;
+				return;
+			}
+
+			// rawData is sorted by id first
+			numIds = rawDataset.back().first + 1;
+			
 			distancesById.resize( numIds );
 
 			for( auto idDistancePair = rawDataset.begin() ; idDistancePair != rawDataset.end() ; ++idDistancePair ) {
@@ -418,8 +423,14 @@ struct NeighborhoodDatabaseV2 {
 			return distancesById;
 		}
 
+		int getNumIds() const {
+			return numIds;
+		}
+
 	private:
 		DistancesById distancesById;
+
+		int numIds;
 	};
 	
 	struct Entry {
@@ -434,9 +445,16 @@ struct NeighborhoodDatabaseV2 {
 
 	typedef std::pair< int, Entry > IdEntryPair;
 
+	int numIds;
 	std::vector< IdEntryPair > entriesById;
 
-	Entry &getEntryById( Id id ) {
+	NeighborhoodDatabaseV2() : numIds() {}
+
+	const Entry &getEntryById( Id id ) {
+		return internal_getEntryById( id );
+	} 
+
+	Entry &internal_getEntryById( Id id ) {
 		for( auto idEntryPair = entriesById.begin() ; idEntryPair != entriesById.end() ; ++idEntryPair ) {
 			if( idEntryPair->first == id ) {
 				return idEntryPair->second;
@@ -445,6 +463,11 @@ struct NeighborhoodDatabaseV2 {
 
 		entriesById.push_back( std::make_pair( id, Entry() ) );
 		return entriesById.back().second;
+	}
+
+	void addInstance( Id id, SortedDataset &&sortedDataset ) {
+		numIds = std::max( numIds, sortedDataset.getNumIds() );
+		internal_getEntryById( id ).addInstance( std::move( sortedDataset ) );
 	}
 
 	struct Query {
@@ -465,12 +488,14 @@ struct NeighborhoodDatabaseV2 {
 		typedef std::vector< ScoreIdPair > Results;
 
 		Results execute() {
+			Distances emptyDistances;
+
 			const int numEntries = database.entriesById.size();
 			// total score of all entries
 			std::vector<float> totalScore( numEntries );
 			
 			// we iterate over all ids
-			for( int id = 0 ; id < numIds ; ++id ) {
+			for( int id = 0 ; id < database.numIds ; ++id ) {
 				const float idTolerance = 1.0;
 
 				// scores for the current id
@@ -480,7 +505,26 @@ struct NeighborhoodDatabaseV2 {
 				const int numQueryBins = queryData.size();
 
 				// (distance, entry, globalInstanceIndex)
-				typedef boost::tuple< float, int, int > Mismatch;
+				struct Mismatch {
+					float distance;
+					int entryIndex;
+					int globalInstanceIndex; 
+
+					Mismatch( float distance, int entryIndex, int globalInstanceIndex ) :
+						distance( distance ),
+						entryIndex( entryIndex ),
+						globalInstanceIndex( globalInstanceIndex )
+					{
+					}
+
+					static bool less_by_distance( const Mismatch &a, const Mismatch &b ) {
+						return a.distance < b.distance;
+					}
+
+					static bool less_by_globalInstanceIndex( const Mismatch &a, const Mismatch &b ) {
+						return a.globalInstanceIndex < b.globalInstanceIndex;
+					}
+				};
 				std::vector< Mismatch > mismatches;
 
 				// first phase: matches + query mismatches 
@@ -495,7 +539,14 @@ struct NeighborhoodDatabaseV2 {
 						const Entry &entry = database.entriesById[ entryIndex ].second;
 
 						for( int instanceIndex = 0 ; instanceIndex < entry.instances.size() ; ++instanceIndex, ++globalInstanceIndex ) {
-							const Distances &instanceDistances = entry.instances[ instanceIndex ].getDistancesById()[ id ];
+							const auto &instance = entry.instances[ instanceIndex ];
+							const Distances &instanceDistances = 
+									id < instance.getNumIds() 
+								?
+									instance.getDistancesById()[ id ]
+								:
+									emptyDistances
+							;
 						
 							auto instanceDistance = instanceDistances.begin();
 							for( int queryDistanceIndex = 0 ; queryDistanceIndex < numQueryBins ; ++queryDistanceIndex ) {
@@ -545,106 +596,102 @@ struct NeighborhoodDatabaseV2 {
 					}
 				}
 
-				int numMismatchBins = 0;
-				// second pass: process mismatches
-				while( !mismatches.empty() ) {
-					// TODO: write predicates and custom structs, so we can use one type for bin elements and mismatches
-					// sort the mismatches by distance first
-					boost::sort( mismatches );
+				{
+					// we need another vector to hold the mismatches we cant process
+					std::vector< Mismatch > deferredMismatches;
+					deferredMismatches.reserve( mismatches.size() );
 
-					std::vector< Mismatch > leftOverMismatches;
-					leftOverMismatches.reserve( mismatches.size() );
+					int numMismatchBins = 0;
+					// second pass: process mismatches
+					while( !mismatches.empty() ) {
+						// sort the mismatches by distance first
+						boost::sort( mismatches, Mismatch::less_by_distance );
 
-					// (globalInstanceIndex, entry, distance)
-					typedef boost::tuple< int, int, float > BinElement; 
-					std::vector< BinElement > binElements;
-					binElements.reserve( mismatches.size() );
-
-					// TODO: we can create and sort the bin in-place then.. [10/10/2012 kirschan2]
-
-					// add all mismatches into bins
-					for( auto mismatch = mismatches.cbegin() ; mismatch != mismatches.cend() ; ) {
-						const float leftDistance = mismatch->get<0>();
-						do {
-							binElements.emplace_back( BinElement( mismatch->get<2>(), mismatch->get<1>(), mismatch->get<0>() ) );
-							++mismatch;
-						} while( 
-							mismatch != mismatches.end() &&
-							mismatch->get<0>() <= leftDistance + 2 * idTolerance + queryTolerance 
-						);
-						
-						// sort by globalInstanceIndex and then entry (globalInstanceIndex is already sorted by entry implicitly)
-						boost::sort( binElements );
-						numMismatchBins++;
-
-						// count the number of unique instance elements
-						int uniqueInstanceElements = 0;
-						for( auto binElement = binElements.cbegin() ; binElement != binElements.cend() ; ) {
-							const int globalInstanceIndex = binElement->get<0>();
-							++binElement;
-							++uniqueInstanceElements;
-
-							// skip over additional mismatches from globalInstanceIndex in this bin
-							// and add them to the left over mismatches, because we cant process them this round
-							while( 
-								binElement != binElements.cend() &&
-								binElement->get<0>() == globalInstanceIndex
-							) {
-								leftOverMismatches.emplace_back( Mismatch( binElement->get<2>(), binElement->get<1>(), binElement->get<0>() ) );
-								binElement++;
-							}
-						}
-
-						// count the entry elements in this bin and calculate the probability of the mismatch
-						for( auto binElement = binElements.cbegin() ; binElement != binElements.cend() ; ) {
-							const int entryIndex = binElement->get<1>();
-
-							// count the unique elements with this entryIndex
-							int uniqueEntryElements = 0;
-							do {
-								const int globalInstanceIndex = binElement->get<0>();
+						// add all mismatches into bins
+						for( auto mismatch = mismatches.begin() ; mismatch != mismatches.end() ; ) {
+							const auto binBegin = mismatch;
+							{
+								const float beginDistance = binBegin->distance;
+								const float endDistance = beginDistance + 2 * idTolerance + queryTolerance;
 								do {
+									++mismatch;
+								} while( 
+									mismatch != mismatches.end() &&
+									mismatch->distance <= endDistance
+								);
+							}					
+							const auto binEnd = mismatch;
+						
+							// sort by globalInstanceIndex and then entry (globalInstanceIndex is already sorted by entry implicitly)
+							std::sort( binBegin, binEnd, Mismatch::less_by_globalInstanceIndex );
+							numMismatchBins++;
+
+							// count the number of unique instance elements
+							int uniqueInstanceElements = 0;
+							for( auto binElement = binBegin ; binElement != binEnd ; ) {
+								const int globalInstanceIndex = binElement->globalInstanceIndex;
+								++binElement;
+								++uniqueInstanceElements;
+
+								// skip over additional mismatches from globalInstanceIndex in this bin
+								// and add them to the left over mismatches, because we cant process them this round
+								while( 
+									binElement != binEnd &&
+									binElement->globalInstanceIndex == globalInstanceIndex
+								) {
+									deferredMismatches.push_back( *binElement );
 									binElement++;
 								}
+							}
+
+							// count the entry elements in this bin and calculate the probability of the mismatch
+							for( auto binElement = binBegin ; binElement != binEnd ; ) {
+								const int entryIndex = binElement->entryIndex;
+
+								// count the unique elements with this entryIndex
+								int uniqueEntryElements = 0;
+								do {
+									const int globalInstanceIndex = binElement->entryIndex;
+									do {
+										binElement++;
+									}
+									while(
+										binElement != binEnd &&
+										binElement->globalInstanceIndex == globalInstanceIndex
+									);
+
+									uniqueEntryElements++;
+								}
 								while(
-									binElement != binElements.cend() &&
-									binElement->get<0>() == globalInstanceIndex
+									binElement != binEnd &&
+									binElement->entryIndex == entryIndex
 								);
 
-								uniqueEntryElements++;
+								// calculate the conditional probability that we have a match
+								const float conditionalProbability = float( uniqueEntryElements ) / uniqueInstanceElements;
+								// mismatch, so we add the complement
+								idScore[ entryIndex ] += 1.0 - conditionalProbability;
 							}
-							while(
-								binElement != binElements.cend() &&
-								binElement->get<1>() == entryIndex
-							);
-
-							// calculate the conditional probability that we have a match
-							const float conditionalProbability = float( uniqueEntryElements ) / uniqueInstanceElements;
-							// mismatch, so we add the complement
-							idScore[ entryIndex ] += 1.0 - conditionalProbability;
 						}
 
-						// reset binElements for the next round
-						binElements.clear();
+						// use the left over mismatches for the next round until we're done with everything
+						mismatches.swap( deferredMismatches );
+						deferredMismatches.clear();
 					}
 
-					// use the left over mismatches for the next round until we're done with everything
-					mismatches.swap( leftOverMismatches );
-				}
-
-				// update the total score
-				for( int entryIndex = 0 ; entryIndex < numEntries ; ++entryIndex ) {
-					totalScore[ entryIndex ] += idScore[ entryIndex ] / (numQueryBins +  numMismatchBins);
+					// update the total score
+					for( int entryIndex = 0 ; entryIndex < numEntries ; ++entryIndex ) {
+						totalScore[ entryIndex ] += idScore[ entryIndex ] / (numQueryBins +  numMismatchBins);
+					}
 				}
 			}
-
 			// compute the final score and store it in our results data structure
 			{
 				Results results;
 				for( int entryIndex = 0 ; entryIndex < numEntries ; ++entryIndex ) {
 					const auto entryId = database.entriesById[ entryIndex ].first;
 
-					const float score = totalScore[ entryIndex ] / numIds;
+					const float score = totalScore[ entryIndex ] / database.numIds;
 					results.push_back( ScoreIdPair( score, entryId ) );
 				}
 				boost::sort( results, std::greater< ScoreIdPair >() );
