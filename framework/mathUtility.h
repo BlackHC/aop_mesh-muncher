@@ -40,10 +40,9 @@ template< typename Vector > Vector permute_reverse( const Vector &w, const int *
 inline Eigen::Matrix4f permutedToUnpermutedMatrix( const int *permutation );
 inline Eigen::Matrix4f unpermutedToPermutedMatrix( const int *permutation );
 
-Obb makeOBB( const Eigen::Matrix4f &transformation, const Eigen::AlignedBox3f &alignedBox );
+inline Obb makeOBB( const Eigen::Affine3f &transformation, const Eigen::AlignedBox3f &alignedBox );
 
 const Eigen::Vector3f flipSign( const Eigen::Vector3f &v, const Eigen::Vector3f &c );
-
 
 const Eigen::Vector3i indexToCubeCorner[] = {
 	Eigen::Vector3i( 0,0,0 ), Eigen::Vector3i( 1,0,0 ), Eigen::Vector3i( 0,1,0 ), Eigen::Vector3i( 0,0,1 ),

@@ -63,27 +63,43 @@ using namespace Eigen;
 #include "logger.h"
 #include <progressTracker.h>
 
+#include "neighborhoodDatabase.h"
+
 std::weak_ptr<AntTweakBarEventHandler::GlobalScope> AntTweakBarEventHandler::globalScope;
 
 void visualizeProbes( float resolution, const std::vector< SGSInterface::Probe > &probes );
 
-DebugRender::CombinedCalls selectionDR;
+// TODO: reorder the parameters in some consistent way! [10/10/2012 kirschan2]
+void sampleAllNeighbors( float maxDistance, NeighborhoodDatabase &database, SGSInterface::World &world ) {
+	AUTO_TIMER_FOR_FUNCTION();
 
-void selectObjectsByModelID( SGSSceneRenderer &renderer, int modelIndex ) {
-	SGSSceneRenderer::InstanceIndices indices = renderer.getModelInstances( modelIndex );
+	const int numInstances = world.sceneRenderer.getNumInstances();
 
-	selectionDR.begin();
-	selectionDR.setColor( Eigen::Vector3f::UnitX() );
+	for( int instanceIndex = 0 ; instanceIndex < numInstances ; instanceIndex++ ) {
+		auto queryResults = world.sceneGrid.query( 
+			-1,
+			instanceIndex, 
+			world.sceneRenderer.getInstanceTransformation( instanceIndex ).translation(),
+			maxDistance
+		);
 
-	for( auto instanceIndex = indices.begin() ; instanceIndex != indices.end() ; ++instanceIndex ) {
-		auto transformation = renderer.getInstanceTransformation( *instanceIndex );
-		auto boundingBox = renderer.getUntransformedInstanceBoundingBox( *instanceIndex );
+		const int modelIndex = world.sceneRenderer.getModelIndex( instanceIndex );
 
-		selectionDR.setTransformation( transformation.matrix() );
-		selectionDR.drawAABB( boundingBox.min(), boundingBox.max() );
+		database.getEntryById( modelIndex ).addInstance( std::move( queryResults ) );
+	}
+}
+
+NeighborhoodDatabase::Query::Results queryVolumeNeighbors( SGSInterface::World *world, NeighborhoodDatabase &database, const Vector3f &position, float maxDistance, float tolerance ) {
+	auto sceneQueryResults = world->sceneGrid.query( -1, -1, position, maxDistance );
+
+	NeighborhoodDatabase::Query query( database, tolerance, maxDistance, std::move( sceneQueryResults ) );
+	auto results = query.execute();
+
+	for( auto result = results.begin() ; result != results.end() ; ++result ) {
+		log( boost::format( "%i: %f" ) % result->second % result->first );
 	}
 
-	selectionDR.end();
+	return results;
 }
 
 struct EigenVector3fUIFactory : AntTWBarUI::SimpleStructureFactory< Eigen::Vector3f, EigenVector3fUIFactory > {
@@ -315,6 +331,28 @@ namespace aop {
 			
 		WidgetContainer sidebar;
 
+		struct CandidateModelButton : ModelButtonWidget {
+			CandidateModelButton(
+				const Eigen::Vector2f &offset,
+				const Eigen::Vector2f &size,
+				int modelIndex,
+				SGSSceneRenderer &renderer,
+				const std::function<void()> &action = nullptr
+			) :
+				ModelButtonWidget( offset, size, modelIndex, renderer ),
+				action( action )
+			{}
+
+			std::function<void()> action;
+
+		private:
+			void onAction() {
+				if( action ) {
+					action();
+				}
+			}
+		};
+
 		CandidateSidebar( Application *application ) : application( application ) {
 			init();
 		}
@@ -330,17 +368,19 @@ namespace aop {
 			sidebar.eventHandlers.clear();
 		}
 
-		void addModels( std::vector<int> modelIndices ) {
+		void addModels( std::vector<int> modelIndices, const Eigen::Vector3f &position ) {
 			const float buttonWidth = 0.1;
-			const float buttonPadding = 0.05;
+			const float buttonAbsPadding = 32;
+			const float buttonVerticalPadding = buttonAbsPadding / ViewportContext::context->framebufferHeight;
+			const float buttonHorizontalPadding = buttonAbsPadding / ViewportContext::context->framebufferWidth;
 
 			// TODO: this was in init but meh
-			sidebar.transformChain.setOffset( Eigen::Vector2f( 1 - buttonPadding - buttonWidth, buttonPadding ) );
+			sidebar.transformChain.setOffset( Eigen::Vector2f( 1 - buttonHorizontalPadding - buttonWidth, buttonVerticalPadding ) );
 
 			const float buttonHeight = buttonWidth * ViewportContext::context->getAspectRatio();
-			const float buttonHeightWithPadding = buttonHeight + buttonPadding;
+			const float buttonHeightWithPadding = buttonHeight + buttonVerticalPadding;
 
-			const int maxNumModels = (1.0 - buttonPadding) / buttonHeightWithPadding;
+			const int maxNumModels = (1.0 - buttonVerticalPadding) / buttonHeightWithPadding;
 
 			// add 5 at most
 			const int numModels = std::min<int>( maxNumModels, modelIndices.size() );
@@ -349,11 +389,14 @@ namespace aop {
 				const int modelIndex = modelIndices[ i ];
 
 				sidebar.addEventHandler(
-					std::make_shared< ModelButtonWidget >(
+					std::make_shared< CandidateModelButton >(
 						Eigen::Vector2f( 0.0, i * buttonHeightWithPadding ),
 						Eigen::Vector2f( buttonWidth, buttonHeight ),
 						modelIndex,
-						application->world->sceneRenderer
+						application->world->sceneRenderer,
+						[this, modelIndex, position] () {
+							application->world->addInstance( modelIndex, position );
+						}
 					)
 				);
 			}
@@ -494,14 +537,14 @@ namespace aop {
 				markedModels.clear();
 			} ) );
 			markedModelsUi.add( AntTWBarUI::makeSharedButton( "= selection", [this] () {
-				ReplaceWithSelectionVisitor( this ).dispatch( application->editor.selection.get() );
+				ReplaceWithSelectionVisitor( this ).dispatch( application->editor.selection );
 			} ) );
 			markedModelsUi.add( AntTWBarUI::makeSharedButton( "+= selection", [this] () {
-				AppendSelectionVisitor( this ).dispatch( application->editor.selection.get() );
+				AppendSelectionVisitor( this ).dispatch( application->editor.selection );
 			} ) );
 			markedModelsUi.add( AntTWBarUI::makeSharedSeparator() );
 			markedModelsUi.add( AntTWBarUI::makeSharedButton( "selection =", [this] () {
-				application->editor.selection = std::make_shared<Editor::SGSMultiModelSelection>( &application->editor, markedModels );
+				application->editor.selectModels( markedModels );
 			} ) );
 			markedModelsUi.link();
 		}
@@ -569,13 +612,39 @@ namespace aop {
 						}
 
 						application->candidateSidebar->clear();
-						application->candidateSidebar->addModels( modelIndices );
+						application->candidateSidebar->addModels( modelIndices, selection->getObb().transformation.translation() );
 					}
 				};
-				QueryVolumeVisitor( application ).dispatch( application->editor.selection.get() );
+				QueryVolumeVisitor( application ).dispatch( application->editor.selection );
+			} ) );
+			ui.add( AntTWBarUI::makeSharedButton( "Query neighbors", [this] () {
+				struct QueryNeighborsVisitor : Editor::SelectionVisitor {
+					Application *application;
+
+					QueryNeighborsVisitor( Application *application ) : application( application ) {}
+
+					void visit() {
+						std::cerr << "No volume selected!\n";
+					}
+					void visit( Editor::ObbSelection *selection ) {
+						application->startLongOperation();
+						auto queryResults = queryVolumeNeighbors( application->world.get(), application->neighborDatabase, selection->getObb().transformation.translation(), 40.0, 5.0 );
+						application->endLongOperation();
+
+						std::vector<int> modelIndices;
+						for( auto queryResult = queryResults.begin() ; queryResult != queryResults.end() ; ++queryResult ) {
+							modelIndices.push_back( queryResult->second );	
+						}
+
+						application->candidateSidebar->clear();
+						application->candidateSidebar->addModels( modelIndices, selection->getObb().transformation.translation() );
+					}
+				};
+				QueryNeighborsVisitor( application ).dispatch( application->editor.selection );
 			} ) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
 			ui.add( AntTWBarUI::makeSharedButton( "Load database", [this] { application->candidateFinder.loadCache( "database"); } ) );
+			ui.add( AntTWBarUI::makeSharedButton( "Reset database", [this] { application->candidateFinder.reset(); } ) );
 			ui.add( AntTWBarUI::makeSharedButton( "Store database", [this] { application->candidateFinder.storeCache( "database"); } ) );
 			ui.link();
 		}
@@ -812,6 +881,8 @@ namespace aop {
 	}
 
 	void Application::init() {
+		Log::Sinks::addStdio();
+
 		timedLog.reset( new TimedLog( this ) );
 
 		ProbeGenerator::initDirections();
@@ -821,6 +892,9 @@ namespace aop {
 		initEventHandling();
 
 		initSGSInterface();
+
+		// TODO: fix parameter order [10/10/2012 kirschan2]
+		sampleAllNeighbors( 40.0, neighborDatabase, *world );
 
 		candidateFinder.reserveIds( world->scene.modelNames.size() );
 
@@ -845,7 +919,7 @@ namespace aop {
 
 		if( !settings.volumes.empty() ) {
 			// TODO: add select wrappers to editorWrapper or editor [10/3/2012 kirschan2]
-			editor.selection = std::make_shared< Editor::ObbSelection >( &editor, 0 );
+			editor.selectObb( 0 );
 		}
 	}
 
@@ -862,18 +936,6 @@ namespace aop {
 
 		KeyAction reloadShadersAction( "reload shaders", sf::Keyboard::R, [&] () { world->sceneRenderer.reloadShaders(); } );
 		eventDispatcher.addEventHandler( make_nonallocated_shared( reloadShadersAction ) );
-
-		{
-			const sf::Vector2i windowSize( mainWindow.getSize() );
-			ViewportContext viewportContext( windowSize.x, windowSize.y );
-
-			std::vector<int> modelIndices;
-			modelIndices.push_back( 0 );
-			modelIndices.push_back( 1 );
-			modelIndices.push_back( 2 );
-
-			candidateSidebar->addModels( modelIndices );
-		}
 
 		while (true)
 		{

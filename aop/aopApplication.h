@@ -11,7 +11,10 @@
 #include <SFML/Graphics.hpp>
 
 #include "aopSettings.h"
+
 #include "candidateFinderInterface.h"
+#include "neighborhoodDatabase.h"
+
 #include "editor.h"
 #include <deque>
 #include <logger.h>
@@ -39,6 +42,7 @@ namespace aop {
 		Settings settings;
 
 		ProbeDatabase candidateFinder;
+		NeighborhoodDatabase neighborDatabase;
 
 		Application() {}
 

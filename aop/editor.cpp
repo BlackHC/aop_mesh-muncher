@@ -209,6 +209,22 @@ void Editor::Selecting::onKeyboard( EventState &eventState ) {
 	case sf::Keyboard::LControl:
 		eventState.accept();
 		break;
+	case sf::Keyboard::Delete:
+		if( eventState.event.type == sf::Event::KeyReleased ) {
+			struct DeleteVisitor : SelectionVisitor {
+				Editor *editor;
+
+				DeleteVisitor( Editor *editor ) : editor( editor ) {}
+
+				void visit( SGSInstanceSelection *instanceSelection ) {
+					editor->world->removeInstance( instanceSelection->instanceIndex );
+					editor->deselect();
+				}
+			};
+			DeleteVisitor( editor ).dispatch( editor->selection );
+		}
+		eventState.accept();
+		break;
 	}
 }
 
@@ -235,7 +251,10 @@ void Editor::Selecting::onMouse( EventState &eventState ) {
 			const Obb *obb = editor->volumes->get( obbIndex );
 			float t;
 
-			if( intersectRayWithOBB( *obb, editor->view->viewerContext.worldViewerPosition, direction, nullptr, &t ) ) {
+			if( 
+				intersectRayWithOBB( *obb, editor->view->viewerContext.worldViewerPosition, direction, nullptr, &t ) &&
+				t > 0.0f
+			) {
 				if( bestOBB == -1 || bestT > t ) {
 					bestT = t;
 					bestOBB = obbIndex;
@@ -250,7 +269,7 @@ void Editor::Selecting::onMouse( EventState &eventState ) {
 				bestOBB = -1;
 				
 				if( !selectModel ) {
-					editor->selection = std::make_shared< SGSInstanceSelection >( editor, result.objectIndex );
+					editor->selectInstance( result.objectIndex );
 				}
 				else {
 					struct Selector : SelectionVisitor {
@@ -265,7 +284,7 @@ void Editor::Selecting::onMouse( EventState &eventState ) {
 						{}
 
 						void visit() {
-							editor->selection = std::make_shared< SGSMultiModelSelection >( editor, modelIndex );
+							editor->selectModel( modelIndex );
 						}
 
 						void visit( ISelection *selection ) {
@@ -282,13 +301,13 @@ void Editor::Selecting::onMouse( EventState &eventState ) {
 							}
 						}
 					};
-					Selector( editor, result.modelIndex, removeFromSelection ).dispatch( editor->selection.get() );
+					Selector( editor, result.modelIndex, removeFromSelection ).dispatch( editor->selection );
 				}
 			}
 		}
 
 		if( bestOBB != -1 ) {
-			editor->selection = std::make_shared< ObbSelection >( editor, bestOBB );
+			editor->selectObb( bestOBB );
 		}
 	}
 	eventState.accept();
@@ -304,7 +323,7 @@ void Editor::Placing::onMouse( EventState &eventState ) {
 			const auto transformation = editor->selection->getTransformation();
 			editor->selection->setTransformation(
 				Eigen::Translation3f( Eigen::map( result.hitPosition) ) * transformation.linear()
-				);
+			);
 		}
 	}
 	eventState.accept();

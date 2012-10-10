@@ -15,6 +15,8 @@
 
 #include <mathUtility.h>
 
+using namespace Eigen;
+
 void SGSSceneRenderer::bakeTerrainTexture( int detailFactor, float textureDetailFactor ) {
 	glPushAttrib( GL_ALL_ATTRIB_BITS );
 
@@ -34,8 +36,8 @@ void SGSSceneRenderer::bakeTerrainTexture( int detailFactor, float textureDetail
 
 	ScopedFramebufferObject fbo;
 
-	Eigen::Vector2i mapSize( scene->terrain.mapSize[0], scene->terrain.mapSize[1] );
-	Eigen::Vector2i bakeSize = mapSize * detailFactor;
+	Vector2i mapSize( scene->terrain.mapSize[0], scene->terrain.mapSize[1] );
+	Vector2i bakeSize = mapSize * detailFactor;
 
 	bakedTerrainTexture.load( 0, GL_RGBA8, bakeSize.x(), bakeSize.y(), 0, GL_RGBA, GL_UNSIGNED_BYTE );
 
@@ -214,9 +216,12 @@ void SGSSceneRenderer::processScene( const std::shared_ptr<SGSScene> &scene, con
 	loadStaticBuffers();
 	setVertexArrayObjects();
 
+	updateSceneBoundingBox();
+
 	prepareMaterialDisplayLists();
 
 	prerenderDebugInfos();
+	
 
 	// flush the cache if necessary
 	if( cacheChanged ) {
@@ -355,7 +360,7 @@ void SGSSceneRenderer::prerenderDebugInfos() {
 		for( int subObjectIndex = 0 ; subObjectIndex < scene->numSceneSubObjects ; ++subObjectIndex ) {
 			const SGSScene::BoundingSphere &boundingSphere = scene->subObjects[subObjectIndex].bounding.sphere;
 
-			debug.boundingSpheres.setPosition( Eigen::Vector3f::Map( boundingSphere.center ) );
+			debug.boundingSpheres.setPosition( Vector3f::Map( boundingSphere.center ) );
 			glColor3f( 0.0, 1.0, 1.0 );
 			debug.boundingSpheres.drawAbstractSphere( boundingSphere.radius, true, 5 );
 		}
@@ -366,7 +371,7 @@ void SGSSceneRenderer::prerenderDebugInfos() {
 		for( int tileIndex = 0 ; tileIndex < scene->terrain.tiles.size() ; tileIndex++ ) {
 			const SGSScene::BoundingSphere &boundingSphere = scene->terrain.tiles[tileIndex].bounding.sphere;
 
-			debug.boundingSpheres.setPosition( Eigen::Vector3f::Map( boundingSphere.center ) );
+			debug.boundingSpheres.setPosition( Vector3f::Map( boundingSphere.center ) );
 			glColor3f( 1.0, 1.0, 0.0 );
 			debug.boundingSpheres.drawAbstractSphere( boundingSphere.radius, true, 5 );
 		}
@@ -386,12 +391,7 @@ void SGSSceneRenderer::initShadowMap() {
 	sunShadowMap.parameter( GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL );
 }
 
-void SGSSceneRenderer::renderShadowmap( const RenderContext &renderContext ) {
-	using namespace Eigen;
-	initShadowMap();
-
-	// calculate bounding box
-	AlignedBox3f sceneBoundingBox;
+void SGSSceneRenderer::updateSceneBoundingBox() {
 	for( int tileIndex = 0 ; tileIndex < scene->terrain.tiles.size() ; tileIndex++ ) {
 		const SGSScene::BoundingBox &boundingBox = scene->terrain.tiles[tileIndex].bounding.box;
 
@@ -403,6 +403,10 @@ void SGSSceneRenderer::renderShadowmap( const RenderContext &renderContext ) {
 
 		sceneBoundingBox.extend( AlignedBox3f( Vector3f::Map( boundingBox.min ), Vector3f::Map( boundingBox.max ) ) );
 	}
+}
+
+void SGSSceneRenderer::renderShadowmap( const RenderContext &renderContext ) {
+	initShadowMap();
 
 	initShadowMapProjectionMatrix( sceneBoundingBox, Vector3f( 0.0, -1.0, -1.0 ).normalized() );
 
@@ -509,14 +513,14 @@ void SGSSceneRenderer::renderShadowmap( const RenderContext &renderContext ) {
 	//glStringMarkerGREMEDY( 0, "shadow map done" );
 }
 
-void SGSSceneRenderer::buildDrawLists( const Eigen::Matrix4f &projectionView, const RenderContext &renderContext ) {
-	Eigen::FrustumPlanesMatrixf frustumPlanes = Eigen::Frustum::normalize( Eigen::projectionToFrustumPlanes * projectionView );
+void SGSSceneRenderer::buildDrawLists( const Matrix4f &projectionView, const RenderContext &renderContext ) {
+	FrustumPlanesMatrixf frustumPlanes = Frustum::normalize( projectionToFrustumPlanes * projectionView );
 
 	if( debug.updateRenderLists ) {
 		terrainLists.clear();
 		for( int tileIndex = 0 ; tileIndex < scene->terrain.tiles.size() ; tileIndex++ ) {
 			const SGSScene::BoundingSphere &boundingSphere = scene->terrain.tiles[tileIndex].bounding.sphere;
-			if( Eigen::Frustum::isInside( frustumPlanes, Eigen::Map< const Eigen::Vector3f>( boundingSphere.center ).eval(), -boundingSphere.radius ) ) {
+			if( Frustum::isInside( frustumPlanes, Map< const Vector3f>( boundingSphere.center ).eval(), -boundingSphere.radius ) ) {
 				terrainLists.push_back( tileIndex );
 			}
 		}
@@ -535,7 +539,7 @@ void SGSSceneRenderer::buildDrawLists( const Eigen::Matrix4f &projectionView, co
 				const SGSScene::SubObject &subObject = scene->subObjects[subObjectIndex];
 				const SGSScene::BoundingSphere &boundingSphere = subObject.bounding.sphere;
 
-				if( Eigen::Frustum::isInside( frustumPlanes, Eigen::Vector3f::Map( boundingSphere.center ).eval(), -boundingSphere.radius ) ) {
+				if( Frustum::isInside( frustumPlanes, Vector3f::Map( boundingSphere.center ).eval(), -boundingSphere.radius ) ) {
 					if( scene->subObjects[subObjectIndex].material.alphaType == SGSScene::Material::AT_NONE ) {
 						solidLists.push_back( subObjectIndex );
 					}
@@ -548,7 +552,7 @@ void SGSSceneRenderer::buildDrawLists( const Eigen::Matrix4f &projectionView, co
 	}
 }
 
-void SGSSceneRenderer::render( const Eigen::Matrix4f &projectionView, const Eigen::Vector3f &worldViewerPosition, const RenderContext &renderContext ) {
+void SGSSceneRenderer::render( const Matrix4f &projectionView, const Vector3f &worldViewerPosition, const RenderContext &renderContext ) {
 	buildDrawLists( projectionView, renderContext );
 	sortAlphaList( worldViewerPosition );
 
@@ -651,7 +655,7 @@ void SGSSceneRenderer::render( const Eigen::Matrix4f &projectionView, const Eige
 		lightFrustum.begin();
 		glMatrixMode( GL_MODELVIEW );
 		glMultMatrix( sunProjectionMatrix.inverse() );
-		lightFrustum.drawBox( Eigen::Vector3f::Constant( 2.0 ), true, true );
+		lightFrustum.drawBox( Vector3f::Constant( 2.0 ), true, true );
 		lightFrustum.end();
 	}
 }
@@ -674,7 +678,7 @@ void SGSSceneRenderer::resetState() {
 	Program::useFixed();
 }
 
-void SGSSceneRenderer::renderModel( const Eigen::Vector3f &worldViewerPosition, int modelIndex ) {
+void SGSSceneRenderer::renderModel( const Vector3f &worldViewerPosition, int modelIndex ) {
 	glDisable( GL_CULL_FACE );
 	glCullFace( GL_BACK );
 
@@ -695,16 +699,16 @@ void SGSSceneRenderer::renderModel( const Eigen::Vector3f &worldViewerPosition, 
 }
 
 
-void SGSSceneRenderer::sortAlphaList( const Eigen::Vector3f &worldViewerPosition ) {
+void SGSSceneRenderer::sortAlphaList( const Vector3f &worldViewerPosition ) {
 	boost::sort(
 		alphaLists, [&, this] ( int indexA, int indexB ) {
-			return ( Eigen::Vector3f::Map( scene->subObjects[indexA].bounding.sphere.center ) - worldViewerPosition).squaredNorm() >
-				( Eigen::Vector3f::Map( scene->subObjects[indexB].bounding.sphere.center ) - worldViewerPosition).squaredNorm();
+			return ( Vector3f::Map( scene->subObjects[indexA].bounding.sphere.center ) - worldViewerPosition).squaredNorm() >
+				( Vector3f::Map( scene->subObjects[indexB].bounding.sphere.center ) - worldViewerPosition).squaredNorm();
 	}
 	);
 }
 
-void SGSSceneRenderer::initShadowMapProjectionMatrix( const Eigen::AlignedBox3f &boundingBox, const Eigen::Vector3f &direction ) {
+void SGSSceneRenderer::initShadowMapProjectionMatrix( const AlignedBox3f &boundingBox, const Vector3f &direction ) {
 #if 0
 	// determine the main direction
 	int mainAxis;
@@ -716,23 +720,21 @@ void SGSSceneRenderer::initShadowMapProjectionMatrix( const Eigen::AlignedBox3f 
 	int permutation[3] = { (mainAxis + 1) % 3, (mainAxis + 2) % 3, mainAxis };
 	auto permutedDirection = permute( direction, permutation );
 
-	Eigen::AlignedBox3f permutedBox;
+	AlignedBox3f permutedBox;
 	permutedBox.extend( permute( boundingBox.min(), permutation ) );
 	permutedBox.extend( permute( boundingBox.max(), permutation ) );
 
-	/*sunProjectionMatrix = Eigen::createShearProjectionMatrixLH( )
-	Eigen::createOrthoProjectionMatrixLH( permutedBox.min(), permutedBox.max() ) * unpermutedToPermutedMatrix( permutation );*/
-	sunProjectionMatrix = Eigen::createOrthoProjectionMatrixLH( permutedBox.min(), permutedBox.max() ) * unpermutedToPermutedMatrix( permutation );
+	/*sunProjectionMatrix = createShearProjectionMatrixLH( )
+	createOrthoProjectionMatrixLH( permutedBox.min(), permutedBox.max() ) * unpermutedToPermutedMatrix( permutation );*/
+	sunProjectionMatrix = createOrthoProjectionMatrixLH( permutedBox.min(), permutedBox.max() ) * unpermutedToPermutedMatrix( permutation );
 #else
-	using namespace Eigen;
-
-	Matrix4f lightRotation = Eigen::createViewerMatrixLH( Vector3f::Zero(), direction, Vector3f::UnitX() );
+	Matrix4f lightRotation = createViewerMatrixLH( Vector3f::Zero(), direction, Vector3f::UnitX() );
 	AlignedBox3f lightVolumeBox;
 	for( int cornerIndex = 0 ; cornerIndex < 8 ; ++cornerIndex ) {
 		lightVolumeBox.extend( (lightRotation * boundingBox.corner( AlignedBox3f::CornerType( cornerIndex ) ).homogeneous().eval()).hnormalized() );
 	}
 
-	sunProjectionMatrix = Eigen::createOrthoProjectionMatrixLH( lightVolumeBox.min(), lightVolumeBox.max() ) * lightRotation;
+	sunProjectionMatrix = createOrthoProjectionMatrixLH( lightVolumeBox.min(), lightVolumeBox.max() ) * lightRotation;
 #endif
 }
 
@@ -868,6 +870,17 @@ int SGSSceneRenderer::addInstance( const Instance &instance ) {
 
 	instances.push_back( instance );
 	refillDynamicOptixBuffers();
+	updateSceneBoundingBox();
 
 	return instanceIndex;
+}
+
+void SGSSceneRenderer::removeInstance( int instanceIndex ) {
+	instanceIndex -= scene->numSceneObjects;
+	if( instanceIndex >= 0 ) {
+		instances.erase( instances.begin() + instanceIndex );
+
+		refillDynamicOptixBuffers();
+		updateSceneBoundingBox();
+	}
 }

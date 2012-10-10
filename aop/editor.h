@@ -167,7 +167,7 @@ struct Editor : EventDispatcher {
 			modelIndices.push_back( modelIndex );
 		}
 
-		SGSMultiModelSelection( Editor *editor, std::vector<int> modelIndices ) :
+		SGSMultiModelSelection( Editor *editor, const std::vector<int> &modelIndices ) :
 			editor( editor ),
 			modelIndices( modelIndices )
 		{
@@ -231,6 +231,10 @@ struct Editor : EventDispatcher {
 			else {
 				visit();
 			}
+		}
+
+		void dispatch( std::shared_ptr<ISelection> selection ) {
+			dispatch( selection.get() );
 		}
 
 		virtual void visit( ISelection *selection ) {}
@@ -347,7 +351,7 @@ struct Editor : EventDispatcher {
 		void onMouse( EventState &eventState );
 
 		std::string getHelp( const std::string &prefix /* = std::string */ ) {
-			return prefix + name + "\n";
+			return prefix + name + ": click to select. keep ALT pressed to select all instances of the same model; SHIFT to add/remove from selection (toggle); CTRL to subtract from the selection. press DEL to delete an instance\n";
 		}
 	};
 
@@ -427,6 +431,27 @@ struct Editor : EventDispatcher {
 
 	void init();
 	void render();
+
+	void selectObb( int index ) {
+		selection = std::make_shared<ObbSelection>( this, index );
+	}
+
+	void selectInstance( int instanceIndex ) {
+		selection = std::make_shared<SGSInstanceSelection>( this, instanceIndex );
+	}
+
+	void selectModel( int modelIndex ) {
+		selection = std::make_shared<SGSMultiModelSelection>( this, modelIndex );
+	}
+
+	void selectModels( const std::vector<int> &modelIndices ) {
+		selection = std::make_shared<SGSMultiModelSelection>( this, modelIndices );
+	}
+
+	void deselect() {
+		selection = nullptr;
+	}
+
 
 	static void renderHighlitOBB( const Obb &obb );
 };

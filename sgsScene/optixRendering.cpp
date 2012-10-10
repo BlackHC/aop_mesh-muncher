@@ -522,6 +522,9 @@ void OptixRenderer::sampleProbes( const std::vector< Probe > &probes, std::vecto
 	if( probes.size() > maxNumProbes ) {
 		throw std::invalid_argument( "too many probes!" );
 	}
+	if( probes.size() > maxNumProbes ) {
+		throw std::invalid_argument( "too many probes!" );
+	}
 
 	setRenderContext( renderContext );
 

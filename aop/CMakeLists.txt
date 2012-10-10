@@ -118,10 +118,15 @@ CUDA_ADD_EXECUTABLE(aop
 	sgsInterface.cpp
 	optixEigenInterop.h
 	probeVisualization.cpp
+
 	candidateFinderInterface.h
 	candidateFinder.cpp
 	candidateFinderCache.cpp
-	
+
+	neighborhoodDatabase.h
+	neighborhoodDatabase.cpp
+	neighborhoodDatabaseStorage.cpp
+
 	editor.h
 	editor.cpp
 
@@ -150,6 +155,7 @@ ADD_EXECUTABLE(Test_aop
 	../framework/autoTimer.cpp
 
 	test_candidateFinder.cpp
+	test_neighborhoodDatabase.cpp
 
 	../gtest/gtest_main.cc
 	../gtest/gtest-all.cc

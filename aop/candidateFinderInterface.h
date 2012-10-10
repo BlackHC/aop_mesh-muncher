@@ -316,7 +316,7 @@ struct ProbeDatabase {
 
 		struct MatchInfo {
 			int id;
-			float numMatches;			
+			int numMatches;			
 
 			MatchInfo( int id = -1 ) : id( id ), numMatches() {}
 		};
@@ -409,7 +409,7 @@ struct ProbeDatabase {
 				matchOverlappedRanges( idDataset, *rangePair, matchInfo );
 			}
 
-			matchInfo.numMatches /= idDataset.size();
+			//matchInfo.numMatches /= idDataset.size();
 
 			return matchInfo;
 		}
@@ -610,6 +610,12 @@ public:
 		IdDatasets( const IdDatasets &other );
 		IdDatasets & operator = ( const IdDatasets &other );
 	};
+
+	void reset() {
+		int numIds = idDatasets.size();
+		idDatasets.clear();
+		idDatasets.resize( numIds );
+	}
 
 private:
 	std::vector<IdDatasets> idDatasets;

@@ -13,7 +13,7 @@ INCLUDE_DIRECTORIES(
 	)
 
 # ../gtest/gtest_main.cc
-ADD_EXECUTABLE(TestGrid
+ADD_EXECUTABLE(Test_volume
 	../framework/mathUtility.h
 
 	grid.h

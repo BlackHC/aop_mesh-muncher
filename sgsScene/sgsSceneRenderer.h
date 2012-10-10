@@ -212,6 +212,10 @@ struct SGSSceneRenderer {
 	Eigen::Matrix4f sunProjectionMatrix;
 	int sunShadowMapSize;
 
+	Eigen::AlignedBox3f sceneBoundingBox;
+
+	void updateSceneBoundingBox();
+
 	void initShadowMap();
 	void initShadowMapProjectionMatrix( const Eigen::AlignedBox3f &boundingBox, const Eigen::Vector3f &direction );
 	void renderShadowmap( const RenderContext &renderContext );
@@ -248,6 +252,8 @@ struct SGSSceneRenderer {
 
 	int addInstance( const Instance &instance );
 
+	void removeInstance( int instanceIndex );
+
 	void setInstanceTransformation( int instanceIndex, const Eigen::Affine3f &transformation ) {
 		instances[ instanceIndex - scene->numSceneObjects ].transformation = transformation;
 
@@ -266,13 +272,35 @@ struct SGSSceneRenderer {
 
 	Eigen::AlignedBox3f getBoundingBox( const SGSScene::Model &model ) const {
 		return Eigen::AlignedBox3f(
-			Eigen::Vector3f::Map( model.boundingBox.min ),
-			Eigen::Vector3f::Map( model.boundingBox.max )
+			Eigen::Vector3f::Map( model.bounding.box.min ),
+			Eigen::Vector3f::Map( model.bounding.box.max )
 		);
 	}
 
 	Eigen::AlignedBox3f getUntransformedInstanceBoundingBox( int instanceIndex ) const {
 		return getBoundingBox( getInstanceModel( instanceIndex ) );
+	}
+
+	struct BoundingSphere {
+		Eigen::Vector3f center;
+		float radius;
+
+		BoundingSphere( const Eigen::Vector3f &center, float radius ) :
+			center( center ),
+			radius( radius )
+		{
+		}
+	};
+
+	BoundingSphere getBoundingSphere( const SGSScene::Model &model ) const {
+		return BoundingSphere(
+			Eigen::Vector3f::Map( model.bounding.sphere.center ),
+			model.bounding.sphere.radius
+		);
+	}
+
+	BoundingSphere getUntransformedInstanceBoundingSphere( int instanceIndex ) const {
+		return getBoundingSphere( getModel( getModelIndex( instanceIndex ) ) );
 	}
 
 	Eigen::AlignedBox3f getModelBoundingBox( int modelIndex ) const {

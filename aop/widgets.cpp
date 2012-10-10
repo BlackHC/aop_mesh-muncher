@@ -88,7 +88,6 @@ void ButtonWidget::onMouse( EventState &eventState ) {
 		break;
 	case sf::Event::MouseButtonPressed:
 		if( hasMouse ) {
-			onAction();
 			setState( STATE_CLICKED );
 			eventState.accept();
 		}

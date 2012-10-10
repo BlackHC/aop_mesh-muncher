@@ -85,6 +85,10 @@ struct SimpleIndexer3 {
 		return true;
 	}
 
+	Eigen::Vector3i clampIndex3( const Eigen::Vector3i &index3 ) const {
+		return index3.cwiseMax( Eigen::Vector3i::Zero() ).cwiseMin( size );
+	}
+
 	Iterator getIterator() const;
 
 	SubIterator getSubIterator( const Eigen::Vector3i &beginCorner, const Eigen::Vector3i &endCorner );
@@ -98,7 +102,7 @@ struct SubIndexer3 {
 	Eigen::Vector3i beginCorner, endCorner;
 	int count;
 	
-	const Eigen::Vector3i & getSize() const {
+	const Eigen::Vector3i &getSize() const {
 		return size;
 	}
 
@@ -341,6 +345,10 @@ struct IndexMapping3 : conceptIndexer3 {
 		return indexToPosition * index3.cast<float>();
 	}
 
+	Obb getObb( const Eigen::Vector3i &index3 ) const {
+		return Obb( Eigen::Affine3f( Eigen::Translation3f( getPosition( index3 ) ) ), getDirection( Eigen::Vector3f::Constant( 1.0 ) ) );
+	}
+
 	Eigen::Vector3f getInterpolatedPosition( const Eigen::Vector3f &index3f ) const {
 		return indexToPosition * index3f;
 	}
@@ -389,6 +397,13 @@ inline IndexMapping3<> createIndexMapping( const Eigen::Vector3i &size, const Ei
 	return IndexMapping3<>( SimpleIndexer3( size ) , indexToPosition );
 }
 
+// guaranteed: non empty
+inline IndexMapping3<> createCenteredIndexMapping( const float resolution, const Eigen::Vector3f &size, const Eigen::Vector3f &center = Eigen::Vector3f::Zero() ) {
+	const Eigen::Vector3i count3 = ceil( size / resolution ).cwiseMax( 1 );
+	Eigen::Affine3f indexToPosition = Eigen::Translation3f( center ) * Eigen::Scaling( resolution ) * Eigen::Translation3f( -(count3.cast<float>() - Eigen::Vector3f::Constant( 1.0f )) * 0.5 );
+	return IndexMapping3<>( SimpleIndexer3( count3 ) , indexToPosition );
+}
+
 typedef IndexMapping3<> SimpleIndexMapping3;
 typedef IndexMapping3<SubIndexer3> SubIndexMapping;
 
@@ -412,6 +427,49 @@ TEST( IndexMapping3, fromIdentity) {
 	EXPECT_EQ( grid.getPosition( Vector3i::UnitX() ), Vector3f::UnitX() );
 	EXPECT_EQ( grid.getPosition( Vector3i::UnitY() ), Vector3f::UnitY() );
 	EXPECT_EQ( grid.getPosition( Vector3i::UnitZ() ), Vector3f::UnitZ() );
+}
+
+TEST( IndexMapping3, getObb ) {
+	{
+		IndexMapping3<> grid = createIndexMapping( Vector3i::Constant(4), Vector3f::Zero(), 1.0 );
+		{
+			const auto obb = grid.getObb( Vector3i::Zero() );
+			EXPECT_EQ( Vector3f( obb.transformation.translation() ), Vector3f::Zero() );
+			EXPECT_EQ( Vector3f( obb.size ), Vector3f::Constant( 1.0 ) );
+		}
+		{
+			const auto obb = grid.getObb( Vector3i::UnitX() );
+			EXPECT_EQ( Vector3f( obb.transformation.translation() ), Vector3f::UnitX() );
+			EXPECT_EQ( Vector3f( obb.size ), Vector3f::Constant( 1.0 ) );
+		}
+	}
+	{
+		IndexMapping3<> grid = createIndexMapping( Vector3i::Constant(4), Vector3f::Zero(), 0.25 );
+		{
+			const auto obb = grid.getObb( Vector3i::Zero() );
+			EXPECT_EQ( Vector3f( obb.transformation.translation() ), Vector3f::Zero() );
+			EXPECT_EQ( Vector3f( obb.size ), Vector3f::Constant( 0.25 ) );
+		}
+		{
+			const auto obb = grid.getObb( Vector3i::UnitX() );
+			EXPECT_EQ( Vector3f( obb.transformation.translation() ), Vector3f::UnitX() * 0.25 );
+			EXPECT_EQ( Vector3f( obb.size ), Vector3f::Constant( 0.25 ) );
+		}
+	}
+}
+
+TEST( IndexMapping3, fromSizeAndResolution ) {
+	{
+		const IndexMapping3<> grid = createCenteredIndexMapping( 0.25, Vector3f( 0.25, 0.0, 0.0 ) );
+		EXPECT_EQ( 1, grid.count );
+		EXPECT_EQ( grid.getPosition( Vector3i::Zero() ), Vector3f::Zero() );
+	}
+	{
+		const IndexMapping3<> grid = createCenteredIndexMapping( 0.25, Vector3f( 0.5, 0.5, 0.5 ) );
+		EXPECT_EQ( 8, grid.count );
+		EXPECT_EQ( Vector3f( grid.getPosition( Vector3i::Zero() ) ), Vector3f::Constant( -0.125 ) );
+		EXPECT_EQ( Vector3f( grid.getPosition( Vector3i::Constant( 1.0 ) ) ), Vector3f::Constant( +0.125 ) );
+	}
 }
 
 TEST( IndexMapping3, fromIdentityWithOffset) {

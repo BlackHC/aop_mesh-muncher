@@ -298,7 +298,7 @@ TEST( ProbeDatabase, oneTolerance ) {
 	}
 }
 
-#if 1
+#if 0
 TEST( ProbeDatabase, big ) {
 	// init the dataset
 	RawProbeDataset rawDataset, rawTestDataset;
