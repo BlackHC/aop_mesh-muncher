@@ -188,7 +188,7 @@ void aop::Application::TimedLog::init() {
 			entry.timeStamp = application->clock.getElapsedTime().asSeconds();
 
 			entry.renderText.setCharacterSize( 15 );
-			entry.renderText.setString( Log::Utility::indentString( scope, message ) );
+			entry.renderText.setString( Log::Utility::indentString( scope, message, boost::str( boost::format( "[%s] " ) % entry.timeStamp ) ) );
 			
 			++endEntry;
 
@@ -328,8 +328,30 @@ EventSystem *EventHandler::eventSystem;
 namespace aop {
 	struct Application::CandidateSidebar {
 		Application *application;
-			
-		WidgetContainer sidebar;
+
+		struct CandidateContainer : WidgetContainer {
+			float minY, maxY;
+			float scrollStep;
+
+			CandidateContainer() : minY(), maxY(), scrollStep() {}
+
+			void onMouse( EventState &eventState ) {
+				if( eventState.event.type == sf::Event::MouseWheelMoved ) {
+					//log( boost::format( "mouse wheel moved %i" ) % eventState.event.mouseWheel.delta );
+					
+					auto offset = transformChain.getOffset();
+					offset.y() = std::min( -minY, std::max( -maxY, offset.y() + eventState.event.mouseWheel.delta * scrollStep ) );
+					transformChain.setOffset( offset );
+
+					eventState.accept();
+				}
+				else {
+					WidgetContainer::onMouse( eventState );
+				}
+			}
+		};
+		
+		CandidateContainer sidebar;
 
 		struct CandidateModelButton : ModelButtonWidget {
 			CandidateModelButton(
@@ -375,22 +397,26 @@ namespace aop {
 			const float buttonHorizontalPadding = buttonAbsPadding / ViewportContext::context->framebufferWidth;
 
 			// TODO: this was in init but meh
-			sidebar.transformChain.setOffset( Eigen::Vector2f( 1 - buttonHorizontalPadding - buttonWidth, buttonVerticalPadding ) );
+			sidebar.transformChain.setOffset( Eigen::Vector2f( 1 - buttonHorizontalPadding - buttonWidth, 0 ) );
 
 			const float buttonHeight = buttonWidth * ViewportContext::context->getAspectRatio();
 			const float buttonHeightWithPadding = buttonHeight + buttonVerticalPadding;
 
-			const int maxNumModels = (1.0 - buttonVerticalPadding) / buttonHeightWithPadding;
+			const int maxNumModels = 30;
 
 			// add 5 at most
 			const int numModels = std::min<int>( maxNumModels, modelIndices.size() );
 
+			sidebar.minY = 0;
+			sidebar.maxY = (numModels - 1 ) * buttonHeightWithPadding;
+			sidebar.scrollStep = buttonHeightWithPadding;
+			
 			for( int i = 0 ; i < numModels ; i++ ) {
 				const int modelIndex = modelIndices[ i ];
 
 				sidebar.addEventHandler(
 					std::make_shared< CandidateModelButton >(
-						Eigen::Vector2f( 0.0, i * buttonHeightWithPadding ),
+						Eigen::Vector2f( 0.0, buttonVerticalPadding + i * buttonHeightWithPadding ),
 						Eigen::Vector2f( buttonWidth, buttonHeight ),
 						modelIndex,
 						application->world->sceneRenderer,
@@ -633,7 +659,7 @@ namespace aop {
 					}
 					void visit( Editor::ObbSelection *selection ) {
 						application->startLongOperation();
-						auto queryResults = queryVolumeNeighbors( application->world.get(), application->neighborDatabase, selection->getObb().transformation.translation(), 40.0, 5.0 );
+						auto queryResults = queryVolumeNeighbors( application->world.get(), application->neighborDatabase, selection->getObb().transformation.translation(), 100.0, 1.0 );
 						application->endLongOperation();
 
 						std::vector<int> modelIndices;
@@ -899,7 +925,7 @@ namespace aop {
 		initSGSInterface();
 
 		// TODO: fix parameter order [10/10/2012 kirschan2]
-		sampleAllNeighbors( 40.0, neighborDatabase, *world );
+		sampleAllNeighbors( 100.0, neighborDatabase, *world );
 
 		candidateFinder.reserveIds( world->scene.modelNames.size() );
 

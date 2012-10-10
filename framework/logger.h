@@ -44,7 +44,7 @@ namespace Log {
 		std::string scopeToIndentation( int scope );
 
 		// adds a newline at the end
-		std::string indentString( int scope, const std::string &message );
+		std::string indentString( int scope, const std::string &message, const std::string &customPrefix = std::string() );
 	}
 
 	const int CURRENT_SCOPE = -1;

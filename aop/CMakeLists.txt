@@ -145,6 +145,9 @@ ADD_EXECUTABLE(Test_aop
 	candidateFinder.cpp
 	candidateFinderCache.cpp
 
+	neighborhoodDatabase.h
+	neighborhoodDatabase.cpp
+	neighborhoodDatabaseStorage.cpp
 	../framework/logger.h
 	../framework/logger.cpp
 

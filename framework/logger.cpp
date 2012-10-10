@@ -20,8 +20,8 @@ namespace Log {
 			return std::string( scope, ' ' );
 		}
 
-		std::string indentString( int scope, const std::string &message ) {
-			const std::string indentation = scopeToIndentation( scope );
+		std::string indentString( int scope, const std::string &message, const std::string &customPrefix ) {
+			const std::string indentation = customPrefix + scopeToIndentation( scope );
 
 			std::string indentedString;
 

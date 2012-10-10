@@ -19,6 +19,10 @@ void TransformChain::setOffset( const Eigen::Vector2f &offset ) {
 	localTransform = Eigen::Translation3f( Eigen::Vector3f( offset[0], offset[1], 0.0f ) );
 }
 
+Eigen::Vector2f TransformChain::getOffset() const {
+	return localTransform.translation().head<2>();
+}
+
 Eigen::Vector2f TransformChain::pointToScreen( const Eigen::Vector2f &point ) const {
 	return ( globalTransform * Eigen::Vector3f( point[0], point[1], 0.0f ) ).head<2>();
 }

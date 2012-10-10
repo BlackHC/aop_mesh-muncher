@@ -10,7 +10,8 @@ struct TransformChain {
 
 	void update( TransformChain *parent = nullptr );
 	void setOffset( const Eigen::Vector2f &offset );
-
+	Eigen::Vector2f getOffset() const;
+	
 	Eigen::Vector2f pointToScreen( const Eigen::Vector2f &point ) const;
 	Eigen::Vector2f vectorToScreen( const Eigen::Vector2f &point ) const;
 
