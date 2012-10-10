@@ -395,7 +395,12 @@ namespace aop {
 						modelIndex,
 						application->world->sceneRenderer,
 						[this, modelIndex, position] () {
-							application->world->addInstance( modelIndex, position );
+							if( sf::Keyboard::isKeyPressed( sf::Keyboard::LAlt ) ) {
+								application->editor.selectModel( modelIndex );
+							}
+							else {
+								application->world->addInstance( modelIndex, position );
+							}
 						}
 					)
 				);
