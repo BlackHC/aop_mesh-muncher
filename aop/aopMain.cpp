@@ -348,19 +348,19 @@ ProbeDatabase::Query::MatchInfos queryVolume( SGSInterface::World *world, ProbeD
 	}
 	progressTracker.markFinished();
 
-	auto query = candidateFinder.createQuery();
+	ProbeDatabase::Query query( candidateFinder );
 	{
-		query->setQueryDataset( std::move( rawDataset ) );
+		query.setQueryDataset( std::move( rawDataset ) );
 
 		ProbeContextTolerance pct;
 		pct.setDefault();
-		query->setProbeContextTolerance( pct );
+		query.setProbeContextTolerance( pct );
 
-		query->execute();
+		query.execute();
 	}
 	progressTracker.markFinished();
 
-	const auto &matchInfos = query->getCandidates();
+	const auto &matchInfos = query.getCandidates();
 	for( auto matchInfo = matchInfos.begin() ; matchInfo != matchInfos.end() ; ++matchInfo ) {
 		log( boost::format( "%i: %f" ) % matchInfo->id % matchInfo->numMatches );
 	}
@@ -684,7 +684,7 @@ namespace aop {
 						boost::sort( 
 							matchInfos,
 							[] (const MatchInfo &a, MatchInfo &b ) {
-								return a.numMatches > b.numMatches;
+								return a.score > b.score;
 							}
 						);
 

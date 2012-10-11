@@ -10,6 +10,8 @@
 #include "optixProgramInterface.h"
 
 #include <Eigen/Eigen>
+#include "boost/container/vector.hpp"
+#include "boost/range/algorithm/count.hpp"
 
 typedef OptixProgramInterface::Probe Probe;
 typedef OptixProgramInterface::ProbeContext ProbeContext;
@@ -305,22 +307,24 @@ struct ProbeDatabase {
 	typedef int Id;
 	typedef std::vector<Id> Ids;
 
-	struct Query;
+	struct MatchInfo {
+		int id;
+		int numMatches;
+		float score;
 
-	std::shared_ptr<Query> createQuery() {
-		return std::shared_ptr< Query >( new Query( this ) );
-	}
+		float queryMatchPercentage;
+		float probeMatchPercentage;
+
+		MatchInfo( int id = -1 ) : id( id ), numMatches(), score(), queryMatchPercentage(), probeMatchPercentage() {}
+	};
 
 	struct Query {
 		typedef std::shared_ptr<Query> Ptr;
 
-		struct MatchInfo {
-			int id;
-			int numMatches;			
+		typedef ProbeDatabase::MatchInfo MatchInfo;
+		typedef std::vector<MatchInfo> MatchInfos;	
 
-			MatchInfo( int id = -1 ) : id( id ), numMatches() {}
-		};
-		typedef std::vector<MatchInfo> MatchInfos;
+		Query( const ProbeDatabase &database ) : database( database ) {}
 
 		void setProbeContextTolerance( const ProbeContextTolerance &pct ) {
 			probeContextTolerance = pct;
@@ -336,7 +340,7 @@ struct ProbeDatabase {
 			}
 
 			// NOTE: this can be easily parallelized
-			for( int id = 0 ; id < parent->idDatasets.size() ; id++ ) {
+			for( int id = 0 ; id < database.idDatasets.size() ; id++ ) {
 				MatchInfo result = matchAgainst( id );
 				if( result.numMatches > 0 ) {
 					matchInfos.push_back( result );
@@ -350,7 +354,6 @@ struct ProbeDatabase {
 
 	protected:
 		typedef ProbeDataset::IntRange IntRange;
-		// first is idDataset, second is the query dataset
 		typedef std::pair< IntRange, IntRange > OverlappedRange;
 
 #if 0
@@ -362,7 +365,7 @@ struct ProbeDatabase {
 
 		MatchInfo matchAgainst( int id ) {
 			// TODO: rename idDataset to idDatabase? [9/26/2012 kirschan2]
-			const ProbeDataset &idDataset = parent->idDatasets[id].mergedDataset;
+			const ProbeDataset &idDataset = database.idDatasets[id].mergedDataset;
 
 			if( idDataset.size() == 0 ) {
 				return MatchInfo( id );
@@ -378,120 +381,380 @@ struct ProbeDatabase {
 			// TODO: is it better to make both ranges about equally big or not?
 			// its better they are equal
 
-			// assuming that the query set is smaller, we enlarge it, to have less items to sort then vice-versa
+			// assuming that the query set is smaller, we enlarge it, to have less items to sort than vice-versa
 			// we could determine this at runtime...
 			// if( idDatasets.size() > dataset.size() ) {...} else {...}
-			int occlusionTolerance = int( OptixProgramInterface::numProbeSamples * probeContextTolerance.occusionTolerance + 0.5 );
+			const int occlusionTolerance = int( OptixProgramInterface::numProbeSamples * probeContextTolerance.occusionTolerance + 0.5 );
 
 			// TODO: use a stack allocated array here? [9/27/2012 kirschan2]
 
-			// only second needs to be sorted
 			std::vector< OverlappedRange > overlappedRanges;
 			overlappedRanges.reserve( OptixProgramInterface::numProbeSamples );
 			for( int occulsionLevel = 0 ; occulsionLevel <= OptixProgramInterface::numProbeSamples ; occulsionLevel++ ) {
-				const int leftToleranceLevel = std::max( 0, occulsionLevel - occlusionTolerance );
-				const int rightToleranceLevel = std::min( occulsionLevel + occlusionTolerance, OptixProgramInterface::numProbeSamples );
+				const ProbeDataset::IntRange queryRange = dataset.getOcclusionRange( occulsionLevel );
 
-				const ProbeDataset::IntRange idRange = idDataset.getOcclusionRange( occulsionLevel );
-				const ProbeDataset::IntRange queryRange = dataset.getOcclusionRange( leftToleranceLevel, rightToleranceLevel );
-
-				// is one of the ranges empty? if so, we don't need to check it at all
-				if( idRange.first == idRange.second || queryRange.first == queryRange.second ) {
+				if( queryRange.first == queryRange.second ) {
 					continue;
 				}
 
-				// store the range for later
-				overlappedRanges.push_back( std::make_pair( idRange, queryRange ) );
+				const int leftToleranceLevel = std::max( 0, occulsionLevel - occlusionTolerance );
+				const int rightToleranceLevel = std::min( occulsionLevel + occlusionTolerance, OptixProgramInterface::numProbeSamples );
+				for( int idToleranceLevel = leftToleranceLevel ; idToleranceLevel <= rightToleranceLevel ; idToleranceLevel++ ) {
+					const ProbeDataset::IntRange idRange = idDataset.getOcclusionRange( idToleranceLevel );
+
+					// is one of the ranges empty? if so, we don't need to check it at all
+					if( idRange.first == idRange.second ) {
+						continue;
+					}
+
+					// store the range for later
+					overlappedRanges.push_back( std::make_pair( queryRange, idRange ) );
+				}
 			}
 
-			MatchInfo matchInfo( id );
+			boost::container::vector< bool > overlappedProbesMatched( dataset.size() );
+			boost::container::vector< bool > pureProbesMatched( idDataset.size() );
+
+			int numMatches = 0;
 			for( auto rangePair = overlappedRanges.begin() ; rangePair != overlappedRanges.end() ; ++rangePair ) {
-				matchOverlappedRanges( idDataset, *rangePair, matchInfo );
+				matchSortedRanges( 
+					dataset.data,
+					rangePair->first,
+					overlappedProbesMatched,
+
+					idDataset.data,
+					rangePair->second,
+					pureProbesMatched,
+
+					numMatches
+				);
 			}
 
-			//matchInfo.numMatches /= idDataset.size();
+			const int numQueryProbesMatched = boost::count( overlappedProbesMatched, true );
+			const int numPureProbesMatched = boost::count( pureProbesMatched, true );
+			MatchInfo matchInfo( id );
+			matchInfo.numMatches = numMatches;
+
+			matchInfo.probeMatchPercentage = float( numPureProbesMatched ) / idDataset.size();
+			matchInfo.queryMatchPercentage = float( numQueryProbesMatched ) / dataset.size();
+
+			matchInfo.score = matchInfo.probeMatchPercentage * matchInfo.queryMatchPercentage;
 
 			return matchInfo;
 		}
 
-		// only second needs to be sorted
-		void matchOverlappedRanges( const ProbeDataset &idDataset, const OverlappedRange &overlappedRange, MatchInfo &matchInfo ) {
+
+		void matchSortedRanges(
+			const SortedProbeDataset &overlappedDataset,
+			const IntRange &overlappedRange,
+			boost::container::vector< bool > &overlappedProbesMatched,
+
+			const SortedProbeDataset &pureDataset,
+			const IntRange &pureRange,
+			boost::container::vector< bool > &pureProbesMatched,
+
+			int &numMatches
+		) {
 			// assert: the range is not empty
 
 			// sort the ranges into two new vectors
 			// idea: use a global scratch space to avoid recurring allocations?
-			const SortedProbeDataset scratch = dataset.data.subSet( overlappedRange.second );
 
-			const int querySize = scratch.size();
-			int queryIndex = 0;
+			const int beginOverlappedIndex = overlappedRange.first;
+			const int endOverlappedIndex = overlappedRange.second;
+			int overlappedIndex = beginOverlappedIndex;
 
-			const int endRefIndex = overlappedRange.first.second;
-			int refIndex = overlappedRange.first.first;
+			const int beginPureIndex = pureRange.first;
+			const int endPureIndex = pureRange.second;
+			int pureIndex = beginPureIndex;
 
-			ProbeContext queryContext = scratch.getProbeContexts()[ queryIndex ];
+			ProbeContext pureContext = pureDataset.getProbeContexts()[ pureIndex ];
+			for( ; pureIndex < endPureIndex - 1 ; pureIndex++ ) {
+				const ProbeContext nextPureContext = pureDataset.getProbeContexts()[ pureIndex + 1 ];
+				int nextBeginOverlappedIndex = overlappedIndex;
+				
+				const float minDistance = pureContext.distance - probeContextTolerance.distanceTolerance;
+				const float maxDistance = pureContext.distance + probeContextTolerance.distanceTolerance;
+				const float minNextDistance = nextPureContext.distance - probeContextTolerance.distanceTolerance;
 
-			for( ; queryIndex < querySize - 1 ; queryIndex++ ) {
-				const ProbeContext nextQueryContext = scratch.getProbeContexts()[ queryIndex + 1 ];
-				int nextStartRefIndex = refIndex;
+				bool pureProbeMatched = false;
 
-				const float minDistance = queryContext.distance - probeContextTolerance.distanceTolerance;
-				const float maxDistance = queryContext.distance + probeContextTolerance.distanceTolerance;
-				const float minNextDistance = nextQueryContext.distance - probeContextTolerance.distanceTolerance;
-
-				// assert: minDistance <= minNextDistance
-
-				for( ; refIndex < endRefIndex ; refIndex++ ) {
-					const ProbeContext &refContext = idDataset.getProbeContexts()[ refIndex ];
+				for( ; overlappedIndex < endOverlappedIndex ; overlappedIndex++ ) {
+					const ProbeContext overlappedContext = overlappedDataset.getProbeContexts()[ overlappedIndex ];
 
 					// distance too small?
-					if( refContext.distance < minDistance ) {
+					if( overlappedContext.distance < minDistance ) {
 						// then the next one is too far away as well
-						nextStartRefIndex = refIndex + 1;
+						nextBeginOverlappedIndex = overlappedIndex + 1;
+						continue;
+					}
+
+					// if nextBeginOverlappedIndex can't use this probe, the next overlapped context might be the first one it likes
+					if( overlappedContext.distance < minNextDistance ) {
+						// set it to the next ref context
+						nextBeginOverlappedIndex = overlappedIndex + 1;
+					}
+					// else:
+					//  nextBeginOverlappedIndex points to the first overlapped context the next pure context might match
+
+					// are we past our interval
+					if( overlappedContext.distance > maxDistance ) {
+						// enough for this probe, do the next
+						break;
+					}
+
+					if( matchColor( pureContext, overlappedContext ) ) {
+						numMatches++;
+						
+						overlappedProbesMatched[ overlappedIndex ] = true;
+						pureProbeMatched = true;
+					}
+				}
+
+				if( pureProbeMatched ) {
+					pureProbesMatched[ pureIndex ] = true;
+				}
+
+				pureContext = nextPureContext;
+				overlappedIndex = nextBeginOverlappedIndex;
+			}
+
+			// process the last pure probe
+			{
+				const float minDistance = pureContext.distance - probeContextTolerance.distanceTolerance;
+				const float maxDistance = pureContext.distance + probeContextTolerance.distanceTolerance;
+
+				bool pureProbeMatched = false;
+
+				for( ; overlappedIndex < endOverlappedIndex ; overlappedIndex++ ) {
+					const ProbeContext overlappedContext = overlappedDataset.getProbeContexts()[ overlappedIndex ];
+
+					// distance too small?
+					if( overlappedContext.distance < minDistance ) {
+						continue;
+					}
+
+					// are we past our interval
+					if( overlappedContext.distance > maxDistance ) {
+						// enough for this probe, we're done
+						break;
+					}
+
+					if( matchColor( pureContext, overlappedContext ) ) {
+						numMatches++;
+						
+						overlappedProbesMatched[ overlappedIndex ] = true;
+						pureProbeMatched = true;
+					}
+				}
+
+				if( pureProbeMatched ) {
+					pureProbesMatched[ pureIndex ] = true;
+				}
+			}
+		}
+
+#if 0
+		void matchRanges(
+			const SortedProbeDataset &_overlappedDataset,
+			const IntRange &overlappedRange,
+			boost::container::vector< bool > &overlappedProbesMatched,
+
+			const SortedProbeDataset &pureDataset,
+			const IntRange &pureRange,
+			int &numPureProbesMatched,
+
+			int &numMatches
+		) {
+			// assert: the range is not empty
+
+			// sort the ranges into two new vectors
+			// idea: use a global scratch space to avoid recurring allocations?
+			const SortedProbeDataset overlappedDataset = _overlappedDataset.subSet( overlappedRange );
+
+			const int overlappedSize = overlappedDataset.size();
+			int overlappedIndex = 0;
+
+			const int beginPureIndex = pureRange.first;
+			const int endPureIndex = pureRange.second;
+			int pureIndex = beginPureIndex;
+
+			ProbeContext pureContext = pureDataset.getProbeContexts()[ pureIndex ];
+			for( ; pureIndex < endPureIndex - 1 ; pureIndex++ ) {
+				const ProbeContext nextPureContext = pureDataset.getProbeContexts()[ pureIndex + 1 ];
+				int nextBeginOverlappedIndex = overlappedIndex;
+				
+				const float minDistance = pureContext.distance - probeContextTolerance.distanceTolerance;
+				const float maxDistance = pureContext.distance + probeContextTolerance.distanceTolerance;
+				const float minNextDistance = nextPureContext.distance - probeContextTolerance.distanceTolerance;
+
+				bool pureProbeMatched = false;
+
+				for( ; overlappedIndex < overlappedSize ; overlappedIndex++ ) {
+					const ProbeContext overlappedContext = overlappedDataset.getProbeContexts()[ overlappedIndex ];
+
+					// distance too small?
+					if( overlappedContext.distance < minDistance ) {
+						// then the next one is too far away as well
+						nextBeginOverlappedIndex = overlappedIndex + 1;
+						continue;
+					}
+
+					// if nextBeginOverlappedIndex can't use this probe, the next overlapped context might be the first one it likes
+					if( overlappedContext.distance < minNextDistance ) {
+						// set it to the next ref context
+						nextBeginOverlappedIndex = overlappedIndex + 1;
+					}
+					// else:
+					//  nextBeginOverlappedIndex points to the first overlapped context the next pure context might match
+
+					// are we past our interval
+					if( overlappedContext.distance > maxDistance ) {
+						// enough for this probe, do the next
+						break;
+					}
+
+					if( matchColor( pureContext, overlappedContext ) ) {
+						numMatches++;
+						
+						overlappedProbesMatched[ overlappedIndex + overlappedRange.first ] = true;
+						pureProbeMatched = true;
+					}
+				}
+
+				if( pureProbeMatched ) {
+					numPureProbesMatched++;
+				}
+
+				pureContext = nextPureContext;
+				overlappedIndex = nextBeginOverlappedIndex;
+			}
+
+			// process the last pure probe
+			{
+				const float minDistance = pureContext.distance - probeContextTolerance.distanceTolerance;
+				const float maxDistance = pureContext.distance + probeContextTolerance.distanceTolerance;
+
+				bool pureProbeMatched = false;
+
+				for( ; overlappedIndex < overlappedSize ; overlappedIndex++ ) {
+					const ProbeContext overlappedContext = overlappedDataset.getProbeContexts()[ overlappedIndex ];
+
+					// distance too small?
+					if( overlappedContext.distance < minDistance ) {
+						continue;
+					}
+
+					// are we past our interval
+					if( overlappedContext.distance > maxDistance ) {
+						// enough for this probe, we're done
+						break;
+					}
+
+					if( matchColor( pureContext, overlappedContext ) ) {
+						numMatches++;
+						
+						overlappedProbesMatched[ overlappedIndex + overlappedRange.first ] = true;
+						pureProbeMatched = true;
+					}
+				}
+
+				if( pureProbeMatched ) {
+					numPureProbesMatched++;
+				}
+			}
+		}
+#endif
+#if 0
+		void matchRanges(
+			const SortedProbeDataset &_overlappedDataset,
+			const IntRange &overlappedRange,
+
+			const SortedProbeDataset &pureDataset,
+			const IntRange &pureRange,
+
+			int &numMatches
+		) {
+			// assert: the range is not empty
+
+			// sort the ranges into two new vectors
+			// idea: use a global scratch space to avoid recurring allocations?
+			const SortedProbeDataset overlappedDataset = _overlappedDataset.subSet( overlappedRange );
+
+			const int overlappedSize = overlappedDataset.size();
+			int overlappedIndex = 0;
+
+			const int beginPureIndex = pureRange.first;
+			const int endPureIndex = pureRange.second;
+			int pureIndex = beginPureIndex;
+
+			ProbeContext overlappedContext = overlappedDataset.getProbeContexts()[ overlappedIndex ];
+			for( ; overlappedIndex < overlappedSize - 1 ; overlappedIndex++ ) {
+				const ProbeContext nextOverlappedContext = overlappedDataset.getProbeContexts()[ overlappedIndex + 1 ];
+				int nextBeginPureIndex = pureIndex;
+
+				const float minDistance = overlappedContext.distance - probeContextTolerance.distanceTolerance;
+				const float maxDistance = overlappedContext.distance + probeContextTolerance.distanceTolerance;
+				const float minNextDistance = nextOverlappedContext.distance - probeContextTolerance.distanceTolerance;
+
+				// assert: minDistance <= minNextDistance
+				for( ; pureIndex < endPureIndex ; pureIndex++ ) {
+					const ProbeContext &pureContext = pureDataset.getProbeContexts()[ pureIndex ];
+
+					// distance too small?
+					if( pureContext.distance < minDistance ) {
+						// then the next one is too far away as well
+						nextBeginPureIndex = pureIndex + 1;
 						continue;
 					}
 
 					// if nextQueryContext can't use this probe, the next ref context might be the first one it likes
-					if( refContext.distance < minNextDistance ) {
+					if( pureContext.distance < minNextDistance ) {
 						// set it to the next ref context
-						nextStartRefIndex = refIndex + 1;
+						nextBeginPureIndex = pureIndex + 1;
 					}
 					// else:
 					//  nextStartRefIndex points to the first ref content the next query context might match
 
 					// are we past our interval
-					if( refContext.distance > maxDistance ) {
+					if( pureContext.distance > maxDistance ) {
 						// enough for this probe, do the next
 						break;
 					}
 
-					if( matchColor( refContext, queryContext ) ) {
-						matchInfo.numMatches++;
+					if( matchColor( pureContext, overlappedContext ) ) {
+						numMatches++;
 					}
 				}
 
-				queryContext = nextQueryContext;
-				refIndex = nextStartRefIndex;
+				overlappedContext = nextOverlappedContext;
+				pureIndex = nextBeginPureIndex;
 			}
 
 			// process the last element
-			for( ; refIndex < endRefIndex ; refIndex++ ) {
-				const ProbeContext &refContext = idDataset.getProbeContexts()[ refIndex ];
+			{
+				const float minDistance = overlappedContext.distance - probeContextTolerance.distanceTolerance;
+				const float maxDistance = overlappedContext.distance + probeContextTolerance.distanceTolerance;
+				
+				for( ; pureIndex < endPureIndex ; pureIndex++ ) {
+					const ProbeContext &pureContext = pureDataset.getProbeContexts()[ pureIndex ];
 
-				// distance too small?
-				if( refContext.distance < queryContext.distance - probeContextTolerance.distanceTolerance ) {
-					continue;
-				}
-				if( refContext.distance > queryContext.distance + probeContextTolerance.distanceTolerance ) {
-					// done
-					break;
-				}
+					// distance too small?
+					if( pureContext.distance < minDistance ) {
+						continue;
+					}
+					if( pureContext.distance > maxDistance ) {
+						// done
+						break;
+					}
 
-				if( matchColor( refContext, queryContext ) ) {
-					matchInfo.numMatches++;
+					if( matchColor( pureContext, overlappedContext ) ) {
+						numMatches++;
+					}
 				}
 			}
 		}
-
+#endif
 		__forceinline__ bool matchColor( const ProbeContext &refContext, const ProbeContext &queryContext ) {
 			Eigen::Vector3i colorDistance(
 				refContext.color.x - queryContext.color.x,
@@ -520,18 +783,13 @@ struct ProbeDatabase {
 #endif
 
 	protected:
-		const ProbeDatabase *parent;
+		const ProbeDatabase &database;
 
 		ProbeDataset dataset;
 
 		ProbeContextTolerance probeContextTolerance;
 
 		MatchInfos matchInfos;
-
-	private:
-		Query( const ProbeDatabase *parent ) : parent( parent ) {}
-
-		friend std::shared_ptr<Query> ProbeDatabase::createQuery();
 	};
 
 	void reserveIds( Id maxId ) {

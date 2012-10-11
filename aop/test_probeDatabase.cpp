@@ -159,7 +159,7 @@ TEST( ProbeDataset, mergeMultiple ) {
 		rawDataset.probes.resize( 1000 );
 		datasets[j] = std::move( rawDataset );
 	}
-	
+
 	std::vector< const SortedProbeDataset * > pDatasets;
 	for( int j = 0 ; j < numDatasets ; j++ ) {
 		pDatasets.push_back( &datasets[j] );
@@ -206,40 +206,110 @@ TEST( ProbeDatabase, zeroTolerance ) {
 	candidateFinder.integrateDatasets();
 
 	{
-		auto query = candidateFinder.createQuery();
+		ProbeDatabase::Query query( candidateFinder );
 
-		query->setQueryDataset( dataset.clone() );
+		query.setQueryDataset( dataset.clone() );
 
 		ProbeContextTolerance pct;
 		pct.occusionTolerance = 0;
 		pct.distanceTolerance = 0;
-		query->setProbeContextTolerance( pct );
+		query.setProbeContextTolerance( pct );
 
-		query->execute();
+		query.execute();
 
-		ProbeDatabase::Query::MatchInfos matchInfos = query->getCandidates();
+		ProbeDatabase::Query::MatchInfos matchInfos = query.getCandidates();
 
 		ASSERT_EQ( matchInfos.size(), 1 );
 		EXPECT_EQ( matchInfos[0].numMatches, 5000 );
+		EXPECT_FLOAT_EQ( matchInfos[0].probeMatchPercentage, 1.0);
+		EXPECT_FLOAT_EQ( matchInfos[0].queryMatchPercentage, 1.0);
 		EXPECT_EQ( matchInfos[0].id, 0 );
 	}
 
 	{
-		auto query = candidateFinder.createQuery();
+		ProbeDatabase::Query query( candidateFinder );
 
-		query->setQueryDataset( testDataset.clone() );
+		query.setQueryDataset( testDataset.clone() );
 
 		ProbeContextTolerance pct;
 		pct.occusionTolerance = 0;
 		pct.distanceTolerance = 0;
-		query->setProbeContextTolerance( pct );
+		query.setProbeContextTolerance( pct );
 
-		query->execute();
+		query.execute();
 
-		ProbeDatabase::Query::MatchInfos matchInfos = query->getCandidates();
+		ProbeDatabase::Query::MatchInfos matchInfos = query.getCandidates();
 
 		ASSERT_EQ( matchInfos.size(), 1 );
 		EXPECT_EQ( matchInfos[0].numMatches, 2500 );
+		EXPECT_FLOAT_EQ( matchInfos[0].probeMatchPercentage, 0.5);
+		EXPECT_FLOAT_EQ( matchInfos[0].queryMatchPercentage, 0.5);
+		EXPECT_EQ( matchInfos[0].id, 0 );
+	}
+}
+
+TEST( ProbeDatabase, zeroTolerance_biggerDB ) {
+	// init the dataset
+	RawProbeDataset rawDataset, rawTestDataset;
+	for( int i = 0 ; i < 1500 ; i++ ) {
+		for( int j = 0 ; j < 5 ; j++ ) {
+			rawDataset.probeContexts.push_back( makeProbeContext( j, i ) );
+		}
+	}
+	for( int i = 0 ; i < 1000 ; i++ ) {
+		for( int j = 0 ; j < 5 ; j++ ) {
+			rawTestDataset.probeContexts.push_back( makeProbeContext( j, 1000 + i ) );
+		}
+	}
+	rawDataset.probes.resize( rawDataset.probeContexts.size() );
+	rawTestDataset.probes.resize( rawTestDataset.probeContexts.size() );
+
+	SortedProbeDataset dataset( std::move( rawDataset ) ), testDataset( std::move( rawTestDataset ) );
+
+	ProbeDatabase candidateFinder;
+	candidateFinder.reserveIds( 0 );
+	candidateFinder.addDataset( 0, dataset.clone() );
+	candidateFinder.integrateDatasets();
+
+	{
+		ProbeDatabase::Query query( candidateFinder );
+
+		query.setQueryDataset( dataset.clone() );
+
+		ProbeContextTolerance pct;
+		pct.occusionTolerance = 0;
+		pct.distanceTolerance = 0;
+		query.setProbeContextTolerance( pct );
+
+		query.execute();
+
+		ProbeDatabase::Query::MatchInfos matchInfos = query.getCandidates();
+
+		ASSERT_EQ( matchInfos.size(), 1 );
+		EXPECT_EQ( matchInfos[0].numMatches, 5*1500 );
+		EXPECT_FLOAT_EQ( matchInfos[0].probeMatchPercentage, 1.0);
+		EXPECT_FLOAT_EQ( matchInfos[0].queryMatchPercentage, 1.0);
+		EXPECT_EQ( matchInfos[0].id, 0 );
+	}
+
+	{
+		ProbeDatabase::Query query( candidateFinder );
+
+		query.setQueryDataset( testDataset.clone() );
+
+		ProbeContextTolerance pct;
+		pct.occusionTolerance = 0;
+		pct.distanceTolerance = 0;
+		query.setProbeContextTolerance( pct );
+
+		query.execute();
+
+		ProbeDatabase::Query::MatchInfos matchInfos = query.getCandidates();
+
+		ASSERT_EQ( matchInfos.size(), 1 );
+		EXPECT_EQ( matchInfos[0].numMatches, 5*500 );
+		EXPECT_FLOAT_EQ( matchInfos[0].probeMatchPercentage, 500.0/1500.0);
+		EXPECT_FLOAT_EQ( matchInfos[0].queryMatchPercentage, 500.0/1000.0);
 		EXPECT_EQ( matchInfos[0].id, 0 );
 	}
 }
@@ -268,32 +338,36 @@ TEST( ProbeDatabase, oneTolerance ) {
 	pct.distanceTolerance = 0;
 
 	{
-		auto query = candidateFinder.createQuery();
+		ProbeDatabase::Query query( candidateFinder );
 
-		query->setQueryDataset( dataset.clone() );
-		query->setProbeContextTolerance( pct );
+		query.setQueryDataset( dataset.clone() );
+		query.setProbeContextTolerance( pct );
 
-		query->execute();
+		query.execute();
 
-		ProbeDatabase::Query::MatchInfos matchInfos = query->getCandidates();
+		ProbeDatabase::Query::MatchInfos matchInfos = query.getCandidates();
 
 		ASSERT_EQ( matchInfos.size(), 1 );
 		EXPECT_EQ( matchInfos[0].numMatches, 2*2*1000 + 3*3*1000 );
+		EXPECT_FLOAT_EQ( matchInfos[0].probeMatchPercentage, 1.0);
+		EXPECT_FLOAT_EQ( matchInfos[0].queryMatchPercentage, 1.0);
 		EXPECT_EQ( matchInfos[0].id, 0 );
 	}
 
 	{
-		auto query = candidateFinder.createQuery();
+		ProbeDatabase::Query query( candidateFinder );
 
-		query->setQueryDataset( testDataset.clone() );
-		query->setProbeContextTolerance( pct );
+		query.setQueryDataset( testDataset.clone() );
+		query.setProbeContextTolerance( pct );
 
-		query->execute();
+		query.execute();
 
-		ProbeDatabase::Query::MatchInfos matchInfos = query->getCandidates();
+		ProbeDatabase::Query::MatchInfos matchInfos = query.getCandidates();
 
 		ASSERT_EQ( matchInfos.size(), 1 );
 		EXPECT_EQ( matchInfos[0].numMatches, 2*2*500 + 3*3*500 );
+		EXPECT_FLOAT_EQ( matchInfos[0].probeMatchPercentage, 0.5);
+		EXPECT_FLOAT_EQ( matchInfos[0].queryMatchPercentage, 0.5);
 		EXPECT_EQ( matchInfos[0].id, 0 );
 	}
 }
@@ -319,36 +393,36 @@ TEST( ProbeDatabase, big ) {
 	candidateFinder.integrateDatasets();
 
 	{
-		auto query = candidateFinder.createQuery();
+		ProbeDatabase::Query query( candidateFinder );
 
-		query->setQueryDataset( dataset.clone() );
+		query.setQueryDataset( dataset.clone() );
 
 		ProbeContextTolerance pct;
 		pct.occusionTolerance = 0;
 		pct.distanceTolerance = 0;
-		query->setProbeContextTolerance( pct );
+		query.setProbeContextTolerance( pct );
 
-		query->execute();
+		query.execute();
 
-		ProbeDatabase::Query::MatchInfos matchInfos = query->getCandidates();
+		ProbeDatabase::Query::MatchInfos matchInfos = query.getCandidates();
 
 		ASSERT_EQ( matchInfos.size(), 1 );
 		EXPECT_EQ( matchInfos[0].numMatches, 600000 );
 		EXPECT_EQ( matchInfos[0].id, 0 );
 	}
 	{
-		auto query = candidateFinder.createQuery();
+		ProbeDatabase::Query query( candidateFinder );
 
-		query->setQueryDataset( testDataset.clone() );
+		query.setQueryDataset( testDataset.clone() );
 
 		ProbeContextTolerance pct;
 		pct.occusionTolerance = 0;
 		pct.distanceTolerance = 0;
-		query->setProbeContextTolerance( pct );
+		query.setProbeContextTolerance( pct );
 
-		query->execute();
+		query.execute();
 
-		ProbeDatabase::Query::MatchInfos matchInfos = query->getCandidates();
+		ProbeDatabase::Query::MatchInfos matchInfos = query.getCandidates();
 
 		ASSERT_EQ( matchInfos.size(), 1 );
 		EXPECT_EQ( matchInfos[0].numMatches, 300000 );

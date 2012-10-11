@@ -209,13 +209,21 @@ TEST( NeighborhoodDatabaseV2_Entry, addInstance ) {
 TEST( NeighborhoodDatabaseV2_Query, all ) {
 	NeighborhoodDatabaseV2 db;
 
+	ModelDatabase modelDatabase;
+
 	NeighborhoodDatabaseV2::RawDataset rawDataset;
 
 	for( int id = 100 - 1 ; id >= 0 ; id-- ) {
 		for( int distance = 10 - 1 ; distance >= 0 ; distance-- ) {
 			rawDataset.push_back( std::make_pair( id, float( distance ) ) );
 		}
+
+		ModelDatabase::IdInformation info;
+		info.area = info.diagonalLength = info.volume = 1.0;
+		modelDatabase.informationById.push_back( info );
 	}
+
+	db.modelDatabase = &modelDatabase;
 
 	db.addInstance( 1, std::move( NeighborhoodDatabaseV2::RawDataset( rawDataset ) ) );
 
