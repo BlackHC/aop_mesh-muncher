@@ -34,6 +34,10 @@ namespace aop {
 		std::vector<NamedCameraState> views;
 		std::vector<NamedTargetVolume> volumes;
 
+		float neighborhoodQueryTolerance;
+
+		Settings() : neighborhoodQueryTolerance( 1.0 ) {}
+
 		void load();
 		void store() const;
 	};

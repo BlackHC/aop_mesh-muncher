@@ -20,6 +20,8 @@
 #include "boost/tuple/tuple.hpp"
 #include "boost/tuple/tuple_comparison.hpp"
 
+#include <logger.h>
+
 using boost::math::normal_distribution; // typedef provides default type is double.
 
 struct NeighborhoodDatabase {
@@ -387,6 +389,16 @@ struct NeighborhoodDatabase {
 	std::vector< IdEntryPair > entriesById;
 };
 
+struct ModelDatabase {
+	struct IdInformation {
+		float volume;
+		float area;
+		float diagonalLength;
+	};
+
+	std::vector< IdInformation > informationById;
+};
+
 struct NeighborhoodDatabaseV2 {
 	typedef int Id;
 	static const int INVALID_ID = -1;
@@ -398,6 +410,8 @@ struct NeighborhoodDatabaseV2 {
 	
 	typedef std::vector< IdDistancePair > RawDataset;
 	typedef std::vector< Distances > DistancesById; // index with [id]!
+
+	ModelDatabase *modelDatabase;
 	
 	// make sure we add entries for all IDs for later
 	struct SortedDataset {
@@ -476,10 +490,10 @@ struct NeighborhoodDatabaseV2 {
 		
 		const float queryTolerance;
 
-		Query( const NeighborhoodDatabaseV2 &database, float queryTolerance, SortedDataset &&sortedDataset ) :
-			database( database ),
-			queryTolerance( queryTolerance ),
-			queryDataset( std::move( sortedDataset ) )
+		Query( const NeighborhoodDatabaseV2 &database, float queryTolerance, SortedDataset &&sortedDataset ) 
+			: database( database )
+			, queryTolerance( queryTolerance )
+			, queryDataset( std::move( sortedDataset ) )
 		{
 		}
 
@@ -487,16 +501,45 @@ struct NeighborhoodDatabaseV2 {
 
 		typedef std::vector< ScoreIdPair > Results;
 
-		Results execute() {
+		struct DefaultPolicy {
+			static float getIdTolerance( Query *query, Id id ) {
+				return query->database.modelDatabase->informationById[id].diagonalLength * 0.5;
+			}
+
+			static float getIdWeight( Query *query, Id id ) {
+				return query->database.modelDatabase->informationById[id].diagonalLength;
+			}
+
+			/*static float getDistanceWeight( float idTolerance, float distance ) {
+				return idTolerance / distance;
+			}*/
+
+			static float getDistanceToleranceScale( float distance ) {
+				return 1.0 + (distance - 1.0) * 0.5;
+			}
+		};
+
+		template< class Policy >
+		Results executeWithPolicy() {
 			Distances emptyDistances;
 
 			const int numEntries = database.entriesById.size();
 			// total score of all entries
 			std::vector<float> totalScore( numEntries );
+
+			float totalIdWeight = 0;
 			
 			// we iterate over all ids
 			for( int id = 0 ; id < database.numIds ; ++id ) {
-				const float idTolerance = 1.0;
+				// update the total score
+				const float idWeight = Policy::getIdWeight( this, id );
+				totalIdWeight += idWeight;
+
+				if( idWeight == 0 ) {
+					continue;
+				}
+									
+				const float idTolerance = Policy::getIdTolerance( this, id );
 
 				// scores for the current id
 				std::vector<float> idScore( numEntries );
@@ -533,6 +576,8 @@ struct NeighborhoodDatabaseV2 {
 					}
 				};
 				std::vector< Mismatch > mismatches;
+				
+				int numTotalDistances = 0;
 
 				// first phase: matches + query mismatches 
 				{
@@ -558,9 +603,15 @@ struct NeighborhoodDatabaseV2 {
 							auto instanceDistance = instanceDistances.begin();
 							for( int queryDistanceIndex = 0 ; queryDistanceIndex < numQueryBins ; ++queryDistanceIndex ) {
 								const float queryDistance = queryData[ queryDistanceIndex ];
-								for( ; instanceDistance != instanceDistances.end() && *instanceDistance < queryDistance - idTolerance ; ++instanceDistance ) {
+								const float queryDistanceToleranceScale = Policy::getDistanceToleranceScale( queryDistance );
+
+								const float beginQueryDistanceInterval = queryDistance - queryDistanceToleranceScale * idTolerance;
+								const float endQueryDistanceInterval = queryDistance + queryDistanceToleranceScale * idTolerance + queryTolerance;
+
+								for( ; instanceDistance != instanceDistances.end() && *instanceDistance < beginQueryDistanceInterval ; ++instanceDistance ) {
 									// no query that can match this instance distance, so its a mismatch
 									mismatches.emplace_back( Mismatch( *instanceDistance, entryIndex, globalInstanceIndex ) );
+									++numTotalDistances;
 								}
 
 								if( instanceDistance == instanceDistances.end() ) {
@@ -568,10 +619,11 @@ struct NeighborhoodDatabaseV2 {
 								}
 
 								// can this instance distance be matched by this query?
-								if( *instanceDistance <= queryDistance + idTolerance + queryTolerance ) {
+								if( *instanceDistance <= endQueryDistanceInterval ) {
 									// match
 									++bins[ queryDistanceIndex ];
 									++entryBins[ entryIndex ][ queryDistanceIndex ];
+									++numTotalDistances;
 
 									// we're done with this instance distance as well
 									++instanceDistance;
@@ -580,6 +632,7 @@ struct NeighborhoodDatabaseV2 {
 							// the remaining instance elements are mismatches, too
 							for( ; instanceDistance != instanceDistances.end() ; ++instanceDistance ) {
 								mismatches.emplace_back( Mismatch( *instanceDistance, entryIndex, globalInstanceIndex ) );
+								++numTotalDistances;
 							}
 						}
 					}
@@ -592,23 +645,29 @@ struct NeighborhoodDatabaseV2 {
 								continue;
 							}
 
+							float binWeight = float(bins[binIndex] + 1) / (numTotalDistances + numQueryBins);
+
 							for( int entryIndex = 0 ; entryIndex < numEntries ; ++entryIndex ) {
 								const Entry &entry = database.entriesById[ entryIndex ].second;
+								const int numInstances = entry.instances.size();
+								if( numInstances == 0 ) {
+									continue;
+								}
 
-								const float conditionalProbability = float( entryBins[ entryIndex ][ binIndex ] ) / bins[ binIndex ];
+								const float conditionalProbability = float( entryBins[ entryIndex ][ binIndex ] ) / numInstances;
 
-								idScore[ entryIndex ] += conditionalProbability;
+								idScore[ entryIndex ] += conditionalProbability * binWeight;
 							}
 						}
 					}
 				}
 
-				{
+				int numMismatchBins = 0;
+				if( true ) {
 					// we need another vector to hold the mismatches we cant process
 					std::vector< Mismatch > deferredMismatches;
 					deferredMismatches.reserve( mismatches.size() );
 
-					int numMismatchBins = 0;
 					// second pass: process mismatches
 					while( !mismatches.empty() ) {
 						// sort the mismatches by distance first
@@ -619,7 +678,10 @@ struct NeighborhoodDatabaseV2 {
 							const auto binBegin = mismatch;
 							{
 								const float beginDistance = binBegin->distance;
-								const float endDistance = beginDistance + 2 * idTolerance + queryTolerance;
+								const float toleranceScale = Policy::getDistanceToleranceScale( binBegin->distance );
+								// this isn't exactly right but I dont want to write an inverter just now
+								// TODO: write an inverter [10/11/2012 kirschan2]
+								const float endDistance = beginDistance + 2 * idTolerance * toleranceScale + queryTolerance;
 								do {
 									++mismatch;
 								} while( 
@@ -647,7 +709,7 @@ struct NeighborhoodDatabaseV2 {
 									binElement->globalInstanceIndex == globalInstanceIndex
 								) {
 									deferredMismatches.push_back( *binElement );
-									binElement++;
+									++binElement;
 								}
 							}
 
@@ -658,7 +720,7 @@ struct NeighborhoodDatabaseV2 {
 								// count the unique elements with this entryIndex
 								int uniqueEntryElements = 0;
 								do {
-									const int globalInstanceIndex = binElement->entryIndex;
+									const int globalInstanceIndex = binElement->globalInstanceIndex;
 									do {
 										binElement++;
 									}
@@ -675,9 +737,19 @@ struct NeighborhoodDatabaseV2 {
 								);
 
 								// calculate the conditional probability that we have a match
-								const float conditionalProbability = float( uniqueEntryElements ) / uniqueInstanceElements;
+								const Entry &entry = database.entriesById[ entryIndex ].second;
+								const int numInstances = entry.instances.size();
+
+								// TODO: verify that numInstances == 0 is impossible because there would be no mismatch otherwise.. [10/11/2012 kirschan2]
+								if( numInstances == 0 ) {
+									continue;
+								}
+								
+								const float binWeight = float( uniqueInstanceElements ) / (numTotalDistances + numQueryBins); 
+								const float conditionalProbability = float( uniqueEntryElements ) / numInstances;
+
 								// mismatch, so we add the complement
-								idScore[ entryIndex ] += 1.0 - conditionalProbability;
+								idScore[ entryIndex ] += binWeight * (1.0 - conditionalProbability);
 							}
 						}
 
@@ -685,11 +757,14 @@ struct NeighborhoodDatabaseV2 {
 						mismatches.swap( deferredMismatches );
 						deferredMismatches.clear();
 					}
-
-					// update the total score
+				}
+				
+				{
 					for( int entryIndex = 0 ; entryIndex < numEntries ; ++entryIndex ) {
-						totalScore[ entryIndex ] += idScore[ entryIndex ] / (numQueryBins +  numMismatchBins);
+						totalScore[ entryIndex ] += idScore[ entryIndex ] * idWeight;
 					}
+
+					log( boost::format( "%i + %i" ) % numQueryBins % numMismatchBins );
 				}
 			}
 			// compute the final score and store it in our results data structure
@@ -698,12 +773,19 @@ struct NeighborhoodDatabaseV2 {
 				for( int entryIndex = 0 ; entryIndex < numEntries ; ++entryIndex ) {
 					const auto entryId = database.entriesById[ entryIndex ].first;
 
-					const float score = totalScore[ entryIndex ] / database.numIds;
-					results.push_back( ScoreIdPair( score, entryId ) );
+					const float score = totalScore[ entryIndex ] / totalIdWeight;
+					// TOOD: hack to remove invisible objects [10/11/2012 kirschan2]
+					if( database.modelDatabase->informationById[ entryId ].diagonalLength > 0 ) {
+						results.push_back( ScoreIdPair( score, entryId ) );
+					}
 				}
 				boost::sort( results, std::greater< ScoreIdPair >() );
 				return results;
 			}
+		}
+
+		Results execute() {
+			return executeWithPolicy< DefaultPolicy >();
 		}
 	};
 };

@@ -65,7 +65,9 @@ using namespace Eigen;
 
 #include "neighborhoodDatabase.h"
 
-const float neighborhoodMaxDistance = 150.0;
+const float neighborhoodMaxDistance = 100.0;
+ModelDatabase modelDatabase;
+// TODO XXX [10/11/2012 kirschan2]
 
 std::weak_ptr<AntTweakBarEventHandler::GlobalScope> AntTweakBarEventHandler::globalScope;
 
@@ -467,6 +469,7 @@ namespace aop {
 						application->world->sceneRenderer,
 						[this, modelIndex, position] () {
 							if( sf::Keyboard::isKeyPressed( sf::Keyboard::LAlt ) ) {
+								log( application->world->scene.modelNames[ modelIndex ] );
 								application->editor.selectModel( modelIndex );
 							}
 							else {
@@ -662,6 +665,7 @@ namespace aop {
 				application->endLongOperation();
 			} ) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
+			ui.add( AntTWBarUI::makeSharedVariable( "Query tolerance", AntTWBarUI::makeReferenceAccessor( application->settings.neighborhoodQueryTolerance ) ) );
 			ui.add( AntTWBarUI::makeSharedButton( "Query volume", [this] () {
 				struct QueryVolumeVisitor : Editor::SelectionVisitor {
 					Application *application;
@@ -677,7 +681,9 @@ namespace aop {
 						application->endLongOperation();
 
 						typedef ProbeDatabase::Query::MatchInfo MatchInfo;
-						boost::sort( matchInfos, [] (const MatchInfo &a, MatchInfo &b ) {
+						boost::sort( 
+							matchInfos,
+							[] (const MatchInfo &a, MatchInfo &b ) {
 								return a.numMatches > b.numMatches;
 							}
 						);
@@ -705,7 +711,13 @@ namespace aop {
 					}
 					void visit( Editor::ObbSelection *selection ) {
 						application->startLongOperation();
-						auto queryResults = queryVolumeNeighbors( application->world.get(), application->neighborDatabase, selection->getObb().transformation.translation(), neighborhoodMaxDistance, 1.0 );
+						auto queryResults = queryVolumeNeighbors(
+							application->world.get(),
+							application->neighborDatabase,
+							selection->getObb().transformation.translation(),
+							neighborhoodMaxDistance,
+							application->settings.neighborhoodQueryTolerance
+						);
 						application->endLongOperation();
 
 						std::vector<int> modelIndices;
@@ -730,7 +742,13 @@ namespace aop {
 					}
 					void visit( Editor::ObbSelection *selection ) {
 						application->startLongOperation();
-						auto queryResults = queryVolumeNeighborsV2( application->world.get(), application->neighborDatabaseV2, selection->getObb().transformation.translation(), neighborhoodMaxDistance, 1.0 );
+						auto queryResults = queryVolumeNeighborsV2(
+							application->world.get(),
+							application->neighborDatabaseV2,
+							selection->getObb().transformation.translation(),
+							neighborhoodMaxDistance, 
+							application->settings.neighborhoodQueryTolerance
+						);
 						application->endLongOperation();
 
 						std::vector<int> modelIndices;
@@ -797,14 +815,14 @@ namespace aop {
 								accessor.pull().volume.transformation.translation() = shadow;
 							}
 						),
-						AntTWBarUI::CT_EMBEDDED
+						AntTWBarUI::CT_GROUP
 					)
 				);
 				container->add(
 					AntTWBarUI::makeSharedButton(
 						"Select",
-						[] () {
-							std::cout << "select called\n";
+						[&] () {
+							targetVolumesUI->application->editor.selectObb( accessor.elementIndex );
 						}
 					)
 				);
@@ -962,6 +980,30 @@ namespace aop {
 
 		const char *scenePath = "P:\\sgs\\sg_and_sgs_source\\survivor\\__GameData\\Editor\\Save\\Survivor_original_mission_editorfiles\\test\\scene.glscene";
 		world->init( scenePath );
+
+		{
+			const auto &models = world->scene.models;
+			const int numModels = models.size();
+
+			for( int modelId = 0 ; modelId < numModels ; modelId++ ) {
+				const auto bbox = world->sceneRenderer.getModelBoundingBox( modelId );
+
+				ModelDatabase::IdInformation idInformation;
+				const Vector3f sizes = bbox.sizes();
+				idInformation.diagonalLength = sizes.norm();
+				// sucks for IND## idInformation.area = sizes.prod() * sizes.cwiseInverse().sum() * 2;
+				idInformation.area =
+					2 * sizes[0] * sizes[1] +
+					2 * sizes[1] * sizes[2] +
+					2 * sizes[0] * sizes[2]
+				;
+				idInformation.volume = sizes.prod();
+
+				modelDatabase.informationById.push_back( idInformation );
+			}
+		}
+		// TODO XXX
+		neighborDatabaseV2.modelDatabase = &modelDatabase;
 	}
 
 	void Application::initEventHandling() {

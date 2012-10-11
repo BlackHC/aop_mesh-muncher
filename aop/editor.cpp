@@ -43,20 +43,31 @@ void Editor::renderHighlitOBB( const Obb &obb ) {
 	DebugRender::begin();
 	DebugRender::setTransformation( obb.transformation );
 
-	glDepthMask( GL_FALSE );
-	glDepthFunc( GL_GEQUAL );
-	DebugRender::setColor( Eigen::Vector3f::UnitX() * 0.5f );
+	for( int pass = 0 ; pass < 2 ; pass++ ) {
+		switch( pass ) {
+		case 0:
+			glDepthMask( GL_FALSE );
+			glDepthFunc( GL_GEQUAL );
+			DebugRender::setColor( Eigen::Vector3f::UnitX() * 0.5f );
+			break;
+		case 1:
+			glDepthMask( GL_TRUE );
+			glDepthFunc( GL_LEQUAL );
+			DebugRender::setColor( Eigen::Vector3f::UnitX() );
+			break;
+		}
 
-	DebugRender::drawBox( obb.size );
-
-	glDepthMask( GL_TRUE );
-	glDepthFunc( GL_LEQUAL );
-	DebugRender::setColor( Eigen::Vector3f::UnitX() );
-
-	DebugRender::drawBox( obb.size );
+		if( !obb.size.isZero() ) {
+			DebugRender::drawBox( obb.size );
+		}
+		else {
+			DebugRender::drawAbstractSphere( 0.5 );
+		}
+	}
 
 	DebugRender::end();
 
+	// reset the state
 	glDepthFunc( GL_LESS );
 }
 

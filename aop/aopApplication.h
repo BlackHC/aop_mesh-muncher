@@ -85,7 +85,7 @@ namespace aop {
 			};
 			std::vector< Entry > entries;
 
-			static const int MAX_NUM_ENTRIES = 256;
+			static const int MAX_NUM_ENTRIES = 32;
 
 			template< int limit >
 			struct CycleCounter {
@@ -124,7 +124,7 @@ namespace aop {
 
 			// TODO: remove elapsed time and use application->clock [10/9/2012 kirschan2]
 			void updateTime( float elapsedTime ) {
-				const float timeOutDuration = 10.0;
+				const float timeOutDuration = 5.0;
 
 				while( size() != 0 && entries[ beginEntry ].timeStamp < elapsedTime - timeOutDuration ) {
 					++beginEntry;
