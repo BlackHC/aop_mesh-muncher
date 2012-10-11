@@ -99,7 +99,7 @@ struct CameraInputControl : EventHandler::WithDefaultParentImpl {
 			Eigen::Vector3f newPosition = camera->getPosition() + camera->getViewTransformation().linear().transpose() * relativeMovement;
 			camera->setPosition( newPosition );
 
-			sf::Vector2f angleDelta = sf::Vector2f( eventSystem.exclusiveMode.popMouseDelta() ) * 0.5f;
+			sf::Vector2f angleDelta = sf::Vector2f( getEventSystem()->exclusiveMode.popMouseDelta() ) * 0.5f;
 
 			camera->yaw( angleDelta.x );
 			camera->pitch( angleDelta.y );

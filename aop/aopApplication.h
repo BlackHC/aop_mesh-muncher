@@ -68,6 +68,8 @@ namespace aop {
 		std::shared_ptr< NamedVolumesEditorView > namedVolumesEditorView;
 		std::shared_ptr< CandidateSidebarUI > candidateSidebarUI;
 
+		std::shared_ptr<TimedLog> timedLog;
+
 		void init();
 
 		void initEditor();
@@ -80,8 +82,6 @@ namespace aop {
 		void updateUI();
 
 		void eventLoop();
-				
-		std::shared_ptr<TimedLog> timedLog;
 
 		void updateProgress();
 

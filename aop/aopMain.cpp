@@ -271,9 +271,6 @@ ProbeDatabase::Query::MatchInfos queryVolume( SGSInterface::World *world, ProbeD
 	return matchInfos;
 }
 
-// TODO: this should get its own file [9/30/2012 kirschan2]
-EventSystem *EventHandler::eventSystem;
-
 namespace aop {
 	struct Application::NamedVolumesEditorView : Editor::Volumes {
 		std::vector< aop::Settings::NamedTargetVolume > &volumes;
@@ -498,7 +495,7 @@ namespace aop {
 
 	void Application::initEventHandling() {
 		eventDispatcher.name = "Input help:";
-		eventSystem.rootHandler = make_nonallocated_shared( eventDispatcher );
+		eventSystem.setRootHandler( make_nonallocated_shared( eventDispatcher ) );
 		eventSystem.exclusiveMode.window = make_nonallocated_shared( mainWindow );
 
 		registerConsoleHelpAction( eventDispatcher );

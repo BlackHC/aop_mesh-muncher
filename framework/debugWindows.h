@@ -49,7 +49,7 @@ struct DisplayListVisualizationWindow : std::enable_shared_from_this<DisplayList
 		// input camera input control
 		cameraInputControl.init( make_nonallocated_shared(camera) );
 
-		eventSystem.rootHandler = make_nonallocated_shared( cameraInputControl );
+		eventSystem.setRootHandler( make_nonallocated_shared( cameraInputControl ) );
 		eventSystem.exclusiveMode.window = make_nonallocated_shared( window );
 	}
 

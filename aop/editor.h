@@ -272,7 +272,7 @@ struct Editor : EventDispatcher {
 		virtual ~Mode() {}
 
 		sf::Vector2i popMouseDelta() {
-			return eventSystem->exclusiveMode.popMouseDelta();
+			return getEventSystem()->exclusiveMode.popMouseDelta();
 		}
 
 		virtual void render() {}
@@ -287,7 +287,7 @@ struct Editor : EventDispatcher {
 			storeState();
 			dragging = true;
 			//dragDelta.reset();
-			eventSystem->setCapture( this, FT_EXCLUSIVE );
+			getEventSystem()->setCapture( this, FT_EXCLUSIVE );
 		}
 
 		void stopDragging( bool accept ) {
@@ -303,7 +303,7 @@ struct Editor : EventDispatcher {
 			}
 
 			dragging = false;
-			eventSystem->setCapture( nullptr, FT_EXCLUSIVE );
+			getEventSystem()->setCapture( nullptr, FT_EXCLUSIVE );
 		}
 
 		void onSelected() {
@@ -415,6 +415,16 @@ struct Editor : EventDispatcher {
 	Rotating rotating;
 	Resizing resizing;
 
+	enum ModeState {
+		M_FREELOOK,
+		M_SELECTING,
+		M_PLACING,
+		M_MOVING,
+		M_ROTATING,
+		M_RESIZING
+	};
+	ModeState currentMode;
+
 	Editor()
 		:
 		EventDispatcher( "Editor" ),
@@ -424,34 +434,42 @@ struct Editor : EventDispatcher {
 		placing( this, "Place" ),
 		moving( this, "Move" ),
 		rotating( this, "Rotate" ),
-		resizing( this, "Resize" )
+		resizing( this, "Resize" ),
+		currentMode( M_FREELOOK )
 	{}
 
-	void selectMode( Mode *mode );
+	void selectMode( ModeState newMode );
+	void validateMode() {
+		selectMode( currentMode );
+	}
 
 	void init();
 	void render();
 
 	void selectObb( int index ) {
 		selection = std::make_shared<ObbSelection>( this, index );
+		validateMode();
 	}
 
 	void selectInstance( int instanceIndex ) {
 		selection = std::make_shared<SGSInstanceSelection>( this, instanceIndex );
+		validateMode();
 	}
 
 	void selectModel( int modelIndex ) {
 		selection = std::make_shared<SGSMultiModelSelection>( this, modelIndex );
+		validateMode();
 	}
 
 	void selectModels( const std::vector<int> &modelIndices ) {
 		selection = std::make_shared<SGSMultiModelSelection>( this, modelIndices );
+		validateMode();
 	}
 
 	void deselect() {
 		selection = nullptr;
+		validateMode();
 	}
-
 
 	static void renderHighlitOBB( const Obb &obb );
 };

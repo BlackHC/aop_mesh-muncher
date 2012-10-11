@@ -12,30 +12,30 @@ void Editor::init() {
 	addEventHandler( make_nonallocated_shared( modes ) );
 
 	addEventHandler( std::make_shared<KeyAction>( "enter selection mode", sf::Keyboard::F6, [&] () {
-		selectMode( &selecting );
+		selectMode( M_SELECTING );
 	} ) );
 	addEventHandler( std::make_shared<KeyAction>( "enter placement mode", sf::Keyboard::F7, [&] () {
 		if( selection && selection->canTransform() ) {
-			selectMode( &placing );
+			selectMode( M_PLACING );
 		}
 	} ) );
 	addEventHandler( std::make_shared<KeyAction>( "enter movement mode", sf::Keyboard::F8, [&] () {
 		if( selection && selection->canTransform() ) {
-			selectMode( &moving );
+			selectMode( M_MOVING );
 		}
 	} ) );
 	addEventHandler( std::make_shared<KeyAction>( "enter rotation mode", sf::Keyboard::F9, [&] () {
 		if( selection && selection->canTransform() ) {
-			selectMode( &rotating );
+			selectMode( M_ROTATING );
 		}
 	} ) );
 	addEventHandler( std::make_shared<KeyAction>( "enter resize mode", sf::Keyboard::F10, [&] () {
 		if( selection && selection->canResize() ) {
-			selectMode( &resizing );
+			selectMode( M_RESIZING );
 		}
 	} ) );
 	addEventHandler( std::make_shared<KeyAction>( "enter free-look mode", sf::Keyboard::F5, [&] () {
-		selectMode( nullptr );
+		selectMode( M_FREELOOK );
 	} ) );
 }
 
@@ -81,14 +81,45 @@ void Editor::render() {
 	}
 }
 
-void Editor::selectMode( Mode *mode ) {
+void Editor::selectMode( ModeState newMode ) {
+	Mode *mode = nullptr;
+
+	switch( newMode ) {
+	case M_FREELOOK:
+		break;
+	case M_SELECTING:
+		mode = &selecting;
+		break;
+	case M_PLACING:
+		if( selection && selection->canTransform() ) {
+			mode = &placing;
+		}
+		break;
+	case M_MOVING:
+		if( selection && selection->canTransform() ) {
+			mode = &moving;
+		}
+		break;
+	case M_ROTATING:
+		if( selection && selection->canTransform() ) {
+			mode = &rotating;
+		}
+		break;
+	case M_RESIZING:
+		if( selection && selection->canResize() ) {
+			mode = &resizing;
+		}
+		break;
+	}
+
+	currentMode = newMode;
 	modes.setTarget( mode );
-	eventSystem->setCapture( mode,  FT_KEYBOARD );
+	getEventSystem()->setCapture( mode,  FT_KEYBOARD );
 }
 
 void Editor::convertScreenToHomogeneous( int x, int y, float &xh, float &yh ) {
 	// TODO: refactor [9/30/2012 kirschan2]
-	const sf::Vector2i size( eventSystem->exclusiveMode.window->getSize() );
+	const sf::Vector2i size( getEventSystem()->exclusiveMode.window->getSize() );
 	xh = float( x ) / size.x * 2 - 1;
 	yh = -(float( y ) / size.y * 2 - 1);
 }
@@ -262,7 +293,7 @@ void Editor::Selecting::onMouse( EventState &eventState ) {
 			const Obb *obb = editor->volumes->get( obbIndex );
 			float t;
 
-			if( 
+			if(
 				intersectRayWithOBB( *obb, editor->view->viewerContext.worldViewerPosition, direction, nullptr, &t ) &&
 				t > 0.0f
 			) {
@@ -278,7 +309,7 @@ void Editor::Selecting::onMouse( EventState &eventState ) {
 		if( editor->world->selectFromView( *editor->view, xh, yh, &result ) && result.objectIndex != SGSInterface::SelectionResult::SELECTION_INDEX_TERRAIN ) {
 			if( bestOBB == -1 || result.hitDistance < bestT) {
 				bestOBB = -1;
-				
+
 				if( !selectModel ) {
 					editor->selectInstance( result.objectIndex );
 				}
@@ -288,10 +319,10 @@ void Editor::Selecting::onMouse( EventState &eventState ) {
 						int modelIndex;
 						bool removeFromSelection;
 
-						Selector( Editor *editor, int modelIndex, bool removeFromSelection ) : 
+						Selector( Editor *editor, int modelIndex, bool removeFromSelection ) :
 							editor( editor ),
 							modelIndex( modelIndex ),
-							removeFromSelection( removeFromSelection ) 
+							removeFromSelection( removeFromSelection )
 						{}
 
 						void visit() {
@@ -305,7 +336,7 @@ void Editor::Selecting::onMouse( EventState &eventState ) {
 						void visit( SGSMultiModelSelection *modelSelection ) {
 							auto found = boost::find( modelSelection->modelIndices, modelIndex );
 							if( !removeFromSelection && found == modelSelection->modelIndices.end() ) {
-								modelSelection->modelIndices.push_back( modelIndex );	
+								modelSelection->modelIndices.push_back( modelIndex );
 							}
 							else if( found != modelSelection->modelIndices.end() ) {
 								modelSelection->modelIndices.erase( found );

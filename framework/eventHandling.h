@@ -117,7 +117,17 @@ struct EventState {
 struct EventSystem;
 
 struct EventHandler {
-	static EventSystem *eventSystem;
+	void setEventSystem( EventSystem *newEventSystem );
+	
+	EventSystem * getEventSystem() const {
+		return eventSystem;
+	}
+
+	EventHandler() : eventSystem() {}
+
+	virtual ~EventHandler() {
+		setEventSystem( nullptr );
+	}
 
 	virtual EventHandler *getParent() const = 0;
 	// setParent is only needed Dispatcher and Router
@@ -153,6 +163,12 @@ struct EventHandler {
 
 	typedef WithSimpleParentImpl<> WithDefaultParentImpl;
 	typedef WithParentDecl<> WithDefaultParentDecl;
+
+	// TODO: this is a hack to get stuff done for now [10/11/2012 kirschan2]
+private:
+	EventSystem *eventSystem;
+
+	virtual void onNewEventSystemSet() {}
 };
 
 template< typename ParentType >
@@ -324,13 +340,6 @@ private:
 };
 
 struct EventSystem {	
-	EventHandler *keyboardFocusHandler, *mouseFocusHandler;
-	EventHandler *exclusiveHandler;
-
-	EventHandlerPtr rootHandler;
-
-	ExclusiveMode exclusiveMode;
-
 	struct EventStateImpl : ::EventState {
 		const sf::Event event;
 
@@ -455,17 +464,17 @@ struct EventSystem {
 		}
 	}
 
-	struct EventSystemScope {
-		EventSystemScope( EventSystem *eventSystem ) {
-			EventHandler::eventSystem = eventSystem;
+	void checkEventSystemMember( const EventHandler *object ) const {
+		if( object && object->getEventSystem() != this ) {
+			__debugbreak();
 		}
-		~EventSystemScope() {
-			EventHandler::eventSystem = nullptr;
-		}
-	};
+	}
 
 	bool processEvent( const sf::Event &event ) {
-		EventSystemScope scope( this );
+		checkEventSystemMember( rootHandler.get() );
+		checkEventSystemMember( mouseFocusHandler );
+		checkEventSystemMember( keyboardFocusHandler );
+		checkEventSystemMember( exclusiveHandler );
 
 		// are we in exclusive mode?
 		if( exclusiveHandler ) {
@@ -538,6 +547,8 @@ struct EventSystem {
 						}
 						eventState.previousHandler = currentHandler;
 						currentHandler = parentHandler;
+
+						checkEventSystemMember( currentHandler );
 					} while( true );
 
 					// fall through and try again with root
@@ -565,6 +576,8 @@ struct EventSystem {
 						}
 						eventState.previousHandler = currentHandler;
 						currentHandler = parentHandler;
+
+						checkEventSystemMember( currentHandler );
 					} while( true );
 
 					// fall through and try again with root
@@ -582,10 +595,25 @@ struct EventSystem {
 	}
 
 	void update( const float frameDuration, const float elapsedTime ) {
-		EventSystemScope scope( this );
+		checkEventSystemMember( rootHandler.get() );
 
 		rootHandler->onUpdate( *this, frameDuration, elapsedTime );
 	}
+
+	void setRootHandler( EventHandlerPtr newRootHandler ) {
+		onEventHandlerRemove( rootHandler.get() );
+		rootHandler = newRootHandler;
+		rootHandler->setEventSystem( this );
+	}
+
+public:
+	ExclusiveMode exclusiveMode;
+
+private:
+	EventHandler *keyboardFocusHandler, *mouseFocusHandler;
+	EventHandler *exclusiveHandler;
+
+	EventHandlerPtr rootHandler;
 };
 
 template< typename BaseEventHandler = EventHandler::WithDefaultParentDecl, typename BaseDispatcher = EventHandler::WithDefaultParentImpl >
@@ -597,15 +625,23 @@ struct TemplateEventDispatcher : BaseDispatcher {
 
 	TemplateEventDispatcher( const char *name = "" ) : name( name ) {}
 
-	void clear() {
-		for( auto eventHandler = eventHandlers.rbegin() ; eventHandler != eventHandlers.rend() ; ++eventHandler ) {
-			
+	virtual void onNewEventSystemSet() {
+		for( auto element = eventHandlers.begin() ; element != eventHandlers.end() ; ++element ) {
+			(*element)->setEventSystem( getEventSystem() );
 		}
+	}
+
+	void clear() {
+		for( auto element = eventHandlers.begin() ; element != eventHandlers.end() ; ++element ) {
+			getEventSystem()->onEventHandlerRemove( element->get() );
+		}
+		eventHandlers.clear();
 	}
 
 	void addEventHandler( const std::shared_ptr<BaseEventHandler> &handler ) {
 		eventHandlers.push_back( handler );
 		handler->setParent( this );
+		handler->setEventSystem( getEventSystem() );
 	}
 
 	void onNotify( const EventState &eventState )  {
@@ -675,6 +711,12 @@ struct TemplateEventRouter : BaseRouter {
 	std::string name;
 
 	TemplateEventRouter( const char *name = "" ) : name( name ), target( nullptr ) {}
+
+	virtual void onNewEventSystemSet() {
+		for( auto element = eventHandlers.begin() ; element != eventHandlers.end() ; ++element ) {
+			(*element)->setEventSystem( getEventSystem() );
+		}
+	}
 
 	void addEventHandler( const std::shared_ptr<BaseEventHandler> &handler ) {
 		eventHandlers.push_back( handler );
@@ -759,3 +801,20 @@ typedef TemplateEventDispatcher<> EventDispatcher;
 
 template struct TemplateEventRouter<>;
 typedef TemplateEventRouter<> EventRouter;
+
+//////////////////////////////////////////////////////////////////////////
+// inline implementations
+// 
+
+inline void EventHandler::setEventSystem( EventSystem *newEventSystem ) {
+	if( eventSystem == newEventSystem ) {
+		return;
+	}
+
+	if( eventSystem ) {
+		eventSystem->onEventHandlerRemove( this );
+	}
+	eventSystem = newEventSystem;
+
+	onNewEventSystemSet();
+}
