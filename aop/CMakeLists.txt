@@ -108,10 +108,31 @@ CUDA_ADD_EXECUTABLE(aop
 
 	../generic/sort_permute_iter.h
 
+	aopAntTWBarUIHelpers.h
+
 	aopApplication.h
 	aopSettings.h
 	aopSettingsStorage.cpp
 	aopMain.cpp
+
+	aopMainUI.h
+	aopMainUI.cpp
+
+	aopTimedLog.h
+	aopTimedLog.cpp
+
+	aopCandidateSidebarUI.h
+	aopCandidateSidebarUI.cpp
+
+	aopModelTypesUI.h
+	aopModelTypesUI.cpp
+
+	aopCameraViewsUI.h
+	aopCameraViewsUI.cpp
+
+	aopQueryVolumesUI.h
+	aopQueryVolumesUI.cpp
+
 	probeGenerator.h
 	probeGenerator.cpp
 	sgsInterface.h

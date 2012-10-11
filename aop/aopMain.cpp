@@ -64,6 +64,11 @@ using namespace Eigen;
 #include <progressTracker.h>
 
 #include "neighborhoodDatabase.h"
+#include "aopCandidateSidebarUI.h"
+#include "aopQueryVolumesUI.h"
+#include "aopCameraViewsUI.h"
+#include "aopModelTypesUI.h"
+#include "aopTimedLog.h"
 
 const float neighborhoodMaxDistance = 100.0;
 ModelDatabase modelDatabase;
@@ -148,109 +153,6 @@ NeighborhoodDatabaseV2::Query::Results queryVolumeNeighborsV2( SGSInterface::Wor
 	return results;
 }
 //////////////////////////////////////////////////////////////////////////
-
-struct EigenVector3fUIFactory : AntTWBarUI::SimpleStructureFactory< Eigen::Vector3f, EigenVector3fUIFactory > {
-	template< typename Accessor >
-	void setup( AntTWBarUI::Container *container, Accessor &accessor ) const {
-		container->add(
-			AntTWBarUI::makeSharedVariable(
-				"x",
-				AntTWBarUI::makeLinkedExpressionAccessor<float>( 
-					[&] () -> float & {
-						return accessor.pull().x();
-					},
-					accessor
-				)
-			)
-		);
-		container->add(
-			AntTWBarUI::makeSharedVariable(
-				"y",
-				AntTWBarUI::makeLinkedExpressionAccessor<float>(
-					[&] () -> float & {
-						return accessor.pull().y();
-					},
-					accessor
-				)
-			)
-		);
-		container->add(
-			AntTWBarUI::makeSharedVariable(
-				"z",
-				AntTWBarUI::makeLinkedExpressionAccessor<float>(
-					[&] () -> float & {
-						return accessor.pull().z();
-					},
-					accessor
-				)
-			)
-		);
-	}
-};
-
-struct EigenRotationMatrix : AntTWBarUI::SimpleStructureFactory< Eigen::Matrix3f, EigenRotationMatrix > {
-	template< typename Accessor >
-	void setup( AntTWBarUI::Container *container, Accessor &accessor ) const {
-		container->add(
-			AntTWBarUI::makeSharedVariable(
-				"rotation",
-				AntTWBarUI::CallbackAccessor< AntTWBarUI::Types::Quat4f >(
-					[&] ( AntTWBarUI::Types::Quat4f &shadow ) {
-						const Eigen::Quaternionf quat( accessor.pull() );
-						for( int i = 0 ; i < 4 ; i++ ) {
-							shadow.coeffs[i] = quat.coeffs()[i];
-						}
-					},
-					[&] ( const AntTWBarUI::Types::Quat4f &shadow ) {
-						Eigen::Quaternionf quat;
-						for( int i = 0 ; i < 4 ; i++ ) {
-							quat.coeffs()[i] = shadow.coeffs[i];
-						}
-						accessor.pull() = quat.toRotationMatrix();
-						accessor.push();
-					}
-				)
-			)
-		);
-	}
-};
-
-aop::Application::TimedLog::TimedLog( Application *application ) : application( application ) {
-	init();
-}
-
-void aop::Application::TimedLog::init() {
-	notifyApplicationOnMessage = false;
-	rebuiltNeeded = false;
-	totalHeight = 0.0;
-
-	entries.resize( MAX_NUM_ENTRIES );
-
-	Log::addSink(
-		[this] ( int scope, const std::string &message, Log::Type type ) -> bool {
-			if( this->size() >= MAX_NUM_ENTRIES - 1 ) {
-				++beginEntry;
-			}
-			Entry &entry = entries[endEntry];
-			entry.timeStamp = application->clock.getElapsedTime().asSeconds();
-
-			entry.renderText.setCharacterSize( 15 );
-			entry.renderText.setString( Log::Utility::indentString( scope, message, boost::str( boost::format( "[%s] " ) % entry.timeStamp ) ) );
-			
-			++endEntry;
-
-			rebuiltNeeded = true;
-
-			if( notifyApplicationOnMessage ) {
-				application->updateProgress();
-			}
-
-			return true;
-		}
-	);
-
-	
-}
 
 #if 1
 
@@ -373,115 +275,6 @@ ProbeDatabase::Query::MatchInfos queryVolume( SGSInterface::World *world, ProbeD
 EventSystem *EventHandler::eventSystem;
 
 namespace aop {
-	struct Application::CandidateSidebar {
-		Application *application;
-
-		struct CandidateContainer : WidgetContainer {
-			float minY, maxY;
-			float scrollStep;
-
-			CandidateContainer() : minY(), maxY(), scrollStep() {}
-
-			void onMouse( EventState &eventState ) {
-				if( eventState.event.type == sf::Event::MouseWheelMoved ) {
-					//log( boost::format( "mouse wheel moved %i" ) % eventState.event.mouseWheel.delta );
-					
-					auto offset = transformChain.getOffset();
-					offset.y() = std::min( -minY, std::max( -maxY, offset.y() + eventState.event.mouseWheel.delta * scrollStep ) );
-					transformChain.setOffset( offset );
-
-					eventState.accept();
-				}
-				else {
-					WidgetContainer::onMouse( eventState );
-				}
-			}
-		};
-		
-		CandidateContainer sidebar;
-
-		struct CandidateModelButton : ModelButtonWidget {
-			CandidateModelButton(
-				const Eigen::Vector2f &offset,
-				const Eigen::Vector2f &size,
-				int modelIndex,
-				SGSSceneRenderer &renderer,
-				const std::function<void()> &action = nullptr
-			) :
-				ModelButtonWidget( offset, size, modelIndex, renderer ),
-				action( action )
-			{}
-
-			std::function<void()> action;
-
-		private:
-			void onAction() {
-				if( action ) {
-					action();
-				}
-			}
-		};
-
-		CandidateSidebar( Application *application ) : application( application ) {
-			init();
-		}
-
-		void init() {				
-			application->widgetRoot.addEventHandler( make_nonallocated_shared( sidebar ) );
-		}
-
-		void clear() {
-			for( auto element = sidebar.eventHandlers.begin() ; element != sidebar.eventHandlers.end() ; ++element ) {
-				application->eventSystem.onEventHandlerRemove( element->get() );
-			}
-			sidebar.eventHandlers.clear();
-		}
-
-		void addModels( std::vector<int> modelIndices, const Eigen::Vector3f &position ) {
-			const float buttonWidth = 0.1;
-			const float buttonAbsPadding = 32;
-			const float buttonVerticalPadding = buttonAbsPadding / ViewportContext::context->framebufferHeight;
-			const float buttonHorizontalPadding = buttonAbsPadding / ViewportContext::context->framebufferWidth;
-
-			// TODO: this was in init but meh
-			sidebar.transformChain.setOffset( Eigen::Vector2f( 1 - buttonHorizontalPadding - buttonWidth, 0 ) );
-
-			const float buttonHeight = buttonWidth * ViewportContext::context->getAspectRatio();
-			const float buttonHeightWithPadding = buttonHeight + buttonVerticalPadding;
-
-			const int maxNumModels = 30;
-
-			// add 5 at most
-			const int numModels = std::min<int>( maxNumModels, modelIndices.size() );
-
-			sidebar.minY = 0;
-			sidebar.maxY = (numModels - 1 ) * buttonHeightWithPadding;
-			sidebar.scrollStep = buttonHeightWithPadding;
-			
-			for( int i = 0 ; i < numModels ; i++ ) {
-				const int modelIndex = modelIndices[ i ];
-
-				sidebar.addEventHandler(
-					std::make_shared< CandidateModelButton >(
-						Eigen::Vector2f( 0.0, buttonVerticalPadding + i * buttonHeightWithPadding ),
-						Eigen::Vector2f( buttonWidth, buttonHeight ),
-						modelIndex,
-						application->world->sceneRenderer,
-						[this, modelIndex, position] () {
-							if( sf::Keyboard::isKeyPressed( sf::Keyboard::LAlt ) ) {
-								log( application->world->scene.modelNames[ modelIndex ] );
-								application->editor.selectModel( modelIndex );
-							}
-							else {
-								application->world->addInstance( modelIndex, position );
-							}
-						}
-					)
-				);
-			}
-		}
-	};
-
 	struct Application::NamedVolumesEditorView : Editor::Volumes {
 		std::vector< aop::Settings::NamedTargetVolume > &volumes;
 
@@ -496,141 +289,6 @@ namespace aop {
 				return nullptr;
 			}
 			return &volumes[ index ].volume;
-		}
-	};
-
-	struct Application::ModelTypesUI {
-		Application *application;
-
-		std::shared_ptr< AntTWBarUI::SimpleContainer > modelsUi;
-		AntTWBarUI::SimpleContainer markedModelsUi;
-
-		std::vector< std::string > beautifiedModelNames;
-		std::vector< int > markedModels;
-
-		struct ModelNameView : AntTWBarUI::SimpleStructureFactory< std::string, ModelNameView >{
-			ModelTypesUI *modelTypesUI;
-
-			ModelNameView( ModelTypesUI *modelTypesUI ) : modelTypesUI( modelTypesUI ) {}
-
-			template< typename ElementAccessor >
-			void setup( AntTWBarUI::Container *container, ElementAccessor &accessor ) const {
-				container->add( AntTWBarUI::makeSharedButton( accessor.pull(),
-						[this, &accessor] () {
-							modelTypesUI->toggleMarkedModel( accessor.elementIndex );
-						}
-					)
-				);
-			}
-		};
-
-		struct MarkedModelNameView : AntTWBarUI::SimpleStructureFactory< int, MarkedModelNameView > {
-			ModelTypesUI *modelTypesUI;
-
-			MarkedModelNameView( ModelTypesUI *modelTypesUI ) : modelTypesUI( modelTypesUI ) {}
-
-			template< typename ElementAccessor >
-			void setup( AntTWBarUI::Container *container, ElementAccessor &accessor ) const {
-				container->add( AntTWBarUI::makeSharedReadOnlyVariable(
-						"Name",
-						AntTWBarUI::makeExpressionAccessor<std::string>( [&] () -> std::string & { return modelTypesUI->beautifiedModelNames[ accessor.pull() ]; } )
-					)
-				);
-			}
-		};
-
-		void beautifyModelNames() {
-			for( auto filePath = application->world->scene.modelNames.begin() ; filePath != application->world->scene.modelNames.end() ; ++filePath ) {
-				std::string filename = *filePath;
-				auto offset = filename.find_last_of( "/\\" );
-				if( offset != std::string::npos ) {
-					filename = filename.substr( offset + 1 );
-				}
-				beautifiedModelNames.push_back( filename );
-			}
-		}
-
-		void toggleMarkedModel( int index ) {
-			auto found = boost::find( markedModels, index );
-			if( found == markedModels.end() ) {
-				markedModels.push_back( index );
-			}
-			else {
-				markedModels.erase( found );
-			}
-			boost::sort( markedModels );
-		}
-
-		void replaceMarkedModels( const std::vector<int> modelIndices ) {
-			markedModels = modelIndices;
-			validateMarkedModels();
-		}
-
-		void validateMarkedModels() {
-			boost::erase( markedModels, boost::unique< boost::return_found_end>( boost::sort( markedModels ) ) );
-		}
-
-		void appendMarkedModels( const std::vector<int> modelIndices ) {
-			boost::push_back( markedModels, modelIndices );
-			validateMarkedModels();
-		}
-
-		ModelTypesUI( Application *application ) : application( application ) {
-			init();
-		}
-
-		struct ReplaceWithSelectionVisitor : Editor::SelectionVisitor {
-			ModelTypesUI *modelTypesUI;
-
-			ReplaceWithSelectionVisitor( ModelTypesUI *modelTypesUI ) : modelTypesUI( modelTypesUI ) {}
-
-			void visit( Editor::SGSMultiModelSelection *selection ) {
-				modelTypesUI->replaceMarkedModels( selection->modelIndices );
-			}
-		};
-
-		struct AppendSelectionVisitor : Editor::SelectionVisitor {
-			ModelTypesUI *modelTypesUI;
-
-			AppendSelectionVisitor( ModelTypesUI *modelTypesUI ) : modelTypesUI( modelTypesUI ) {}
-
-			void visit( Editor::SGSMultiModelSelection *selection ) {
-				modelTypesUI->appendMarkedModels( selection->modelIndices );
-			}
-		};
-
-		void init() {
-			beautifyModelNames();
-
-			struct MyConfig {
-				enum { supportRemove = false };
-			};
-			modelsUi = std::make_shared< AntTWBarUI::Vector< ModelNameView, MyConfig > >( "All models", beautifiedModelNames, ModelNameView( this ), AntTWBarUI::CT_EMBEDDED );
-			modelsUi->link();
-
-			markedModelsUi.setName( "Marked models");
-			auto markedModelsVector = AntTWBarUI::makeSharedVector( "Models", markedModels, MarkedModelNameView( this ), AntTWBarUI::CT_EMBEDDED );
-			markedModelsUi.add( markedModelsVector );
-			markedModelsUi.add( AntTWBarUI::makeSharedSeparator() );
-			markedModelsUi.add( AntTWBarUI::makeSharedButton( "= {}", [this] () {
-				markedModels.clear();
-			} ) );
-			markedModelsUi.add( AntTWBarUI::makeSharedButton( "= selection", [this] () {
-				ReplaceWithSelectionVisitor( this ).dispatch( application->editor.selection );
-			} ) );
-			markedModelsUi.add( AntTWBarUI::makeSharedButton( "+= selection", [this] () {
-				AppendSelectionVisitor( this ).dispatch( application->editor.selection );
-			} ) );
-			markedModelsUi.add( AntTWBarUI::makeSharedSeparator() );
-			markedModelsUi.add( AntTWBarUI::makeSharedButton( "selection =", [this] () {
-				application->editor.selectModels( markedModels );
-			} ) );
-			markedModelsUi.link();
-		}
-
-		void update() {
-			modelsUi->refresh();
-			markedModelsUi.refresh();
 		}
 	};
 
@@ -693,8 +351,8 @@ namespace aop {
 							modelIndices.push_back( matchInfo->id );	
 						}
 
-						application->candidateSidebar->clear();
-						application->candidateSidebar->addModels( modelIndices, selection->getObb().transformation.translation() );
+						application->candidateSidebarUI->clear();
+						application->candidateSidebarUI->addModels( modelIndices, selection->getObb().transformation.translation() );
 					}
 				};
 				QueryVolumeVisitor( application ).dispatch( application->editor.selection );
@@ -725,8 +383,8 @@ namespace aop {
 							modelIndices.push_back( queryResult->second );	
 						}
 
-						application->candidateSidebar->clear();
-						application->candidateSidebar->addModels( modelIndices, selection->getObb().transformation.translation() );
+						application->candidateSidebarUI->clear();
+						application->candidateSidebarUI->addModels( modelIndices, selection->getObb().transformation.translation() );
 					}
 				};
 				QueryNeighborsVisitor( application ).dispatch( application->editor.selection );
@@ -756,8 +414,8 @@ namespace aop {
 							modelIndices.push_back( queryResult->second );	
 						}
 
-						application->candidateSidebar->clear();
-						application->candidateSidebar->addModels( modelIndices, selection->getObb().transformation.translation() );
+						application->candidateSidebarUI->clear();
+						application->candidateSidebarUI->addModels( modelIndices, selection->getObb().transformation.translation() );
 					}
 				};
 				QueryNeighborsVisitor( application ).dispatch( application->editor.selection );
@@ -766,175 +424,6 @@ namespace aop {
 			ui.add( AntTWBarUI::makeSharedButton( "Load database", [this] { application->candidateFinder.loadCache( "database"); } ) );
 			ui.add( AntTWBarUI::makeSharedButton( "Reset database", [this] { application->candidateFinder.reset(); } ) );
 			ui.add( AntTWBarUI::makeSharedButton( "Store database", [this] { application->candidateFinder.storeCache( "database"); } ) );
-			ui.link();
-		}
-
-		void update() {
-			ui.refresh();
-		}
-	};
-
-	struct Application::TargetVolumesUI {
-		Application *application;
-
-		AntTWBarUI::SimpleContainer ui;
-
-		struct NamedTargetVolumeView : AntTWBarUI::SimpleStructureFactory< aop::Settings::NamedTargetVolume, NamedTargetVolumeView > {
-			TargetVolumesUI *targetVolumesUI;
-
-			NamedTargetVolumeView( TargetVolumesUI *targetVolumesUI ) : targetVolumesUI( targetVolumesUI ) {}
-
-			template< typename ElementAccessor >
-			void setup( AntTWBarUI::Container *container, ElementAccessor &accessor ) const {
-				container->add(
-					AntTWBarUI::makeSharedVariable(
-						"Name",
-						AntTWBarUI::makeMemberAccessor( accessor, &aop::Settings::NamedTargetVolume::name )
-					)
-				);
-				container->add(
-					EigenRotationMatrix().makeShared( 
-						AntTWBarUI::CallbackAccessor<Eigen::Matrix3f>(
-							[&] ( Eigen::Matrix3f &shadow ) {
-								shadow = accessor.pull().volume.transformation.linear();
-							},
-							[&] ( const Eigen::Matrix3f &shadow ) {
-								accessor.pull().volume.transformation.linear() = shadow;
-							}
-						),
-						AntTWBarUI::CT_EMBEDDED
-					)
-				);
-				container->add(
-					EigenVector3fUIFactory().makeShared( 
-						AntTWBarUI::CallbackAccessor<Eigen::Vector3f>(
-							[&] ( Eigen::Vector3f &shadow ) {
-								shadow = accessor.pull().volume.transformation.translation();
-							},
-							[&] ( const Eigen::Vector3f &shadow ) {
-								accessor.pull().volume.transformation.translation() = shadow;
-							}
-						),
-						AntTWBarUI::CT_GROUP
-					)
-				);
-				container->add(
-					AntTWBarUI::makeSharedButton(
-						"Select",
-						[&] () {
-							targetVolumesUI->application->editor.selectObb( accessor.elementIndex );
-						}
-					)
-				);
-			}
-		};
-
-		TargetVolumesUI( Application *application ) : application( application ) {
-			init();
-		}
-
-		void init() {
-			ui.setName( "Query volumes" );
-			auto uiVector = AntTWBarUI::makeSharedVector( "Volumes", application->settings.volumes, NamedTargetVolumeView( this ) );
-
-			ui.add( uiVector );
-			ui.add( AntTWBarUI::makeSharedButton( "Add new",
-					[this, uiVector] () {
-						const auto &camera = this->application->mainCamera;
-						aop::Settings::NamedTargetVolume volume;
-
-						volume.volume.size = Eigen::Vector3f::Constant( 5.0 );
-						volume.volume.transformation =
-							Eigen::Translation3f( camera.getPosition() + 5.0 * camera.getDirection() ) *
-							camera.getViewRotation().transpose()
-							;
-
-						this->application->settings.volumes.push_back( volume );
-					}
-				)
-			);
-			ui.link();
-		}
-
-		void update() {
-			ui.refresh();
-		}
-
-	};
-
-	struct Application::CameraViewsUI {
-		Application *application;
-
-		AntTWBarUI::SimpleContainer ui;
-
-		struct NamedCameraStateView : AntTWBarUI::SimpleStructureFactory< aop::Settings::NamedCameraState, NamedCameraStateView >{
-			Application *application;
-
-			NamedCameraStateView( Application *application ) : application( application ) {}
-
-			template< typename ElementAccessor >
-			void setup( AntTWBarUI::Container *container, ElementAccessor &accessor ) const {
-				container->add(
-					AntTWBarUI::makeSharedVariable(
-						"Name",
-						AntTWBarUI::makeMemberAccessor( accessor, &aop::Settings::NamedCameraState::name )
-					)
-				);
-				container->add(
-					AntTWBarUI::makeSharedButton(
-						"Set default",
-						[&] () {
-							auto &views = application->settings.views;
-							std::swap( views.begin(), views.begin() + accessor.elementIndex );
-						}
-					)
-				);
-				container->add(
-					AntTWBarUI::makeSharedButton(
-						"Use",
-						[&] () {
-							accessor.pull().pushTo( this->application->mainCamera );
-						}
-					)
-				);
-				container->add(
-					AntTWBarUI::makeSharedButton(
-						"Replace",
-						[&] () {
-							accessor.pull().pullFrom( this->application->mainCamera );
-							accessor.push();
-						}
-					)
-				);
-			}
-		};
-
-		CameraViewsUI( Application *application ) : application( application ) {
-			init();
-		}
-
-		void init() {
-			ui.setName( "Camera views" );
-
-			ui.add( AntTWBarUI::makeSharedButton(
-					"Add current view",
-					[this] () {
-						application->settings.views.push_back( aop::Settings::NamedCameraState() );
-						application->settings.views.back().pullFrom( application->mainCamera );
-					}
-				)
-			);
-			ui.add( AntTWBarUI::makeSharedButton(
-					"Clear all",
-					[this] () {
-						application->settings.views.clear();
-					}
-				)
-			);
-
-			auto cameraStatesView = AntTWBarUI::makeSharedVector( application->settings.views, NamedCameraStateView( application ) );
-			ui.add( cameraStatesView );
-
 			ui.link();
 		}
 
@@ -957,7 +446,8 @@ namespace aop {
 		cameraViewsUI.reset( new CameraViewsUI( this ) );
 		targetVolumesUI.reset( new TargetVolumesUI( this ) );
 		modelTypesUI.reset( new ModelTypesUI( this ) );
-		candidateSidebar.reset( new CandidateSidebar( this ) );
+	
+		candidateSidebarUI = createCandidateSidebarUI( this );
 	}
 
 	void Application::initMainWindow() {
