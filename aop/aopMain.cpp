@@ -44,7 +44,7 @@ using namespace Eigen;
 #include "antTWBarUI.h"
 
 #include "autoTimer.h"
-#include "candidateFinderInterface.h"
+#include "probeDatabase.h"
 #include "aopSettings.h"
 
 #include "boost/range/algorithm_ext/push_back.hpp"

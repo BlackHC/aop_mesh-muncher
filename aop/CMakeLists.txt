@@ -119,9 +119,9 @@ CUDA_ADD_EXECUTABLE(aop
 	optixEigenInterop.h
 	probeVisualization.cpp
 
-	candidateFinderInterface.h
-	candidateFinder.cpp
-	candidateFinderCache.cpp
+	probeDatabase.h
+	probeDatabase.cpp
+	probeDatabaseStorage.cpp
 
 	neighborhoodDatabase.h
 	neighborhoodDatabase.cpp
@@ -141,9 +141,9 @@ CUDA_ADD_EXECUTABLE(aop
 )
 
 ADD_EXECUTABLE(Test_aop
-	candidateFinderInterface.h
-	candidateFinder.cpp
-	candidateFinderCache.cpp
+	probeDatabase.h
+	probeDatabase.cpp
+	probeDatabaseStorage.cpp
 
 	neighborhoodDatabase.h
 	neighborhoodDatabase.cpp
@@ -157,7 +157,7 @@ ADD_EXECUTABLE(Test_aop
 	../framework/autoTimer.h
 	../framework/autoTimer.cpp
 
-	test_candidateFinder.cpp
+	test_probeDatabase.cpp
 	test_neighborhoodDatabase.cpp
 
 	../gtest/gtest_main.cc
@@ -165,7 +165,7 @@ ADD_EXECUTABLE(Test_aop
 )
 
 SET_SOURCE_FILES_PROPERTIES(
-	candidateFinder.cpp
+	probeDatabase.cpp
 	PROPERTIES
 	COMPILE_FLAGS "/Ox /Ob2 /Oi /Ot"
 )

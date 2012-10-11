@@ -1,7 +1,7 @@
 #define SERIALIZER_SUPPORT_STL
 #include <serializer.h>
 
-#include "candidateFinderInterface.h"
+#include "probeDatabase.h"
 
 /*
 namespace Serializer {

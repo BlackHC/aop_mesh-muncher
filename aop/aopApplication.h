@@ -12,7 +12,7 @@
 
 #include "aopSettings.h"
 
-#include "candidateFinderInterface.h"
+#include "probeDatabase.h"
 #include "neighborhoodDatabase.h"
 
 #include "editor.h"

@@ -1,4 +1,4 @@
-#include "candidateFinderInterface.h"
+#include "probeDatabase.h"
 #include "gtest.h"
 
 TEST( probeContext_lexicographicalLess, order ) {
