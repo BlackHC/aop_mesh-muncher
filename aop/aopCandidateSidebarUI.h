@@ -115,7 +115,7 @@ namespace aop {
 		}
 	};
 
-	std::shared_ptr<CandidateSidebarUI> createCandidateSidebarUI( Application *application ) {
+	inline std::shared_ptr<CandidateSidebarUI> createCandidateSidebarUI( Application *application ) {
 		return std::make_shared<CandidateSidebarUI>( application );
 	}
 }

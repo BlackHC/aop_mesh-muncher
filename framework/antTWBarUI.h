@@ -81,9 +81,15 @@ namespace AntTWBarUI {
 		bool topLevel;
 		const InternalElement *group;
 		InternalBar *bar;
+		// removable as item that can be removed using TwRemoveVar (ie not a group)
+		bool removable;
 		bool spawned;
 
-		InternalElement() : topLevel( false ), group( nullptr ), bar( nullptr ), spawned( false ) {}
+		InternalElement() : topLevel( false ), group( nullptr ), bar( nullptr ), removable( false ), spawned( false ) {}
+		~InternalElement() {
+			// make sure we delete ourselves on destruction
+			remove();
+		}
 
 		std::string getQualifiedInternalName() const {
 			return bar->internalName + "/" + internalName;
@@ -119,6 +125,17 @@ namespace AntTWBarUI {
 			TwSetParam( bar->twBar, internalName.c_str(), "label", TW_PARAM_CSTRING, 1, label.empty() ? " " : label.c_str() );
 		}
 
+		void setExpand( bool expand ) {
+			int tmp = expand;
+			TwSetParam( bar->twBar, internalName.c_str(), "opened", TW_PARAM_INT32, 1, &tmp );
+		}
+
+		bool getExpand() {
+			int tmp;
+			TwGetParam( bar->twBar, internalName.c_str(), "opened", TW_PARAM_INT32, 1, &tmp );
+			return tmp != 0;
+		}
+
 		void unnest() {
 			remove();
 
@@ -128,26 +145,31 @@ namespace AntTWBarUI {
 		}
 
 		void remove() {
-			if( spawned ) {
-				// remove ourself whatever we are
+			if( removable ) {
+				// remove ourself whatever we are (except if we are a group)
 				TwRemoveVar( bar->twBar, internalName.c_str() );
-				spawned = false;
+				removable = false;
 			}
+			spawned = false;
 		}
 
 		void makeSeparator( const std::string &def ) {
 			TwAddSeparator( bar->twBar, internalName.c_str(), def.c_str() );
+			removable = true;
 			spawned = true;
 
 			setGroup();
 		}
 
 		void makeGroup() {
+			spawned = true;
+
 			setGroup();
 		}
 
 		void makeButton( TwButtonCallback callback, void *data, const std::string &def ) {
 			TwAddButton( bar->twBar, internalName.c_str(), callback, data, def.c_str() );
+			removable = true;
 			spawned = true;
 
 			setGroup();
@@ -155,6 +177,7 @@ namespace AntTWBarUI {
 
 		void makeVariableRW( TwType type, void *var, const std::string &def ) {
 			TwAddVarRW( bar->twBar, internalName.c_str(), type, var, def.c_str() );
+			removable = true;
 			spawned = true;
 
 			setGroup();
@@ -162,6 +185,7 @@ namespace AntTWBarUI {
 
 		void makeVariableCB( TwType type, TwGetVarCallback getCallback, TwSetVarCallback setCallback, void *clientData, const std::string &def) {
 			TwAddVarCB( bar->twBar, internalName.c_str(), type, setCallback, getCallback, clientData, def.c_str() );
+			removable = true;
 			spawned = true;
 
 			setGroup();
@@ -171,6 +195,9 @@ namespace AntTWBarUI {
 	struct Container;
 
 	struct Element {
+		// TODO: replace all uses of std::shared_ptr< Element > with Element::SPtr [10/12/2012 kirschan2]
+		typedef std::shared_ptr< Element > SPtr;
+
 		Element() : linked( false ), parent() {}
 
 		bool isLinked() {
@@ -205,7 +232,10 @@ namespace AntTWBarUI {
 			doRefresh();
 		}
 
-		virtual ~Element() {}
+		virtual ~Element() {
+			// we don't need to worry about unregistering with our parent here, because containers hold a shared_ptr to their children
+			// so no child will go out of scope while it is a child :)
+		}
 
 	private:
 		virtual void doLink() = 0;
@@ -222,13 +252,43 @@ namespace AntTWBarUI {
 		Container *parent;
 	};
 
+	struct Expanded {
+		void set( bool newExpanded ) {
+			expanded = newExpanded;
+
+			link();
+		}
+
+		/*bool get() const {
+			return expanded;
+		}*/
+
+		Expanded( InternalElement &element, const bool expanded ) : element( element ), expanded( expanded ) {}
+
+		void link() {
+			if( element.spawned ) {
+				element.setExpand( expanded );
+			}
+		}
+
+		void unlink() {
+			if( element.spawned ) {
+				expanded = element.getExpand();
+			}
+		}
+	private:
+		// this is only backed up from AntTweakBar on unlink, so inbetween the value might be incorrect
+		bool expanded;
+		InternalElement &element;
+	};
+
 	struct Container : Element {
-		Container( ContainerType containerType )
-			: containerType( containerType ), name() {
+		Container( ContainerType containerType, const std::string &name = std::string() )
+			: containerType( containerType ), name( name ), linkedAsBar( false ), expanded( group, true ) {
 		}
 
 		Container( const std::string &name = std::string() )
-			: containerType( CT_GROUP ), name( name ) {
+			: containerType( CT_GROUP ), name( name ), linkedAsBar( false ), expanded( group, true ) {
 		}
 
 		void add( const std::shared_ptr<Element> &child ) {
@@ -260,6 +320,10 @@ namespace AntTWBarUI {
 			this->name = name;
 		}
 
+		void setExpanded( bool newExpanded ) {
+			expanded.set( newExpanded );
+		}
+
 	protected:
 		virtual void doRefresh() {}
 
@@ -278,6 +342,7 @@ namespace AntTWBarUI {
 			if( getParent() ) {
 				// we have a parent, so we are just a group
 				bar.destroy();
+				linkedAsBar = false;
 
 				if( containerType == CT_GROUP ) {
 					group.nest( getParent()->getGroup() );
@@ -300,6 +365,8 @@ namespace AntTWBarUI {
 				}
 			}
 			else {
+				linkedAsBar = true;
+
 				// we are the bar!
 				bar.create();
 				bar.setLabel( name );
@@ -313,15 +380,23 @@ namespace AntTWBarUI {
 				seperatorElement2.nest( getParent()->getGroup() );
 				seperatorElement2.makeSeparator( std::string() );
 			}
+
+			if( !linkedAsBar && containerType == CT_GROUP ) {
+				expanded.link();
+			}
 		}
 
 		virtual void doUnlink() {
+			if( !linkedAsBar && containerType == CT_GROUP ) {
+				expanded.unlink();
+			}
+
 			doUnlinkChildren();
 
 			seperatorElement.unnest();
 			seperatorElement2.unnest();
 			group.unnest();
-
+			
 			// unlink myself
 			if( bar.hasBar() ) {
 				bar.unlink();
@@ -337,11 +412,14 @@ namespace AntTWBarUI {
 		InternalElement group;
 		InternalElement seperatorElement;
 		InternalElement seperatorElement2;
+
+		bool linkedAsBar;
+		Expanded expanded;
 	};
 
 	struct SimpleContainer : Container {
-		SimpleContainer( ContainerType containerType )
-			: Container( containerType ) {
+		SimpleContainer( ContainerType containerType, const std::string &name = std::string() )
+			: Container( containerType, name ) {
 		}
 
 		SimpleContainer( const std::string &name = std::string() )
@@ -438,7 +516,7 @@ namespace AntTWBarUI {
 		Name( InternalElement &element, const std::string &name ) : element( element ), name( name ) {}
 
 		void link() {
-			if( element.spawned ) {
+			if( element.removable ) {
 				element.setLabel( name );
 			}
 		}
@@ -604,8 +682,15 @@ namespace AntTWBarUI {
 		typedef ... Type;
 
 		template< typename Accessor >
-		std::shared_ptr< ViewType > makeShared( Accessor &&accessor, ContainerType containerType = CT_GROUP ) const;
-	}
+		std::shared_ptr< ViewType > makeShared( Accessor &&accessor, ContainerType containerType = CT_GROUP, const std::string &name = std::string() ) const;
+	};
+#endif
+
+#if 0
+	template< typename Accessor >
+	class ViewType {
+		ViewType( Accessor &&accessor, ContainerType containerType = CT_GROUP, const std::string &name = std::string() ); 
+	};
 #endif
 
 	template< typename _Type, template< typename Accessor > class _ViewType >
@@ -613,8 +698,8 @@ namespace AntTWBarUI {
 		typedef _Type Type;
 
 		template< typename Accessor >
-		std::shared_ptr< _ViewType > makeShared( Accessor &&accessor, ContainerType containerType = CT_GROUP ) const {
-			return std::make_shared< _ViewType< Accessor > >( std::move( accessor ), containerType );
+		std::shared_ptr< _ViewType< Accessor > > makeShared( Accessor &&accessor, ContainerType containerType = CT_GROUP, const std::string &name = std::string() ) const {
+			return std::make_shared< _ViewType< Accessor > >( std::move( accessor ), containerType, name );
 		}
 	};
 
@@ -622,8 +707,8 @@ namespace AntTWBarUI {
 	struct Structure : SimpleContainer {
 		Accessor accessor;
 
-		Structure( Accessor &&accessor, ContainerType containerType = CT_GROUP ) :
-			SimpleContainer( containerType ),
+		Structure( Accessor &&accessor, ContainerType containerType = CT_GROUP, const std::string &name = std::string() ) :
+			SimpleContainer( containerType, name ),
 			accessor( std::move( accessor ) ) 
 		{
 		}
@@ -634,8 +719,8 @@ namespace AntTWBarUI {
 		typedef _Type Type;
 
 		template< typename Accessor >
-		std::shared_ptr< Container > makeShared( Accessor &&accessor, ContainerType containerType = CT_GROUP ) const {
-			auto container = std::make_shared< Structure< Accessor > >( std::move( accessor ), containerType );
+		std::shared_ptr< Container > makeShared( Accessor &&accessor, ContainerType containerType = CT_GROUP, const std::string &name = std::string() ) const {
+			auto container = std::make_shared< Structure< Accessor > >( std::move( accessor ), containerType, name );
 
 			static_cast<const _Derived*>(this)->setup( container.get(), container->accessor );
 
@@ -897,7 +982,6 @@ namespace AntTWBarUI {
 	}
 
 	//////////////////////////////////////////////////////////////////////////
-
 
 	template< typename _Type >
 	struct ElementAccessor {

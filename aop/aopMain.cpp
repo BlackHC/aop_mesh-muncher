@@ -185,6 +185,106 @@ struct DebugUI {
 
 };*/
 
+struct DebugUI;
+
+struct IDebugObject {
+	struct Tag {};
+	typedef std::shared_ptr< IDebugObject > SPtr;
+
+	virtual void link( DebugUI *debugUI, Tag = Tag() ) = 0;
+	virtual AntTWBarUI::Element::SPtr getUI( Tag = Tag() ) = 0;
+
+	// called after the rest of the scene has been rendered
+	virtual void renderScene( Tag = Tag() ) = 0;
+};
+
+struct DebugUI {
+	struct Tag {};
+
+	DebugUI() : container( "Debug" ), debugObjectsContainer( "Objects" ) {
+		onAddStaticUI( container );
+		container.add( make_nonallocated_shared( debugObjectsContainer ) );
+
+		container.link();
+	}
+
+	void add( IDebugObject::SPtr debugObject ) {
+		debugObject->link( this );
+		debugObjects.push_back( debugObject );
+
+		debugObjectsContainer.add( debugObject->getUI() );
+	}
+
+	void remove( IDebugObject *debugObject ) {
+		debugObjectsContainer.remove( debugObject->getUI().get() );
+
+		for( auto myDebugObject = debugObjects.begin() ; myDebugObject != debugObjects.end() ; ++myDebugObject ) {
+			if( myDebugObject->get() == debugObject ) {
+				debugObjects.erase( myDebugObject );
+				return;
+			}
+		}
+	}
+
+	void refresh() {
+		container.refresh();
+	}
+
+private:
+	// order is important here because debugObjectsContainer might contain stack pointers to debugObjects
+	std::vector< IDebugObject::SPtr > debugObjects;
+	AntTWBarUI::SimpleContainer debugObjectsContainer;
+	AntTWBarUI::SimpleContainer container;
+
+	virtual void onAddStaticUI( AntTWBarUI::SimpleContainer &container, Tag = Tag() ) {}
+};
+
+namespace aop {
+namespace DebugObjects {
+	struct OptixView : IDebugObject {
+		Application *application;
+
+		DebugUI *debugUI;
+
+		AntTWBarUI::SimpleContainer container;
+
+		OptixView( Application *application ) : container( AntTWBarUI::CT_EMBEDDED ), application( application ) {
+			init();
+		}
+
+		void init() {
+			container.add( AntTWBarUI::makeSharedButton( 
+				"Create optix view window",
+				[&] () {
+					auto window = std::make_shared< TextureVisualizationWindow >();
+					window->init( "Optix View" );
+					window->texture = application->world->optixRenderer.debugTexture;
+					application->debugWindowManager.add( window );
+
+					application->renderOptixView = true;					
+				}
+			) );
+			container.add( AntTWBarUI::makeSharedVariable( 
+				"Update optix view",
+				AntTWBarUI::makeReferenceAccessor( application->renderOptixView )
+			) );
+		}
+
+		// TODO: maybe make this just a normal member of IDebugObject?
+		virtual void link( DebugUI *debugUI, Tag ) {
+			this->debugUI = debugUI;
+		}
+
+		virtual AntTWBarUI::Element::SPtr getUI( Tag ) {
+			return make_nonallocated_shared( container );	
+		}
+
+		virtual void renderScene( Tag ) {
+		}
+	};
+}
+}
+
 const float probeResolution = 0.25;
 
 void sampleInstances( SGSInterface::World *world, ProbeDatabase &candidateFinder, int modelIndex ) {
@@ -456,6 +556,9 @@ namespace aop {
 		modelTypesUI.reset( new ModelTypesUI( this ) );
 	
 		candidateSidebarUI = createCandidateSidebarUI( this );
+		debugUI = std::make_shared< DebugUI >();
+
+		debugUI->add( std::make_shared< DebugObjects::OptixView >( this ) );
 	}
 
 	void Application::initMainWindow() {
@@ -573,6 +676,8 @@ namespace aop {
 		cameraViewsUI->update();
 		modelTypesUI->update();
 		mainUI->update();
+		// TODO: settle on refresh or update [10/12/2012 kirschan2]
+		debugUI->refresh();
 	}
 
 	void Application::eventLoop() {
@@ -584,6 +689,8 @@ namespace aop {
 
 		while (true)
 		{
+			debugWindowManager.update();
+
 			// Activate the window for OpenGL rendering
 			mainWindow.setActive();
 
@@ -613,6 +720,9 @@ namespace aop {
 			if( !mainWindow.isOpen() ) {
 				break;
 			}
+
+			// we set the main window again because we might have created another window in-between
+			mainWindow.setActive();
 
 			eventSystem.update( frameClock.restart().asSeconds(), clock.getElapsedTime().asSeconds() );
 				
@@ -655,7 +765,9 @@ namespace aop {
 				// render editor entities first
 				editor.render();
 
-				//world.renderOptixViewFrame( view );
+				if( renderOptixView ) {
+					world->renderOptixViewFrame( cameraView );
+				}
 
 				// render widgets
 				glMatrixMode( GL_PROJECTION );

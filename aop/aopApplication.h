@@ -22,7 +22,11 @@
 #include <deque>
 #include <logger.h>
 
+#include <debugWindows.h>
+
 #include <memory>
+
+struct DebugUI;
 
 namespace aop {
 	struct CandidateSidebarUI;
@@ -31,11 +35,13 @@ namespace aop {
 	struct ModelTypesUI;
 	struct TimedLog;
 	struct ProbeDatabaseUI;
-
+	
 	struct Application {
 		sf::Clock frameClock, clock;
 
 		sf::RenderWindow mainWindow;
+
+		DebugWindowManager debugWindowManager;
 
 		Editor editor;
 
@@ -58,7 +64,9 @@ namespace aop {
 		NeighborhoodDatabaseV2 neighborDatabaseV2;
 		ModelDatabase modelDatabase;
 
-		Application() {}
+		bool renderOptixView;
+
+		Application() : renderOptixView( false ) {}
 
 		struct MainUI;
 		struct NamedVolumesEditorView;
@@ -70,6 +78,8 @@ namespace aop {
 
 		std::shared_ptr< NamedVolumesEditorView > namedVolumesEditorView;
 		std::shared_ptr< CandidateSidebarUI > candidateSidebarUI;
+
+		std::shared_ptr< DebugUI > debugUI;
 
 		std::shared_ptr<TimedLog> timedLog;
 

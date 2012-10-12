@@ -29,6 +29,8 @@ struct AntTweakBarEventHandler : public EventHandler::WithDefaultParentImpl {
 
 		const auto size = window.getSize();
 
+		// TODO: support multiple anttweakbar windows [10/12/2012 kirschan2]
+		//TwSetCurrentWindow( window.getSystemHandle() )
 		TwWindowSize( size.x, size.y );
 	}
 

@@ -25,6 +25,20 @@ namespace aop {
 					)
 				);
 				container->add(
+					EigenVector3fUIFactory().makeShared( 
+						AntTWBarUI::CallbackAccessor<Eigen::Vector3f>(
+							[&] ( Eigen::Vector3f &shadow ) {
+								shadow = accessor.pull().volume.transformation.translation();
+							},
+							[&] ( const Eigen::Vector3f &shadow ) {
+								accessor.pull().volume.transformation.translation() = shadow;
+							}
+						),
+						AntTWBarUI::CT_GROUP,
+						"Position"
+					)
+				);
+				container->add(
 					EigenRotationMatrix().makeShared( 
 						AntTWBarUI::CallbackAccessor<Eigen::Matrix3f>(
 							[&] ( Eigen::Matrix3f &shadow ) {
@@ -35,19 +49,6 @@ namespace aop {
 							}
 						),
 						AntTWBarUI::CT_EMBEDDED
-					)
-				);
-				container->add(
-					EigenVector3fUIFactory().makeShared( 
-						AntTWBarUI::CallbackAccessor<Eigen::Vector3f>(
-							[&] ( Eigen::Vector3f &shadow ) {
-								shadow = accessor.pull().volume.transformation.translation();
-							},
-							[&] ( const Eigen::Vector3f &shadow ) {
-								accessor.pull().volume.transformation.translation() = shadow;
-							}
-						),
-						AntTWBarUI::CT_GROUP
 					)
 				);
 				container->add(

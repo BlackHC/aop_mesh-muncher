@@ -7,6 +7,7 @@
 struct EigenVector3fUIFactory : AntTWBarUI::SimpleStructureFactory< Eigen::Vector3f, EigenVector3fUIFactory > {
 	template< typename Accessor >
 	void setup( AntTWBarUI::Container *container, Accessor &accessor ) const {
+		container->setExpanded( false );
 		container->add(
 			AntTWBarUI::makeSharedVariable(
 				"x",
@@ -48,7 +49,7 @@ struct EigenRotationMatrix : AntTWBarUI::SimpleStructureFactory< Eigen::Matrix3f
 	void setup( AntTWBarUI::Container *container, Accessor &accessor ) const {
 		container->add(
 			AntTWBarUI::makeSharedVariable(
-				"rotation",
+				"Orientation",
 				AntTWBarUI::CallbackAccessor< AntTWBarUI::Types::Quat4f >(
 					[&] ( AntTWBarUI::Types::Quat4f &shadow ) {
 						const Eigen::Quaternionf quat( accessor.pull() );

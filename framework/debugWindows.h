@@ -19,6 +19,8 @@
 #include <boost/foreach.hpp>
 
 struct DebugWindowBase {
+	typedef std::shared_ptr< DebugWindowBase > SPtr;
+
 	sf::Window window;
 
 	typedef float Seconds;
@@ -110,12 +112,7 @@ struct TextureVisualizationWindow : std::enable_shared_from_this<TextureVisualiz
 	TextureVisualizationWindow() {}
 
 	void init( const std::string &caption ) {
-		window.create( sf::VideoMode( 640, 480 ), caption.c_str(), sf::Style::Default, sf::ContextSettings(42) );
-		window.setActive();
-
-		glEnable(GL_DEPTH_TEST);
-		glDepthMask(GL_TRUE);
-		glClearDepth(1.f);
+		window.create( sf::VideoMode( 640, 480 ), caption.c_str(), sf::Style::Default, sf::ContextSettings(42) );		
 	}
 
 	typedef float Seconds;
@@ -144,7 +141,7 @@ struct TextureVisualizationWindow : std::enable_shared_from_this<TextureVisualiz
 				return;
 			}
 
-			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			glClear(GL_COLOR_BUFFER_BIT );
 
 			// OpenGL drawing commands go here...
 			if( texture.handle ) {
@@ -158,7 +155,7 @@ struct TextureVisualizationWindow : std::enable_shared_from_this<TextureVisualiz
 				glMatrixMode( GL_MODELVIEW );
 				glLoadIdentity();
 
-				DebugRender::ImmediateCalls::drawTexturedScreenQuad();
+				DebugRender::drawTexturedScreenQuad();
 
 				texture.unbind();
 			}
@@ -170,8 +167,21 @@ struct TextureVisualizationWindow : std::enable_shared_from_this<TextureVisualiz
 };
 
 struct DebugWindowManager {
-	std::vector< std::shared_ptr< DebugWindowBase > > windows;
+	void add( DebugWindowBase::SPtr window ) {
+		windows.push_back( window );
+	}
 
+	void remove( DebugWindowBase *window ) {
+		for( auto myWindow = windows.begin() ; myWindow != windows.end() ; ++myWindow ) {
+			if( myWindow->get() == window ) {
+				windows.erase( myWindow );
+				return;
+			}	
+		}
+	}
+
+	std::vector< DebugWindowBase::SPtr > windows;
+	
 	sf::Clock frameTimer, totalTimer;
 
 	typedef float Seconds;
