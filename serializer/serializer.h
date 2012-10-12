@@ -203,15 +203,33 @@ namespace Serializer {
 		};
 	}
 
+	namespace detail {
+		struct TextConverterTag {};
+	}
+
 	struct TextWriter : detail::TextBase {
 		std::string filename;
 
+		// TODO: fix this hack and implement proper support for a TextWriterBase that just consists of TextBase and nothing else 
+		// we should wrap fread and fwrite as well, so we are independent of the actual output method [10/12/2012 kirschan2]
+		TextWriter( detail::TextConverterTag tag ) {}
 		TextWriter( const char *filename ) : filename( filename ) {}
 		~TextWriter() {
-			wml::emitFile( filename, root );
+			if( !filename.empty() ) {
+				wml::emitFile( filename, root );
+			}
 		}
 
 		typedef detail::TextBase::Environment< TextWriter > Environment;
+	};
+
+	// for now just text output [10/12/2012 kirschan2]
+	struct TextConverter : TextWriter {
+		TextConverter() : TextWriter( detail::TextConverterTag() ) {}
+
+		std::string getString() const {
+			return wml::emit( root );
+		}
 	};
 
 	struct TextReader : detail::TextBase {

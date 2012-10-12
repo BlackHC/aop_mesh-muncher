@@ -36,6 +36,22 @@ void genericTest( const char *filename ) {
 
 // pure tests
 
+TEST( TextConverter, CodeCoverage ) {
+	Serializer::TextConverter textConverter;
+
+	{
+		int i = 10;
+		float f = 3.1415;
+		char c = 'a';
+
+		SERIALIZER_PUT_VARIABLE( textConverter, i );
+		SERIALIZER_PUT_VARIABLE( textConverter, f );
+		SERIALIZER_PUT_VARIABLE( textConverter, c );
+	}
+
+	ASSERT_FALSE( textConverter.getString().empty() );
+}
+
 template< typename Reader, typename Writer >
 void PrimitiveSerializations( const char *filename ) {
 	{
