@@ -298,7 +298,7 @@ struct ProbeContextTolerance {
 
 	void setDefault() {
 		occusionTolerance = 0.125;
-		colorTolerance = 0.25;
+		colorTolerance = 0.10;
 		distanceTolerance = 0.25;
 	}
 };

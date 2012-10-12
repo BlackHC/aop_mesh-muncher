@@ -174,7 +174,7 @@ void Editor::TransformMode::onUpdate( EventSystem &eventSystem, const float fram
 		return;
 	}
 
-	bool localMode = sf::Keyboard::isKeyPressed( sf::Keyboard::LAlt );
+	bool worldMode = sf::Keyboard::isKeyPressed( sf::Keyboard::LControl );
 
 	if( !dragging ) {
 		Eigen::Vector3f relativeMovement = Eigen::Vector3f::Zero();
@@ -193,7 +193,7 @@ void Editor::TransformMode::onUpdate( EventSystem &eventSystem, const float fram
 		if( sf::Keyboard::isKeyPressed( sf::Keyboard::Space ) ) {
 			relativeMovement.y() += 1;
 		}
-		if( sf::Keyboard::isKeyPressed( sf::Keyboard::LControl ) ) {
+		if( sf::Keyboard::isKeyPressed( sf::Keyboard::LAlt ) ) {
 			relativeMovement.y() -= 1;
 		}
 
@@ -206,7 +206,7 @@ void Editor::TransformMode::onUpdate( EventSystem &eventSystem, const float fram
 			relativeMovement *= 4;
 		}
 
-		transform( relativeMovement, localMode );
+		transform( relativeMovement, worldMode );
 	}
 	else {
 		const sf::Vector2i draggedDelta = popMouseDelta();
@@ -219,11 +219,23 @@ void Editor::TransformMode::onUpdate( EventSystem &eventSystem, const float fram
 		}
 		relativeMovement *= 0.01;
 
-		transform( relativeMovement, localMode );
+		transform( relativeMovement, worldMode );
 	}
 }
 
 void Editor::TransformMode::onKeyboard( EventState &eventState ) {
+	switch( eventState.event.key.code ) {
+	case sf::Keyboard::LControl:
+	case sf::Keyboard::LAlt:
+	case sf::Keyboard::LShift:
+	case sf::Keyboard::Space:
+	case sf::Keyboard::W:
+	case sf::Keyboard::S:
+	case sf::Keyboard::A:
+	case sf::Keyboard::D:
+		eventState.accept();
+		break;
+	}
 	switch( eventState.event.type ) {
 	case sf::Event::KeyPressed:
 		if( eventState.event.key.code == sf::Keyboard::Escape && dragging ) {
@@ -293,9 +305,8 @@ void Editor::Selecting::onMouse( EventState &eventState ) {
 			const Obb *obb = editor->volumes->get( obbIndex );
 			float t;
 
-			if(
-				intersectRayWithOBB( *obb, editor->view->viewerContext.worldViewerPosition, direction, nullptr, &t ) &&
-				t > 0.0f
+			if(	intersectRayWithOBB( *obb, editor->view->viewerContext.worldViewerPosition, direction, nullptr, &t )
+				&& t > 0.0f
 			) {
 				if( bestOBB == -1 || bestT > t ) {
 					bestT = t;
@@ -371,23 +382,52 @@ void Editor::Placing::onMouse( EventState &eventState ) {
 	eventState.accept();
 }
 
-void Editor::Moving::transform( const Eigen::Vector3f &relativeMovement, bool localMode ) {
-	if( !localMode ) {
+void Editor::Moving::transform( const Eigen::Vector3f &relativeMovement, bool worldMode ) {
+	const auto transformation = editor->selection->getTransformation();
+
+	if( !worldMode ) {
 		const auto scaledRelativeMovement = editor->getScaledRelativeViewMovement( relativeMovement );
-		editor->selection->setTransformation( Eigen::Translation3f( scaledRelativeMovement ) * editor->selection->getTransformation() );
+		editor->selection->setTransformation( Eigen::Translation3f( scaledRelativeMovement ) * transformation );
 	}
 	else {
-		const auto transformation = editor->selection->getTransformation();
-		editor->selection->setTransformation( Eigen::Translation3f( transformation.linear() * relativeMovement ) * transformation );
+		const auto &viewAxes = editor->view->viewAxes;
+
+		Vector3f right = viewAxes.row(0);
+		Vector3f forward = -viewAxes.row(2);
+		Vector3f up = Vector3f::UnitY();
+
+		const float scaleFactor = fabs( forward.dot( transformation.translation() - editor->view->viewerContext.worldViewerPosition ) );
+
+		right[1] = 0.0f;
+		forward[1] = 0.0f;
+
+		if( right.isZero() ) {
+			forward.normalize();
+			right = forward.cross( up );
+		}
+		else if( forward.isZero() ) {
+			right.normalize();
+			forward = up.cross( right );
+		}
+		else {
+			right.normalize();
+			forward.normalize();
+		}
+
+		right *= scaleFactor;
+		forward *= scaleFactor;
+		up *= scaleFactor;
+
+		editor->selection->setTransformation( Translation3f( right * relativeMovement.x() + forward * relativeMovement.y() + up * relativeMovement.z() ) * transformation );
 	}
 }
 
-void Editor::Rotating::transform( const Eigen::Vector3f &relativeMovement, bool localMode ) {
+void Editor::Rotating::transform( const Eigen::Vector3f &relativeMovement, bool worldMode ) {
 	Eigen::Affine3f rotation;
 
 	const auto transformation = editor->selection->getTransformation();
 
-	if( !localMode ) {
+	if( !worldMode ) {
 		rotation =
 			Eigen::AngleAxisf( relativeMovement.z(), editor->view->viewAxes.row(2) ) *
 			Eigen::AngleAxisf( relativeMovement.y(), editor->view->viewAxes.row(0) ) *
@@ -395,10 +435,34 @@ void Editor::Rotating::transform( const Eigen::Vector3f &relativeMovement, bool 
 		;
 	}
 	else {
+		const auto &viewAxes = editor->view->viewAxes;
+
+		Vector3f right = viewAxes.row(0);
+		Vector3f forward = -viewAxes.row(2);
+		Vector3f up = Vector3f::UnitY();
+
+		const float scaleFactor = fabs( forward.dot( transformation.translation() - editor->view->viewerContext.worldViewerPosition ) );
+
+		right[1] = 0.0f;
+		forward[1] = 0.0f;
+
+		if( right.isZero() ) {
+			forward.normalize();
+			right = forward.cross( up );
+		}
+		else if( forward.isZero() ) {
+			right.normalize();
+			forward = up.cross( right );
+		}
+		else {
+			right.normalize();
+			forward.normalize();
+		}
+
 		rotation =
-			Eigen::AngleAxisf( relativeMovement.z(), transformation.linear().col(2) ) *
-			Eigen::AngleAxisf( relativeMovement.y(), transformation.linear().col(0) ) *
-			Eigen::AngleAxisf( relativeMovement.x(), transformation.linear().col(1) )
+			Eigen::AngleAxisf( relativeMovement.z(), forward ) *
+			Eigen::AngleAxisf( relativeMovement.y(), right ) *
+			Eigen::AngleAxisf( relativeMovement.x(), up )
 		;
 	}
 
@@ -410,6 +474,18 @@ void Editor::Rotating::transform( const Eigen::Vector3f &relativeMovement, bool 
 		Eigen::Translation3f( -translation ) *
 		transformation
 	);
+}
+
+void Editor::Rotating::onKeyboard( EventState &eventState ) {
+	TransformMode::onKeyboard( eventState );
+
+	if( 
+		eventState.event.type == sf::Event::KeyPressed 
+		&&
+		eventState.event.key.code == sf::Keyboard::Home
+		) {
+			editor->selection->setTransformation( Affine3f( Translation3f( editor->selection->getTransformation().translation() ) ) );
+	}
 }
 
 void Editor::Resizing::storeState() {
@@ -478,13 +554,13 @@ void Editor::Resizing::onMouse( EventState &eventState ) {
 		transformSpeed *= std::pow( 1.5f, (float) eventState.event.mouseWheel.delta );
 		break;
 	case sf::Event::MouseButtonPressed:
-		if( eventState.event.mouseButton.button == sf::Mouse::Button::Left && setCornerMasks( eventState.event.mouseButton.x, eventState.event.mouseButton.y ) ) {
+		if( eventState.event.mouseButton.button == sf::Mouse::Left && setCornerMasks( eventState.event.mouseButton.x, eventState.event.mouseButton.y ) ) {
 			startDragging();
 			eventState.accept();
 		}
 		break;
 	case sf::Event::MouseButtonReleased:
-		if( eventState.event.mouseButton.button == sf::Mouse::Button::Left ) {
+		if( eventState.event.mouseButton.button == sf::Mouse::Left ) {
 			stopDragging( true );
 		}
 		break;

@@ -17,6 +17,7 @@ namespace SGSInterface {
 	struct View {
 		ViewerContext viewerContext;
 		RenderContext renderContext;
+		// world to view rotation (axes as rows)
 		Eigen::Matrix3f viewAxes;
 
 		void updateFromCamera( const Camera &camera ) {

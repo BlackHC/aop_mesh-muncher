@@ -324,7 +324,7 @@ struct Editor : EventDispatcher {
 		float transformSpeed;
 		Obb::Transformation storedTransformation;
 
-		virtual void transform( const Eigen::Vector3f &relativeMovement, bool localMode ) = 0;
+		virtual void transform( const Eigen::Vector3f &relativeMovement, bool worldMode ) = 0;
 
 		TransformMode( Editor *editor, const char *name ) : Mode( editor, name ), transformSpeed( 0.1f ) {}
 
@@ -370,13 +370,15 @@ struct Editor : EventDispatcher {
 	struct Moving : TransformMode {
 		Moving( Editor *editor, const char *name ) : TransformMode( editor, name ) {}
 
-		virtual void transform( const Eigen::Vector3f &relativeMovement, bool localMode );
+		virtual void transform( const Eigen::Vector3f &relativeMovement, bool worldMode );
 	};
 
 	struct Rotating : TransformMode {
 		Rotating( Editor *editor, const char *name ) : TransformMode( editor, name ) {}
 
-		void transform( const Eigen::Vector3f &relativeMovement, bool localMode );
+		void transform( const Eigen::Vector3f &relativeMovement, bool worldMode );
+
+		void onKeyboard( EventState &eventState );
 	};
 
 	struct Resizing : Mode {

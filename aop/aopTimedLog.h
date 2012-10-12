@@ -15,7 +15,7 @@ namespace aop {
 		};
 		std::vector< Entry > entries;
 
-		static const int MAX_NUM_ENTRIES = 32;
+		static const int MAX_NUM_ENTRIES = 512;
 
 		template< int limit >
 		struct CycleCounter {
@@ -71,43 +71,46 @@ namespace aop {
 				float y = 0;
 				for( auto entryIndex = beginEntry ; entryIndex != endEntry ; ++entryIndex ) {
 					Entry &entry = entries[ entryIndex ];
-					entry.renderText.setPosition( 0.0, y );
 					y += entry.renderText.getLocalBounds().height;
 				}
 				totalHeight = y;
 			}
 		}
 
-		void renderEntries() {
-			for( auto entryIndex = beginEntry ; entryIndex != endEntry ; ++entryIndex ) {
-				const Entry &entry = entries[ entryIndex ];
-				application->mainWindow.draw( entry.renderText );
+		void renderEntries( const float maxHeightPercentage, bool drawBackground ) {
+			const sf::Vector2i windowSize( application->mainWindow.getSize() );
+
+			const float height = std::min<float>( totalHeight, maxHeightPercentage * windowSize.y );
+
+			if( drawBackground ) {
+				sf::RectangleShape background;
+				background.setPosition( 0.0, 0.0 );
+				background.setSize( sf::Vector2f( windowSize.x, height ) );
+				background.setFillColor( sf::Color( 20, 20, 20, 128 ) );
+				application->mainWindow.draw( background );
+			}
+			
+			float y = height;
+			for( auto entry = entries.rbegin() ; entry != entries.rend() ; ++entry ) {
+				auto &renderText = entry->renderText;
+				const auto bounds = renderText.getLocalBounds();
+				y -= bounds.height;
+
+				renderText.setPosition( -bounds.left, y - bounds.top );
+				application->mainWindow.draw( renderText );
+
+				if( y < 0 ) {
+					break;
+				}
 			}
 		}
 
-		void renderAsNotifications() {
-			const sf::Vector2i windowSize( application->mainWindow.getSize() );
-
-			sf::RectangleShape background;
-			background.setPosition( 0.0, 0.0 );
-			background.setSize( sf::Vector2f( windowSize.x, totalHeight ) );
-			background.setFillColor( sf::Color( 20, 20, 20, 128 ) );
-			application->mainWindow.draw( background );
-
-			renderEntries();
+		void renderAsNotifications() {			
+			renderEntries( 0.3, true );
 		}
 
 		void renderAsLog() {
-			const sf::Vector2i windowSize( application->mainWindow.getSize() );
-
-			sf::View view = application->mainWindow.getView();
-			sf::View shiftedView = view;
-			shiftedView.move( 0.0, -(windowSize.y * 0.9 - totalHeight) );
-			application->mainWindow.setView( shiftedView );
-
-			renderEntries();
-
-			application->mainWindow.setView( view );
+			renderEntries( 0.9, false );
 		}
 	};
 }

@@ -264,7 +264,19 @@ ProbeDatabase::Query::MatchInfos queryVolume( SGSInterface::World *world, ProbeD
 
 	const auto &matchInfos = query.getCandidates();
 	for( auto matchInfo = matchInfos.begin() ; matchInfo != matchInfos.end() ; ++matchInfo ) {
-		log( boost::format( "%i: %f" ) % matchInfo->id % matchInfo->numMatches );
+		log( 
+			boost::format( 
+				"%i:\tnumMatches %f\n"
+				"\tdbMatchPercentage %f\n"
+				"\tqueryMatchPercentage %f\n"
+				"\tscore %f\n"
+			) 
+			% matchInfo->id 
+			% matchInfo->numMatches
+			% matchInfo->probeMatchPercentage
+			% matchInfo->queryMatchPercentage
+			% matchInfo->score
+		);
 	}
 	progressTracker.markFinished();
 

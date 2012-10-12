@@ -649,14 +649,15 @@ struct NeighborhoodDatabaseV2 {
 
 							for( int entryIndex = 0 ; entryIndex < numEntries ; ++entryIndex ) {
 								const Entry &entry = database.entriesById[ entryIndex ].second;
-								const int numInstances = entry.instances.size();
-								if( numInstances == 0 ) {
+								const int numInstancesInEntry = entry.instances.size();
+								if( numInstancesInEntry == 0 ) {
 									continue;
 								}
 
-								const float conditionalProbability = float( entryBins[ entryIndex ][ binIndex ] ) / numInstances;
+								const float entryWeight = 1.0; //numInstancesInEntry / globalInstanceIndex;
+								const float conditionalProbability = float( entryBins[ entryIndex ][ binIndex ] ) / numInstancesInEntry;
 
-								idScore[ entryIndex ] += conditionalProbability * binWeight;
+								idScore[ entryIndex ] += conditionalProbability * binWeight * entryWeight;
 							}
 						}
 					}
@@ -767,6 +768,7 @@ struct NeighborhoodDatabaseV2 {
 					log( boost::format( "%i + %i" ) % numQueryBins % numMismatchBins );
 				}
 			}
+
 			// compute the final score and store it in our results data structure
 			{
 				Results results;

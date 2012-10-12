@@ -18,6 +18,16 @@ void aop::TimedLog::init() {
 			entry.renderText.setCharacterSize( 15 );
 			entry.renderText.setString( Log::Utility::indentString( scope, message, boost::str( boost::format( "[%s] " ) % entry.timeStamp ) ) );
 			
+			// some fancy style changes depending on the event type
+			switch( type ) {
+			case Log::T_ERROR:
+				entry.renderText.setStyle( sf::Text::Bold );
+				entry.renderText.setColor( sf::Color( 255, 0, 0 ) );
+				break;
+			default:
+				break;
+			}
+
 			++endEntry;
 
 			rebuiltNeeded = true;
