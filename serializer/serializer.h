@@ -273,7 +273,7 @@ namespace Serializer {
 
 	// default value does not matter in the binary version
 	template< typename Value >
-	void get( BinaryReader &reader, const char *key, Value &value, const Value & ) {
+	void get( BinaryReader &reader, const char *key, Value &value, const Value & /*defaultValue*/ ) {
 		read( reader, value );
 	}
 
@@ -359,6 +359,12 @@ namespace Serializer {
 		}
 	}
 	
+
+	// change: we don't use default values except if we pass them [10/12/2012 kirschan2]
+	//  this allows use to default initialize values in the default constructor, for example
+	//  and we don't have to specify them in the serialization code:
+	//   it's a bad location for default values and could lead to duplicate code
+#if 0
 	// if we don't pass a default value, we either construct a default value, if possible
 	template< typename Value >
 	typename boost::enable_if< detail::is_default_constructible< Value > >::type 
@@ -374,6 +380,13 @@ namespace Serializer {
 	get( TextReader &reader, const char *key, Value &value ) {
 		if( !detail::tryGet( reader, key, value ) ) {
 			reader.mapNode->error( boost::str( boost::format( "'%s' not found!") % key ) );
+		}
+	}
+#endif
+	template< typename Value >
+	void get( TextReader &reader, const char *key, Value &value ) {
+		if( !detail::tryGet( reader, key, value ) ) {
+			//reader.mapNode->error( boost::str( boost::format( "'%s' not found!") % key ) );
 		}
 	}
 
@@ -395,7 +408,9 @@ namespace Serializer {
 		}
 	}
 
+	//////////////////////////////////////////////////////////////////////////
 	// unnamed put/get
+
 	// the IsSimple type trait is for types that want to use only one read/write call instead of gets/puts to look like a fundamental type
 	template<typename Value>
 	struct IsSimple {
@@ -690,6 +705,9 @@ namespace Serializer {
 			reader.mapNode->error( boost::str( boost::format( "expected global enum with possible values: %s") % values ) );
 		}
 	}
+
+	//////////////////////////////////////////////////////////////////////////
+	// implementation of some I/O
 
 	// static array
 	template< typename Value, int N >

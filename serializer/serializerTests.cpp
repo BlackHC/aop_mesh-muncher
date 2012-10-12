@@ -27,10 +27,17 @@ void genericTest( const char *filename ) {
 
 #define TextBinaryTest( test ) TextBinaryTestEx( test, test )
 
+#define TextTestEx( test, name ) \
+	TEST( name, TextSerialization ) { \
+		test < Serializer::TextReader, Serializer::TextWriter >( "Text_" #name ); \
+	}
+
+#define TextTest( test ) TextTestEx( test, text )
+
 // pure tests
 
 template< typename Reader, typename Writer >
-void ArrithmeticSerializations( const char *filename ) {
+void PrimitiveSerializations( const char *filename ) {
 	{
 		int i = 10;
 		float f = 3.1415;
@@ -58,7 +65,32 @@ void ArrithmeticSerializations( const char *filename ) {
 	}
 }
 
-TextBinaryTest( ArrithmeticSerializations );
+TextBinaryTest( PrimitiveSerializations );
+
+template< typename Reader, typename Writer >
+void DefaultValueSerialization( const char *filename ) {
+	{
+		Writer writer( filename );
+	}
+
+	{
+		Reader reader( filename );
+
+		int i = 10;
+		float f = 3.1415;
+		char c = 'a';
+
+		SERIALIZER_GET_VARIABLE( reader, i );
+		SERIALIZER_GET_VARIABLE( reader, f );
+		SERIALIZER_GET_VARIABLE( reader, c );
+
+		EXPECT_EQ( 10, i );
+		EXPECT_FLOAT_EQ( 3.1415, f );
+		EXPECT_EQ( 'a', c );
+	}
+}
+
+TextTest( DefaultValueSerialization );
 
 template< typename Reader, typename Writer >
 void StaticArray( const char *filename ) {
