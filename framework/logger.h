@@ -15,6 +15,8 @@ namespace Log {
 
 	void addSink( const std::function< MessageSink > &messageSink );
 
+	int getScope();
+
 	int pushScope();
 	void popScope();
 
@@ -30,11 +32,11 @@ namespace Log {
 		Scope( const boost::format &message );
 		~Scope();
 
-		void log( const std::string &message );
-		void log( const boost::format &message );
+		void log( const std::string &message, int relativeScope = 0 );
+		void log( const boost::format &message, int relativeScope = 0 );
 
-		void logError( const std::string &message );
-		void logError( const boost::format &message );
+		void logError( const std::string &message, int relativeScope = 0 );
+		void logError( const boost::format &message, int relativeScope = 0 );
 	};
 
 	// thread index is unused atm!
@@ -75,18 +77,18 @@ inline Log::Scope::~Scope() {
 	popScope();
 }
 
-inline void Log::Scope::log( const std::string &message ) {
-	::log( message, scope );
+inline void Log::Scope::log( const std::string &message, int relativeScope ) {
+	::log( message, scope + relativeScope );
 }
 
-inline void Log::Scope::log( const boost::format &message ) {
-	::log( message, scope );
+inline void Log::Scope::log( const boost::format &message, int relativeScope ) {
+	::log( message, scope + relativeScope );
 }
 
-inline void Log::Scope::logError( const std::string &message ) {
-	::logError( message, scope );
+inline void Log::Scope::logError( const std::string &message, int relativeScope ) {
+	::logError( message, scope + relativeScope );
 }
 
-inline void Log::Scope::logError( const boost::format &message ) {
-	::logError( message, scope );
+inline void Log::Scope::logError( const boost::format &message, int relativeScope ) {
+	::logError( message, scope + relativeScope );
 }

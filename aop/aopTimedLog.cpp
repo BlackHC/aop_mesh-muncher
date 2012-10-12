@@ -1,6 +1,10 @@
 #include "aopTimedLog.h"
 
+static __declspec( thread ) bool isThisTheMainThread = false;
+
 void aop::TimedLog::init() {
+	isThisTheMainThread = true;
+
 	notifyApplicationOnMessage = false;
 	rebuiltNeeded = false;
 	totalHeight = 0.0;
@@ -32,7 +36,7 @@ void aop::TimedLog::init() {
 
 			rebuiltNeeded = true;
 
-			if( notifyApplicationOnMessage ) {
+			if( notifyApplicationOnMessage && isThisTheMainThread ) {
 				application->updateProgress();
 			}
 

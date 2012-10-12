@@ -31,8 +31,16 @@ namespace aop {
 			Obb volume;
 		};
 
+		typedef std::vector< std::string > ModelGroup;
+
+		struct NamedModelGroup {
+			std::string name;
+			ModelGroup models;
+		};
+
 		std::vector<NamedCameraState> views;
 		std::vector<NamedTargetVolume> volumes;
+		std::vector<NamedModelGroup> modelGroups;
 
 		float neighborhoodQueryTolerance;
 

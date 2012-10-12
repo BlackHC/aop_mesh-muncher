@@ -140,6 +140,10 @@ CUDA_ADD_EXECUTABLE(aop
 	optixEigenInterop.h
 	probeVisualization.cpp
 
+	modelDatabase.h
+	modelDatabase.cpp
+	modelDatabaseStorage.cpp
+
 	probeDatabase.h
 	probeDatabase.cpp
 	probeDatabaseStorage.cpp

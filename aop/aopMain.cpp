@@ -71,7 +71,6 @@ using namespace Eigen;
 #include "aopTimedLog.h"
 
 const float neighborhoodMaxDistance = 100.0;
-ModelDatabase modelDatabase;
 // TODO XXX [10/11/2012 kirschan2]
 
 std::weak_ptr<AntTweakBarEventHandler::GlobalScope> AntTweakBarEventHandler::globalScope;
@@ -480,29 +479,31 @@ namespace aop {
 		const char *scenePath = "P:\\sgs\\sg_and_sgs_source\\survivor\\__GameData\\Editor\\Save\\Survivor_original_mission_editorfiles\\test\\scene.glscene";
 		world->init( scenePath );
 
-		{
-			const auto &models = world->scene.models;
-			const int numModels = models.size();
+		initModelDatabase();
 
-			for( int modelId = 0 ; modelId < numModels ; modelId++ ) {
-				const auto bbox = world->sceneRenderer.getModelBoundingBox( modelId );
-
-				ModelDatabase::IdInformation idInformation;
-				const Vector3f sizes = bbox.sizes();
-				idInformation.diagonalLength = sizes.norm();
-				// sucks for IND## idInformation.area = sizes.prod() * sizes.cwiseInverse().sum() * 2;
-				idInformation.area =
-					2 * sizes[0] * sizes[1] +
-					2 * sizes[1] * sizes[2] +
-					2 * sizes[0] * sizes[2]
-				;
-				idInformation.volume = sizes.prod();
-
-				modelDatabase.informationById.push_back( idInformation );
-			}
-		}
-		// TODO XXX
 		neighborDatabaseV2.modelDatabase = &modelDatabase;
+	}
+
+	void Application::initModelDatabase() {
+		const auto &models = world->scene.models;
+		const int numModels = models.size();
+
+		for( int modelId = 0 ; modelId < numModels ; modelId++ ) {
+			const auto bbox = world->sceneRenderer.getModelBoundingBox( modelId );
+
+			ModelDatabase::IdInformation idInformation;
+			const Vector3f sizes = bbox.sizes();
+			idInformation.diagonalLength = sizes.norm();
+			// sucks for IND## idInformation.area = sizes.prod() * sizes.cwiseInverse().sum() * 2;
+			idInformation.area =
+				2 * sizes[0] * sizes[1] +
+				2 * sizes[1] * sizes[2] +
+				2 * sizes[0] * sizes[2]
+			;
+			idInformation.volume = sizes.prod();
+
+			modelDatabase.informationById.push_back( idInformation );
+		}
 	}
 
 	void Application::initEventHandling() {
@@ -537,8 +538,8 @@ namespace aop {
 		initSGSInterface();
 
 		// TODO: fix parameter order [10/10/2012 kirschan2]
-		sampleAllNeighbors( neighborhoodMaxDistance, neighborDatabase, *world );
-		sampleAllNeighborsV2( neighborhoodMaxDistance, neighborDatabaseV2, *world );
+		//sampleAllNeighbors( neighborhoodMaxDistance, neighborDatabase, *world );
+		//sampleAllNeighborsV2( neighborhoodMaxDistance, neighborDatabaseV2, *world );
 
 		candidateFinder.reserveIds( world->scene.modelNames.size() );
 

@@ -12,6 +12,10 @@
 #include <Eigen/Eigen>
 #include "boost/container/vector.hpp"
 #include "boost/range/algorithm/count.hpp"
+#include <boost/dynamic_bitset.hpp>
+
+#include <ppl.h>
+#include "boost/range/algorithm_ext/erase.hpp"
 
 typedef OptixProgramInterface::Probe Probe;
 typedef OptixProgramInterface::ProbeContext ProbeContext;
@@ -340,12 +344,25 @@ struct ProbeDatabase {
 			}
 
 			// NOTE: this can be easily parallelized
-			for( int id = 0 ; id < database.idDatasets.size() ; id++ ) {
-				MatchInfo result = matchAgainst( id );
-				if( result.numMatches > 0 ) {
-					matchInfos.push_back( result );
-				}
+			matchInfos.resize( database.idDatasets.size() );
+
+			using namespace Concurrency;
+
+			AUTO_TIMER_MEASURE() {
+				int logScope = Log::getScope();
+
+				parallel_for< int >( 
+					0,
+					database.idDatasets.size(),
+					[&] ( int id ) {
+						Log::initThreadScope( logScope, 0 );
+
+						matchInfos[ id ] = matchAgainst( id );
+					}
+				);
 			}
+
+			boost::remove_erase_if( matchInfos, [] ( const MatchInfo &matchInfo ) { return !matchInfo.numMatches; });
 		}
 
 		const MatchInfos & getCandidates() const {
@@ -371,7 +388,7 @@ struct ProbeDatabase {
 				return MatchInfo( id );
 			}
 
-			AUTO_TIMER_FOR_FUNCTION( "id = " + boost::lexical_cast<std::string>( id ) );
+			AUTO_TIMER_FOR_FUNCTION( boost::format( "id = %i, %i ref probes (%i query probes)" ) % id % idDataset.size() % dataset.size() );
 
 			// idea:
 			//	use a binary search approach to generate only needed subranges
@@ -412,28 +429,56 @@ struct ProbeDatabase {
 				}
 			}
 
-			boost::container::vector< bool > overlappedProbesMatched( dataset.size() );
-			boost::container::vector< bool > pureProbesMatched( idDataset.size() );
+			using namespace Concurrency;
+			boost::dynamic_bitset<> mergedOverlappedProbesMatched( dataset.size() ), mergedPureProbesMatched( idDataset.size() );
+			combinable< int > numMatches;
 
-			int numMatches = 0;
-			for( auto rangePair = overlappedRanges.begin() ; rangePair != overlappedRanges.end() ; ++rangePair ) {
-				matchSortedRanges( 
-					dataset.data,
-					rangePair->first,
-					overlappedProbesMatched,
+			{
+				combinable< boost::dynamic_bitset<> > overlappedProbesMatched, pureProbesMatched;
 
-					idDataset.data,
-					rangePair->second,
-					pureProbesMatched,
+				//AUTO_TIMER_BLOCK( "matching" ) {
+				{
+					AUTO_TIMER_FOR_FUNCTION();
+					parallel_for_each( overlappedRanges.begin(), overlappedRanges.end(), 
+						[&] ( const OverlappedRange &rangePair ) {
+							overlappedProbesMatched.local().resize( dataset.size() );
+							pureProbesMatched.local().resize( idDataset.size() );
 
-					numMatches
-				);
+							matchSortedRanges( 
+								dataset.data,
+								rangePair.first,
+								overlappedProbesMatched.local(),
+
+								idDataset.data,
+								rangePair.second,
+								pureProbesMatched.local(),
+
+								numMatches.local()
+							);					
+						} 
+					);
+				}
+				//AUTO_TIMER_BLOCK( "combining matches" ) {
+				{					
+					AUTO_TIMER_FOR_FUNCTION();
+					overlappedProbesMatched.combine_each(
+						[&] ( const boost::dynamic_bitset<> &set ) {
+							mergedOverlappedProbesMatched |= set;
+						}
+					);
+
+					pureProbesMatched.combine_each(
+						[&] ( const boost::dynamic_bitset<> &set ) {
+							mergedPureProbesMatched |= set;
+						}
+					);
+				}
 			}
-
-			const int numQueryProbesMatched = boost::count( overlappedProbesMatched, true );
-			const int numPureProbesMatched = boost::count( pureProbesMatched, true );
+			
+			const int numQueryProbesMatched = mergedOverlappedProbesMatched.count();
+			const int numPureProbesMatched = mergedPureProbesMatched.count();
 			MatchInfo matchInfo( id );
-			matchInfo.numMatches = numMatches;
+			matchInfo.numMatches = numMatches.combine( std::plus<int>() );
 
 			matchInfo.probeMatchPercentage = float( numPureProbesMatched ) / idDataset.size();
 			matchInfo.queryMatchPercentage = float( numQueryProbesMatched ) / dataset.size();
@@ -447,11 +492,11 @@ struct ProbeDatabase {
 		void matchSortedRanges(
 			const SortedProbeDataset &overlappedDataset,
 			const IntRange &overlappedRange,
-			boost::container::vector< bool > &overlappedProbesMatched,
+			boost::dynamic_bitset<> &overlappedProbesMatched,
 
 			const SortedProbeDataset &pureDataset,
 			const IntRange &pureRange,
-			boost::container::vector< bool > &pureProbesMatched,
+			boost::dynamic_bitset<> &pureProbesMatched,
 
 			int &numMatches
 		) {

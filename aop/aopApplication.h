@@ -16,6 +16,7 @@
 
 #include "probeDatabase.h"
 #include "neighborhoodDatabase.h"
+#include "modelDatabase.h"
 
 #include "editor.h"
 #include <deque>
@@ -29,6 +30,7 @@ namespace aop {
 	struct CameraViewsUI;
 	struct ModelTypesUI;
 	struct TimedLog;
+	struct ProbeDatabaseUI;
 
 	struct Application {
 		sf::Clock frameClock, clock;
@@ -54,6 +56,7 @@ namespace aop {
 		ProbeDatabase candidateFinder;
 		NeighborhoodDatabase neighborDatabase;
 		NeighborhoodDatabaseV2 neighborDatabaseV2;
+		ModelDatabase modelDatabase;
 
 		Application() {}
 
@@ -87,5 +90,7 @@ namespace aop {
 
 		void startLongOperation();
 		void endLongOperation();
+
+		void initModelDatabase();
 	};
 }

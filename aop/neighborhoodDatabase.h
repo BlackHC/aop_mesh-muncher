@@ -22,6 +22,8 @@
 
 #include <logger.h>
 
+#include "modelDatabase.h"
+
 using boost::math::normal_distribution; // typedef provides default type is double.
 
 struct NeighborhoodDatabase {
@@ -387,16 +389,6 @@ struct NeighborhoodDatabase {
 	typedef std::pair< int, Entry > IdEntryPair;
 
 	std::vector< IdEntryPair > entriesById;
-};
-
-struct ModelDatabase {
-	struct IdInformation {
-		float volume;
-		float area;
-		float diagonalLength;
-	};
-
-	std::vector< IdInformation > informationById;
 };
 
 struct NeighborhoodDatabaseV2 {

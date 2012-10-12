@@ -10,8 +10,9 @@ namespace Log {
 	namespace {
 		std::vector< std::function< MessageSink > > messageSinks;
 
-		__declspec( thread ) int currentScope;
-
+		__declspec( thread ) int currentScope = 0;
+		__declspec( thread ) int threadIndex = 0;
+		
 		sf::Mutex mutex;
 	}
 
@@ -47,17 +48,29 @@ namespace Log {
 		messageSinks.push_back( messageSink );
 	}
 
+	int getScope() {
+		return currentScope;
+	}
+
 	int pushScope() {
 		currentScope++;
 		return currentScope;
 	}
 
 	void popScope() {
+		if( !currentScope ) {
+			__debugbreak();
+		}
+
 		currentScope--;
 	}
 
-	void initThreadScope( int baseScope, int threadIndex ) {
+	void initThreadScope( int baseScope, int newThreadIndex ) {
+		if( currentScope && currentScope != baseScope ) {
+			__debugbreak();
+		}
 		currentScope = baseScope;
+		threadIndex = newThreadIndex;
 	}
 
 	namespace {

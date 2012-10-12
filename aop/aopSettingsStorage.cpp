@@ -8,8 +8,9 @@ SERIALIZER_DEFAULT_EXTERN_IMPL( Obb, (transformation)(size) );
 
 SERIALIZER_EXTERN_IMPL( aop::Settings::NamedCameraState, name, (position)(direction), );
 SERIALIZER_EXTERN_IMPL( aop::Settings::NamedTargetVolume, name, (volume), );
+SERIALIZER_EXTERN_IMPL( aop::Settings::NamedModelGroup, name, (models), );
 
-SERIALIZER_DEFAULT_EXTERN_IMPL( aop::Settings, (views)(volumes)(neighborhoodQueryTolerance) );
+SERIALIZER_DEFAULT_EXTERN_IMPL( aop::Settings, (views)(volumes)(modelGroups)(neighborhoodQueryTolerance) );
 
 namespace aop {
 	static const char *settingsFilename = "aopSettings.wml";
