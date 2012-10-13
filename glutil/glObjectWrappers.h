@@ -34,10 +34,13 @@ struct DisplayList {
 	}
 
 	void call() const {
-		glCallList( handle );
+		if( handle ) {
+			glCallList( handle );
+		}
 	}
 
 	void create() {
+		release();
 		handle = glGenLists( 1 );
 	}
 

@@ -2,10 +2,7 @@
 #include "grid.h"
 
 template< typename Data, typename IndexMapping3 = SimpleIndexMapping3 >
-class GridStorage : public boost::noncopyable {
-	IndexMapping3 mapping;
-	std::unique_ptr<Data[]> data;
-
+class GridStorage {
 public:
 	GridStorage() {}
 
@@ -30,7 +27,8 @@ public:
 
 	void reset( const IndexMapping3 &mapping ) {
 		this->mapping = mapping;
-		data.reset( new Data[ mapping.count ] );
+		data.clear();
+		data.resize( mapping.count );
 	}
 
 	const IndexMapping3 & getMapping() const {
@@ -42,11 +40,11 @@ public:
 	}
 
 	Data * getData() {
-		return data.get();
+		return &data.front();
 	}
 
 	const Data * getData() const {
-		return data.get();
+		return &data.front();
 	}
 
 	Data & operator[] ( const int index ) {
@@ -89,4 +87,17 @@ public:
 			return Data();
 		}
 	}
+
+#if 0
+private:
+	// better error messages than with boost::noncopyable
+	GridStorage( const GridStorage &other );
+	GridStorage & operator = ( const GridStorage &other );
+#endif
+
+	// I don't want to include the serializer here, so make it public for now
+	// TODO: fix this [10/13/2012 kirschan2]
+public:
+	IndexMapping3 mapping;
+	std::vector< Data > data;
 };

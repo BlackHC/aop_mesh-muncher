@@ -70,6 +70,43 @@ using namespace Eigen;
 #include "aopModelTypesUI.h"
 #include "aopTimedLog.h"
 
+enum GridVisualizationMode {
+	GVM_POSITION,
+	GVM_HITS,
+	GVM_NORMAL,
+	GVM_MAX
+};
+
+void visualizeColorGrid( const VoxelizedModel::Voxels &grid, GridVisualizationMode gvm = GVM_POSITION ) {
+	const float size = grid.getMapping().getResolution();
+	
+	DebugRender::begin();
+	for( auto iterator = grid.getIterator() ; iterator.hasMore() ; ++iterator ) {
+		const auto &normalHit = grid[ *iterator ];
+
+		if( normalHit.numSamples != 0 ) {
+			DebugRender::setPosition( grid.getMapping().getPosition( iterator.getIndex3() ) );
+
+			Eigen::Vector3f positionColor = iterator.getIndex3().cast<float>().cwiseQuotient( grid.getMapping().getSize().cast<float>() );
+
+			switch( gvm ) {
+			case GVM_POSITION:
+				DebugRender::setColor( positionColor );
+				break;
+			case GVM_HITS:
+				DebugRender::setColor( Vector3f::UnitY() * (0.5 + normalHit.numSamples / 128.0) );
+				break;
+			case GVM_NORMAL:
+				glColor3ubv( &normalHit.nx );
+				break;
+			}
+			
+			DebugRender::drawBox( Vector3f::Constant( size ), false );
+		}
+	}
+	DebugRender::end();
+}
+
 const float neighborhoodMaxDistance = 100.0;
 // TODO XXX [10/11/2012 kirschan2]
 
@@ -282,7 +319,125 @@ namespace DebugObjects {
 		virtual void renderScene( Tag ) {
 		}
 	};
+
+	struct ModelDatabase : IDebugObject {
+		Application *application;
+
+		DebugUI *debugUI;
+
+		AntTWBarUI::SimpleContainer container;
+
+		ModelDatabase( Application *application ) : container( AntTWBarUI::CT_GROUP ), application( application ) {
+			init();
+		}
+
+		void init() {
+			container.setName( "Model Database" );
+			for( int modelIndex = 0 ; modelIndex < application->modelDatabase.informationById.size() ; modelIndex++ ) {
+				container.add( AntTWBarUI::makeSharedButton( 
+					application->modelDatabase.informationById[ modelIndex ].shortName,
+					[&, modelIndex] () {
+						auto window = std::make_shared< MultiDisplayListVisualizationWindow >();
+						
+						// render the object
+						{
+							auto &modelVisualization = window->visualizations[0];
+							modelVisualization.name = "model";
+							window->makeVisible( 0 );
+							modelVisualization.displayList.create();
+							modelVisualization.displayList.begin();
+							application->world->sceneRenderer.renderModel( Vector3f::Zero(), modelIndex );
+							modelVisualization.displayList.end();
+						}
+						// render the samples using position colors
+						{
+							auto &voxelVisualization = window->visualizations[1];
+							voxelVisualization.name = "voxels (colored using positions)";
+							voxelVisualization.displayList.create();
+							voxelVisualization.displayList.begin();
+							visualizeColorGrid( application->modelDatabase.informationById[ modelIndex ].voxels, GVM_POSITION );
+							voxelVisualization.displayList.end();
+						}
+						// render the samples using hits
+						{
+							auto &voxelVisualization = window->visualizations[2];
+							voxelVisualization.name = "voxels (colored using overdraw)";
+							voxelVisualization.displayList.create();
+							voxelVisualization.displayList.begin();
+							visualizeColorGrid( application->modelDatabase.informationById[ modelIndex ].voxels, GVM_HITS );
+							voxelVisualization.displayList.end();
+						}
+						// render the samples using hits
+						{
+							auto &voxelVisualization = window->visualizations[3];
+							voxelVisualization.name = "voxels (colored using normals)";
+							voxelVisualization.displayList.create();
+							voxelVisualization.displayList.begin();
+							visualizeColorGrid( application->modelDatabase.informationById[ modelIndex ].voxels, GVM_NORMAL );
+							voxelVisualization.displayList.end();
+						}
+						// render the samples using samples
+						{
+							auto &voxelVisualization = window->visualizations[4];
+							voxelVisualization.name = "probes";
+							voxelVisualization.displayList.create();
+							voxelVisualization.displayList.begin();
+							visualizeProbes( 
+								application->modelDatabase.informationById[ modelIndex ].voxels.getMapping().getResolution(),
+								application->modelDatabase.informationById[ modelIndex ].probes
+							);
+							voxelVisualization.displayList.end();
+						}
+
+						window->keyLogics[1].disableMask = window->keyLogics[2].disableMask = window->keyLogics[3].disableMask = 2+4+8;
+
+
+						window->init( application->modelDatabase.informationById[ modelIndex ].name );
+
+						application->debugWindowManager.add( window );
+					}
+				) );
+			}
+		}
+
+		// TODO: maybe make this just a normal member of IDebugObject?
+		virtual void link( DebugUI *debugUI, Tag ) {
+			this->debugUI = debugUI;
+		}
+
+		virtual AntTWBarUI::Element::SPtr getUI( Tag ) {
+			return make_nonallocated_shared( container );
+		}
+
+		virtual void renderScene( Tag ) {
+		}
+	};
 }
+}
+
+namespace aop {
+	struct ModelDatabaseUI {
+		Application *application;
+
+		AntTWBarUI::SimpleContainer ui;
+
+		ModelDatabaseUI( Application *application ) : application( application ) {
+			init();
+		}
+
+		void init() {
+			ui.setName( "Model Database" );
+			ui.add( AntTWBarUI::makeSharedButton( "Load", [&] () { application->modelDatabase.load( "modelDatabase" ); } ) );
+			ui.add( AntTWBarUI::makeSharedButton( "Store", [&] () { application->modelDatabase.store( "modelDatabase" ); } ) );
+			ui.add( AntTWBarUI::makeSharedSeparator() );
+			ui.add( AntTWBarUI::makeSharedButton( "Sample models", [&] { application->initModelDatabase(); } ) );
+			ui.link();
+		}
+
+		void refresh() {
+			ui.refresh();
+		}
+	};
 }
 
 const float probeResolution = 0.25;
@@ -555,6 +710,8 @@ namespace aop {
 		targetVolumesUI.reset( new TargetVolumesUI( this ) );
 		modelTypesUI.reset( new ModelTypesUI( this ) );
 	
+		modelDatabaseUI = std::make_shared< ModelDatabaseUI >( this );
+
 		candidateSidebarUI = createCandidateSidebarUI( this );
 		debugUI = std::make_shared< DebugUI >();
 
@@ -581,10 +738,6 @@ namespace aop {
 
 		const char *scenePath = "P:\\sgs\\sg_and_sgs_source\\survivor\\__GameData\\Editor\\Save\\Survivor_original_mission_editorfiles\\test\\scene.glscene";
 		world->init( scenePath );
-
-		initModelDatabase();
-
-		neighborDatabaseV2.modelDatabase = &modelDatabase;
 	}
 
 	void Application::initModelDatabase() {
@@ -607,6 +760,16 @@ namespace aop {
 			const auto bbox = world->sceneRenderer.getModelBoundingBox( modelId );
 
 			ModelDatabase::IdInformation idInformation;
+
+			{
+				std::string filename = idInformation.name = world->scene.modelNames[ modelId ];
+				auto offset = filename.find_last_of( "/\\" );
+				if( offset != std::string::npos ) {
+					filename = filename.substr( offset + 1 );
+				}
+				idInformation.shortName = filename;
+			}
+
 			const Vector3f sizes = bbox.sizes();
 			idInformation.diagonalLength = sizes.norm();
 			// sucks for IND## idInformation.area = sizes.prod() * sizes.cwiseInverse().sum() * 2;
@@ -617,9 +780,9 @@ namespace aop {
 			;
 			idInformation.volume = sizes.prod();
 
-			VoxelizedModel::Voxels voxels = AUTO_TIME( world->sceneRenderer.voxelizeModel( modelId, resolution ), "voxelizing");
+			const auto &voxels = idInformation.voxels = AUTO_TIME( world->sceneRenderer.voxelizeModel( modelId, resolution ), "voxelizing");
 
-			auto &probes = idInformation.probes[ resolution ];
+			auto &probes = idInformation.probes;
 			probes.reserve( voxels.getMapping().count * 13 );
 			probes.clear();
 
@@ -672,6 +835,9 @@ namespace aop {
 			% totalCounts
 			% totalProbes
 		);
+
+		// create a new debug object (or rather replace the old one)
+		debugUI->add( std::make_shared<DebugObjects::ModelDatabase>( this ) );
 	}
 
 	void Application::initEventHandling() {
@@ -723,6 +889,12 @@ namespace aop {
 
 		initUI();
 
+		startLongOperation();
+		initModelDatabase();
+		endLongOperation();
+
+		neighborDatabaseV2.modelDatabase = &modelDatabase;
+
 		// load settings
 		settings.load();
 
@@ -743,6 +915,8 @@ namespace aop {
 		mainUI->update();
 		// TODO: settle on refresh or update [10/12/2012 kirschan2]
 		debugUI->refresh();
+
+		modelDatabaseUI->refresh();
 	}
 
 	void Application::eventLoop() {

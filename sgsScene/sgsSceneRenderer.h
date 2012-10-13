@@ -213,6 +213,14 @@ struct SGSSceneRenderer {
 		
 	SGSSceneRenderer() {}
 
+	// TODO> move this into scene [10/13/2012 kirschan2]
+	unsigned getSceneHash() {
+		int xor1 = scene->numSceneIndices ^ scene->numSceneVertices;
+		int xor2 = scene->numSceneObjects ^ scene->numSceneSubObjects;
+		int xor3 = scene->textures.size() ^ scene->terrain.mapSize[0] ^ scene->terrain.mapSize[1];
+		return (xor1 << 16) | (xor1 >> 16) | xor2 | (xor3 << 8);
+	}
+
 	void bakeTerrainTexture( int detailFactor, float textureDetailFactor );
 
 	void reloadShaders();

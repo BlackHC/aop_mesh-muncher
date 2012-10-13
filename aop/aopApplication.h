@@ -34,6 +34,9 @@ namespace aop {
 	struct CameraViewsUI;
 	struct ModelTypesUI;
 	struct TimedLog;
+	
+	struct ModelDatabaseUI;
+
 	struct ProbeDatabaseUI;
 	
 	struct Application {
@@ -80,6 +83,8 @@ namespace aop {
 		std::shared_ptr< CandidateSidebarUI > candidateSidebarUI;
 
 		std::shared_ptr< DebugUI > debugUI;
+
+		std::shared_ptr< ModelDatabaseUI > modelDatabaseUI;
 
 		std::shared_ptr<TimedLog> timedLog;
 

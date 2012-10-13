@@ -11,9 +11,9 @@ struct VerboseEventWrapper : EventHandler::WithDefaultParentImpl
 {
 	std::shared_ptr<EventHandler> wrappedHandler;
 
-	const char *description;
+	std::string description;
 
-	VerboseEventWrapper( const char *description, std::shared_ptr<EventHandler> wrappedHandler )
+	VerboseEventWrapper( const std::string &description, std::shared_ptr<EventHandler> wrappedHandler )
 		: wrappedHandler( wrappedHandler ), description( description ) {}
 
 	std::string getHelp( const std::string &prefix = std::string() ) {
@@ -55,11 +55,11 @@ struct IntVariableControl : NullEventHandler {
 	sf::Keyboard::Key upKey, downKey;
 	int &variable;
 	int min, max;
-	const char *name;
+	std::string name;
 	typedef std::function< void() > Action;
 	Action onAction;
 
-	IntVariableControl( const char *name, int &variable, int min, int max, sf::Keyboard::Key upKey = sf::Keyboard::Up, sf::Keyboard::Key downKey = sf::Keyboard::Down, Action onAction = nullptr )
+	IntVariableControl( const std::string &name, int &variable, int min, int max, sf::Keyboard::Key upKey = sf::Keyboard::Up, sf::Keyboard::Key downKey = sf::Keyboard::Down, Action onAction = nullptr )
 		: name( name )
 		, variable( variable )
 		, min( min )
@@ -103,11 +103,11 @@ struct FloatVariableControl : NullEventHandler {
 	sf::Keyboard::Key upKey, downKey;
 	float &variable;
 	float min, max;
-	const char *name;
+	std::string name;
 	typedef std::function< void() > Action;
 	Action onAction;
 
-	FloatVariableControl( const char *name, float &variable, float min, float max, sf::Keyboard::Key upKey = sf::Keyboard::Up, sf::Keyboard::Key downKey = sf::Keyboard::Down, Action onAction = nullptr )
+	FloatVariableControl( const std::string &name, float &variable, float min, float max, sf::Keyboard::Key upKey = sf::Keyboard::Up, sf::Keyboard::Key downKey = sf::Keyboard::Down, Action onAction = nullptr )
 		: name( name )
 		, variable( variable )
 		, min( min )
@@ -151,9 +151,9 @@ struct FloatVariableControl : NullEventHandler {
 struct BoolVariableToggle : NullEventHandler {
 	sf::Keyboard::Key toggleKey;
 	bool &variable;
-	const char *name;
+	std::string name;
 
-	BoolVariableToggle( const char *name, bool &variable, sf::Keyboard::Key toggleKey = sf::Keyboard::T )
+	BoolVariableToggle( const std::string &name, bool &variable, sf::Keyboard::Key toggleKey = sf::Keyboard::T )
 		: name( name ), variable( variable ), toggleKey( toggleKey ) {
 	}
 
@@ -176,9 +176,9 @@ struct BoolVariableToggle : NullEventHandler {
 struct KeyAction : NullEventHandler {
 	sf::Keyboard::Key key;
 	std::function<void()> action;
-	const char *description;
+	std::string description;
 
-	KeyAction( const char *description, sf::Keyboard::Key key, const std::function<void()> &action)
+	KeyAction( const std::string &description, sf::Keyboard::Key key, const std::function<void()> &action)
 		: description( description ), key( key ), action( action ) {}
 
 	virtual void onKeyboard( EventState &eventState ) {
@@ -201,7 +201,7 @@ static void registerConsoleHelpAction( EventDispatcher &dispatcher ) {
 }
 
 // TODO: move this into its own helper file [9/27/2012 kirschan2]
-inline const char *getKeyName( const sf::Keyboard::Key key ) {
+inline const char * getKeyName( const sf::Keyboard::Key key ) {
 	switch( key ) {
 	default:
 	case sf::Keyboard::Unknown:

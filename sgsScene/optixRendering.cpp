@@ -244,7 +244,7 @@ bool SGSSceneRenderer::loadOptixCache() {
 			reader.get( cache );
 		}
 
-		if( cache.magicStamp != scene->numSceneVertices ) {
+		if( cache.magicStamp != getSceneHash() ) {
 			cache = Optix::Cache();
 //			cache.magicStamp = scene->numSceneVertices;
 		}
@@ -260,7 +260,7 @@ bool SGSSceneRenderer::loadOptixCache() {
 
 void SGSSceneRenderer::writeOptixCache() {
 	Optix::Cache cache;
-	cache.magicStamp = scene->numSceneVertices;
+	cache.magicStamp = getSceneHash();
 
 	int size;
 	size = optix.staticAcceleration->getDataSize();

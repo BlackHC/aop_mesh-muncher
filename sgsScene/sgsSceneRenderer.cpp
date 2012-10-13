@@ -178,9 +178,9 @@ void SGSSceneRenderer::processScene( const std::shared_ptr<SGSScene> &scene, con
 		}
 
 		// reset the cache if the scene has changed
-		if( cache.magicStamp != scene->numSceneVertices ) {
+		if( cache.magicStamp != getSceneHash() ) {
 			cache = Cache();
-			cache.magicStamp = scene->numSceneVertices;
+			cache.magicStamp = getSceneHash();
 		}
 	}
 

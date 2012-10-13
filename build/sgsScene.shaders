@@ -132,7 +132,7 @@ previewObject:
 
 	code::
 		vec4 surfaceShader() {
-			return vec4( worldNormal / 2 + 0.5, 1.0 );
+			//return vec4( worldNormal / 2 + 0.5, 1.0 );
 			vec4 baseColor = texture( baseTetxture, gl_TexCoord[0].st );
 
 			// add some very simple lighting
