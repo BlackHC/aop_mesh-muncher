@@ -84,6 +84,55 @@ struct IntVariableControl : NullEventHandler {
 	}
 };
 
+struct FloatVariableControl : NullEventHandler {
+	sf::Keyboard::Key upKey, downKey;
+	float &variable;
+	float min, max;
+	const char *name;
+	typedef std::function< void() > Action;
+	Action onAction;
+
+	FloatVariableControl( const char *name, float &variable, float min, float max, sf::Keyboard::Key upKey = sf::Keyboard::Up, sf::Keyboard::Key downKey = sf::Keyboard::Down, Action onAction = nullptr )
+		: name( name )
+		, variable( variable )
+		, min( min )
+		, max( max )
+		, upKey( upKey )
+		, downKey( downKey )
+		, onAction( onAction )
+	{
+	}
+
+	virtual void onKeyboard( EventState &eventState ) {
+		const float step = (variable - min) / 4 + 0.1;
+		switch( eventState.event.type ) {
+			// allow key repeat here
+		case sf::Event::KeyPressed:
+			if( eventState.event.key.code == upKey ) {
+				variable = std::min( variable + step, max );
+				std::cerr << name << " += " << step << " == " << variable << "\n";
+				if( onAction ) {
+					onAction();
+				}
+				eventState.accept();
+			}
+			else if( eventState.event.key.code == downKey ) {
+				variable = std::max( variable - step, min );
+				std::cerr << name << " -= " << step << " == " << variable << "\n";
+				if( onAction ) {
+					onAction();
+				}
+				eventState.accept();
+			}
+			break;
+		}
+	}
+
+	std::string getHelp( const std::string &prefix = std::string() ) {
+		return boost::str( boost::format( "%s%s, %s: increase, decrease %s\n" ) % prefix % getKeyName( upKey ) % getKeyName( downKey ) % name );
+	}
+};
+
 struct BoolVariableToggle : NullEventHandler {
 	sf::Keyboard::Key toggleKey;
 	bool &variable;

@@ -111,6 +111,7 @@ void visualizeColorGrid( const ColorGrid &grid, DebugRender::CombinedCalls &dr )
 	}
 	dr.end();
 }
+
 void visualizeHitCountGrid( const HitCountGrid &hitCountGrid, DebugRender::CombinedCalls &dr ) {
 	const float size = hitCountGrid.getMapping().getResolution();
 	dr.begin();

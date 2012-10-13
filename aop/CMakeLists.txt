@@ -54,12 +54,16 @@ CUDA_ADD_EXECUTABLE(aop
 
 	../framework/cameraInputControl.h
 	../framework/camera.h
+
 	../framework/eventHandling.h
 	../framework/eigenProjectionMatrices.h
+
 	../framework/debugWindows.h
 	../framework/verboseEventHandlers.h
+
 	../framework/glslPipeline.h
 	../framework/glslPipeline.cpp
+
 	../framework/mathUtility.h
 	../framework/contextHelper.h
 

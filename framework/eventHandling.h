@@ -619,10 +619,7 @@ private:
 template< typename BaseEventHandler = EventHandler::WithDefaultParentDecl, typename BaseDispatcher = EventHandler::WithDefaultParentImpl >
 struct TemplateEventDispatcher : BaseDispatcher {
 	typedef TemplateEventDispatcher Base;
-	std::vector<std::shared_ptr<BaseEventHandler>> eventHandlers;
-
-	std::string name;
-
+	
 	TemplateEventDispatcher( const char *name = "" ) : name( name ) {}
 
 	virtual void onNewEventSystemSet() {
@@ -701,15 +698,14 @@ struct TemplateEventDispatcher : BaseDispatcher {
 			)
 		;
 	}
+
+protected:
+	std::vector<std::shared_ptr<BaseEventHandler>> eventHandlers;
+	std::string name;
 };
 
 template< typename BaseEventHandler = EventHandler::WithDefaultParentDecl, typename BaseRouter = EventHandler::WithDefaultParentImpl >
 struct TemplateEventRouter : BaseRouter {
-	std::vector<std::shared_ptr<BaseEventHandler>> eventHandlers;
-	BaseEventHandler *target;
-
-	std::string name;
-
 	TemplateEventRouter( const char *name = "" ) : name( name ), target( nullptr ) {}
 
 	virtual void onNewEventSystemSet() {
@@ -792,6 +788,12 @@ struct TemplateEventRouter : BaseRouter {
 		}
 		return prefix + name + ": inactive\n";
 	}
+
+protected:
+	std::vector<std::shared_ptr<BaseEventHandler>> eventHandlers;
+	BaseEventHandler *target;
+
+	std::string name;
 };
 
 // TODO: add previous node implementation [9/28/2012 kirschan2]

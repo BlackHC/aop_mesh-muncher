@@ -15,6 +15,10 @@
 
 #include <mathUtility.h>
 
+#include <grid.h>
+
+#include <autoTimer.h>
+
 using namespace Eigen;
 
 void SGSSceneRenderer::bakeTerrainTexture( int detailFactor, float textureDetailFactor ) {
@@ -134,7 +138,24 @@ void SGSSceneRenderer::reloadShaders() {
 			shadowMapProgram.vertexShader = shaders[ "shadowMapMesh" ];
 			shadowMapProgram.surfaceShader = shaders[ "shadowMapSurface" ];
 
-			if( terrainProgram.build( shaders ) && objectProgram.build( shaders ) && previewObjectProgram.build( shaders ) && shadowMapProgram.build( shaders ) ) {
+			voxelizerShaders.shaders.clear();
+			loadShaderCollection( voxelizerShaders, "voxelizer.shaders" );
+
+			voxelizerSplatterProgram.vertexShader = voxelizerShaders[ "splatterVertexShader" ];
+			voxelizerSplatterProgram.geometryShader = voxelizerShaders[ "splatterGeometryShader" ];
+			voxelizerSplatterProgram.fragmentShader = voxelizerShaders[ "splatterFragmentShader" ];
+
+			voxelizerMuxerProgram.vertexShader = voxelizerShaders[ "muxer" ];
+			
+			if( 
+				terrainProgram.build( shaders ) && 
+				objectProgram.build( shaders ) && 
+				previewObjectProgram.build( shaders ) && 
+				shadowMapProgram.build( shaders ) &&
+
+				voxelizerSplatterProgram.build( voxelizerShaders ) &&
+				voxelizerMuxerProgram.build( voxelizerShaders )
+			) {
 				break;
 			}
 		}
@@ -150,8 +171,7 @@ void SGSSceneRenderer::processScene( const std::shared_ptr<SGSScene> &scene, con
 
 	bool cacheChanged = false;
 	Cache cache;
-	{
-		boost::timer::auto_cpu_timer timer( "processScene; load cache: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
+	AUTO_TIMER_BLOCK( "load cache" ) {
 		Serializer::BinaryReader reader( cacheFilename, Cache::VERSION );
 		if( reader.valid() ) {
 			reader.get( cache );
@@ -225,7 +245,7 @@ void SGSSceneRenderer::processScene( const std::shared_ptr<SGSScene> &scene, con
 
 	// flush the cache if necessary
 	if( cacheChanged ) {
-		boost::timer::auto_cpu_timer timer( "processScene; store cache: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
+		AUTO_TIMER( "store cache" );
 
 		Serializer::BinaryWriter writer( cacheFilename, Cache::VERSION );
 		writer.put( cache );
@@ -509,6 +529,8 @@ void SGSSceneRenderer::renderShadowmap( const RenderContext &renderContext ) {
 
 	glColorMask( GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE );
 	glPopAttrib();
+
+	Program::useFixed();
 
 	//glStringMarkerGREMEDY( 0, "shadow map done" );
 }
@@ -804,9 +826,7 @@ void SGSSceneRenderer::mergeTextures( const ScopedTextures2D &textures ) {
 	// using uint instead of char[4]
 	typedef unsigned __int32 RGBA;
 	RGBA *mergedTextureData = new RGBA[ mergedTextureSize * mergedTextureSize ];
-	{
-		boost::timer::auto_cpu_timer timer( "mergeTextures blitting: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
-
+	AUTO_TIMER_BLOCK( "blitting" ) {
 		Concurrency::task_group blits;
 
 		for( int textureIndex = 0 ; textureIndex < textures.handles.size() ; ++textureIndex ) {
@@ -883,4 +903,158 @@ void SGSSceneRenderer::removeInstance( int instanceIndex ) {
 		refillDynamicOptixBuffers();
 		updateSceneBoundingBox();
 	}
+}
+
+namespace VoxelizedModel {
+	Voxels voxelize( const IndexMapping3<> &indexMapping3, std::function<void()> renderScene, Program &splatProgram, Program &muxerProgram ) {
+		AUTO_TIMER_FUNCTION();
+
+		// TOOD: state cleanup [10/13/2012 kirschan2]
+		// save all state for now
+		glPushAttrib( GL_ALL_ATTRIB_BITS );
+		glPushClientAttrib( GL_CLIENT_ALL_ATTRIB_BITS );
+
+		glPixelStorei( GL_PACK_ALIGNMENT, 1 );
+
+		unsigned __int32 *volumeChannelsData[4];
+
+		splatProgram.use();
+
+		GLuint volumeChannels[4];
+		glGenTextures( 4, volumeChannels );
+		for( int i = 0 ; i < 4 ; ++i ) {
+			volumeChannelsData[i] = new unsigned __int32[ indexMapping3.count ];
+			memset( volumeChannelsData[i], 0, sizeof( __int32 ) * indexMapping3.count );
+
+			glBindTexture( GL_TEXTURE_3D, volumeChannels[i] );
+			glTexImage3D( GL_TEXTURE_3D, 0, GL_R32UI, indexMapping3.getSize().x(), indexMapping3.getSize().y(), indexMapping3.getSize().z(), 0, GL_RED_INTEGER, GL_UNSIGNED_INT, volumeChannelsData[i] );
+
+			glBindImageTexture( i, volumeChannels[i], 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32UI );
+
+			//glUniform1i( splatShader.volumeChannels[i], i );
+			// TODO: we can set this in the GLSL code! [10/13/2012 kirschan2]
+			glUniform1i( splatProgram.uniform( "volumeChannels", i ), i );
+		}
+
+		glBindTexture( GL_TEXTURE_3D, 0 );
+
+		GLuint fbo;
+		glGenFramebuffers( 1, &fbo );
+		glBindFramebuffer( GL_FRAMEBUFFER, fbo );
+
+		GLuint renderbuffer;
+
+		glGenRenderbuffers( 1, &renderbuffer );
+		glBindRenderbuffer( GL_RENDERBUFFER, renderbuffer );
+		int maxSize = indexMapping3.getSize().maxCoeff();
+		glRenderbufferStorage( GL_RENDERBUFFER, GL_RGBA, maxSize, maxSize );
+		glBindRenderbuffer( GL_RENDERBUFFER, 0 );
+
+		glFramebufferRenderbuffer( GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, renderbuffer );
+		// disable framebuffer operations
+		glDisable( GL_DEPTH_TEST );
+		glDrawBuffer( GL_NONE );
+		glColorMask( GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE );
+		glDepthMask( GL_FALSE );
+
+		// GL_PROJECTION is not needed
+		int permutations[3][3] = { {1,2,0}, {2,0,1}, {0,1,2} };
+		for( int i = 0 ; i < 3 ; ++i ) {
+			int *permutation = permutations[i];
+			const Vector3i permutedSize = permute( indexMapping3.getSize(), permutation );
+			auto projection = Eigen::createOrthoProjectionMatrixLH( Vector3f::Zero(), permutedSize.cast<float>() ); 
+			
+			//glUniform( splatShader.mainAxisProjection[i], projection );
+			//glUniform( splatShader.mainAxisPermutation[i], unpermutedToPermutedMatrix( permutation ).topLeftCorner<3,3>().matrix() );
+			
+			glUniform( splatProgram.uniform( "mainAxisProjection", i ), projection );
+			// this could be set as default or we could set these in the shader!
+			glUniform( splatProgram.uniform( "mainAxisPermutation", i), unpermutedToPermutedMatrix( permutation ).topLeftCorner<3,3>().matrix() );
+			
+			glViewportIndexedf( i, 0, 0, (float) permutedSize.x(), (float) permutedSize.y() );
+		}
+
+		glMatrixMode( GL_MODELVIEW );
+		glLoadMatrix( indexMapping3.positionToIndex );
+
+		renderScene();
+
+		muxerProgram.use();
+
+		GLuint volume;
+		glGenTextures( 1, &volume );
+
+		glBindTexture( GL_TEXTURE_3D, volume );
+		glTexStorage3D( GL_TEXTURE_3D, 1, GL_RGBA8, indexMapping3.getSize().x(), indexMapping3.getSize().y(), indexMapping3.getSize().z() );
+
+		for( int i = 0 ; i < 4 ; ++i ) {
+			glBindImageTexture( i, volumeChannels[i], 0, GL_TRUE, 0, GL_READ_ONLY, GL_R32UI );
+			//glUniform1i( muxerShader.volumeChannels[i], i );
+			// TOOD: we can set this directly in the shader [10/13/2012 kirschan2]
+			glUniform1i( muxerProgram.uniform( "volumeChannels", i), i );
+		}
+		glBindImageTexture( 4, volume, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA8 );
+
+		//glUniform1i( muxerShader.volume, 4 );
+		// TODO: set this in the shader [10/13/2012 kirschan2]
+		glUniform1i( muxerProgram.uniform( "volume" ), 4 );
+
+		//glUniform3i( muxerShader.sizeHelper, indexMapping3.getSize().x(), indexMapping3.getSize().y(), indexMapping3.getSize().x() * indexMapping3.getSize().y() );
+		glUniform3i( muxerProgram.uniform( "sizeHelper" ), indexMapping3.getSize().x(), indexMapping3.getSize().y(), indexMapping3.getSize().x() * indexMapping3.getSize().y() );
+
+		glEnableClientState( GL_VERTEX_ARRAY );
+		float zero[3] = {0.0, 0.0, 0.0};
+		glVertexPointer( 3, GL_FLOAT, 0, &zero );
+
+		glEnable( GL_RASTERIZER_DISCARD );
+		glDrawArraysInstanced( GL_POINTS, 0, 1, indexMapping3.count );
+		glDisable( GL_RASTERIZER_DISCARD );
+
+		// read back our data
+		// TODO: this is slow.. asynchronous pixel pack buffers would be better [10/13/2012 kirschan2]
+		//Color4ub *volumeData = new Color4ub[ indexMapping3.count ];
+		// 
+		// SimpleIndexer3 uses x-minor ordering[10/13/2012 kirschan2]
+		Voxels voxels( indexMapping3 );
+		glGetTexImage( GL_TEXTURE_3D, 0, GL_RGBA, GL_UNSIGNED_BYTE, voxels.getData() );
+
+		glBindTexture( GL_TEXTURE_3D, 0 );
+		glBindFramebuffer( GL_FRAMEBUFFER, 0 );
+
+		glUseProgram( 0 );
+
+		glPopClientAttrib();
+		glPopAttrib();
+
+		delete[] volumeChannelsData[0];
+		delete[] volumeChannelsData[1];
+		delete[] volumeChannelsData[2];
+		delete[] volumeChannelsData[3];
+
+		glDeleteTextures( 4, volumeChannels );
+		glDeleteTextures( 1, &volume );
+
+		glDeleteFramebuffers( 1, &fbo );
+		glDeleteRenderbuffers( 1, &renderbuffer );
+
+		return voxels;
+	}
+}
+
+VoxelizedModel::Voxels SGSSceneRenderer::voxelizeModel( int modelIndex, float resolution ) {
+	const auto boundingBox = getModelBoundingBox( modelIndex );
+
+	// set up the index mapping
+	SimpleIndexMapping3 indexMapping = createCenteredIndexMapping( resolution, boundingBox.sizes(), boundingBox.center() );
+
+	return VoxelizedModel::voxelize( 
+		indexMapping,
+		[&] () {
+			staticObjectsMesh.vao.bind();
+			drawModel( scene->models[ modelIndex ] );
+			staticObjectsMesh.vao.unbind();
+		},
+		voxelizerSplatterProgram,
+		voxelizerMuxerProgram
+	);
 }

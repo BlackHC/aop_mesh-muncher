@@ -37,10 +37,26 @@ struct AutoTimer {
 
 #define _AUTO_TIMER_MERGE_2( x, y ) x ## y
 #define _AUTO_TIMER_MERGE( x, y ) _AUTO_TIMER_MERGE_2( x, y )
+
+// TODO: rename to AUTO_TIME* [10/13/2012 kirschan2]
+#define AUTO_TIMER_BLOCK( ... ) if( auto _AUTO_TIMER_MERGE( scopedTimer, __COUNTER__ ) = AutoTimer( __FUNCTION__, __VA_ARGS__ ) )
+#define AUTO_TIME_STATEMENT( statement, ... ) \
+	do { \
+		auto _AUTO_TIMER_MERGE( scopedTimer, __COUNTER__ ) = AutoTimer( __FUNCTION__, __VA_ARGS__ ); \
+		statement; \
+	} \
+	while( false )
+
+// only one function timer is allowed per function
+#define AUTO_TIMER_FUNCTION( ... ) auto functionTimer = AutoTimer( __FUNCTION__, __VA_ARGS__ )
+
+// creates an anonymous auto timer
+#define AUTO_TIMER( ... ) auto _AUTO_TIMER_MERGE( scopedTimer, __COUNTER__ ) = AutoTimer( __FUNCTION__, __VA_ARGS__ )
+
+//////////////////////////////////////////////////////////////////////////
+// deprecated
 // TODO: name refactoring [10/1/2012 kirschan2]
 #define AUTO_TIMER_FOR_FUNCTION(...) AutoTimer _AUTO_TIMER_MERGE( _auto_timer, __COUNTER__ )( __FUNCTION__, __VA_ARGS__ )
 #define AUTO_TIMER_NAMED( name, ... ) AutoTimer name( __FUNCTION__, __VA_ARGS__ )
 #define AUTO_TIMER_DEFAULT( ... ) AutoTimer autoTimer( __FUNCTION__, __VA_ARGS__ )
-
-#define AUTO_TIMER_BLOCK( ... ) if( auto scopedTimer = AutoTimer( __FUNCTION__, __VA_ARGS__ ) )
-#define AUTO_TIMER_MEASURE( ... ) if( auto scopedTimer = AutoTimer( __FUNCTION__, __VA_ARGS__ ) )
+#define AUTO_TIMER_MEASURE( ... ) if( auto _AUTO_TIMER_MERGE( scopedTimer, __COUNTER__ ) = AutoTimer( __FUNCTION__, __VA_ARGS__ ) )

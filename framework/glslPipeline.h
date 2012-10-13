@@ -30,13 +30,15 @@ struct Shader {
 	enum Type {
 		ST_SURFACE,
 		ST_VERTEX,
+		ST_FRAGMENT,
+		ST_GEOMETRY,
 		ST_MODULE
 	};
 
 	struct Member {
 		std::string name;
 		std::string type;
-		
+
 		SERIALIZER_PAIR_IMPL( name, type );
 	};
 
@@ -47,17 +49,26 @@ struct Shader {
 
 	typedef std::vector< std::string > Dependencies;
 	Dependencies dependencies;
-	
+
 	SERIALIZER_IMPL( name, (code)(uniforms)(outputs)(inputs)(dependencies), (type) );
 
-	bool validate() const {
+	void validate() const {
 		// check inputs and outputs
 		switch( type ) {
 		case ST_MODULE:
-			return inputs.empty() && outputs.empty();
+			if( !inputs.empty() ) {
+				error( "no inputs allowed in module!" );
+			}
+			if( !outputs.empty() ) {
+				error( "no outputs allowed in module!" );
+			}
+			break;
 		case ST_SURFACE:
 		case ST_VERTEX:
-			return true;
+		case ST_GEOMETRY:
+		case ST_FRAGMENT:
+		default:
+			break;
 		}
 	}
 
@@ -81,7 +92,7 @@ struct Shader {
 		}
 		if( type == ST_MESH ) {
 			// default members
-			out.append( 
+			out.append(
 					"\t//default members\n"
 					"\tvec4 position;\n"
 				);
@@ -145,7 +156,9 @@ SERIALIZER_REFLECTION( Shader::Type,
 	(("surfaceShader", Shader::ST_SURFACE))
 	(("module", Shader::ST_MODULE))
 	(("vertexShader", Shader::ST_VERTEX))
-	)
+	(("geometryShader", Shader::ST_GEOMETRY))
+	(("fragmentShader", Shader::ST_FRAGMENT))
+)
 
 struct ShaderCollection {
 	std::list<Shader> shaders;
@@ -195,19 +208,44 @@ struct Program {
 	static Program *currentProgram;
 
 	Shader *surfaceShader;
+
+	Shader *fragmentShader;
+	Shader *geometryShader;
 	Shader *vertexShader;
 
 	GLuint program;
 
-	std::unordered_map< std::string, GLuint > uniformLocations;
+	std::unordered_map< std::string, GLint > uniformLocations;
 
-	Program() : surfaceShader( nullptr ), vertexShader( nullptr ), program( 0 ) {}
+	Program()
+		: surfaceShader( nullptr )
+		, fragmentShader( nullptr )
+		, vertexShader( nullptr )
+		, geometryShader( nullptr )
+		, program( 0 )
+	{}
+
 	~Program() {
 		if( program ) {
 			glDeleteProgram( program );
 		}
 	}
 
+	int uniform( const std::string &name ) const {
+		auto found = uniformLocations.find( name  );
+		if( found == uniformLocations.end() ) {
+			return -1;
+		}
+
+		return found->second;
+	}
+
+	int uniform( const std::string &name, int index ) const {
+		return uniform( name + '[' + boost::lexical_cast< std::string >( index ) + ']' );
+	}
+
+#if 0
+	// unused atm
 	static void mergeDependencies( std::vector< const Shader * > &merged, const std::vector< const Shader * > &source ) {
 		int searchSize = (int) merged.size();
 		for(int index = 0 ; index < source.size() ; index++ ) {
@@ -216,6 +254,7 @@ struct Program {
 			}
 		}
 	}
+#endif
 
 	void error( const std::string &error ) const {
 		std::string shaderNames;
@@ -230,9 +269,29 @@ struct Program {
 		throw std::logic_error( boost::str( boost::format( "Program %s: %s" ) % shaderNames % error ) );
 	}
 
+	void validate() {
+		if( fragmentShader && surfaceShader ) {
+			error( "using both fragment and surface shaders is not possible!" );
+		}
+
+#define VALIDATE_IF_SET( shader ) \
+	do { \
+		if( shader ) { \
+			shader->validate(); \
+		} \
+	} while( false )
+
+		VALIDATE_IF_SET( surfaceShader );
+		VALIDATE_IF_SET( fragmentShader );
+		VALIDATE_IF_SET( geometryShader );
+		VALIDATE_IF_SET( vertexShader );
+
+#undef VALIDATE_IF_SET
+	}
+
 	static std::string getDependencyCode( const std::vector< const Shader * > &dependencies ) {
 		std::string out;
-		
+
 		out.append( "// dependencies\n\n" );
 		for(int index = 0 ; index < dependencies.size() ; index++ ) {
 			const Shader *module = dependencies[ index ];
@@ -259,6 +318,8 @@ struct Program {
 	bool build( const ShaderCollection &collection/* TODO , Shader::Dependencies customDependencies = Shader::Dependencies()*/ ) {
 		reset();
 
+		validate();
+
 		GLUtil::glProgramBuilder programBuilder;
 
 		if( surfaceShader ) {
@@ -269,17 +330,60 @@ struct Program {
 				addSource( "\n#line 1\n" ).
 				addSource( surfaceShader->getSimpleInputDecls() ).
 				addSource( surfaceShader->code ).
-				addSource( 
-						"\n"
-						"void main() {\n"
-						"\tgl_FragColor = surfaceShader();\n"
-						"}\n"
-					).
+				addSource(
+					"\n"
+					"void main() {\n"
+					"\tgl_FragColor = surfaceShader();\n"
+					"}\n"
+				).
 				compile().
 				alwaysKeep().
 				handle;
 
 			programBuilder.attachShader( fragmentShaderHandle );
+		}
+
+		if( fragmentShader ) {
+			GLuint fragmentShaderHandle = GLUtil::glShaderBuilder( GL_FRAGMENT_SHADER ).
+				addSource( "#version 420 compatibility\n\n" ).
+				addSource( getDependencyCode( collection.resolveDependencies( fragmentShader ) ) ).
+				addSource( fragmentShader->getUniformDecls() ).
+				addSource( "\n#line 1\n" ).
+				addSource( fragmentShader->getSimpleInputDecls() ).
+				addSource( fragmentShader->code ).
+				addSource(
+					"\n"
+					"void main() {\n"
+					"\tfragmentShader();\n"
+					"}\n"
+				).
+				compile().
+				alwaysKeep().
+				handle;
+
+			programBuilder.attachShader( fragmentShaderHandle );
+		}
+
+		if( geometryShader ) {
+				GLuint geometryShaderHandle = GLUtil::glShaderBuilder( GL_GEOMETRY_SHADER ).
+				addSource( "#version 420 compatibility\n\n" ).
+				addSource( getDependencyCode( collection.resolveDependencies( geometryShader ) ) ).
+				addSource( geometryShader->getUniformDecls() ).
+				addSource( "\n#line 1\n" ).
+				addSource( geometryShader->getSimpleInputDecls() ).
+				addSource( geometryShader->getSimpleOutputDecls() ).
+				addSource( geometryShader->code.c_str() ).
+				addSource(
+					"\n"
+					"void main() {\n"
+					"\tgeometryShader();\n"
+					"}\n"
+				).
+				compile().
+				alwaysKeep().
+				handle;
+
+			programBuilder.attachShader( geometryShaderHandle );
 		}
 
 		if( vertexShader ) {
@@ -290,44 +394,30 @@ struct Program {
 				addSource( "\n#line 1\n" ).
 				addSource( vertexShader->getSimpleInputDecls() ).
 				addSource( vertexShader->getSimpleOutputDecls() ).
-				addSource( vertexShader->code.c_str() ).			
-				addSource( 
-						"\n"
-						"void main() {\n"
-						"\tmeshShader();\n"
-						"}\n"
-					).
+				addSource( vertexShader->code.c_str() ).
+				addSource(
+					"\n"
+					"void main() {\n"
+					"\tvertexShader();\n"
+					"}\n"
+				).
 				compile().
 				alwaysKeep().
 				handle;
-			
+
 			programBuilder.attachShader( vertexShaderHandle );
-		}		
-		
+		}
+
 		program = programBuilder.link().dumpInfoLog( std::cout ).deleteShaders().program;
 
 		if( programBuilder.fail ) {
 			return false;
 		}
-		
+
 		// store all uniform locations
 		extractUniformLocations();
 
 		return true;
-	}
-
-	void extractUniformLocations() {
-		int numActiveUniforms;
-		glGetProgramiv( program, GL_ACTIVE_UNIFORMS, &numActiveUniforms );
-
-		const int bufferSize = 512;
-		char buffer[ bufferSize ];
-
-		for( int uniformIndex = 0 ; uniformIndex < numActiveUniforms ; ++uniformIndex ) {
-			glGetActiveUniformName( program, uniformIndex, bufferSize, nullptr, buffer );
-
-			uniformLocations[ std::string( buffer ) ] = uniformIndex;
-		}
 	}
 
 	void use() {
@@ -343,6 +433,46 @@ struct Program {
 		}
 		currentProgram = nullptr;
 	}
+
+protected:
+	void extractUniformLocations() {
+		int numActiveUniforms;
+		glGetProgramiv( program, GL_ACTIVE_UNIFORMS, &numActiveUniforms );
+
+		const int bufferSize = 512;
+		char buffer[ bufferSize ];
+
+		for( int uniformIndex = 0 ; uniformIndex < numActiveUniforms ; ++uniformIndex ) {
+			int size;
+			GLenum type;
+
+			glGetActiveUniform( program, uniformIndex, bufferSize, nullptr, &size, &type, buffer );
+			
+			const std::string name = buffer;
+			
+			if( size == 1 ) {
+				uniformLocations[ name ] = uniformIndex;
+			}
+			else {
+				const std::string arrayName = name.substr( 0, name.size() - 3 );
+
+				for( int arrayIndex = 0 ; arrayIndex < size ; arrayIndex++ ) {
+					const std::string elementName = arrayName + '[' + boost::lexical_cast< std::string >( arrayIndex ) + ']';
+					uniformLocations[ elementName ] = glGetUniformLocation( program, elementName.c_str() );
+				}
+			}
+		}
+
+		onSetStaticUniformLocationVariables();
+	}
+
+private:
+	virtual void onSetStaticUniformLocationVariables() {};
+
+/*#define GLSLPIPELINE_UNIFORMLOCATION( variableExpr ) \
+	{
+		glGetUniformLocation( program,  )
+	}*/
 };
 
 void loadShaderCollection( ShaderCollection &library, const char *filename );

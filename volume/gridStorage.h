@@ -41,6 +41,14 @@ public:
 		return IndexMapping3::Iterator( mapping );
 	}
 
+	Data * getData() {
+		return data.get();
+	}
+
+	const Data * getData() const {
+		return data.get();
+	}
+
 	Data & operator[] ( const int index ) {
 		return data[ index ];
 	}

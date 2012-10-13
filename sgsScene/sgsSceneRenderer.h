@@ -23,6 +23,10 @@ SERIALIZER_ENABLE_RAW_MODE_EXTERN( OptixProgramInterface::MergedTextureInfo );
 #include "rendering.h"
 
 #include <unsupported/Eigen/openglsupport>
+//#include "boost/multi_array.hpp"
+
+#include <gridStorage.h>
+
 namespace Eigen {
 	// DSA support
 	EIGEN_GL_FUNC1_DECLARATION       (glMatrixLoad,GLenum,const)
@@ -41,6 +45,15 @@ struct Instance {
 	Eigen::Affine3f transformation;
 
 	int modelId;
+};
+
+namespace VoxelizedModel {
+		struct Color4ub {
+			unsigned char r,g,b,a;
+		};
+		
+		//typedef boost::multi_array< Color4ub, 3 > Voxels;
+		typedef GridStorage<Color4ub> Voxels;
 };
 
 struct SGSSceneRenderer {
@@ -98,6 +111,10 @@ struct SGSSceneRenderer {
 
 	ShaderCollection shaders;
 	Program terrainProgram, objectProgram, previewObjectProgram, shadowMapProgram;
+
+	// voxelizer shaders
+	ShaderCollection voxelizerShaders;
+	Program voxelizerSplatterProgram, voxelizerMuxerProgram;
 
 	struct Debug {
 		bool showBoundingSpheres, showTerrainBoundingSpheres;
@@ -232,6 +249,8 @@ struct SGSSceneRenderer {
 	// renders a model at the origin
 	void renderModel( const Eigen::Vector3f &worldViewerPosition, int modelIndex );
 
+	VoxelizedModel::Voxels voxelizeModel( int modelIndex, float resolution );
+
 	//////////////////////////////////////////////////////////////////////////
 	// TOOD: move optix specific code into its own class [9/30/2012 kirschan2]
 	void initOptix( OptixRenderer *optixRenderer );
@@ -240,6 +259,7 @@ struct SGSSceneRenderer {
 	void refillDynamicOptixBuffers();
 	//////////////////////////////////////////////////////////////////////////
 
+	// TODO: most of this should be moved into ModelDatabase [10/13/2012 kirschan2]
 	std::vector< Instance > instances;
 
 	int getNumInstances() const {

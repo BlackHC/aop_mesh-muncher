@@ -16,8 +16,12 @@ INCLUDE_DIRECTORIES(
 	${OPENGL_INCLUDE_DIR}
 	${Boost_INCLUDE_DIR}
 	${GLEW_INCLUDE_DIR} 
-	../volume/ ../positionSolver/ ../glVoxelVolumePlacerUI/ ../glutil/
+	../volume/
+	../positionSolver/
+	../glVoxelVolumePlacerUI/
+	../glutil/
 	../wml
+	../framework
 	)
 
 # ../gtest/gtest_main.cc

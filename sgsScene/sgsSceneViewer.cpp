@@ -41,7 +41,7 @@ void selectObjectsByModelID( SGSSceneRenderer &renderer, int modelIndex ) {
 		auto transformation = renderer.getInstanceTransformation( *instanceIndex );
 		auto boundingBox = renderer.getUntransformedInstanceBoundingBox( *instanceIndex );
 
-		selectionDR.setTransformation( transformation );	
+		selectionDR.setTransformation( transformation.matrix() );	
 		selectionDR.drawAABB( boundingBox.min(), boundingBox.max() );
 	}
 
@@ -61,7 +61,7 @@ void real_main() {
 	camera.perspectiveProjectionParameters.zFar = 500.0;
 
 	CameraInputControl cameraInputControl;
-	cameraInputControl.init( make_nonallocated_shared(camera), make_nonallocated_shared(window) );
+	cameraInputControl.init( make_nonallocated_shared(camera) );
 
 	// Activate the window for OpenGL rendering
 	window.setActive();
@@ -99,31 +99,34 @@ void real_main() {
 		optixRenderer.init( make_nonallocated_shared( sgsSceneRenderer ) );
 	}
 
+	EventSystem eventSystem;
 	EventDispatcher eventDispatcher;
-	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( cameraInputControl ) );
+	eventSystem.setRootHandler( make_nonallocated_shared( eventDispatcher ) );
+	eventSystem.exclusiveMode.window = make_nonallocated_shared( window );
+	eventDispatcher.addEventHandler( make_nonallocated_shared( cameraInputControl ) );
 
-	VerboseEventDispatcher verboseEventDispatcher;
-	eventDispatcher.eventHandlers.push_back( make_nonallocated_shared( verboseEventDispatcher ) );
+	EventDispatcher verboseEventDispatcher;
+	eventDispatcher.addEventHandler( make_nonallocated_shared( verboseEventDispatcher ) );
 
-	verboseEventDispatcher.registerConsoleHelpAction();
+	registerConsoleHelpAction( verboseEventDispatcher );
 
 	KeyAction reloadShadersAction( "reload shaders", sf::Keyboard::R, [&] () { sgsSceneRenderer.reloadShaders(); } );
-	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( reloadShadersAction ) );
+	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( reloadShadersAction ) );
 
 	BoolVariableToggle showBoundingSpheresToggle( "show bounding spheres",sgsSceneRenderer.debug.showBoundingSpheres, sf::Keyboard::B );
-	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( showBoundingSpheresToggle ) );
+	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( showBoundingSpheresToggle ) );
 
 	BoolVariableToggle showTerrainBoundingSpheresToggle( "show terrain bounding spheres",sgsSceneRenderer.debug.showTerrainBoundingSpheres, sf::Keyboard::N );
-	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( showTerrainBoundingSpheresToggle ) );
+	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( showTerrainBoundingSpheresToggle ) );
 
 	BoolVariableToggle updateRenderListsToggle( "updateRenderLists",sgsSceneRenderer.debug.updateRenderLists, sf::Keyboard::C );
-	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( updateRenderListsToggle ) );
+	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( updateRenderListsToggle ) );
 
 	IntVariableControl disabledObjectIndexControl( "disabledModelIndex", renderContext.disabledModelIndex, -1, sgsScene.modelNames.size(), sf::Keyboard::Numpad7, sf::Keyboard::Numpad1 );
-	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( disabledObjectIndexControl ) );
+	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( disabledObjectIndexControl ) );
 
 	IntVariableControl disabledInstanceIndexControl( "disabledInstanceIndex",renderContext.disabledInstanceIndex, -1, sgsScene.numSceneObjects, sf::Keyboard::Numpad9, sf::Keyboard::Numpad3 );
-	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( disabledInstanceIndexControl ) );
+	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( disabledInstanceIndexControl ) );
 
 	
 	DebugRender::CombinedCalls probeDumps;
@@ -146,10 +149,10 @@ void real_main() {
 		probeDumps.append();
 		probeDumps.setPosition( position );
 		glColor4ubv( &probeContexts.front().color.x );		
-		probeDumps.drawVectorCone( probeContexts.front().distance * direction, probeContexts.front().distance * 0.25, 1 + probeContexts.front().hitPercentage * 15 );
+		probeDumps.drawVectorCone( probeContexts.front().distance * direction, probeContexts.front().distance * 0.25, 1 + probeContexts.front().hitCounter );
 		probeDumps.end();
 	} );
-	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( dumpProbeAction ) );
+	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( dumpProbeAction ) );
 
 	KeyAction disableObjectAction( "disable models shot", sf::Keyboard::Numpad4, [&] () { 
 		// dump a probe at the current position and view direction
@@ -164,7 +167,7 @@ void real_main() {
 		renderContext.disabledModelIndex = selectionResults.front().modelIndex;
 		std::cout << "object: " << selectionResults.front().modelIndex << "\n";
 	} );
-	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( disableObjectAction ) );
+	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( disableObjectAction ) );
 
 	KeyAction disableInstanceAction( "disable instance shot", sf::Keyboard::Numpad6, [&] () { 
 		// dump a probe at the current position and view direction
@@ -179,7 +182,7 @@ void real_main() {
 		renderContext.disabledInstanceIndex = selectionResults.front().objectIndex;
 		std::cout << "instance: " << selectionResults.front().objectIndex << "\n";
 	} );
-	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( disableInstanceAction ) );
+	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( disableInstanceAction ) );
 
 	DebugWindowManager debugWindowManager;
 	
@@ -225,14 +228,14 @@ void real_main() {
 				glViewport( 0, 0, event.size.width, event.size.height );
 			}
 
-			eventDispatcher.handleEvent( event );
+			eventSystem.processEvent( event );
 		}
 
 		if( !window.isOpen() ) {
 			break;
 		}
 
-		cameraInputControl.update( frameClock.restart().asSeconds(), false );
+		eventSystem.update( frameClock.restart().asSeconds(), clock.getElapsedTime().asSeconds() );
 		
 		{
 			boost::timer::cpu_timer renderTimer;

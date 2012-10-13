@@ -3,6 +3,7 @@
 #include <boost/noncopyable.hpp>
 
 #include <mathUtility.h>
+#include "boost/array.hpp"
 
 /*
 concept Index3 {
@@ -406,6 +407,37 @@ inline IndexMapping3<> createCenteredIndexMapping( const float resolution, const
 
 typedef IndexMapping3<> SimpleIndexMapping3;
 typedef IndexMapping3<SubIndexer3> SubIndexMapping;
+
+#if 0
+//////////////////////////////////////////////////////////////////////////
+// V2 grid
+// 
+/* grid:
+ *  maps a world position into a grid index
+ *  a grid is bounded and can tell if a grid index is valid or not
+ */
+struct Grid {
+	typedef boost::array< int, 3 > Index3;
+
+	Eigen::Affine3f indexToPosition;
+	Eigen::Affine3f positionToIndex;
+
+	Index3 size;
+
+	Grid() {}
+	Grid( const Index3 &size, const Eigen::Affine3f &indexToPosition ) : size( size ), indexToPosition( indexToPosition ), positionToIndex( indexToPosition.inverse() ) {
+	}
+
+	Grid transformed( const Eigen::Affine3f &transformation ) const {
+		return Grid( size, transformation * indexToPosition );
+	}
+
+	Eigen::Vector3f getPosition( const Eigen::Vector3i &index3 ) const {
+		return indexToPosition * index3.cast<float>();
+	}
+};
+#endif
+
 
 #ifdef GRID_GTEST_UNIT_TESTS
 #include "gtest.h"

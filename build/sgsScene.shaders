@@ -149,7 +149,7 @@ sgsMesh:
 		worldNormal		vec3
 
 	code::
-		void meshShader() {
+		void vertexShader() {
 			worldPosition = (gl_ModelViewMatrix * gl_Vertex).xyz;
 			worldNormal = gl_Normal;
 			//gl_Position = sunShadowProjection * gl_Vertex; 
@@ -173,7 +173,7 @@ shadowMapMesh:
 	vertexShader
 
 	code::
-		void meshShader() {
+		void vertexShader() {
 			gl_Position = ftransform();
 		}
 

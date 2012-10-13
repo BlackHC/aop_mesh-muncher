@@ -31,7 +31,7 @@ namespace ProbeGenerator {
 		const Vector3i probeCount3 = ceil( size / resolution + Eigen::Vector3f::Constant( 1.0f ) );
 
 		// create the index<->position mapping
-		// TODO: add method createCenteredIndexMapping [9/26/2012 kirschan2]
+		// TODO: use createCenteredIndexMapping [9/26/2012 kirschan2]
 		const auto indexMapping3 = createIndexMapping( probeCount3, -probeCount3.cast<float>() * resolution / 2, resolution );
 
 		for( auto iterator3 = indexMapping3.getIterator() ; iterator3.hasMore() ; ++iterator3 ) {
