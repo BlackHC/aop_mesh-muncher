@@ -56,9 +56,18 @@ struct IntVariableControl : NullEventHandler {
 	int &variable;
 	int min, max;
 	const char *name;
+	typedef std::function< void() > Action;
+	Action onAction;
 
-	IntVariableControl( const char *name, int &variable, int min, int max, sf::Keyboard::Key upKey = sf::Keyboard::Up, sf::Keyboard::Key downKey = sf::Keyboard::Down )
-		: name( name ), variable( variable ), min( min ), max( max ), upKey( upKey ), downKey( downKey ) {
+	IntVariableControl( const char *name, int &variable, int min, int max, sf::Keyboard::Key upKey = sf::Keyboard::Up, sf::Keyboard::Key downKey = sf::Keyboard::Down, Action onAction = nullptr )
+		: name( name )
+		, variable( variable )
+		, min( min )
+		, max( max )
+		, upKey( upKey )
+		, downKey( downKey )
+		, onAction( onAction )
+	{
 	}
 
 	virtual void onKeyboard( EventState &eventState ) {
@@ -68,11 +77,17 @@ struct IntVariableControl : NullEventHandler {
 			if( eventState.event.key.code == upKey ) {
 				variable = std::min( variable + 1, max );
 				std::cerr << name << " += 1 == " << variable << "\n";
+				if( onAction ) {
+					onAction();
+				}
 				eventState.accept();
 			}
 			else if( eventState.event.key.code == downKey ) {
 				variable = std::max( variable - 1, min );
 				std::cerr << name << " -= 1 == " << variable << "\n";
+				if( onAction ) {
+					onAction();
+				}
 				eventState.accept();
 			}
 			break;

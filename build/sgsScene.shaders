@@ -132,6 +132,7 @@ previewObject:
 
 	code::
 		vec4 surfaceShader() {
+			return vec4( worldNormal / 2 + 0.5, 1.0 );
 			vec4 baseColor = texture( baseTetxture, gl_TexCoord[0].st );
 
 			// add some very simple lighting
@@ -151,7 +152,7 @@ sgsMesh:
 	code::
 		void vertexShader() {
 			worldPosition = (gl_ModelViewMatrix * gl_Vertex).xyz;
-			worldNormal = gl_Normal;
+			worldNormal = mat3(gl_ModelViewMatrix) * gl_Normal;
 			//gl_Position = sunShadowProjection * gl_Vertex; 
 			gl_Position = ftransform();
 			gl_TexCoord[0] = gl_MultiTexCoord0;

@@ -959,10 +959,12 @@ namespace VoxelizedModel {
 
 		// GL_PROJECTION is not needed
 		int permutations[3][3] = { {1,2,0}, {2,0,1}, {0,1,2} };
+		const Vector3f offset = Vector3f::Constant( 0.5 );
 		for( int i = 0 ; i < 3 ; ++i ) {
 			int *permutation = permutations[i];
 			const Vector3i permutedSize = permute( indexMapping3.getSize(), permutation );
-			auto projection = Eigen::createOrthoProjectionMatrixLH( Vector3f::Zero(), permutedSize.cast<float>() ); 
+			// the grid points are the centers of their voxel's boxes
+			auto projection = Eigen::createOrthoProjectionMatrixLH( Vector3f::Zero() - offset, permutedSize.cast<float>() - offset ); 
 			
 			//glUniform( splatShader.mainAxisProjection[i], projection );
 			//glUniform( splatShader.mainAxisPermutation[i], unpermutedToPermutedMatrix( permutation ).topLeftCorner<3,3>().matrix() );
@@ -1050,8 +1052,17 @@ VoxelizedModel::Voxels SGSSceneRenderer::voxelizeModel( int modelIndex, float re
 	return VoxelizedModel::voxelize( 
 		indexMapping,
 		[&] () {
+			const auto &model = scene->models[ modelIndex ];
+
 			staticObjectsMesh.vao.bind();
-			drawModel( scene->models[ modelIndex ] );
+			GLuint *firstIndex = nullptr;
+
+			int endSubObject = model.startSubObject + model.numSubObjects;
+			for( int subObjectIndex = model.startSubObject ; subObjectIndex < endSubObject ; ++subObjectIndex ) {
+				materialDisplayLists[ subObjectIndex ].call();
+				glDrawElements( GL_TRIANGLES, scene->subObjects[ subObjectIndex ].numIndices, GL_UNSIGNED_INT, firstIndex + scene->subObjects[ subObjectIndex ].startIndex );
+			}
+
 			staticObjectsMesh.vao.unbind();
 		},
 		voxelizerSplatterProgram,

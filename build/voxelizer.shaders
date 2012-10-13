@@ -63,7 +63,7 @@ splatterVertexShader:
 
 	code::
 		void vertexShader() {
-			gl_FrontColor = gl_Color;
+			gl_FrontColor = vec4( (mat3(gl_ModelViewMatrix) * gl_Normal) * 0.5 + 0.5, 1.0 );
 			gl_Position = gl_ModelViewMatrix * gl_Vertex; 
 		}
 
@@ -172,19 +172,20 @@ splatterFragmentShader:
 		#endif
 
 			struct VoxelInfo {
-				uvec3 color;
+				uvec3 normal;
 			};
 
 			VoxelInfo processFragment() {
 				VoxelInfo result;
-				result.color = uvec3( gl_Color * 255.0 );
+				// we have 32 bit, if we assume an overdraw of less than 256, we can use a resolution that is a lot higher than 2*256.0!
+				result.normal = uvec3( gl_Color / gl_Color.a * 512 );
 				return result;
 			}
 
 			void splatVoxel( const ivec3 voxelPosition, const VoxelInfo voxelInfo ) {
-				imageAtomicAdd( volumeChannels[0], voxelPosition, voxelInfo.color.r );
-				imageAtomicAdd( volumeChannels[1], voxelPosition, voxelInfo.color.g );
-				imageAtomicAdd( volumeChannels[2], voxelPosition, voxelInfo.color.b );
+				imageAtomicAdd( volumeChannels[0], voxelPosition, voxelInfo.normal.r );
+				imageAtomicAdd( volumeChannels[1], voxelPosition, voxelInfo.normal.g );
+				imageAtomicAdd( volumeChannels[2], voxelPosition, voxelInfo.normal.b );
 				imageAtomicAdd( volumeChannels[3], voxelPosition, 1u );
 			}
 
@@ -201,9 +202,11 @@ splatterFragmentShader:
 				int minZ = int( viewPosition.z - deltaZ );
 				int maxZ = int( ceil( viewPosition.z + deltaZ ) );
 
-				for( int z = minZ ; z <= maxZ ; ++z ) {
+				for( int z = minZ; z <= maxZ; ++z ) {
 					// this is identical to multiplying with the inverse
-					ivec3 voxelPosition = ivec3( vec3( viewPosition.xy, z ) * mainAxisPermutation[ mainAxis ] );
+
+					// wtf @ +0.5
+					ivec3 voxelPosition = ivec3( (vec3( viewPosition.xy, z ) + 0.5) * mainAxisPermutation[ mainAxis ] );
 
 					splatVoxel( voxelPosition, voxelInfo );
 				}
@@ -216,7 +219,7 @@ muxer:
 
 	code::
 		// TODO: using a geometry shader to create full screen quads and the fragment shader for the actual operation might be better throughput wise?
-		uniform restrict readonly layout(r32ui) uimage3D volumeChannels[4]; // rgb hit
+		uniform restrict readonly layout(r32ui) uimage3D volumeChannels[4]; // nx nz ny hit
 		uniform restrict writeonly layout(rgba8) image3D volume;
 
 		uniform ivec3 sizeHelper; // size.x size.y size.x*size.y;
@@ -227,13 +230,13 @@ muxer:
 			index3.y = (gl_InstanceID / sizeHelper.x) % sizeHelper.y;
 			index3.z = (gl_InstanceID / sizeHelper.z);
 		
-			uvec4 rgb_hit;
+			uvec4 packed_normalHit;
 			for( int i = 0 ; i < 4 ; ++i ) {
-				rgb_hit[i] = imageLoad( volumeChannels[i], index3 )[0];
+				packed_normalHit[i] = imageLoad( volumeChannels[i], index3 )[0];
 			}
 
-			vec4 color;
-			color.rgb = vec3( rgb_hit.rgb ) / 255.0 / rgb_hit[3];
-			color.a = rgb_hit[3] > 0 ? 1.0 : 0.0;
-			imageStore( volume, index3, color );
+			vec4 normalHit;
+			normalHit.rgb = vec3( packed_normalHit.rgb / packed_normalHit[3] ) / 512;
+			normalHit.a = float( packed_normalHit.a ) / 255.0;
+			imageStore( volume, index3, normalHit );
 		}

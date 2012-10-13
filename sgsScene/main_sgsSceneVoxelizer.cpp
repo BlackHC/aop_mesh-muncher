@@ -29,21 +29,39 @@ using namespace Eigen;
 
 #include "debugWindows.h"
 
-void visualizeColorGrid( const VoxelizedModel::Voxels &grid, DebugRender::DisplayList &displayList ) {
+enum GridVisualizationMode {
+	GVM_POSITION,
+	GVM_HITS,
+	GVM_NORMAL,
+	GVM_MAX
+};
+
+void visualizeColorGrid( const VoxelizedModel::Voxels &grid, DebugRender::DisplayList &displayList, GridVisualizationMode gvm = GVM_POSITION ) {
 	const float size = grid.getMapping().getResolution();
 	
 	displayList.beginCompile();
 
 	DebugRender::begin();
 	for( auto iterator = grid.getIterator() ; iterator.hasMore() ; ++iterator ) {
-		const auto &color = grid[ *iterator ];
+		const auto &normalHit = grid[ *iterator ];
 
-		if( color.a != 0 ) {
-			DebugRender::setPosition( grid.getMapping().getPosition( iterator.getIndex3() ) );		
+		if( normalHit.a != 0 ) {
+			DebugRender::setPosition( grid.getMapping().getPosition( iterator.getIndex3() ) );
+
 			Eigen::Vector3f positionColor = iterator.getIndex3().cast<float>().cwiseQuotient( grid.getMapping().getSize().cast<float>() );
-			DebugRender::setColor( positionColor );
 
-			//dr.drawAbstractSphere( size );
+			switch( gvm ) {
+			case GVM_POSITION:
+				DebugRender::setColor( positionColor );
+				break;
+			case GVM_HITS:
+				DebugRender::setColor( Vector3f::UnitY() * (0.5 + normalHit.a / 128.0) );
+				break;
+			case GVM_NORMAL:
+				glColor3ubv( &normalHit.r );
+				break;
+			}
+			
 			DebugRender::drawBox( Vector3f::Constant( size ), false );
 		}
 	}
@@ -117,10 +135,6 @@ void real_main() {
 	KeyAction reloadShadersAction( "reload shaders", sf::Keyboard::R, [&] () { sgsSceneRenderer.reloadShaders(); } );
 	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( reloadShadersAction ) );
 
-	int modelIndex = 0;
-	IntVariableControl modelIndexControl( "modelIndex", modelIndex, 0, sgsScene.modelNames.size() );
-	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( modelIndexControl ) );
-
 	DebugWindowManager debugWindowManager;
 	
 #if 0
@@ -143,23 +157,28 @@ void real_main() {
 	renderDuration.setCharacterSize( 10 );
 
 	DebugRender::DisplayList renderedVoxels;
-	int cachedModelIndex;
+	int modelIndex = 23;
 	float resolution = 0.25;
+	GridVisualizationMode gvm = GVM_POSITION;
 
 	auto updateVoxels = [&] () {
-		cachedModelIndex = modelIndex;
-
 		auto voxels = sgsSceneRenderer.voxelizeModel( modelIndex, resolution );
 		
-		visualizeColorGrid( voxels, renderedVoxels );
+		visualizeColorGrid( voxels, renderedVoxels, gvm );
 	};
 
 	updateVoxels();
 
+	IntVariableControl gvmControl( "cycle gvm", (int &) gvm, 0, (int) GVM_MAX, sf::Keyboard::Comma, sf::Keyboard::Period, updateVoxels );
+	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( gvmControl ) );
+
+	IntVariableControl modelIndexControl( "modelIndex", modelIndex, 0, sgsScene.modelNames.size(), sf::Keyboard::Up, sf::Keyboard::Down, updateVoxels );
+	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( modelIndexControl ) );
+
 	KeyAction revoxelizeAction( "revoxelize", sf::Keyboard::U, [&] () { updateVoxels(); } );
 	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( revoxelizeAction ) );
 
-	FloatVariableControl resolutionControl( "resolution", resolution, 0.10, 2.0, sf::Keyboard::PageDown, sf::Keyboard::PageUp, updateVoxels );
+	FloatVariableControl resolutionControl( "resolution", resolution, 0.10, 2.0, sf::Keyboard::PageUp, sf::Keyboard::PageDown, updateVoxels );
 	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( resolutionControl ) );
 	
 	bool renderVoxels = true;
@@ -170,17 +189,13 @@ void real_main() {
 	BoolVariableToggle renderModelToggle( "toggle renderModel", renderModel, sf::Keyboard::C );
 	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( renderModelToggle ) );
 
-	KeyAction cycleModesAction( "cycle modes", sf::Keyboard::B, [&] () { renderModel = renderVoxels; renderVoxels = !renderVoxels; } );
+	KeyAction cycleModesAction( "cycle voxel/rasterization", sf::Keyboard::B, [&] () { renderModel = renderVoxels; renderVoxels = !renderVoxels; } );
 	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( cycleModesAction ) );
 
 	while (true)
 	{
 		// Activate the window for OpenGL rendering
 		window.setActive();
-
-		if( cachedModelIndex != modelIndex ) {
-			updateVoxels();
-		}
 
 		// Event processing
 		sf::Event event;
@@ -223,7 +238,7 @@ void real_main() {
 				sgsSceneRenderer.renderModel( camera.getPosition(), modelIndex );
 			}
 			if( renderVoxels ) {
- 				Program::useFixed();
+				Program::useFixed();
 				renderedVoxels.render();
 			}
 
