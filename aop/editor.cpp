@@ -76,8 +76,8 @@ void Editor::render() {
 		selection->render();
 	}
 
-	if( modes.target ) {
-		modes.target->render();
+	if( modes.getTarget() ) {
+		modes.getTarget()->render();
 	}
 }
 

@@ -588,10 +588,22 @@ namespace aop {
 	}
 
 	void Application::initModelDatabase() {
+		AUTO_TIMER();
+
 		const auto &models = world->scene.models;
 		const int numModels = models.size();
 
+		ProgressTracker::Context progressTracker( numModels );
+
+		const float resolution = 0.25;
+
+		int totalNonEmpty = 0;
+		int totalCounts = 0;
+		int totalProbes = 0;
+
 		for( int modelId = 0 ; modelId < numModels ; modelId++ ) {
+			AUTO_TIMER( boost::format( "model %i") % modelId );
+
 			const auto bbox = world->sceneRenderer.getModelBoundingBox( modelId );
 
 			ModelDatabase::IdInformation idInformation;
@@ -605,8 +617,61 @@ namespace aop {
 			;
 			idInformation.volume = sizes.prod();
 
-			modelDatabase.informationById.push_back( idInformation );
+			VoxelizedModel::Voxels voxels = AUTO_TIME( world->sceneRenderer.voxelizeModel( modelId, resolution ), "voxelizing");
+
+			auto &probes = idInformation.probes[ resolution ];
+			probes.reserve( voxels.getMapping().count * 13 );
+			probes.clear();
+
+			int numNonEmpty = 0;
+			AUTO_TIMER_BLOCK( "creating probes" ) {
+				for( auto iter = voxels.getIterator() ; iter.hasMore() ; ++iter ) {
+					const auto &sample = voxels[ *iter ];
+
+					if( sample.numSamples > 0 ) {
+						numNonEmpty++;
+
+						const Vector3f normal(
+							sample.nx / 255.0 * 2 - 1.0,
+							sample.ny / 255.0 * 2 - 1.0,
+							sample.nz / 255.0 * 2 - 1.0
+						);
+
+						const Vector3f position = voxels.getMapping().getPosition( iter.getIndex3() );
+
+						ProbeGenerator::appendProbesFromSample( position, normal, probes );
+					}
+				}
+			}
+
+			probes.shrink_to_fit();
+
+			modelDatabase.informationById.emplace_back( idInformation );
+
+			const int count = voxels.getMapping().count;
+
+			totalCounts += count;
+			totalNonEmpty += numNonEmpty;
+			totalProbes += probes.size();
+
+			log( boost::format( 
+				"Ratio %f = %i / %i (%i probes)" ) 
+				% (float( numNonEmpty ) / count) 
+				% numNonEmpty 
+				% voxels.getMapping().count 
+				% probes.size()
+			);
+
+			progressTracker.markFinished();
 		}
+
+		log( boost::format( 
+			"Total ratio %f = %i / %i (%i probes in total)" ) 
+			% (float( totalNonEmpty ) / totalCounts) 
+			% totalNonEmpty 
+			% totalCounts
+			% totalProbes
+		);
 	}
 
 	void Application::initEventHandling() {

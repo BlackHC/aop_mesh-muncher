@@ -48,12 +48,12 @@ struct Instance {
 };
 
 namespace VoxelizedModel {
-		struct Color4ub {
-			unsigned char r,g,b,a;
+		struct NormalOverdraw4ub {
+			unsigned char nx, ny, nz, numSamples;
 		};
 		
 		//typedef boost::multi_array< Color4ub, 3 > Voxels;
-		typedef GridStorage<Color4ub> Voxels;
+		typedef GridStorage<NormalOverdraw4ub> Voxels;
 };
 
 struct SGSSceneRenderer {

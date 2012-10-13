@@ -55,10 +55,10 @@ void visualizeColorGrid( const VoxelizedModel::Voxels &grid, DebugRender::Displa
 				DebugRender::setColor( positionColor );
 				break;
 			case GVM_HITS:
-				DebugRender::setColor( Vector3f::UnitY() * (0.5 + normalHit.a / 128.0) );
+				DebugRender::setColor( Vector3f::UnitY() * (0.5 + normalHit.numSamples / 128.0) );
 				break;
 			case GVM_NORMAL:
-				glColor3ubv( &normalHit.r );
+				glColor3ubv( &normalHit.nx );
 				break;
 			}
 			

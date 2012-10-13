@@ -40,12 +40,8 @@ struct AutoTimer {
 
 // TODO: rename to AUTO_TIME* [10/13/2012 kirschan2]
 #define AUTO_TIMER_BLOCK( ... ) if( auto _AUTO_TIMER_MERGE( scopedTimer, __COUNTER__ ) = AutoTimer( __FUNCTION__, __VA_ARGS__ ) )
-#define AUTO_TIME_STATEMENT( statement, ... ) \
-	do { \
-		auto _AUTO_TIMER_MERGE( scopedTimer, __COUNTER__ ) = AutoTimer( __FUNCTION__, __VA_ARGS__ ); \
-		statement; \
-	} \
-	while( false )
+#define AUTO_TIME( expression, ... ) \
+		(AutoTimer( __FUNCTION__, __VA_ARGS__ ), (expression))
 
 // only one function timer is allowed per function
 #define AUTO_TIMER_FUNCTION( ... ) auto functionTimer = AutoTimer( __FUNCTION__, __VA_ARGS__ )

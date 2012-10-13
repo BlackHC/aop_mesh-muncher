@@ -69,4 +69,17 @@ namespace ProbeGenerator {
 			}
 		}
 	}
+
+	void appendProbesFromSample( const Eigen::Vector3f &position, const Eigen::Vector3f &averagedNormal, std::vector< Probe > &probes ) {
+		Probe probe;
+		map( probe.position ) = position;
+		
+		for( int i = 0 ; i < boost::size( directions ) ; i++ ) {
+			if( averagedNormal.dot( directions[i] ) >= averagedNormal.squaredNorm() - 1.0 ) {
+				map( probe.direction ) = directions[i];
+				probes.push_back( probe );
+			}
+		}
+	}
+
 }

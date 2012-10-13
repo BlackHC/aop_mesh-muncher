@@ -699,9 +699,10 @@ struct TemplateEventDispatcher : BaseDispatcher {
 		;
 	}
 
+	std::string name;
+
 protected:
 	std::vector<std::shared_ptr<BaseEventHandler>> eventHandlers;
-	std::string name;
 };
 
 template< typename BaseEventHandler = EventHandler::WithDefaultParentDecl, typename BaseRouter = EventHandler::WithDefaultParentImpl >
@@ -787,6 +788,10 @@ struct TemplateEventRouter : BaseRouter {
 			}
 		}
 		return prefix + name + ": inactive\n";
+	}
+
+	BaseEventHandler * getTarget() const {
+		return target;
 	}
 
 protected:

@@ -64,10 +64,7 @@ namespace aop {
 		}
 
 		void clear() {
-			for( auto element = sidebar.eventHandlers.begin() ; element != sidebar.eventHandlers.end() ; ++element ) {
-				application->eventSystem.onEventHandlerRemove( element->get() );
-			}
-			sidebar.eventHandlers.clear();
+			sidebar.clear();
 		}
 
 		void addModels( std::vector<int> modelIndices, const Eigen::Vector3f &position ) {
