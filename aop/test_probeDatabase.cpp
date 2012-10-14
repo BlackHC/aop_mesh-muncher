@@ -78,7 +78,7 @@ ProbeContext makeProbeContext( int hitCounter, float distance = 10 ) {
 	return probeContext;
 }
 
-TEST( ProbeDataset, setHitCounterLowerBounds ) {
+TEST( IndexedProbeDataset, setHitCounterLowerBounds ) {
 	RawProbeDataset rawDataset;
 
 	const int minHitCounter = 3;
@@ -93,7 +93,7 @@ TEST( ProbeDataset, setHitCounterLowerBounds ) {
 	}
 	rawDataset.probes.resize( rawDataset.probeContexts.size() );
 
-	ProbeDataset dataset( std::move( rawDataset ) );
+	IndexedProbeDataset dataset( std::move( rawDataset ) );
 
 	ASSERT_EQ( dataset.hitCounterLowerBounds.size(), OptixProgramInterface::numProbeSamples + 2 );
 	for( int i = 0 ; i < minHitCounter ; i++ ) {
@@ -147,7 +147,7 @@ TEST( SortedProbeDataset, merge ) {
 	}
 }
 
-TEST( ProbeDataset, mergeMultiple ) {
+TEST( IndexedProbeDataset, mergeMultiple ) {
 	const int numDatasets = 10;
 	SortedProbeDataset datasets[numDatasets];
 
@@ -172,7 +172,7 @@ TEST( ProbeDataset, mergeMultiple ) {
 	}
 }
 
-TEST( ProbeDataset, mergeMultiple_empty ) {
+TEST( IndexedProbeDataset, mergeMultiple_empty ) {
 	const int numDatasets = 10;
 	SortedProbeDataset datasets[numDatasets];
 

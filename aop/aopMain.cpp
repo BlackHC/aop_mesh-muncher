@@ -489,7 +489,7 @@ namespace aop {
 					progressTracker.markFinished();
 				}
 				
-				application->candidateFinder.integrateDatasets();
+				application->probeDatabase.integrateDatasets();
 				progressTracker.markFinished();
 
 				application->endLongOperation();
@@ -593,9 +593,9 @@ namespace aop {
 				QueryNeighborsVisitor( application ).dispatch( application->editor.selection );
 			} ) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
-			ui.add( AntTWBarUI::makeSharedButton( "Load database", [this] { application->candidateFinder.loadCache( "database"); } ) );
-			ui.add( AntTWBarUI::makeSharedButton( "Reset database", [this] { application->candidateFinder.reset(); } ) );
-			ui.add( AntTWBarUI::makeSharedButton( "Store database", [this] { application->candidateFinder.storeCache( "database"); } ) );
+			ui.add( AntTWBarUI::makeSharedButton( "Load database", [this] { application->probeDatabase.loadCache( "database"); } ) );
+			ui.add( AntTWBarUI::makeSharedButton( "Reset database", [this] { application->probeDatabase.reset(); } ) );
+			ui.add( AntTWBarUI::makeSharedButton( "Store database", [this] { application->probeDatabase.storeCache( "database"); } ) );
 			ui.link();
 		}
 
@@ -814,7 +814,7 @@ namespace aop {
 			}
 			progressTracker.markFinished();
 
-			candidateFinder.addDataset(modelIndex, std::move( rawDataset ) );
+			probeDatabase.addDataset(modelIndex, std::move( rawDataset ) );
 			progressTracker.markFinished();
 
 			totalCount += (int) transformedProbes.size();
@@ -843,7 +843,7 @@ namespace aop {
 		}
 		progressTracker.markFinished();
 
-		ProbeDatabase::Query query( candidateFinder );
+		ProbeDatabase::Query query( probeDatabase );
 		{
 			query.setQueryDataset( std::move( rawDataset ) );
 
@@ -913,7 +913,7 @@ namespace aop {
 		//sampleAllNeighbors( neighborhoodMaxDistance, neighborDatabase, *world );
 		//sampleAllNeighborsV2( neighborhoodMaxDistance, neighborDatabaseV2, *world );
 
-		candidateFinder.reserveIds( world->scene.modelNames.size() );
+		probeDatabase.reserveIds( world->scene.modelNames.size() );
 
 		namedVolumesEditorView.reset( new NamedVolumesEditorView( settings.volumes ) );
 

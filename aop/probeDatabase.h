@@ -40,7 +40,7 @@ struct NestedOutput {
 
 // TODO: add a serializer forward header with macros to declare these functions [10/3/2012 kirschan2]
 struct SortedProbeDataset;
-struct ProbeDataset;
+struct IndexedProbeDataset;
 
 namespace Serializer {
 	template< typename Reader >
@@ -49,9 +49,9 @@ namespace Serializer {
 	void write( Writer &writer, const SortedProbeDataset &value );
 
 	template< typename Reader >
-	void read( Reader &reader, ProbeDataset &value );
+	void read( Reader &reader, IndexedProbeDataset &value );
 	template< typename Writer >
-	void write( Writer &writer, const ProbeDataset &value );
+	void write( Writer &writer, const IndexedProbeDataset &value );
 }
 
 #include <autoTimer.h>
@@ -193,7 +193,7 @@ private:
 
 // this dataset creates auxiliary structures automatically
 // invariant: sorted and hitCounterLowerBounds is correctly set
-struct ProbeDataset {
+struct IndexedProbeDataset {
 	SortedProbeDataset data;
 
 	const std::vector< Probe > &getProbes() const {
@@ -206,30 +206,30 @@ struct ProbeDataset {
 
 	std::vector<int> hitCounterLowerBounds;
 
-	ProbeDataset() {}
+	IndexedProbeDataset() {}
 
-	ProbeDataset( SortedProbeDataset &&other ) :
+	IndexedProbeDataset( SortedProbeDataset &&other ) :
 		data( std::move( other ) ),
 		hitCounterLowerBounds()
 	{
 		setHitCounterLowerBounds();
 	}
 
-	ProbeDataset( ProbeDataset &&other ) :
+	IndexedProbeDataset( IndexedProbeDataset &&other ) :
 		data( std::move( other.data ) ),
 		hitCounterLowerBounds( std::move( other.hitCounterLowerBounds ) )
 	{
 	}
 
-	ProbeDataset & operator = ( ProbeDataset && other ) {
+	IndexedProbeDataset & operator = ( IndexedProbeDataset && other ) {
 		data = std::move( other.data );
 		hitCounterLowerBounds = std::move( other.hitCounterLowerBounds );
 
 		return *this;
 	}
 
-	ProbeDataset clone() const {
-		ProbeDataset cloned;
+	IndexedProbeDataset clone() const {
+		IndexedProbeDataset cloned;
 		cloned.data = data.clone();
 		cloned.hitCounterLowerBounds = hitCounterLowerBounds;
 		return cloned;
@@ -253,14 +253,14 @@ private:
 	void setHitCounterLowerBounds();
 
 	template< typename Reader >
-	friend void Serializer::read( Reader &reader, ProbeDataset &value );
+	friend void Serializer::read( Reader &reader, IndexedProbeDataset &value );
 	template< typename Writer >
-	friend void Serializer::write( Writer &writer, const ProbeDataset &value );
+	friend void Serializer::write( Writer &writer, const IndexedProbeDataset &value );
 
 private:
 	// better error messages than with boost::noncopyable
-	ProbeDataset( const ProbeDataset &other );
-	ProbeDataset & operator = ( const ProbeDataset &other );
+	IndexedProbeDataset( const IndexedProbeDataset &other );
+	IndexedProbeDataset & operator = ( const IndexedProbeDataset &other );
 };
 
 #if 0
@@ -311,22 +311,20 @@ struct ProbeDatabase {
 	typedef int Id;
 	typedef std::vector<Id> Ids;
 
-	struct MatchInfo {
-		int id;
-		int numMatches;
-		float score;
-
-		float queryMatchPercentage;
-		float probeMatchPercentage;
-
-		MatchInfo( int id = -1 ) : id( id ), numMatches(), score(), queryMatchPercentage(), probeMatchPercentage() {}
-	};
-
 	struct Query {
 		typedef std::shared_ptr<Query> Ptr;
 
-		typedef ProbeDatabase::MatchInfo MatchInfo;
-		typedef std::vector<MatchInfo> MatchInfos;	
+		struct MatchInfo {
+			int id;
+			int numMatches;
+			float score;
+
+			float queryMatchPercentage;
+			float probeMatchPercentage;
+
+			MatchInfo( int id = -1 ) : id( id ), numMatches(), score(), queryMatchPercentage(), probeMatchPercentage() {}
+		};
+		typedef std::vector<MatchInfo> MatchInfos;
 
 		Query( const ProbeDatabase &database ) : database( database ) {}
 
@@ -370,7 +368,7 @@ struct ProbeDatabase {
 		}
 
 	protected:
-		typedef ProbeDataset::IntRange IntRange;
+		typedef IndexedProbeDataset::IntRange IntRange;
 		typedef std::pair< IntRange, IntRange > OverlappedRange;
 
 #if 0
@@ -382,7 +380,7 @@ struct ProbeDatabase {
 
 		MatchInfo matchAgainst( int id ) {
 			// TODO: rename idDataset to idDatabase? [9/26/2012 kirschan2]
-			const ProbeDataset &idDataset = database.idDatasets[id].mergedDataset;
+			const IndexedProbeDataset &idDataset = database.idDatasets[id].mergedDataset;
 
 			if( idDataset.size() == 0 ) {
 				return MatchInfo( id );
@@ -408,7 +406,7 @@ struct ProbeDatabase {
 			std::vector< OverlappedRange > overlappedRanges;
 			overlappedRanges.reserve( OptixProgramInterface::numProbeSamples );
 			for( int occulsionLevel = 0 ; occulsionLevel <= OptixProgramInterface::numProbeSamples ; occulsionLevel++ ) {
-				const ProbeDataset::IntRange queryRange = dataset.getOcclusionRange( occulsionLevel );
+				const IndexedProbeDataset::IntRange queryRange = dataset.getOcclusionRange( occulsionLevel );
 
 				if( queryRange.first == queryRange.second ) {
 					continue;
@@ -417,7 +415,7 @@ struct ProbeDatabase {
 				const int leftToleranceLevel = std::max( 0, occulsionLevel - occlusionTolerance );
 				const int rightToleranceLevel = std::min( occulsionLevel + occlusionTolerance, OptixProgramInterface::numProbeSamples );
 				for( int idToleranceLevel = leftToleranceLevel ; idToleranceLevel <= rightToleranceLevel ; idToleranceLevel++ ) {
-					const ProbeDataset::IntRange idRange = idDataset.getOcclusionRange( idToleranceLevel );
+					const IndexedProbeDataset::IntRange idRange = idDataset.getOcclusionRange( idToleranceLevel );
 
 					// is one of the ranges empty? if so, we don't need to check it at all
 					if( idRange.first == idRange.second ) {
@@ -830,7 +828,7 @@ struct ProbeDatabase {
 	protected:
 		const ProbeDatabase &database;
 
-		ProbeDataset dataset;
+		IndexedProbeDataset dataset;
 
 		ProbeContextTolerance probeContextTolerance;
 
@@ -858,7 +856,7 @@ struct ProbeDatabase {
 public:
 	struct IdDatasets {
 		std::vector<SortedProbeDataset> insertQueue;
-		ProbeDataset mergedDataset;
+		IndexedProbeDataset mergedDataset;
 
 		IdDatasets() {}
 		IdDatasets( IdDatasets &&other ) : insertQueue( std::move( other.insertQueue ) ), mergedDataset( std::move( other.mergedDataset ) ) {}

@@ -124,7 +124,7 @@ SortedProbeDataset SortedProbeDataset::subSet( const std::pair< int, int > &rang
 	return dataset;
 }
 
-void ProbeDataset::setHitCounterLowerBounds() {
+void IndexedProbeDataset::setHitCounterLowerBounds() {
 	AUTO_TIMER_FOR_FUNCTION();
 
 	// improvement idea: use a binary search like algorithm

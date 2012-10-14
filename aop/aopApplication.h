@@ -62,7 +62,7 @@ namespace aop {
 
 		Settings settings;
 
-		ProbeDatabase candidateFinder;
+		ProbeDatabase probeDatabase;
 		NeighborhoodDatabase neighborDatabase;
 		NeighborhoodDatabaseV2 neighborDatabaseV2;
 		ModelDatabase modelDatabase;
