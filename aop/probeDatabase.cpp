@@ -1,5 +1,7 @@
 #include "probeDatabase.h"
+#include "boost/range/algorithm/merge.hpp"
 
+#if 0
 void RawProbeDataset::sort() {
 	AUTO_TIMER_FOR_FUNCTION();
 
@@ -14,10 +16,12 @@ void RawProbeDataset::sort() {
 		make_sort_permute_iter_compare_pred<decltype(iterator_begin)>( probeContext_lexicographicalLess )
 	);
 }
+#endif
 
 SortedProbeDataset SortedProbeDataset::merge( const SortedProbeDataset &first, const SortedProbeDataset &second ) {
 	AUTO_TIMER_DEFAULT( boost::str( boost::format( "with %i + %i = %i probes ") % first.size() % second.size() % (first.size() + second.size()) ) );
 
+#if 0
 	using namespace generic;
 
 	SortedProbeDataset dataset;
@@ -42,11 +46,20 @@ SortedProbeDataset SortedProbeDataset::merge( const SortedProbeDataset &first, c
 	);
 
 	return std::move( dataset );
+#else
+	SortedProbeDataset dataset;
+	dataset.probeContexts().resize( first.size() + second.size() );
+	boost::merge( first.getProbeContexts(), second.getProbeContexts(), dataset.probeContexts().begin(), ProbeContext::lexicographicalLess );
+
+	return std::move( dataset );
+#endif
 }
 
 SortedProbeDataset SortedProbeDataset::mergeMultiple( const std::vector< const SortedProbeDataset* > &datasets) {
 	AUTO_TIMER_DEFAULT( boost::str( boost::format( "with %i datasets" ) % datasets.size() ) );
 
+
+#if 0
 	using namespace generic;
 
 	// best performance when using binary merges:
@@ -96,9 +109,47 @@ SortedProbeDataset SortedProbeDataset::mergeMultiple( const std::vector< const S
 	}
 
 	return std::move( mergedDataset );
+#else
+	// best performance when using binary merges:
+	//	use a priority queue to merge the two shortest datasets into a bigger one
+	//	reinsert the resulting dataset into the heap
+	//
+	// use in-place merges, so no additional memory has to be allocated
+	//
+	// different idea:
+	//	implement n-way merge using a priority queue that keeps track where the elements were added from
+	//	for every element that drops out front, a new element from the dataset is inserted (until it runs out of elements)
+
+	if( datasets.size() < 2 ) {
+		throw std::invalid_argument( "less than 2 datasets passed to mergeMultiple!" );
+	}
+
+	// determine the total count of all probes
+	int totalCount = 0;
+	for( auto dataset = datasets.begin() ; dataset != datasets.end() ; ++dataset ) {
+		totalCount += (int) (*dataset)->size();
+	}
+
+	log( boost::format( "merging %i probes" ) % totalCount );
+
+	SortedProbeDataset mergedDataset;
+
+	// reserve enough space for all probes
+	mergedDataset.probeContexts().reserve( totalCount );
+
+	for( auto dataset = datasets.begin() ; dataset != datasets.end() ; ++dataset ) {
+		boost::push_back( mergedDataset.probeContexts(), (*dataset)->getProbeContexts() );
+	}
+
+	// stable sorting everything is the next best alternative to doing it manually :)
+	boost::stable_sort( mergedDataset.probeContexts(), ProbeContext::lexicographicalLess );
+
+	return std::move( mergedDataset );
+#endif
 }
 
 SortedProbeDataset SortedProbeDataset::subSet( const std::pair< int, int > &range ) const {
+#if 0
 	using namespace generic;
 
 	SortedProbeDataset dataset;
@@ -122,6 +173,24 @@ SortedProbeDataset SortedProbeDataset::subSet( const std::pair< int, int > &rang
 	std::stable_sort( iterator_begin, iterator_end, make_sort_permute_iter_compare_pred< decltype( iterator_begin ) >( probeContext_lexicographicalLess_startWithDistance ) );
 
 	return dataset;
+#else
+	SortedProbeDataset dataset;
+
+	const int rangeSize = range.second - range.first;
+	if( !rangeSize ) {
+		return dataset;
+	}
+
+	dataset.probeContexts().resize( rangeSize );
+
+	// copy data
+	std::copy( getProbeContexts().begin() + range.first, getProbeContexts().begin() + range.second, dataset.probeContexts().begin() );
+
+	// TODO: either use sort or stable_sort depending on the size of the dataset
+	boost::stable_sort( dataset.probeContexts(), ProbeContext::lexicographicalLess_startWithDistance );
+
+	return dataset;
+#endif
 }
 
 void IndexedProbeDataset::setHitCounterLowerBounds() {

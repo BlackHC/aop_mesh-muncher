@@ -209,7 +209,7 @@ TEST( NeighborhoodDatabaseV2_Entry, addInstance ) {
 TEST( NeighborhoodDatabaseV2_Query, all ) {
 	NeighborhoodDatabaseV2 db;
 
-	ModelDatabase modelDatabase;
+	ModelDatabase modelDatabase( nullptr );
 
 	NeighborhoodDatabaseV2::RawDataset rawDataset;
 
@@ -220,7 +220,7 @@ TEST( NeighborhoodDatabaseV2_Query, all ) {
 
 		ModelDatabase::IdInformation info;
 		info.area = info.diagonalLength = info.volume = 1.0;
-		modelDatabase.informationById.push_back( info );
+		modelDatabase.informationById.emplace_back( std::move( info ) );
 	}
 
 	db.modelDatabase = &modelDatabase;

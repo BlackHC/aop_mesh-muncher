@@ -15,15 +15,15 @@ namespace Serializer {
 		}
 	}*/
 
-SERIALIZER_DEFAULT_EXTERN_IMPL( RawProbeDataset, (probes)(probeContexts) )
 SERIALIZER_DEFAULT_EXTERN_IMPL( SortedProbeDataset, (data) )
 SERIALIZER_DEFAULT_EXTERN_IMPL( IndexedProbeDataset, (data)(hitCounterLowerBounds) )
-SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeDatabase::IdDatasets, (insertQueue)(mergedDataset) )
+SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeDatabase::IdDatasets, (insertQueue)(mergedDataset)(numInstances)(probes) )
 
-SERIALIZER_ENABLE_RAW_MODE_EXTERN( RawProbeDataset::Probe );
-SERIALIZER_ENABLE_RAW_MODE_EXTERN( RawProbeDataset::ProbeContext );
+SERIALIZER_ENABLE_RAW_MODE_EXTERN( OptixProgramInterface::ProbeContext );
+SERIALIZER_ENABLE_RAW_MODE_EXTERN( OptixProgramInterface::Probe );
+SERIALIZER_ENABLE_RAW_MODE_EXTERN( SortedProbeDataset::ProbeContext );
 
-const int CACHE_FORMAT_VERSION = 0;
+const int CACHE_FORMAT_VERSION = 1;
 
 bool ProbeDatabase::loadCache( const char *filename ) {
 	Serializer::BinaryReader reader( filename, CACHE_FORMAT_VERSION );

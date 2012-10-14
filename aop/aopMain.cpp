@@ -845,17 +845,16 @@ namespace aop {
 			}
 
 			RawProbeDataset rawDataset;
-			rawDataset.probes = probes;
 
 			progressTracker.markFinished();
 
 			AUTO_TIMER_BLOCK( boost::str( boost::format( "sampling probe batch with %i probes for instance %i" ) % probes.size() % instanceIndex ) ) {
 				renderContext.disabledInstanceIndex = instanceIndex;
-				world->optixRenderer.sampleProbes( transformedProbes, rawDataset.probeContexts, renderContext );
+				world->optixRenderer.sampleProbes( transformedProbes, rawDataset, renderContext );
 			}
 			progressTracker.markFinished();
 
-			probeDatabase.addDataset(modelIndex, std::move( rawDataset ) );
+			probeDatabase.addDataset(modelIndex, probes, SortedProbeDataset( rawDataset ) );
 			progressTracker.markFinished();
 
 			totalCount += (int) transformedProbes.size();
@@ -872,15 +871,15 @@ namespace aop {
 		RenderContext renderContext;
 		renderContext.setDefault();
 
-		RawProbeDataset rawDataset;
+		std::vector<OptixProgramInterface::Probe> probes;
 
-		ProbeGenerator::generateQueryProbes( queryVolume, probeResolution, rawDataset.probes );
+		ProbeGenerator::generateQueryProbes( queryVolume, probeResolution, probes );
 
 		progressTracker.markFinished();
 
-		{
-			AUTO_TIMER_FOR_FUNCTION( "sampling scene");
-			world->optixRenderer.sampleProbes( rawDataset.probes, rawDataset.probeContexts, renderContext );
+		RawProbeDataset rawDataset;
+		AUTO_TIMER_BLOCK( "sampling scene") {
+			world->optixRenderer.sampleProbes( probes, rawDataset, renderContext );
 		}
 		progressTracker.markFinished();
 
@@ -925,15 +924,15 @@ namespace aop {
 		RenderContext renderContext;
 		renderContext.setDefault();
 
-		RawProbeDataset rawDataset;
-
-		ProbeGenerator::generateQueryProbes( queryVolume, probeResolution, rawDataset.probes );
+		std::vector<OptixProgramInterface::Probe> probes;
+		ProbeGenerator::generateQueryProbes( queryVolume, probeResolution, probes );
 
 		progressTracker.markFinished();
 
+		RawProbeDataset rawDataset;
 		{
 			AUTO_TIMER_FOR_FUNCTION( "sampling scene");
-			world->optixRenderer.sampleProbes( rawDataset.probes, rawDataset.probeContexts, renderContext );
+			world->optixRenderer.sampleProbes( probes, rawDataset, renderContext );
 		}
 		progressTracker.markFinished();
 

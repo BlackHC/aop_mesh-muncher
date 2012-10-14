@@ -62,27 +62,11 @@ namespace Serializer {
 #include "boost/range/algorithm/sort.hpp"
 #include <boost/iterator/counting_iterator.hpp>
 
+#if 0
 struct RawProbeDataset {
 	typedef OptixProgramInterface::Probe Probe;
 	typedef OptixProgramInterface::ProbeContext ProbeContext;
 
-	__forceinline__ bool probeContext_lexicographicalLess( const ProbeContext &a, const ProbeContext &b ) {
-		return
-			boost::make_tuple( a.hitCounter, a.distance, a.Lab.x, a.Lab.y, a.Lab.z )
-			<
-			boost::make_tuple( b.hitCounter, b.distance, b.Lab.x, a.Lab.y, a.Lab.z );
-	}
-
-	inline bool probeContext_lexicographicalLess_startWithDistance( const ProbeContext &a, const ProbeContext &b ) {
-		return
-			boost::make_tuple( a.distance, a.Lab.x, a.Lab.y, a.Lab.z )
-			<
-			boost::make_tuple( b.distance, b.Lab.x, a.Lab.y, a.Lab.z );
-	}
-
-	/*struct ProbeContext {
-
-	};*/
 	std::vector< Probe > probes;
 	std::vector< ProbeContext > probeContexts;
 
@@ -125,19 +109,56 @@ private:
 	RawProbeDataset( const RawProbeDataset &other );
 	RawProbeDataset & operator = ( const RawProbeDataset &other );
 };
+#endif
+
+typedef std::vector< OptixProgramInterface::ProbeContext > RawProbeDataset;
 
 // no further preprocessed information
 // invariant: sorted
 struct SortedProbeDataset {
-	typedef RawProbeDataset::Probe Probe;
-	typedef RawProbeDataset::ProbeContext ProbeContext;
+	typedef OptixProgramInterface::Probe Probe;
+
+	struct ProbeContext : OptixProgramInterface::ProbeContext {
+		// sometime's we're lucky and we can compress probes
+		int weight;
+		int probeIndex;
+
+		void setFrom( int probeIndex, const OptixProgramInterface::ProbeContext &context ) {
+			this->probeIndex = probeIndex;
+			weight = 1;
+
+			*static_cast<  OptixProgramInterface::ProbeContext* >( this ) = context;			
+		}
+
+		static __forceinline__ bool lexicographicalLess( const ProbeContext &a, const ProbeContext &b ) {
+			return
+				boost::make_tuple( a.hitCounter, a.distance, a.Lab.x, a.Lab.y, a.Lab.z )
+				<
+				boost::make_tuple( b.hitCounter, b.distance, b.Lab.x, a.Lab.y, a.Lab.z )
+			;
+		}
+
+		static __forceinline__ bool lexicographicalLess_startWithDistance( const ProbeContext &a, const ProbeContext &b ) {
+			return
+				boost::make_tuple( a.distance, a.Lab.x, a.Lab.y, a.Lab.z )
+				<
+				boost::make_tuple( b.distance, b.Lab.x, a.Lab.y, a.Lab.z )
+			;
+		}
+	};
 
 	SortedProbeDataset() {}
 
-	SortedProbeDataset( RawProbeDataset &&other ) :
-		data( std::move( other ) )
+	SortedProbeDataset( const RawProbeDataset &other )
 	{
-		data.sort();
+		data.resize( other.size() );
+
+		// set the context
+		for( int probeIndex = 0 ; probeIndex < data.size() ; probeIndex++ ) {
+			data[ probeIndex ].setFrom( probeIndex, other[ probeIndex ] );
+		}
+
+		sort();
 	}
 
 	SortedProbeDataset( SortedProbeDataset &&other ) :
@@ -153,7 +174,7 @@ struct SortedProbeDataset {
 
 	SortedProbeDataset clone() const {
 		SortedProbeDataset cloned;
-		cloned.data = data.clone();
+		cloned.data = data;
 		return cloned;
 	}
 
@@ -166,26 +187,22 @@ struct SortedProbeDataset {
 
 	SortedProbeDataset subSet( const std::pair< int, int > &range ) const;
 
-	const std::vector< Probe > &getProbes() const {
-		return data.probes;
+	const std::vector< ProbeContext > &getProbeContexts() const {
+		return data;
 	}
 
-	const std::vector< ProbeContext > &getProbeContexts() const {
-		return data.probeContexts;
+	void sort() {
+		AUTO_TIMER_FOR_FUNCTION();
+
+		boost::sort( data, ProbeContext::lexicographicalLess );
 	}
 
 private:
-	std::vector< Probe > &probes() {
-		return data.probes;
-	}
-
 	std::vector< ProbeContext > &probeContexts() {
-		return data.probeContexts;
+		return data;
 	}
 
-	void sort();
-
-	RawProbeDataset data;
+	std::vector< ProbeContext > data;
 
 	template< typename Reader >
 	friend void Serializer::read( Reader &reader, SortedProbeDataset &value );
@@ -205,10 +222,6 @@ struct IndexedProbeDataset {
 	typedef SortedProbeDataset::ProbeContext ProbeContext;
 
 	SortedProbeDataset data;
-
-	const std::vector< Probe > &getProbes() const {
-		return data.getProbes();
-	}
 
 	const std::vector< ProbeContext > &getProbeContexts() const {
 		return data.getProbeContexts();
@@ -321,37 +334,62 @@ struct ProbeDatabase {
 	typedef int Id;
 	typedef std::vector<Id> Ids;
 
-	void reserveIds( Id maxId ) {
-		idDatasets.resize( maxId + 1 );
-	}
-
-	void addDataset( Id id, SortedProbeDataset &&dataset ) {
-		idDatasets[ id ].insertQueue.emplace_back( std::move( dataset ) );
-	}
-
-	void integrateDatasets() {
-		for( auto idDataset = idDatasets.begin() ; idDataset != idDatasets.end() ; ++idDataset ) {
-			idDataset->processQueue();
-		}
-	}
-
-	// see candidateFinderCache.cpp
-	bool loadCache( const char *filename );
-	void storeCache( const char *filename );
-
-public:
-	struct IdDatasets {
+		struct IdDatasets {
 		typedef IndexedProbeDataset::Probe Probe;
 		typedef IndexedProbeDataset::ProbeContext ProbeContext;
 
 		std::vector<SortedProbeDataset> insertQueue;
 		IndexedProbeDataset mergedDataset;
 
-		IdDatasets() {}
-		IdDatasets( IdDatasets &&other ) : insertQueue( std::move( other.insertQueue ) ), mergedDataset( std::move( other.mergedDataset ) ) {}
+		typedef std::vector< Probe > Probes;
+		Probes probes;
+
+		int numInstances;
+
+		void addToQueue( const Probes &datasetProbes, SortedProbeDataset &&dataset ) {
+			if( !probes.empty() && probes.size() != datasetProbes.size() ) {
+				logError( 
+					boost::format( 
+					"expected %i probes, but got %i probes!\ndumping %i merged + %i queued instances = %i sampled probes and reseting this dataset!"
+					)
+					% probes.size()
+					% datasetProbes.size()
+					% numInstances
+					% insertQueue.size()
+					% ((numInstances + insertQueue.size()) * probes.size())
+				);
+
+				// reset the dataset
+				insertQueue.clear();
+				mergedDataset = IndexedProbeDataset();
+
+				numInstances = 0;
+
+				probes = datasetProbes;
+			}
+
+			insertQueue.emplace_back( std::move( dataset ) );
+		}
+
+		IdDatasets() 
+			: numInstances()
+		{}
+
+		IdDatasets( IdDatasets &&other ) 
+			: insertQueue( std::move( other.insertQueue ) )
+			, mergedDataset( std::move( other.mergedDataset ) )
+			, probes( std::move( other.probes ) )
+			, numInstances( numInstances )
+		{}
+
 		IdDatasets & operator = ( IdDatasets &&other ) {
 			insertQueue = std::move( other.insertQueue );
 			mergedDataset = std::move( other.mergedDataset );
+			probes = std::move( other.probes );
+			numInstances = other.numInstances;
+
+			other.numInstances = 0;
+
 			return *this;
 		}
 
@@ -359,6 +397,9 @@ public:
 			if( insertQueue.empty() ) {
 				return;
 			}
+
+			// update numInstances
+			numInstances += insertQueue.size();
 
 			if( insertQueue.size() == 1 ) {
 				mergedDataset = std::move( SortedProbeDataset::merge( mergedDataset.data, insertQueue[0] ) );
@@ -393,6 +434,25 @@ public:
 	struct Query;
 	struct FullQuery;
 
+	void reserveIds( Id maxId ) {
+		idDatasets.resize( maxId + 1 );
+	}
+
+	void addDataset( Id id, const IdDatasets::Probes &datasetProbes, SortedProbeDataset &&dataset ) {
+		idDatasets[ id ].addToQueue( datasetProbes, std::move( dataset ) );
+	}
+
+	void integrateDatasets() {
+		for( auto idDataset = idDatasets.begin() ; idDataset != idDatasets.end() ; ++idDataset ) {
+			idDataset->processQueue();
+		}
+	}
+
+	// see candidateFinderCache.cpp
+	bool loadCache( const char *filename );
+	void storeCache( const char *filename );
+
+public:
 	void reset() {
 		int numIds = idDatasets.size();
 		idDatasets.clear();
@@ -1114,8 +1174,6 @@ protected:
 			const float maxDistance = refContext.distance + probeContextTolerance.distanceTolerance;
 			const float minNextDistance = nextrefContext.distance - probeContextTolerance.distanceTolerance;
 
-			const auto refProbe = refDataset.getProbes()[ refIndex ];
-
 			for( ; queryIndex < endQueryIndex ; queryIndex++ ) {
 				const ProbeContext queryContext = queryDataset.getProbeContexts()[ queryIndex ];
 
@@ -1141,7 +1199,6 @@ protected:
 				}
 
 				if( matchColor( refContext, queryContext ) ) {
-					pushMatch( matches, refProbe, queryDataset.getProbes()[ queryIndex ] );
 				}
 			}
 
@@ -1153,8 +1210,6 @@ protected:
 		{
 			const float minDistance = refContext.distance - probeContextTolerance.distanceTolerance;
 			const float maxDistance = refContext.distance + probeContextTolerance.distanceTolerance;
-
-			const auto refProbe = refDataset.getProbes()[ refIndex ];
 
 			for( ; queryIndex < endQueryIndex ; queryIndex++ ) {
 				const ProbeContext queryContext = queryDataset.getProbeContexts()[ queryIndex ];
@@ -1171,7 +1226,6 @@ protected:
 				}
 
 				if( matchColor( refContext, queryContext ) ) {
-					pushMatch( matches, refProbe, queryDataset.getProbes()[ queryIndex ] );
 				}
 			}
 		}
