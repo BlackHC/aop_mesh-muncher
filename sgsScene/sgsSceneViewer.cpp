@@ -148,7 +148,7 @@ void real_main() {
 
 		probeDumps.append();
 		probeDumps.setPosition( position );
-		glColor4ubv( &probeContexts.front().color.x );		
+		//glColor4ubv( &probeContexts.front().color.x );
 		probeDumps.drawVectorCone( probeContexts.front().distance * direction, probeContexts.front().distance * 0.25, 1 + probeContexts.front().hitCounter );
 		probeDumps.end();
 	} );
@@ -186,7 +186,7 @@ void real_main() {
 
 	DebugWindowManager debugWindowManager;
 	
-#if 0
+#if 1
 	TextureVisualizationWindow optixWindow;
 	optixWindow.init( "Optix Version" );
 	optixWindow.texture = optixRenderer.debugTexture;
@@ -262,7 +262,7 @@ void real_main() {
 			glEnable( GL_DEPTH_TEST );
 			
 			const ViewerContext viewerContext = { camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() };
-			//optixRenderer.renderPinholeCamera( viewerContext, renderContext );
+			optixRenderer.renderPinholeCamera( viewerContext, renderContext );
 
 			// End the current frame and display its contents on screen
 			renderDuration.setString( renderTimer.format() );

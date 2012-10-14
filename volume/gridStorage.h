@@ -12,7 +12,9 @@ public:
 	}
 
 	// move constructor
-	GridStorage( GridStorage &&other ) : mapping( std::move( other.mapping ) ), data( std::move( other.data ) ) {}
+	GridStorage( GridStorage &&other )
+		: mapping( std::move( other.mapping ) )
+		, data( std::move( other.data ) ) {}
 
 	GridStorage & operator = ( GridStorage &&other ) {
 		mapping = std::move( other.mapping );
@@ -88,7 +90,7 @@ public:
 		}
 	}
 
-#if 0
+#if 1
 private:
 	// better error messages than with boost::noncopyable
 	GridStorage( const GridStorage &other );

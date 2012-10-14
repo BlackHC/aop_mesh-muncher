@@ -39,7 +39,7 @@ namespace aop {
 
 	struct ProbeDatabaseUI;
 	
-	struct Application {
+	struct Application : ModelDatabase::ImportInterface {
 		sf::Clock frameClock, clock;
 
 		sf::RenderWindow mainWindow;
@@ -69,7 +69,7 @@ namespace aop {
 
 		bool renderOptixView;
 
-		Application() : renderOptixView( false ) {}
+		Application() : renderOptixView( false ), modelDatabase( this ) {}
 
 		struct MainUI;
 		struct NamedVolumesEditorView;
@@ -101,11 +101,20 @@ namespace aop {
 
 		void eventLoop();
 
+		// TODO: move these 3 functions into their own object? [10/14/2012 kirschan2]
 		void updateProgress();
 
 		void startLongOperation();
 		void endLongOperation();
 
-		void initModelDatabase();
+		void ModelDatabase_init();
+		void ModelDatabase_sampleAll();
+		int ModelDatabase_sampleModel( int modelId, float resolution );
+
+		virtual void sampleModel( int modelId, float resolution, ModelDatabase::ImportInterface::Tag ) {
+			ModelDatabase_sampleModel( modelId, resolution );
+		}
+		ProbeDatabase::Query::MatchInfos queryVolume( const Obb &queryVolume );
+		void sampleInstances( int modelIndex );
 	};
 }

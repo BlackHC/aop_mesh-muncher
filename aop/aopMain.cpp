@@ -430,7 +430,11 @@ namespace aop {
 			ui.add( AntTWBarUI::makeSharedButton( "Load", [&] () { application->modelDatabase.load( "modelDatabase" ); } ) );
 			ui.add( AntTWBarUI::makeSharedButton( "Store", [&] () { application->modelDatabase.store( "modelDatabase" ); } ) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
-			ui.add( AntTWBarUI::makeSharedButton( "Sample models", [&] { application->initModelDatabase(); } ) );
+			ui.add( AntTWBarUI::makeSharedButton( "Sample models", [&] { 
+				application->startLongOperation();
+				application->ModelDatabase_sampleAll(); 
+				application->endLongOperation();
+			} ) );
 			ui.link();
 		}
 
@@ -441,101 +445,6 @@ namespace aop {
 }
 
 const float probeResolution = 0.25;
-
-void sampleInstances( SGSInterface::World *world, ProbeDatabase &candidateFinder, int modelIndex ) {
-	AUTO_TIMER_FOR_FUNCTION();
-	log( boost::format( "sampling model %i" ) % modelIndex );
-
-	RenderContext renderContext;
-	renderContext.setDefault();
-	//renderContext.disabledModelIndex = modelIndex;
-
-	auto instanceIndices = world->sceneRenderer.getModelInstances( modelIndex );
-
-	ProgressTracker::Context progressTracker( instanceIndices.size() * 3 );
-
-	int totalCount = 0;
-
-	for( int i = 0 ; i < instanceIndices.size() ; i++ ) {
-		const int instanceIndex = instanceIndices[ i ];
-
-		renderContext.disabledInstanceIndex = instanceIndex;
-
-		RawProbeDataset rawDataset;
-		std::vector<SGSInterface::Probe> transformedProbes;
-
-		world->generateProbes( instanceIndex, probeResolution, rawDataset.probes, transformedProbes );
-
-		progressTracker.markFinished();
-
-		AUTO_TIMER_DEFAULT( boost::str( boost::format( "batch with %i probes for instance %i" ) % transformedProbes.size() % instanceIndex ) );
-
-		world->optixRenderer.sampleProbes( transformedProbes, rawDataset.probeContexts, renderContext );
-
-		progressTracker.markFinished();
-
-		candidateFinder.addDataset(modelIndex, std::move( rawDataset ) );
-
-		progressTracker.markFinished();
-
-		totalCount += (int) transformedProbes.size();
-	}
-
-	log( boost::format( "total sampled probes: %i" ) % totalCount );
-}
-
-ProbeDatabase::Query::MatchInfos queryVolume( SGSInterface::World *world, ProbeDatabase &candidateFinder, const Obb &queryVolume ) {
-	ProgressTracker::Context progressTracker(4);
-
-	AUTO_TIMER_FOR_FUNCTION();
-
-	RenderContext renderContext;
-	renderContext.setDefault();
-
-	RawProbeDataset rawDataset;
-
-	ProbeGenerator::generateQueryProbes( queryVolume, probeResolution, rawDataset.probes );
-
-	progressTracker.markFinished();
-
-	{
-		AUTO_TIMER_FOR_FUNCTION( "sampling scene");
-		world->optixRenderer.sampleProbes( rawDataset.probes, rawDataset.probeContexts, renderContext );
-	}
-	progressTracker.markFinished();
-
-	ProbeDatabase::Query query( candidateFinder );
-	{
-		query.setQueryDataset( std::move( rawDataset ) );
-
-		ProbeContextTolerance pct;
-		pct.setDefault();
-		query.setProbeContextTolerance( pct );
-
-		query.execute();
-	}
-	progressTracker.markFinished();
-
-	const auto &matchInfos = query.getCandidates();
-	for( auto matchInfo = matchInfos.begin() ; matchInfo != matchInfos.end() ; ++matchInfo ) {
-		log( 
-			boost::format( 
-				"%i:\tnumMatches %f\n"
-				"\tdbMatchPercentage %f\n"
-				"\tqueryMatchPercentage %f\n"
-				"\tscore %f\n"
-			) 
-			% matchInfo->id 
-			% matchInfo->numMatches
-			% matchInfo->probeMatchPercentage
-			% matchInfo->queryMatchPercentage
-			% matchInfo->score
-		);
-	}
-	progressTracker.markFinished();
-
-	return matchInfos;
-}
 
 namespace aop {
 	struct Application::NamedVolumesEditorView : Editor::Volumes {
@@ -576,7 +485,7 @@ namespace aop {
 
 				ProgressTracker::Context progressTracker( modelIndices.size() + 1 );
 				for( auto modelIndex = modelIndices.begin() ; modelIndex != modelIndices.end() ; ++modelIndex ) {
-					sampleInstances( application->world.get(), application->candidateFinder, *modelIndex );
+					application->sampleInstances( *modelIndex );
 					progressTracker.markFinished();
 				}
 				
@@ -598,7 +507,7 @@ namespace aop {
 					}
 					void visit( Editor::ObbSelection *selection ) {
 						application->startLongOperation();
-						auto matchInfos = queryVolume( application->world.get(), application->candidateFinder, selection->getObb() );
+						auto matchInfos = application->queryVolume( selection->getObb() );
 						application->endLongOperation();
 
 						typedef ProbeDatabase::Query::MatchInfo MatchInfo;
@@ -740,23 +649,14 @@ namespace aop {
 		world->init( scenePath );
 	}
 
-	void Application::initModelDatabase() {
-		AUTO_TIMER();
-
+	// this just fills the model database with whatever data we can quickly extract from the scene
+	void Application::ModelDatabase_init() {
 		const auto &models = world->scene.models;
 		const int numModels = models.size();
 
 		ProgressTracker::Context progressTracker( numModels );
 
-		const float resolution = 0.25;
-
-		int totalNonEmpty = 0;
-		int totalCounts = 0;
-		int totalProbes = 0;
-
 		for( int modelId = 0 ; modelId < numModels ; modelId++ ) {
-			AUTO_TIMER( boost::format( "model %i") % modelId );
-
 			const auto bbox = world->sceneRenderer.getModelBoundingBox( modelId );
 
 			ModelDatabase::IdInformation idInformation;
@@ -780,50 +680,89 @@ namespace aop {
 			;
 			idInformation.volume = sizes.prod();
 
-			const auto &voxels = idInformation.voxels = AUTO_TIME( world->sceneRenderer.voxelizeModel( modelId, resolution ), "voxelizing");
+			modelDatabase.informationById.emplace_back( std::move( idInformation ) );
+		}
 
-			auto &probes = idInformation.probes;
-			probes.reserve( voxels.getMapping().count * 13 );
-			probes.clear();
+		debugUI->add( std::make_shared< DebugObjects::ModelDatabase >( this ) );
+	}
+	
+	int Application::ModelDatabase_sampleModel( int modelId, float resolution ) {
+		AUTO_TIMER( boost::format( "model %i") % modelId );
 
-			int numNonEmpty = 0;
-			AUTO_TIMER_BLOCK( "creating probes" ) {
-				for( auto iter = voxels.getIterator() ; iter.hasMore() ; ++iter ) {
-					const auto &sample = voxels[ *iter ];
+		const auto bbox = world->sceneRenderer.getModelBoundingBox( modelId );
 
-					if( sample.numSamples > 0 ) {
-						numNonEmpty++;
+		ModelDatabase::IdInformation & idInformation = modelDatabase.informationById[ modelId ];
 
-						const Vector3f normal(
-							sample.nx / 255.0 * 2 - 1.0,
-							sample.ny / 255.0 * 2 - 1.0,
-							sample.nz / 255.0 * 2 - 1.0
-						);
+		idInformation.voxelResolution = resolution;
+			
+		const auto &voxels = idInformation.voxels = AUTO_TIME( world->sceneRenderer.voxelizeModel( modelId, resolution ), "voxelizing");
 
-						const Vector3f position = voxels.getMapping().getPosition( iter.getIndex3() );
+		auto &probes = idInformation.probes;
+		probes.reserve( voxels.getMapping().count * 13 );
+		probes.clear();
 
-						ProbeGenerator::appendProbesFromSample( position, normal, probes );
-					}
+		int numNonEmpty = 0;
+		AUTO_TIMER_BLOCK( "creating probes" ) {
+			for( auto iter = voxels.getIterator() ; iter.hasMore() ; ++iter ) {
+				const auto &sample = voxels[ *iter ];
+
+				if( sample.numSamples > 0 ) {
+					numNonEmpty++;
+
+					const Vector3f position = voxels.getMapping().getPosition( iter.getIndex3() );
+
+					/*const Vector3f normal(
+						sample.nx / 255.0 * 2 - 1.0,
+						sample.ny / 255.0 * 2 - 1.0,
+						sample.nz / 255.0 * 2 - 1.0
+					);*/
+
+					// we dont use the weighted and averaged normal for now
+					const Vector3f normal = (position - bbox.center()).normalized();
+
+					ProbeGenerator::appendProbesFromSample( position, normal, probes );
 				}
 			}
+		}
 
-			probes.shrink_to_fit();
+		probes.shrink_to_fit();
 
-			modelDatabase.informationById.emplace_back( idInformation );
+		const int count = voxels.getMapping().count;
 
-			const int count = voxels.getMapping().count;
+		log( boost::format( 
+			"Ratio %f = %i / %i (%i probes)" ) 
+			% (float( numNonEmpty ) / count) 
+			% numNonEmpty 
+			% voxels.getMapping().count 
+			% probes.size()
+		);
 
-			totalCounts += count;
+		return numNonEmpty;
+	}
+
+	// this samples/voxelizes all models in the scene and create probes
+	void Application::ModelDatabase_sampleAll() {
+		AUTO_TIMER();
+
+		const auto &models = world->scene.models;
+		const int numModels = models.size();
+
+		ProgressTracker::Context progressTracker( numModels );
+
+		const float resolution = 0.25;
+
+		int totalNonEmpty = 0;
+		int totalCounts = 0;
+		int totalProbes = 0;
+
+		for( int modelId = 0 ; modelId < numModels ; modelId++ ) {
+			const int numNonEmpty = ModelDatabase_sampleModel( modelId, resolution );
+
+			ModelDatabase::IdInformation & idInformation = modelDatabase.informationById[ modelId ];
+
+			totalCounts += idInformation.voxels.getMapping().count;
 			totalNonEmpty += numNonEmpty;
-			totalProbes += probes.size();
-
-			log( boost::format( 
-				"Ratio %f = %i / %i (%i probes)" ) 
-				% (float( numNonEmpty ) / count) 
-				% numNonEmpty 
-				% voxels.getMapping().count 
-				% probes.size()
-			);
+			totalProbes += idInformation.probes.size();
 
 			progressTracker.markFinished();
 		}
@@ -835,10 +774,109 @@ namespace aop {
 			% totalCounts
 			% totalProbes
 		);
-
-		// create a new debug object (or rather replace the old one)
-		debugUI->add( std::make_shared<DebugObjects::ModelDatabase>( this ) );
 	}
+
+	void Application::sampleInstances( int modelIndex ) {
+		AUTO_TIMER_FOR_FUNCTION();
+		log( boost::format( "sampling model %i" ) % modelIndex );
+
+		RenderContext renderContext;
+		renderContext.setDefault();
+		//renderContext.disabledModelIndex = modelIndex;
+
+		auto instanceIndices = world->sceneRenderer.getModelInstances( modelIndex );
+
+		ProgressTracker::Context progressTracker( instanceIndices.size() * 3 );
+
+		int totalCount = 0;
+
+		for( int i = 0 ; i < instanceIndices.size() ; i++ ) {
+			const int instanceIndex = instanceIndices[ i ];
+
+			
+			
+			const auto &probes = modelDatabase.getProbes( modelIndex, probeResolution );
+
+			std::vector<SGSInterface::Probe> transformedProbes;
+			{
+				const auto &transformation = world->sceneRenderer.getInstanceTransformation( instanceIndex );
+				ProbeGenerator::transformProbes( probes, transformation, transformedProbes );
+			}
+
+			RawProbeDataset rawDataset;
+			rawDataset.probes = probes;
+
+			progressTracker.markFinished();
+
+			AUTO_TIMER_BLOCK( boost::str( boost::format( "sampling probe batch with %i probes for instance %i" ) % probes.size() % instanceIndex ) ) {
+				renderContext.disabledInstanceIndex = instanceIndex;
+				world->optixRenderer.sampleProbes( transformedProbes, rawDataset.probeContexts, renderContext );
+			}
+			progressTracker.markFinished();
+
+			candidateFinder.addDataset(modelIndex, std::move( rawDataset ) );
+			progressTracker.markFinished();
+
+			totalCount += (int) transformedProbes.size();
+		}
+
+		log( boost::format( "total sampled probes: %i" ) % totalCount );
+	}
+
+	ProbeDatabase::Query::MatchInfos Application::queryVolume( const Obb &queryVolume ) {
+		ProgressTracker::Context progressTracker(4);
+
+		AUTO_TIMER_FOR_FUNCTION();
+
+		RenderContext renderContext;
+		renderContext.setDefault();
+
+		RawProbeDataset rawDataset;
+
+		ProbeGenerator::generateQueryProbes( queryVolume, probeResolution, rawDataset.probes );
+
+		progressTracker.markFinished();
+
+		{
+			AUTO_TIMER_FOR_FUNCTION( "sampling scene");
+			world->optixRenderer.sampleProbes( rawDataset.probes, rawDataset.probeContexts, renderContext );
+		}
+		progressTracker.markFinished();
+
+		ProbeDatabase::Query query( candidateFinder );
+		{
+			query.setQueryDataset( std::move( rawDataset ) );
+
+			ProbeContextTolerance pct;
+			pct.setDefault();
+			query.setProbeContextTolerance( pct );
+
+			query.execute();
+		}
+		progressTracker.markFinished();
+
+		const auto &matchInfos = query.getCandidates();
+		for( auto matchInfo = matchInfos.begin() ; matchInfo != matchInfos.end() ; ++matchInfo ) {
+			log( 
+				boost::format( 
+					"%i:\tnumMatches %f\n"
+					"\tdbMatchPercentage %f\n"
+					"\tqueryMatchPercentage %f\n"
+					"\tscore %f\n"
+				) 
+				% matchInfo->id 
+				% matchInfo->numMatches
+				% matchInfo->probeMatchPercentage
+				% matchInfo->queryMatchPercentage
+				% matchInfo->score
+			);
+		}
+		progressTracker.markFinished();
+
+		return matchInfos;
+	}
+
+	// TODO: rearrange the functions in this file or split it up into several files or several classes [10/14/2012 kirschan2]
 
 	void Application::initEventHandling() {
 		eventDispatcher.name = "Input help:";
@@ -889,10 +927,7 @@ namespace aop {
 
 		initUI();
 
-		startLongOperation();
-		initModelDatabase();
-		endLongOperation();
-
+		ModelDatabase_init();
 		neighborDatabaseV2.modelDatabase = &modelDatabase;
 
 		// load settings
@@ -1050,7 +1085,16 @@ namespace aop {
 		}
 	}
 
+	// TODO: fix this variable hack [10/14/2012 kirschan2]
+	static float lastUpdateTime;
 	void Application::updateProgress() {
+		const float minDuration = 1.0/25.0f; // target fps 
+		const float currentTime = clock.getElapsedTime().asSeconds();
+		if( currentTime - lastUpdateTime < minDuration ) {
+			return;
+		}
+		lastUpdateTime = currentTime;
+
 		const sf::Vector2i windowSize( mainWindow.getSize() );
 
 		mainWindow.pushGLStates();

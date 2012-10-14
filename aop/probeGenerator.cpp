@@ -27,7 +27,7 @@ namespace ProbeGenerator {
 		}
 	}
 
-	void generateInstanceProbes( const Eigen::Vector3f &size, const float resolution, std::vector<Probe> &probes ) {
+	void generateRegularInstanceProbes( const Eigen::Vector3f &size, const float resolution, std::vector<Probe> &probes ) {
 		const Vector3i probeCount3 = ceil( size / resolution + Eigen::Vector3f::Constant( 1.0f ) );
 
 		// create the index<->position mapping
@@ -41,7 +41,7 @@ namespace ProbeGenerator {
 			map( probe.position ) = position;
 
 			for( int i = 0 ; i < boost::size( directions ) ; i++ ) {
-				if( position.dot( directions[i] ) > 0 ) {
+				if( position.dot( directions[i] ) >= 0 ) {
 					map( probe.direction ) = directions[i];
 					probes.push_back( probe );
 				}

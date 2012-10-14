@@ -13,8 +13,9 @@ namespace ProbeGenerator {
 
 	void initDirections();
 	void transformProbe( const Probe &probe, const Obb::Transformation &transformation, Probe &transformedProbe );
-	void transformProbes( const std::vector<Probe> &probes,const Obb::Transformation &transformation,  std::vector<Probe> &transformedProbes );
-	void generateInstanceProbes( const Eigen::Vector3f &size, const float resolution, std::vector<Probe> &probes );
+	void transformProbes( const std::vector<Probe> &probes,const Obb::Transformation &transformation, std::vector<Probe> &transformedProbes );
+
+	void generateRegularInstanceProbes( const Eigen::Vector3f &size, const float resolution, std::vector<Probe> &probes );
 	void generateQueryProbes( const Obb &obb, const float resolution, std::vector<Probe> &transformedProbes );
 
 	void appendProbesFromSample( const Eigen::Vector3f &position, const Eigen::Vector3f &averagedNormal, std::vector< Probe > &probes );

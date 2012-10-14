@@ -37,7 +37,11 @@ RT_PROGRAM void renderPinholeCameraView()
 
 	rtTrace( rootObject, ray, ray_eye );
 		
+#if 1
 	outputBuffer[launchIndex] = make_color( ray_eye.color );
+#else
+	outputBuffer[launchIndex] = make_color( CIELAB::toRGB( CIELAB::fromRGB( ray_eye.color ) ) );
+#endif
 }
 
 RT_PROGRAM void renderPinholeCameraView_exception() {

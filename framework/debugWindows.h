@@ -122,6 +122,8 @@ struct MultiDisplayListVisualizationWindow : std::enable_shared_from_this<MultiD
 		int disableMask;
 		int enabledMask;
 		int toggleMask;
+
+		Logic() : disableMask(), enabledMask(), toggleMask() {}
 	};
 	Logic keyLogics[10];
 
@@ -129,6 +131,11 @@ struct MultiDisplayListVisualizationWindow : std::enable_shared_from_this<MultiD
 
 	void makeVisible( int i ) {
 		mask |= 1<<i;
+	}
+
+	void applyLogic( int i ) {
+		const Logic &keyLogic = keyLogics[ i ];
+		mask = ((mask & ~keyLogic.disableMask) ^ keyLogic.toggleMask) | keyLogic.enabledMask;
 	}
 
 	Camera camera;
@@ -165,11 +172,13 @@ struct MultiDisplayListVisualizationWindow : std::enable_shared_from_this<MultiD
 
 		registerConsoleHelpAction( eventDispatcher );
 
+		// validate the logic
+		// this allows for simpler setting because toggle has precedence over enable over disable
 		for( int i = 0 ; i < 10 ; i++ ) {
 			Logic &keyLogic = keyLogics[ i ];
 
 			keyLogic.disableMask &= ~(keyLogic.enabledMask | keyLogic.toggleMask);
-			keyLogic.toggleMask &= ~keyLogic.enabledMask;
+			keyLogic.enabledMask &= ~keyLogic.toggleMask;
 		}
 
 		for( int i = 0 ; i < 10 ; i++ ) {
@@ -177,6 +186,10 @@ struct MultiDisplayListVisualizationWindow : std::enable_shared_from_this<MultiD
 
 			std::vector< std::string > effects;
 			for( int visIndex = 0 ; visIndex < 10 ; visIndex++ ) {
+				if( visualizations[ visIndex ].displayList.empty() ) {
+					continue;
+				}
+
 				int bit = 1 << visIndex;
 				if( keyLogic.toggleMask & bit ) {
 					effects.push_back( "toggle " + visualizations[ visIndex ].name );
@@ -189,12 +202,15 @@ struct MultiDisplayListVisualizationWindow : std::enable_shared_from_this<MultiD
 				}
 			}
 			
+			if( effects.empty() ) {
+				continue;
+			}
+
 			auto action = std::make_shared<KeyAction>(
 				boost::join( effects, ", " ),
 				sf::Keyboard::Key( sf::Keyboard::Num0 + i ),
 				[&, i] () {
-					const Logic &logic = keyLogics[ i ];
-					this->mask = ((mask & ~logic.disableMask) ^ logic.toggleMask) | logic.enabledMask;
+					applyLogic( i );
 				}
 			);
 			eventDispatcher.addEventHandler( action );

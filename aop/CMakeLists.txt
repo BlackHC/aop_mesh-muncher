@@ -88,6 +88,9 @@ CUDA_ADD_EXECUTABLE(aop
 	../glutil/glObjectWrappers.h
 	../glutil/debugRender.h
 
+	../cielab/cielab.h
+	../cielab/cielab.cpp
+
 	../wml/wml.h
 	../wml/leanTextProcessing.h
 
@@ -226,3 +229,4 @@ SOURCE_GROUP( "glutil" REGULAR_EXPRESSION "../glutil/[^/]*" )
 SOURCE_GROUP( "wml" REGULAR_EXPRESSION "../wml/[^/]*" )
 SOURCE_GROUP( "texturePacker" REGULAR_EXPRESSION "../texturePacker/[^/]*" )
 SOURCE_GROUP( "generic" REGULAR_EXPRESSION "../generic/[^/]*" )
+SOURCE_GROUP( "cielab" REGULAR_EXPRESSION "../cielab/[^/]*" )

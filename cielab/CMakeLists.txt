@@ -10,6 +10,8 @@ INCLUDE_DIRECTORIES(
 	../gtest/
 )
 
+ADD_DEFINITIONS(-DCIELAB_GTEST_UNIT_TESTS)
+
 ADD_EXECUTABLE(cielabConverter
 	cielab.cpp
 	cielab.h

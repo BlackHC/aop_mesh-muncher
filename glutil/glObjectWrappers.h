@@ -50,6 +50,10 @@ struct DisplayList {
 			handle = 0;
 		}
 	}
+
+	bool empty() {
+		return handle == 0;
+	}
 };
 
 struct Texture {

@@ -19,6 +19,12 @@ __device__ __inline__ uchar3 make_rgb(const float3& c)
 						static_cast<unsigned char>(__saturatef(c.z)*255.99f)); /* R */
 }
 
+__device__ __inline__ char3 make_Lab(const float3& floatLab)
+{
+	return make_char3( static_cast<signed char>(floatLab.x),  /* L */
+						static_cast<signed char>(floatLab.y), /* a */
+						static_cast<signed char>(floatLab.z) ); /* b */
+}
 
 rtDeclareVariable(uint, probeIndex, rtLaunchIndex, );
 rtDeclareVariable(uint, numProbes, rtLaunchDim, );
@@ -60,7 +66,10 @@ RT_PROGRAM void sampleProbes() {
 
 	ProbeContext &context = probeContexts[ probeIndex ];
 	if( numHits ) {
-		context.color = make_rgb( color / numHits);
+		const float3 avgColor = color / numHits;
+		// convert to cielab
+		const float3 Lab = CIELAB::fromRGB( avgColor );
+		context.Lab = make_Lab( Lab );
 		context.distance = distance / numHits;
 	}
 	context.hitCounter = numHits;
@@ -69,7 +78,7 @@ RT_PROGRAM void sampleProbes() {
 RT_PROGRAM void sampleProbes_exception() {
 	unsigned int const error_code = rtGetExceptionCode();
 	if(RT_EXCEPTION_STACK_OVERFLOW == error_code) {
-		probeContexts[ probeIndex ].color = make_rgb( make_float3( 1.0f, 1.0f, 1.0f ) );
+		probeContexts[ probeIndex ].Lab = make_char3( -127, -127, -127 );
 		probeContexts[ probeIndex ].hitCounter = 0;
 		probeContexts[ probeIndex ].distance = 1.0f;
 	} else {

@@ -61,16 +61,16 @@ namespace Serializer {
 // TODO: append _full [9/26/2012 kirschan2]
 __forceinline__ bool probeContext_lexicographicalLess( const ProbeContext &a, const ProbeContext &b ) {
 	return
-		boost::make_tuple( a.hitCounter, a.distance, a.color.x, a.color.y, a.color.z )
+		boost::make_tuple( a.hitCounter, a.distance, a.Lab.x, a.Lab.y, a.Lab.z )
 		<
-		boost::make_tuple( b.hitCounter, b.distance, b.color.x, a.color.y, a.color.z );
+		boost::make_tuple( b.hitCounter, b.distance, b.Lab.x, a.Lab.y, a.Lab.z );
 }
 
 inline bool probeContext_lexicographicalLess_startWithDistance( const ProbeContext &a, const ProbeContext &b ) {
 	return
-		boost::make_tuple( a.distance, a.color.x, a.color.y, a.color.z )
+		boost::make_tuple( a.distance, a.Lab.x, a.Lab.y, a.Lab.z )
 		<
-		boost::make_tuple( b.distance, b.color.x, a.color.y, a.color.z );
+		boost::make_tuple( b.distance, b.Lab.x, a.Lab.y, a.Lab.z );
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -296,13 +296,13 @@ struct ProbeContextTolerance {
 	// tolerance means: |x-y| < tolerance, then match
 
 	float occusionTolerance;
-	float colorTolerance;
+	float colorLabTolerance;
 	// this should be the resolution of the probes
 	float distanceTolerance;
 
 	void setDefault() {
 		occusionTolerance = 0.125;
-		colorTolerance = 0.10;
+		colorLabTolerance = 20;
 		distanceTolerance = 0.25;
 	}
 };
@@ -802,12 +802,12 @@ struct ProbeDatabase {
 #endif
 		__forceinline__ bool matchColor( const ProbeContext &refContext, const ProbeContext &queryContext ) {
 			Eigen::Vector3i colorDistance(
-				refContext.color.x - queryContext.color.x,
-				refContext.color.y - queryContext.color.y,
-				refContext.color.z - queryContext.color.z
+				refContext.Lab.x - queryContext.Lab.x,
+				refContext.Lab.y - queryContext.Lab.y,
+				refContext.Lab.z - queryContext.Lab.z
 				);
 			// TODO: cache the last value? [10/1/2012 kirschan2]
-			if( colorDistance.squaredNorm() > probeContextTolerance.colorTolerance * probeContextTolerance.colorTolerance * (1<<16) ) {
+			if( colorDistance.squaredNorm() > probeContextTolerance.colorLabTolerance * probeContextTolerance.colorLabTolerance ) {
 				return false;
 			}
 			return true;
