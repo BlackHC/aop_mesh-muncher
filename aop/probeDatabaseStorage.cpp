@@ -20,8 +20,8 @@ SERIALIZER_DEFAULT_EXTERN_IMPL( SortedProbeDataset, (data) )
 SERIALIZER_DEFAULT_EXTERN_IMPL( IndexedProbeDataset, (data)(hitCounterLowerBounds) )
 SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeDatabase::IdDatasets, (insertQueue)(mergedDataset) )
 
-SERIALIZER_ENABLE_RAW_MODE_EXTERN( Probe );
-SERIALIZER_ENABLE_RAW_MODE_EXTERN( ProbeContext );
+SERIALIZER_ENABLE_RAW_MODE_EXTERN( RawProbeDataset::Probe );
+SERIALIZER_ENABLE_RAW_MODE_EXTERN( RawProbeDataset::ProbeContext );
 
 const int CACHE_FORMAT_VERSION = 0;
 

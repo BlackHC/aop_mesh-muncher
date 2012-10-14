@@ -115,6 +115,7 @@ namespace aop {
 			ModelDatabase_sampleModel( modelId, resolution );
 		}
 		ProbeDatabase::Query::MatchInfos queryVolume( const Obb &queryVolume );
+		ProbeDatabase::FullQuery::MatchInfos fullQueryVolume( const Obb &queryVolume );
 		void sampleInstances( int modelIndex );
 	};
 }
