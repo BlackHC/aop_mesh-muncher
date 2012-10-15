@@ -466,7 +466,7 @@ struct ProbeDatabase {
 		idDatasets.resize( numIds );
 	}
 
-	IdDatasetsVector getIdDatasets() const {
+	const IdDatasetsVector & getIdDatasets() const {
 		return idDatasets;
 	}
 
