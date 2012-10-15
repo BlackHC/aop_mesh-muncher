@@ -153,6 +153,7 @@ CUDA_ADD_EXECUTABLE(aop
 
 	probeDatabase.h
 	probeDatabase.cpp
+	probeDatabaseQueries.h
 	probeDatabaseStorage.cpp
 
 	neighborhoodDatabase.h
