@@ -976,7 +976,7 @@ namespace AntTWBarUI {
 	};
 
 	template< typename Accessor >
-	std::shared_ptr< Label< Accessor > > makeSharedLabel( Accessor &&nameAccessor, const std::function<void()> &callback, const std::string &def = std::string() ) {
+	std::shared_ptr< Label< Accessor > > makeSharedLabel( Accessor &&nameAccessor, const std::function<void()> &callback = nullptr, const std::string &def = std::string() ) {
 		return std::make_shared< Label< Accessor > >( std::move( nameAccessor ), callback, def );
 	}
 

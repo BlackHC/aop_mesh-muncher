@@ -64,7 +64,7 @@ protected:
 
 	MatchInfo matchAgainst( int id ) {
 		// TODO: rename idDataset to idDatabase? [9/26/2012 kirschan2]
-		const IndexedProbeDataset &idDataset = database.idDatasets[id].mergedDataset;
+		const IndexedProbeDataset &idDataset = database.idDatasets[id].getMergedInstances();
 
 		if( idDataset.size() == 0 ) {
 			return MatchInfo( id );
@@ -582,7 +582,7 @@ protected:
 	MatchInfo matchAgainst( int id ) {
 		// TODO: rename idDataset to idDatabase? [9/26/2012 kirschan2]
 		const auto &idDatasets = database.idDatasets[id];
-		const IndexedProbeDataset &idDataset = idDatasets.mergedDataset;
+		const IndexedProbeDataset &idDataset = idDatasets.getMergedInstances();
 
 		if( idDataset.size() == 0 ) {
 			return MatchInfo( id );
@@ -737,9 +737,9 @@ protected:
 		const int endPureIndex = pureRange.second;
 		int pureIndex = beginPureIndex;
 
-		ProbeContext pureContext = refDatasets.mergedDataset.getProbeContexts()[ pureIndex ];
+		ProbeContext pureContext = refDatasets.getMergedInstances().getProbeContexts()[ pureIndex ];
 		for( ; pureIndex < endPureIndex - 1 ; pureIndex++ ) {
-			const ProbeContext nextPureContext = refDatasets.mergedDataset.getProbeContexts()[ pureIndex + 1 ];
+			const ProbeContext nextPureContext = refDatasets.getMergedInstances().getProbeContexts()[ pureIndex + 1 ];
 			int nextBeginOverlappedIndex = overlappedIndex;
 
 			const float minDistance = pureContext.distance - probeContextTolerance.distanceTolerance;
@@ -775,7 +775,7 @@ protected:
 				if( matchColor( pureContext, overlappedContext ) ) {
 					numMatches++;
 
-					const float matchScore = getMatchScore( probes[ overlappedContext.probeIndex ], refDatasets.probes[ pureContext.probeIndex ] );
+					const float matchScore = getMatchScore( probes[ overlappedContext.probeIndex ], refDatasets.getProbes()[ pureContext.probeIndex ] );
 
 					overlappedProbesMatched[ overlappedIndex ] = std::max( matchScore, overlappedProbesMatched[ overlappedIndex ] );
 					pureProbeBestMatch = matchScore;
@@ -814,7 +814,7 @@ protected:
 				if( matchColor( pureContext, overlappedContext ) ) {
 					numMatches++;
 
-					const float matchScore = getMatchScore( probes[ overlappedContext.probeIndex ], refDatasets.probes[ pureContext.probeIndex ] );
+					const float matchScore = getMatchScore( probes[ overlappedContext.probeIndex ], refDatasets.getProbes()[ pureContext.probeIndex ] );
 
 					overlappedProbesMatched[ overlappedIndex ] = std::max( matchScore, overlappedProbesMatched[ overlappedIndex ] );
 					pureProbeBestMatch = matchScore;
@@ -851,6 +851,7 @@ protected:
 	MatchInfos matchInfos;
 };
 
+#if 0
 struct ProbeDatabase::FullQuery {
 	typedef std::shared_ptr<FullQuery> Ptr;
 
@@ -1127,3 +1128,4 @@ private:
 	FullQuery( const FullQuery & );
 	FullQuery & operator = ( const FullQuery & );
 };
+#endif

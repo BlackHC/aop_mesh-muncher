@@ -178,7 +178,7 @@ splatterFragmentShader:
 			VoxelInfo processFragment() {
 				VoxelInfo result;
 				// we have 32 bit, if we assume an overdraw of less than 256, we can use a resolution that is a lot higher than 2*256.0!
-				result.normal = uvec3( normalize( gl_Color.xyz ) * 255 + 256.0 );
+				result.normal = uvec3( normalize( gl_Color.xyz ) * 256 + 256.0 ); // 0..512
 				return result;
 			}
 
@@ -236,7 +236,7 @@ muxer:
 			}
 
 			vec4 normalHit;
-			normalHit.rgb = vec3( packed_normalHit.rgb ) / packed_normalHit[3] / 511.0;
+			normalHit.rgb = vec3( packed_normalHit.rgb ) / packed_normalHit[3] / 512.0; // 0..1.0
 			normalHit.a = float( packed_normalHit[3] ) / 255.0;
 			imageStore( volume, index3, normalHit );
 		}

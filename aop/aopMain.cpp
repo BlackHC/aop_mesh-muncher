@@ -433,10 +433,16 @@ namespace aop {
 				container->add( AntTWBarUI::makeSharedLabel( 
 					AntTWBarUI::makeExpressionAccessor<std::string>(
 						[&] () -> std::string {
-							return probeDatabaseUI->application->modelDatabase.informationById[ accessor.pull() ].shortName;
+							return probeDatabaseUI->application->modelDatabase.informationById[ accessor.elementIndex ].shortName;
 						}
 					),
-					nullptr
+				) );
+				container->add( AntTWBarUI::makeSharedReadOnlyVariable( "numInstances",
+					AntTWBarUI::CallbackAccessor<int>(
+						[&] ( int &shadow ) {
+							shadow = probeDatabaseUI->application->probeDatabase.getIdDatasets()[ accessor.]
+						} 
+					)
 				) );
 			}
 		};
@@ -724,7 +730,7 @@ namespace aop {
 			} ) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
 			ui.add( AntTWBarUI::makeSharedButton( "Load database", [this] { application->probeDatabase.loadCache( "database"); } ) );
-			ui.add( AntTWBarUI::makeSharedButton( "Reset database", [this] { application->probeDatabase.reset(); } ) );
+			ui.add( AntTWBarUI::makeSharedButton( "Reset database", [this] { application->probeDatabase.clear(); } ) );
 			ui.add( AntTWBarUI::makeSharedButton( "Store database", [this] { application->probeDatabase.storeCache( "database"); } ) );
 			ui.link();
 		}
@@ -842,16 +848,16 @@ namespace aop {
 					numNonEmpty++;
 
 					const Vector3f position = voxels.getMapping().getPosition( iter.getIndex3() );
-
-					/*const Vector3f normal(
+#if 1
+					const Vector3f normal(
 						sample.nx / 255.0 * 2 - 1.0,
 						sample.ny / 255.0 * 2 - 1.0,
 						sample.nz / 255.0 * 2 - 1.0
-					);*/
-
+					);
+#else
 					// we dont use the weighted and averaged normal for now
 					const Vector3f normal = (position - bbox.center()).normalized();
-
+#endif
 					ProbeGenerator::appendProbesFromSample( position, normal, probes );
 				}
 			}
@@ -862,7 +868,7 @@ namespace aop {
 		const int count = voxels.getMapping().count;
 
 		log( boost::format( 
-			"Ratio %f = %i / %i (%i probes)" ) 
+			"Ratio %f = %i / %i (% i probes)" ) 
 			% (float( numNonEmpty ) / count) 
 			% numNonEmpty 
 			% voxels.getMapping().count 

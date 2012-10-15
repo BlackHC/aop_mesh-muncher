@@ -22,6 +22,8 @@
 
 #include "optixEigenInterop.h"
 
+#include <serializer_fwd.h>
+
 /*
 struct ProbeDatabase {
 	int hitDistanceBuckets[OptixProgramInterface::numProbeSamples+1];
@@ -43,18 +45,11 @@ struct NestedOutput {
 // TODO: add a serializer forward header with macros to declare these functions [10/3/2012 kirschan2]
 struct SortedProbeDataset;
 struct IndexedProbeDataset;
+struct IdDatasets;
 
-namespace Serializer {
-	template< typename Reader >
-	void read( Reader &reader, SortedProbeDataset &value );
-	template< typename Writer >
-	void write( Writer &writer, const SortedProbeDataset &value );
-
-	template< typename Reader >
-	void read( Reader &reader, IndexedProbeDataset &value );
-	template< typename Writer >
-	void write( Writer &writer, const IndexedProbeDataset &value );
-}
+SERIALIZER_FWD_EXTERN_DECL( SortedProbeDataset )
+SERIALIZER_FWD_EXTERN_DECL( IndexedProbeDataset )
+SERIALIZER_FWD_EXTERN_DECL( IdDatasets )
 
 #include <autoTimer.h>
 
@@ -208,10 +203,7 @@ private:
 
 	std::vector< ProbeContext > data;
 
-	template< typename Reader >
-	friend void Serializer::read( Reader &reader, SortedProbeDataset &value );
-	template< typename Writer >
-	friend void Serializer::write( Writer &writer, const SortedProbeDataset &value );
+	SERIALIZER_FWD_FRIEND_EXTERN( SortedProbeDataset )
 
 private:
 	// better error messages than with boost::noncopyable
@@ -279,11 +271,7 @@ struct IndexedProbeDataset {
 private:
 	void setHitCounterLowerBounds();
 
-	template< typename Reader >
-	friend void Serializer::read( Reader &reader, IndexedProbeDataset &value );
-	template< typename Writer >
-	friend void Serializer::write( Writer &writer, const IndexedProbeDataset &value );
-
+	SERIALIZER_FWD_FRIEND_EXTERN( IndexedProbeDataset )
 private:
 	// better error messages than with boost::noncopyable
 	IndexedProbeDataset( const IndexedProbeDataset &other );
@@ -334,106 +322,111 @@ struct ProbeContextTolerance {
 	}
 };
 
+struct IdDatasets {
+	typedef IndexedProbeDataset::Probe Probe;
+	typedef IndexedProbeDataset::ProbeContext ProbeContext;
+	typedef std::vector<SortedProbeDataset> Instances;
+	typedef std::vector< Probe > Probes;
+
+	void addToQueue( const Probes &datasetProbes, SortedProbeDataset &&dataset ) {
+		if( probes.size() != datasetProbes.size() ) {
+			if( !probes.empty() ) {
+				logError( 
+					boost::format( 
+					"expected %i probes, but got %i probes!\ndumping %i instances (%i probes) and reseting this dataset!"
+					)
+					% probes.size()
+					% datasetProbes.size()
+					% instances.size()
+					% mergedInstances.size()
+				);
+				// reset the dataset
+				instances.clear();
+				mergedInstances = IndexedProbeDataset();
+			}
+					
+			probes = datasetProbes;
+		}
+
+		instances.emplace_back( std::move( dataset ) );
+	}
+
+	IdDatasets() 
+	{}
+
+	IdDatasets( IdDatasets &&other ) 
+		: instances( std::move( other.instances ) )
+		, mergedInstances( std::move( other.mergedInstances ) )
+		, probes( std::move( other.probes ) )
+	{}
+
+	IdDatasets & operator = ( IdDatasets &&other ) {
+		instances = std::move( other.instances );
+		mergedInstances = std::move( other.mergedInstances );
+		probes = std::move( other.probes );
+
+		return *this;
+	}
+
+	void mergeInstances() {
+		if( instances.empty() ) {
+			return;
+		}
+		else if( instances.size() == 1 ) {
+			mergedInstances = instances[0].clone();
+		}
+		else if( instances.size() == 2 ) {
+			mergedInstances = std::move( SortedProbeDataset::merge( instances[0], instances[1] ) );
+		}
+		else {
+			// create a pointer vector with all datasets
+			std::vector< const SortedProbeDataset * > datasets;
+			datasets.reserve( instances.size() );
+
+			for( auto dataset = instances.begin() ; dataset != instances.end() ; ++dataset ) {
+				datasets.push_back( &*dataset );
+			}
+
+			// merge them all
+			mergedInstances = std::move( SortedProbeDataset::mergeMultiple( datasets ) );
+		}
+	}
+
+	const Instances & getInstances() const {
+		return instances;
+	}
+
+	const IndexedProbeDataset & getMergedInstances() const {
+		return mergedInstances;
+	}
+
+	const Probes &getProbes() const {
+		return probes;
+	}
+
+private:
+	Instances instances;
+	IndexedProbeDataset mergedInstances;
+
+	Probes probes;
+
+	SERIALIZER_FWD_FRIEND_EXTERN( IdDatasets )
+
+private:
+	// better error messages than with boost::noncopyable
+	IdDatasets( const IdDatasets &other );
+	IdDatasets & operator = ( const IdDatasets &other );
+};
+
 struct ProbeDatabase {
 	typedef int Id;
 	typedef std::vector<Id> Ids;
 
-	struct IdDatasets {
-		typedef IndexedProbeDataset::Probe Probe;
-		typedef IndexedProbeDataset::ProbeContext ProbeContext;
-
-		std::vector<SortedProbeDataset> insertQueue;
-		IndexedProbeDataset mergedDataset;
-
-		typedef std::vector< Probe > Probes;
-		Probes probes;
-
-		int numInstances;
-
-		void addToQueue( const Probes &datasetProbes, SortedProbeDataset &&dataset ) {
-			if( probes.size() != datasetProbes.size() ) {
-				if( !probes.empty() ) {
-					logError( 
-						boost::format( 
-						"expected %i probes, but got %i probes!\ndumping %i merged + %i queued instances = %i sampled probes and reseting this dataset!"
-						)
-						% probes.size()
-						% datasetProbes.size()
-						% numInstances
-						% insertQueue.size()
-						% ((numInstances + insertQueue.size()) * probes.size())
-					);
-					// reset the dataset
-					insertQueue.clear();
-					mergedDataset = IndexedProbeDataset();
-				}
-					
-				numInstances = 0;
-				probes = datasetProbes;
-			}
-
-			insertQueue.emplace_back( std::move( dataset ) );
-		}
-
-		IdDatasets() 
-			: numInstances()
-		{}
-
-		IdDatasets( IdDatasets &&other ) 
-			: insertQueue( std::move( other.insertQueue ) )
-			, mergedDataset( std::move( other.mergedDataset ) )
-			, probes( std::move( other.probes ) )
-			, numInstances( numInstances )
-		{}
-
-		IdDatasets & operator = ( IdDatasets &&other ) {
-			insertQueue = std::move( other.insertQueue );
-			mergedDataset = std::move( other.mergedDataset );
-			probes = std::move( other.probes );
-			numInstances = other.numInstances;
-
-			other.numInstances = 0;
-
-			return *this;
-		}
-
-		void processQueue() {
-			if( insertQueue.empty() ) {
-				return;
-			}
-
-			// update numInstances
-			numInstances += insertQueue.size();
-
-			if( insertQueue.size() == 1 ) {
-				mergedDataset = std::move( SortedProbeDataset::merge( mergedDataset.data, insertQueue[0] ) );
-			}
-			else {
-				// create a pointer vector with all datasets
-				std::vector< const SortedProbeDataset * > datasets;
-				datasets.reserve( 1 + insertQueue.size() );
-
-				datasets.push_back( &mergedDataset.data );
-				for( auto dataset = insertQueue.begin() ; dataset != insertQueue.end() ; ++dataset ) {
-					datasets.push_back( &*dataset );
-				}
-
-				// merge them all
-				mergedDataset = std::move( SortedProbeDataset::mergeMultiple( datasets ) );
-
-				// reset the queue
-				insertQueue.clear();
-			}
-		}
-
-	private:
-		// better error messages than with boost::noncopyable
-		IdDatasets( const IdDatasets &other );
-		IdDatasets & operator = ( const IdDatasets &other );
-	};
-
 	typedef IdDatasets::Probe Probe;
 	typedef IdDatasets::ProbeContext ProbeContext;
+
+	// TODO: fix the naming [10/15/2012 kirschan2]
+	typedef std::vector<IdDatasets> IdDatasetsVector;
 
 	struct Query;
 	struct WeightedQuery;
@@ -449,31 +442,36 @@ struct ProbeDatabase {
 
 	void integrateDatasets() {
 		for( auto idDataset = idDatasets.begin() ; idDataset != idDatasets.end() ; ++idDataset ) {
-			idDataset->processQueue();
+			idDataset->mergeInstances();
 		}
 	}
+
+
 
 	size_t getNumIdDatasets() const {
 		return idDatasets.size();
 	}
 	
 	bool isEmpty( int modelIndex ) const {
-		return idDatasets[ modelIndex ].mergedDataset.size() == 0;
+		return idDatasets[ modelIndex ].getMergedInstances().size() == 0;
 	}
 
 	// see candidateFinderCache.cpp
 	bool loadCache( const char *filename );
 	void storeCache( const char *filename );
 
-public:
-	void reset() {
+	void clear() {
 		int numIds = idDatasets.size();
 		idDatasets.clear();
 		idDatasets.resize( numIds );
 	}
 
+	IdDatasetsVector getIdDatasets() const {
+		return idDatasets;
+	}
+
 private:
-	std::vector<IdDatasets> idDatasets;
+	IdDatasetsVector idDatasets;
 };
 
 #include "probeDatabaseQueries.h"

@@ -112,6 +112,7 @@ CUDA_ADD_EXECUTABLE(aop
 
 	${PTX_FILES}
 	../build/sgsScene.shaders
+	../build/voxelizer.shaders
 
 	../generic/sort_permute_iter.h
 

@@ -49,6 +49,7 @@ struct Instance {
 
 namespace VoxelizedModel {
 		struct NormalOverdraw4ub {
+			// -1..+1 packed into 0..255
 			unsigned char nx, ny, nz, numSamples;
 		};
 		
