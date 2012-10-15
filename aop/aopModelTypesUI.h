@@ -81,6 +81,26 @@ namespace aop {
 			validateMarkedModels();
 		}
 
+		void removeAlreadySampledModels() {
+			boost::remove_erase_if( markedModels, [&] ( int modelIndex ) {
+					return !application->probeDatabase.isEmpty( modelIndex );
+				}
+			);
+		}
+
+		void addAlreadySampledModels() {
+			std::vector< int > modelIndices;
+
+			const int numDatasets = application->probeDatabase.getNumIdDatasets();
+			for( int modelIndex = 0 ; modelIndex < numDatasets ; modelIndex++ ) {
+				if( !application->probeDatabase.isEmpty( modelIndex ) ) {
+					modelIndices.push_back( modelIndex );
+				}
+			}
+
+			appendMarkedModels( modelIndices );
+		}
+
 		ModelTypesUI( Application *application ) : application( application ) {
 			init();
 		}
@@ -130,6 +150,12 @@ namespace aop {
 			markedModelsUi.add( AntTWBarUI::makeSharedSeparator() );
 			markedModelsUi.add( AntTWBarUI::makeSharedButton( "selection =", [this] () {
 				application->editor.selectModels( markedModels );
+			} ) );
+			markedModelsUi.add( AntTWBarUI::makeSharedButton( "-= already probe-sampled", [this] () {
+				removeAlreadySampledModels();
+			} ) );
+			markedModelsUi.add( AntTWBarUI::makeSharedButton( "+= already probe-sampled", [this] () {
+				addAlreadySampledModels();
 			} ) );
 			markedModelsUi.link();
 		}

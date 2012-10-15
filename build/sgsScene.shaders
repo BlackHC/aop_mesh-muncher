@@ -136,7 +136,7 @@ previewObject:
 			vec4 baseColor = texture( baseTetxture, gl_TexCoord[0].st );
 
 			// add some very simple lighting
-			return lightFragment( worldPosition, worldNormal, baseColor );
+			return lightFragment( worldPosition, normalize( worldNormal ), baseColor );
 		}
 
 sgsMesh:

@@ -86,33 +86,38 @@ void Editor::selectMode( ModeState newMode ) {
 
 	switch( newMode ) {
 	case M_FREELOOK:
+		currentMode = newMode;
 		break;
 	case M_SELECTING:
 		mode = &selecting;
+		currentMode = newMode;
 		break;
 	case M_PLACING:
 		if( selection && selection->canTransform() ) {
 			mode = &placing;
+			currentMode = newMode;
 		}
 		break;
 	case M_MOVING:
 		if( selection && selection->canTransform() ) {
 			mode = &moving;
+			currentMode = newMode;
 		}
 		break;
 	case M_ROTATING:
 		if( selection && selection->canTransform() ) {
 			mode = &rotating;
+			currentMode = newMode;
 		}
 		break;
 	case M_RESIZING:
 		if( selection && selection->canResize() ) {
 			mode = &resizing;
+			currentMode = newMode;
 		}
 		break;
 	}
-
-	currentMode = newMode;
+		
 	modes.setTarget( mode );
 	getEventSystem()->setCapture( mode,  FT_KEYBOARD );
 }

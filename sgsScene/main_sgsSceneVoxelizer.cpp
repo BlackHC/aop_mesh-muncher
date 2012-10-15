@@ -45,7 +45,7 @@ void visualizeColorGrid( const VoxelizedModel::Voxels &grid, DebugRender::Displa
 	for( auto iterator = grid.getIterator() ; iterator.hasMore() ; ++iterator ) {
 		const auto &normalHit = grid[ *iterator ];
 
-		if( normalHit.a != 0 ) {
+		if( normalHit.numSamples != 0 ) {
 			DebugRender::setPosition( grid.getMapping().getPosition( iterator.getIndex3() ) );
 
 			Eigen::Vector3f positionColor = iterator.getIndex3().cast<float>().cwiseQuotient( grid.getMapping().getSize().cast<float>() );

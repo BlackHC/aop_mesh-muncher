@@ -325,7 +325,7 @@ struct IndexMapping3 : conceptIndexer3 {
 	Eigen::Affine3f indexToPosition;
 	Eigen::Affine3f positionToIndex;
 
-	IndexMapping3() {}
+	IndexMapping3() : indexToPosition(), positionToIndex() {}
 
 	IndexMapping3( const Indexer3 &indexer, const Eigen::Affine3f &indexToPosition ) : conceptIndexer3( indexer ), indexToPosition( indexToPosition ), positionToIndex( indexToPosition.inverse() ) {
 	}

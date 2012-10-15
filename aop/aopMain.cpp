@@ -426,6 +426,44 @@ namespace DebugObjects {
 }
 
 namespace aop {
+#if 0
+	struct ProbeDatabaseUI {
+		Application *application;
+
+		struct DatasetView : AntTWBarUI::SimpleStructureFactory< std::string, DatasetView > {
+			ProbeDatabaseUI *probeDatabaseUI;
+
+			DatasetView( ProbeDatabaseUI *probeDatabaseUI )
+				: probeDatabaseUI( probeDatabaseUI ) 
+			{
+			}
+
+			template< typename ElementAccessor >
+			void setup( AntTWBarUI::Container *container, ElementAccessor &accessor ) const {
+				container->add( AntTWBarUI::makeSharedLabel( 
+					AntTWBarUI::makeExpressionAccessor<std::string>(
+						[&] () -> std::string {
+							return probeDatabaseUI->application->modelDatabase.informationById[ accessor.pull() ].shortName;
+						}
+					),
+					nullptr
+				) );
+			}
+		};
+
+		AntTWBarUI::SimpleContainer ui;
+		ProbeDatabaseUI( Application *application )
+			: application( application )
+			, ui( "Probe Database" )
+		{
+			auto datasetsContainer = AntTWBarUI::makeSharedVector( )
+		}
+
+		void refresh() {
+			ui.refresh();
+		}
+	};
+#endif
 	struct ModelDatabaseUI {
 		Application *application;
 

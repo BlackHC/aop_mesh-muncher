@@ -36,7 +36,6 @@ namespace aop {
 	struct TimedLog;
 	
 	struct ModelDatabaseUI;
-
 	struct ProbeDatabaseUI;
 	
 	struct Application : ModelDatabase::ImportInterface {

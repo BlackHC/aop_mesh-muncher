@@ -334,7 +334,7 @@ struct ProbeDatabase {
 	typedef int Id;
 	typedef std::vector<Id> Ids;
 
-		struct IdDatasets {
+	struct IdDatasets {
 		typedef IndexedProbeDataset::Probe Probe;
 		typedef IndexedProbeDataset::ProbeContext ProbeContext;
 
@@ -446,6 +446,14 @@ struct ProbeDatabase {
 		for( auto idDataset = idDatasets.begin() ; idDataset != idDatasets.end() ; ++idDataset ) {
 			idDataset->processQueue();
 		}
+	}
+
+	size_t getNumIdDatasets() const {
+		return idDatasets.size();
+	}
+	
+	bool isEmpty( int modelIndex ) const {
+		return idDatasets[ modelIndex ].mergedDataset.size() == 0;
 	}
 
 	// see candidateFinderCache.cpp
