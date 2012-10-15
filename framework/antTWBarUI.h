@@ -16,7 +16,6 @@ namespace AntTWBarUI {
 		CT_EMBEDDED
 	};
 
-
 	// TODO: add move most things into a separate detail namespace [10/1/2012 kirschan2]
 	struct UniqueID {
 		typedef unsigned ID;
@@ -1141,34 +1140,66 @@ namespace AntTWBarUI {
 
 	//////////////////////////////////////////////////////////////////////////
 	// V2
-	// TODO: create a ContainerFactory that is implemented like a StructureFactory?
+	// TODO: create a ContainerFactory that is implemented like a StructureFactory
 
-	// doesnt support Config::supportRemove
-	template< class StructureFactory >
+#if 0
+	template< T >
+	struct RandomAccessContainer {
+		size_t size();
+
+		T & operator [] (int index);
+		const T & operator [] (int index) const;
+	};
+#endif
+
+	template< typename _Type, class RandomAccessContainerAccessor >
+	struct ElementAccessorV2 {
+		typedef _Type Type;
+
+		RandomAccessContainerAccessor &elementsAccessor;
+		int elementIndex;
+
+		ElementAccessorV2( RandomAccessContainerAccessor &elementsAccessor, int elementIndex )
+			: elementsAccessor( elementsAccessor )
+			, elementIndex( elementIndex )
+		{
+		}
+
+		Type & pull() {
+			return elementsAccessor.pull()[ elementIndex ];
+		}
+
+		void push() {
+			elementsAccessor.push();
+		}
+	};
+
+
+	// doesn't support Config::supportRemove
+	template< class StructureFactory, class RandomAccessContainerAccessor >
 	struct VectorV2 : SimpleContainer {
 		typedef typename StructureFactory::Type Type;
 		typedef ElementAccessor< Type > ElementAccessor;
 
-		std::vector< Type > &elements;
+		RandomAccessContainerAccessor elementsAccessor;
 		ContainerType elementContainerType;
 
 		StructureFactory structureFactory;
 
-		VectorV2( std::vector< Type > &elements, StructureFactory &&structureFactory, ContainerType elementContainerType = CT_GROUP, ContainerType containerType = CT_GROUP )
+		VectorV2( RandomAccessContainerAccessor &&elementsAccessor, StructureFactory &&structureFactory, ContainerType elementContainerType = CT_GROUP, ContainerType containerType = CT_GROUP )
 			: SimpleContainer( containerType )
+			, elementsAccessor( std::move( elementsAccessor ) )
 			, structureFactory( std::move( structureFactory ) )
 			, elementContainerType( elementContainerType )
-			, elements( elements )
 		{
 			updateSize();
 		}
 
-		VectorV2( const std::string &name, std::vector< Type > &elements, StructureFactory &&structureFactory, ContainerType elementContainerType = CT_GROUP )
-			:
-			SimpleContainer( name ),
-			structureFactory( std::move( structureFactory ) ),
-			elementContainerType( elementContainerType ),
-			elements( elements )
+		VectorV2( const std::string &name, RandomAccessContainerAccessor &&elementsAccessor, StructureFactory &&structureFactory, ContainerType elementContainerType = CT_GROUP )
+			: SimpleContainer( name )
+			, structureFactory( std::move( structureFactory ) )
+			, elementContainerType( elementContainerType )
+			, elementsAccessor( std::move( elementsAccessor ) )
 		{
 			updateSize();
 		}
@@ -1185,7 +1216,7 @@ namespace AntTWBarUI {
 			while( size() < elements.size() ) {
 				const int index = (int) size();
 
-				auto elementView = structureFactory.makeShared( ElementAccessor( elements, index ), elementContainerType );
+				auto elementView = structureFactory.makeShared( ElementAccessorV2( elementsAccessor, index ), elementContainerType );
 				add( elementView );
 			}
 			while( size() > elements.size() ) {
@@ -1194,43 +1225,43 @@ namespace AntTWBarUI {
 		}
 	};
 
-	template< class StructureFactory >
-	VectorV2< StructureFactory > makeVectorV2( std::vector< typename StructureFactory::Type > &elements, ContainerType elementContainerType = CT_GROUP, ContainerType containerType = CT_GROUP ) {
-		return VectorV2< StructureFactory >( elements, StructureFactory(), elementContainerType, containerType );
+	template< class StructureFactory, class RandomAccessContainerAccessor >
+	VectorV2< StructureFactory, RandomAccessContainerAccessor > makeVectorV2( RandomAccessContainerAccessor &&elementsAccessor, ContainerType elementContainerType = CT_GROUP, ContainerType containerType = CT_GROUP ) {
+		return VectorV2< StructureFactory, RandomAccessContainerAccessor >( std::move( elementsAccessor ), StructureFactory(), elementContainerType, containerType );
 	}
 
-	template< class StructureFactory >
-	VectorV2< StructureFactory > makeVectorV2( const std::string &name, std::vector< typename StructureFactory::Type > &elements, ContainerType elementContainerType = CT_GROUP ) {
-		return VectorV2< StructureFactory >( name, elements, StructureFactory(), elementContainerType );
+	template< class StructureFactory, class RandomAccessContainerAccessor >
+	VectorV2< StructureFactory, RandomAccessContainerAccessor > makeVectorV2( const std::string &name, RandomAccessContainerAccessor &&elementsAccessor, ContainerType elementContainerType = CT_GROUP ) {
+		return VectorV2< StructureFactory, RandomAccessContainerAccessor >( name, std::move( elementsAccessor ), StructureFactory(), elementContainerType );
 	}
 
-	template< class StructureFactory >
-	VectorV2< StructureFactory > makeVectorV2( std::vector< typename StructureFactory::Type > &elements, StructureFactory &&structureFactory, ContainerType elementContainerType = CT_GROUP, ContainerType containerType = CT_GROUP ) {
-		return VectorV2< StructureFactory >( elements, std::move( structureFactory ), elementContainerType, containerType );
+	template< class StructureFactory, class RandomAccessContainerAccessor >
+	VectorV2< StructureFactory, RandomAccessContainerAccessor > makeVectorV2( RandomAccessContainerAccessor &&elementsAccessor, StructureFactory &&structureFactory, ContainerType elementContainerType = CT_GROUP, ContainerType containerType = CT_GROUP ) {
+		return VectorV2< StructureFactory, RandomAccessContainerAccessor >( std::move( elementsAccessor ), std::move( structureFactory ), elementContainerType, containerType );
 	}
 
-	template< class StructureFactory >
-	VectorV2< StructureFactory > makeVectorV2( const std::string &name, std::vector< typename StructureFactory::Type > &elements, StructureFactory &&structureFactory, ContainerType elementContainerType = CT_GROUP ) {
-		return VectorV2< StructureFactory >( name, elements, std::move( structureFactory ), elementContainerType );
+	template< class StructureFactory, class RandomAccessContainerAccessor >
+	VectorV2< StructureFactory, RandomAccessContainerAccessor > makeVectorV2( const std::string &name, RandomAccessContainerAccessor &&elementsAccessor, StructureFactory &&structureFactory, ContainerType elementContainerType = CT_GROUP ) {
+		return VectorV2< StructureFactory, RandomAccessContainerAccessor >( name, std::move( elementsAccessor ), std::move( structureFactory ), elementContainerType );
 	}
 
-	template< class StructureFactory >
-	std::shared_ptr< VectorV2< StructureFactory > > makeSharedVectorV2( std::vector< typename StructureFactory::Type > &elements, ContainerType elementContainerType = CT_GROUP, ContainerType containerType = CT_GROUP ) {
-		return std::make_shared< VectorV2< StructureFactory > >( elements, StructureFactory(), elementContainerType, containerType );
+	template< class StructureFactory, class RandomAccessContainerAccessor >
+	std::shared_ptr< VectorV2< StructureFactory, RandomAccessContainerAccessor > > makeSharedVectorV2( RandomAccessContainerAccessor &&elementsAccessor, ContainerType elementContainerType = CT_GROUP, ContainerType containerType = CT_GROUP ) {
+		return std::make_shared< VectorV2< StructureFactory, RandomAccessContainerAccessor > >( std::move( elementsAccessor ), StructureFactory(), elementContainerType, containerType );
 	}
 
-	template< class StructureFactory >
-	std::shared_ptr< VectorV2< StructureFactory > > makeSharedVectorV2( const std::string &name, std::vector< typename StructureFactory::Type > &elements, ContainerType elementContainerType = CT_GROUP ) {
-		return std::make_shared< VectorV2< StructureFactory > >( name, elements, StructureFactory(), elementContainerType );
+	template< class StructureFactory, class RandomAccessContainerAccessor >
+	std::shared_ptr< VectorV2< StructureFactory, RandomAccessContainerAccessor > > makeSharedVectorV2( const std::string &name, RandomAccessContainerAccessor &&elementsAccessor, ContainerType elementContainerType = CT_GROUP ) {
+		return std::make_shared< VectorV2< StructureFactory, RandomAccessContainerAccessor > >( name, std::move( elementsAccessor ), StructureFactory(), elementContainerType );
 	}
 
-	template< class StructureFactory >
-	std::shared_ptr< VectorV2< StructureFactory > > makeSharedVectorV2( std::vector< typename StructureFactory::Type > &elements, StructureFactory &&structureFactory, ContainerType elementContainerType = CT_GROUP, ContainerType containerType = CT_GROUP ) {
-		return std::make_shared< VectorV2< StructureFactory > >( elements, std::move( structureFactory ), elementContainerType, containerType );
+	template< class StructureFactory, class RandomAccessContainerAccessor >
+	std::shared_ptr< VectorV2< StructureFactory, RandomAccessContainerAccessor > > makeSharedVectorV2( RandomAccessContainerAccessor &&elementsAccessor, StructureFactory &&structureFactory, ContainerType elementContainerType = CT_GROUP, ContainerType containerType = CT_GROUP ) {
+		return std::make_shared< VectorV2< StructureFactory, RandomAccessContainerAccessor > >( std::move( elementsAccessor ), std::move( structureFactory ), elementContainerType, containerType );
 	}
 
-	template< class StructureFactory >
-	std::shared_ptr< VectorV2< StructureFactory > > makeSharedVectorV2( const std::string &name, std::vector< typename StructureFactory::Type > &elements, StructureFactory &&structureFactory, ContainerType elementContainerType = CT_GROUP ) {
-		return std::make_shared< VectorV2< StructureFactory > >( name, elements, std::move( structureFactory ), elementContainerType );
+	template< class StructureFactory, class RandomAccessContainerAccessor >
+	std::shared_ptr< VectorV2< StructureFactory, RandomAccessContainerAccessor > > makeSharedVectorV2( const std::string &name, RandomAccessContainerAccessor &&elementsAccessor, StructureFactory &&structureFactory, ContainerType elementContainerType = CT_GROUP ) {
+		return std::make_shared< VectorV2< StructureFactory, RandomAccessContainerAccessor > >( name, std::move( elementsAccessor ), std::move( structureFactory ), elementContainerType );
 	}
 }

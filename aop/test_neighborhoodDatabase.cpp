@@ -218,7 +218,7 @@ TEST( NeighborhoodDatabaseV2_Query, all ) {
 			rawDataset.push_back( std::make_pair( id, float( distance ) ) );
 		}
 
-		ModelDatabase::IdInformation info;
+		ModelDatabase::ModelInformation info;
 		info.area = info.diagonalLength = info.volume = 1.0;
 		modelDatabase.informationById.emplace_back( std::move( info ) );
 	}

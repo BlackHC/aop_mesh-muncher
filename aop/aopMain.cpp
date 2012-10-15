@@ -740,7 +740,7 @@ namespace aop {
 		for( int modelId = 0 ; modelId < numModels ; modelId++ ) {
 			const auto bbox = world->sceneRenderer.getModelBoundingBox( modelId );
 
-			ModelDatabase::IdInformation idInformation;
+			ModelDatabase::ModelInformation idInformation;
 
 			{
 				std::string filename = idInformation.name = world->scene.modelNames[ modelId ];
@@ -761,7 +761,9 @@ namespace aop {
 			;
 			idInformation.volume = sizes.prod();
 
+			modelDatabase.modelNameIdMap[ idInformation.name ] = modelId;
 			modelDatabase.informationById.emplace_back( std::move( idInformation ) );
+			
 		}
 
 		debugUI->add( std::make_shared< DebugObjects::ModelDatabase >( this ) );
@@ -772,7 +774,7 @@ namespace aop {
 
 		const auto bbox = world->sceneRenderer.getModelBoundingBox( modelId );
 
-		ModelDatabase::IdInformation & idInformation = modelDatabase.informationById[ modelId ];
+		ModelDatabase::ModelInformation & idInformation = modelDatabase.informationById[ modelId ];
 
 		idInformation.voxelResolution = resolution;
 			
@@ -839,7 +841,7 @@ namespace aop {
 		for( int modelId = 0 ; modelId < numModels ; modelId++ ) {
 			const int numNonEmpty = ModelDatabase_sampleModel( modelId, resolution );
 
-			ModelDatabase::IdInformation & idInformation = modelDatabase.informationById[ modelId ];
+			ModelDatabase::ModelInformation & idInformation = modelDatabase.informationById[ modelId ];
 
 			totalCounts += idInformation.voxels.getMapping().count;
 			totalNonEmpty += numNonEmpty;

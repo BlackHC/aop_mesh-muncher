@@ -7,12 +7,18 @@
 #include "sgsInterface.h"
 
 struct ModelDatabase {
+	typedef int ModelIndex;
+	typedef std::vector< std::string > ModelGroup;
+	typedef std::vector< int > ModelIndexGroup;
+
+	static const ModelIndex INVALID_MODEL_INDEX = -1;
+
 	struct ImportInterface {
 		struct Tag {};
 		virtual void sampleModel( int modelId, float resolution, Tag = Tag() ) = 0;
 	};
 
-	struct IdInformation {
+	struct ModelInformation {
 		std::string name;
 		std::string shortName;
 
@@ -26,7 +32,7 @@ struct ModelDatabase {
 		Probes probes;
 		VoxelizedModel::Voxels voxels;
 
-		IdInformation()
+		ModelInformation()
 			: name()
 			, shortName()
 			, volume()
@@ -38,7 +44,7 @@ struct ModelDatabase {
 		{}
 
 		// TODO: add move semantics [10/13/2012 kirschan2]
-		IdInformation( IdInformation &&other )
+		ModelInformation( ModelInformation &&other )
 			: name( std::move( other.name ) )
 			, shortName( std::move( other.shortName ) )
 			, volume( std::move( other.volume ) )
@@ -49,7 +55,7 @@ struct ModelDatabase {
 			, voxels( std::move( other.voxels ) )
 		{}
 
-		IdInformation & operator = ( IdInformation &&other ) {
+		ModelInformation & operator = ( ModelInformation &&other ) {
 			name = std::move( other.name );
 			shortName = std::move( other.shortName );
 			volume = std::move( other.volume );
@@ -65,11 +71,11 @@ struct ModelDatabase {
 
 	ImportInterface *importInterface;
 
-	std::vector< IdInformation > informationById;
+	std::vector< ModelInformation > informationById;
 
 	ModelDatabase( ImportInterface *importInterface ) : importInterface( importInterface ) {}
 
-	const IdInformation::Probes & getProbes( int modelId, float resolution ) {
+	const ModelInformation::Probes & getProbes( int modelId, float resolution ) {
 		auto &model = informationById[ modelId ];
 
 		if( model.voxelResolution != resolution ) {
@@ -82,4 +88,57 @@ struct ModelDatabase {
 	// see candidateFinderCache.cpp
 	bool load( const char *filename );
 	void store( const char *filename );
+
+#if 0
+	void registerModel( int modelIndex, IdInformation &&informationById );
+#endif
+
+	//////////////////////////////////////////////////////////////////////////
+	// TODO: move this into an idConverter class? [10/15/2012 kirschan2]
+	std::map< std::string, ModelIndex > modelNameIdMap;
+		
+	ModelIndex convertToModelIndex( const std::string &name ) {
+		auto it = modelNameIdMap.find( name );
+		if( it != modelNameIdMap.end() ) {
+			return it->second;
+		}
+		return INVALID_MODEL_INDEX;
+	}
+
+	ModelIndexGroup convertToModelIndices( const ModelGroup &group ) {
+		ModelIndexGroup converted;
+		converted.reserve( group.size() );
+		
+		for( auto modelName = group.begin() ; modelName != group.end() ; ++modelName ) {
+			ModelIndex modelIndex = convertToModelIndex( *modelName );
+			if( modelIndex != INVALID_MODEL_INDEX ) {
+				converted.push_back( modelIndex );
+			}
+		}
+
+		return converted;
+	}
+
+	std::string convertToModelName( ModelIndex modelIndex ) {
+		if( modelIndex >= informationById.size() ) {
+			return std::string();
+		}
+
+		return informationById[ modelIndex ].name;
+	}
+
+	ModelGroup convertToModelGroup( const ModelIndexGroup &indexGroup ) {
+		ModelGroup converted;
+		converted.reserve( indexGroup.size() );
+
+		for( auto modelIndex = indexGroup.begin() ; modelIndex != indexGroup.end() ; ++modelIndex ) {
+			std::string modelName = informationById[ *modelIndex ].name;
+
+			if( !modelName.empty() ) {
+				converted.emplace_back( std::move( modelName ) );
+			}
+		}
+
+		return converted;
+	}
 };

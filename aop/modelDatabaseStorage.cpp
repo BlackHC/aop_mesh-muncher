@@ -18,7 +18,7 @@ namespace Serializer {
 
 SERIALIZER_DEFAULT_EXTERN_IMPL( IndexMapping3<>, (size)(count)(indexToPosition)(positionToIndex) )
 SERIALIZER_DEFAULT_EXTERN_IMPL( VoxelizedModel::Voxels, (mapping)(data) )
-SERIALIZER_DEFAULT_EXTERN_IMPL( ModelDatabase::IdInformation, (name)(shortName)(volume)(area)(diagonalLength)(probes)(voxels) )
+SERIALIZER_DEFAULT_EXTERN_IMPL( ModelDatabase::ModelInformation, (name)(shortName)(volume)(area)(diagonalLength)(probes)(voxels) )
 
 SERIALIZER_ENABLE_RAW_MODE_EXTERN( SGSInterface::Probe );
 SERIALIZER_ENABLE_RAW_MODE_EXTERN( VoxelizedModel::NormalOverdraw4ub );
