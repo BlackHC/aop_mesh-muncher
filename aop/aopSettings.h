@@ -42,9 +42,18 @@ namespace aop {
 		std::vector<NamedTargetVolume> volumes;
 		std::vector<NamedModelGroup> modelGroups;
 
-		float neighborhoodQueryTolerance;
+		float neighborhoodDatabase_queryTolerance;
+		float neighborhoodDatabase_maxDistance;
 
-		Settings() : neighborhoodQueryTolerance( 1.0 ) {}
+		float probeGenerator_maxDistance;
+		float probeGenerator_resolution;
+
+		Settings() 
+			: neighborhoodDatabase_queryTolerance( 1.0 )
+			, neighborhoodDatabase_maxDistance( 150.0 )
+			, probeGenerator_maxDistance( 5.0 )
+			, probeGenerator_resolution( 0.25 ) 
+		{}
 
 		void load();
 		void store() const;

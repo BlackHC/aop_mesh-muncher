@@ -26,8 +26,9 @@ __device__ __inline__ char3 make_Lab(const float3& floatLab)
 						static_cast<signed char>(floatLab.z) ); /* b */
 }
 
-rtDeclareVariable(uint, probeIndex, rtLaunchIndex, );
-rtDeclareVariable(uint, numProbes, rtLaunchDim, );
+rtDeclareVariable( uint, probeIndex, rtLaunchIndex, );
+rtDeclareVariable( uint, numProbes, rtLaunchDim, );
+rtDeclareVariable( uint, sampleOffset, , );
 
 #define numHemisphereSamples 39939
 rtBuffer<float3> hemisphereSamples;
@@ -42,7 +43,13 @@ RT_PROGRAM void sampleProbes() {
 
 	//rtPrintf( "%f", dot( onb.m_normal, cross( onb.m_tangent, onb.m_binormal ) ) );
 
-	int sampleStartIndex = numProbeSamples * probeIndex + numProbes * 521;
+	uint sampleStartIndex = 
+			sampleOffset * numProbes * numProbeSamples 
+		+ 
+			numProbeSamples * probeIndex 
+		+ 
+			numProbes * 1979
+	;
 
 	float distance = 0.0f;
 	float3 color = make_float3( 0.0f );

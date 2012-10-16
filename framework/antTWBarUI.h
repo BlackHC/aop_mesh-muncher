@@ -614,6 +614,10 @@ namespace AntTWBarUI {
 		struct Quat4f {
 			float coeffs[4];
 		};
+
+		struct Color3f {
+			float r,g,b;
+		};
 	}
 
 	namespace detail {
@@ -689,6 +693,13 @@ namespace AntTWBarUI {
 		struct TypeMap< Types::Quat4f > {
 			enum {
 				Type = TW_TYPE_QUAT4F
+			};
+		};
+
+		template<>
+		struct TypeMap< Types::Color3f > {
+			enum {
+				Type = TW_TYPE_COLOR3F
 			};
 		};
 	}
@@ -870,6 +881,10 @@ namespace AntTWBarUI {
 		};
 		struct SetContainerName : Default {
 			static const bool setContainerName = true;
+		};
+		template< int _forcedType >
+		struct ForcedType : Default {
+			static const bool forcedType = _forcedType;
 		};
 	}
 

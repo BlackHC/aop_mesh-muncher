@@ -48,11 +48,12 @@ void visualizeColorGrid( const VoxelizedModel::Voxels &grid, GridVisualizationMo
 	DebugRender::end();
 }
 
-void visualizeProbeDataset( float resolution, const std::vector< SortedProbeDataset::Probe > &probes, const std::vector< SortedProbeDataset::ProbeContext > &probeContexts, ProbeVisualizationMode pvm ) {
+void visualizeProbeDataset( const Eigen::Vector3f &skyColor, float maxDistance, float resolution, const std::vector< SortedProbeDataset::Probe > &probes, const std::vector< SortedProbeDataset::ProbeContext > &probeContexts, ProbeVisualizationMode pvm ) {
 	using namespace Eigen;
 
-	const float directionDistance = 0.5 * resolution;
-	const float radius = 0.25 * resolution;
+	// sin and cos of 22.5°
+	const float directionDistance = 0.92387953251 * 0.5 * resolution;
+	const float radius = 0.38268343236 * 0.5 * resolution ;
 
 	DebugRender::begin();
 	for( auto probeContext = probeContexts.begin() ; probeContext != probeContexts.end() ; ++probeContext ) {
@@ -66,27 +67,35 @@ void visualizeProbeDataset( float resolution, const std::vector< SortedProbeData
 		const Eigen::Vector3f axis1 = direction.unitOrthogonal();
 		const Eigen::Vector3f axis2 = direction.cross( axis1 );
 
-		DebugRender::setColor( 
-			map( 
-				OptixProgramInterface::CIELAB::toRGB( 
-					optix::make_float3( probeContext->Lab.x, probeContext->Lab.y, probeContext->Lab.z )
-				) 
-			) 
-		);
-#if 0
-		DebugRender::setColor( 
-			map( 
-				float( probeContext->hitCounter ) / OptixProgramInterface::numProbeSamples * Vector3f::Constant( 1.0 );
-			) 
-		);
+		const float occlusionFactor = float( probeContext->hitCounter ) / OptixProgramInterface::numProbeSamples;
 
-		DebugRender::setColor( 
-			map( 
-				float( probeContext->hitCounter ) / OptixProgramInterface::numProbeSamples * Vector3f::Constant( 1.0 );
-			) 
-		);
-#endif 
-
+		switch( pvm ) {
+		case PVM_COLOR:
+			DebugRender::setColor( 
+						map( OptixProgramInterface::CIELAB::toRGB( 
+								optix::make_float3( probeContext->Lab.x, probeContext->Lab.y, probeContext->Lab.z )
+						) )
+					*
+						occlusionFactor
+				+
+					(1.0 - occlusionFactor) * skyColor
+			);
+			break;
+		case PVM_OCCLUSION:
+			DebugRender::setColor( 
+				(1.0 - occlusionFactor) * Vector3f::Constant( 1.0 )
+			);
+			break;
+		case PVM_DISTANCE:
+			if( occlusionFactor > 0 ) {
+				DebugRender::setColor( probeContext->distance / maxDistance * Vector3f::Constant( 1.0 )	);
+			}
+			else {
+				DebugRender::setColor( skyColor );
+			}
+			break;
+		}
+		
 		// draw the probe
 		DebugRender::drawEllipse( radius, false, 20, axis1, axis2 );
 	}

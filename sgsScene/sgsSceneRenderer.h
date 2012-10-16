@@ -258,7 +258,7 @@ struct SGSSceneRenderer {
 	void drawInstance( Instance &instance );
 
 	void resetState();
-	void renderScene( const Eigen::Matrix4f &projectionView, const Eigen::Vector3f &worldViewerPosition, const RenderContext &renderContext );
+	void renderSceneView( const Eigen::Matrix4f &projectionView, const Eigen::Vector3f &worldViewerPosition, const RenderContext &renderContext );
 
 	// renders a model at the origin
 	void renderModel( const Eigen::Vector3f &worldViewerPosition, int modelIndex );
@@ -378,4 +378,11 @@ struct SGSSceneRenderer {
 		return indices;
 	}
 
+	void drawScene( const Eigen::Vector3f &worldViewerPosition, const RenderContext &renderContext, bool wireframe );
+	void buildCompleteDrawLists( const RenderContext &renderContext );
+
+
+	// renders the full scene with no real viewer position and no render context
+	// there is not accurate specular lighting and there is no alpha sorting
+	void renderFullScene( bool wireframe );
 };

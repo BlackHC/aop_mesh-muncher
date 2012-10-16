@@ -22,4 +22,4 @@ enum ProbeVisualizationMode {
 	PVM_MAX
 };
 
-void visualizeProbeDataset( float resolution, const std::vector< SortedProbeDataset::Probe > &probes, const std::vector< SortedProbeDataset::ProbeContext > &probeContexts, ProbeVisualizationMode pvm );
+void visualizeProbeDataset( const Eigen::Vector3f &skyColor, float maxResolution, float resolution, const std::vector< SortedProbeDataset::Probe > &probes, const std::vector< SortedProbeDataset::ProbeContext > &probeContexts, ProbeVisualizationMode pvm );

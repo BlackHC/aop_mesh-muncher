@@ -70,3 +70,23 @@ struct EigenRotationMatrix : AntTWBarUI::SimpleStructureFactory< Eigen::Matrix3f
 		);
 	}
 };
+
+struct EigenColor3fUI : AntTWBarUI::SimpleStructureFactory< Eigen::Vector3f, EigenColor3fUI > {
+	template< typename Accessor >
+	void setup( AntTWBarUI::Container *container, Accessor &accessor ) const {
+		container->add(
+			AntTWBarUI::makeSharedVariable(
+				"",
+				AntTWBarUI::CallbackAccessor< AntTWBarUI::Types::Color3f >(
+					[&] ( AntTWBarUI::Types::Color3f &shadow ) {
+						Eigen::Vector3f::Map( (float*) &shadow ) = accessor.pull();
+					},
+					[&] ( const AntTWBarUI::Types::Color3f &shadow ) {
+						accessor.pull() = Eigen::Vector3f::Map( (float*) &shadow );
+						accessor.push();
+					}
+				)
+			)
+		);
+	}
+};

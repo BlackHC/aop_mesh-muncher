@@ -72,9 +72,6 @@ using namespace Eigen;
 
 #include "visualizations.h"
 
-const float neighborhoodMaxDistance = 100.0;
-// TODO XXX [10/11/2012 kirschan2]
-
 std::weak_ptr<AntTweakBarEventHandler::GlobalScope> AntTweakBarEventHandler::globalScope;
 
 // TODO: reorder the parameters in some consistent way! [10/10/2012 kirschan2]
@@ -84,9 +81,9 @@ void sampleAllNeighbors( float maxDistance, NeighborhoodDatabase &database, SGSI
 	const int numInstances = world.sceneRenderer.getNumInstances();
 
 	for( int instanceIndex = 0 ; instanceIndex < numInstances ; instanceIndex++ ) {
-		auto queryResults = world.sceneGrid.query( 
+		auto queryResults = world.sceneGrid.query(
 			-1,
-			instanceIndex, 
+			instanceIndex,
 			world.sceneRenderer.getInstanceTransformation( instanceIndex ).translation(),
 			maxDistance
 		);
@@ -114,7 +111,7 @@ NeighborhoodDatabase::Query::Results queryVolumeNeighbors( SGSInterface::World *
 
 //////////////////////////////////////////////////////////////////////////
 // V2
-// 
+//
 
 void sampleAllNeighborsV2( float maxDistance, NeighborhoodDatabaseV2 &database, SGSInterface::World &world ) {
 	AUTO_TIMER_FOR_FUNCTION();
@@ -124,9 +121,9 @@ void sampleAllNeighborsV2( float maxDistance, NeighborhoodDatabaseV2 &database, 
 	const int numInstances = world.sceneRenderer.getNumInstances();
 
 	for( int instanceIndex = 0 ; instanceIndex < numInstances ; instanceIndex++ ) {
-		auto queryResults = world.sceneGrid.query( 
+		auto queryResults = world.sceneGrid.query(
 			-1,
-			instanceIndex, 
+			instanceIndex,
 			world.sceneRenderer.getInstanceTransformation( instanceIndex ).translation(),
 			maxDistance
 		);
@@ -255,9 +252,12 @@ namespace DebugObjects {
 
 		AntTWBarUI::SimpleContainer container;
 
+		bool visible;
+
 		SceneDisplayListObject( const std::string &name, GL::DisplayList &displayList )
 			: container( AntTWBarUI::CT_GROUP, name )
 			, displayList( displayList )
+			, visible( true )
 		{
 			init();
 		}
@@ -267,6 +267,7 @@ namespace DebugObjects {
 		}
 
 		void init() {
+			container.add( AntTWBarUI::makeSharedVariable( "Visible", AntTWBarUI::makeReferenceAccessor( visible ) ) );
 			container.add( AntTWBarUI::makeSharedButton( "Remove",
 				[&] () {
 					debugUI->remove( this );
@@ -279,11 +280,13 @@ namespace DebugObjects {
 		}
 
 		virtual AntTWBarUI::Element::SPtr getUI( Tag ) {
-			return make_nonallocated_shared( container );	
+			return make_nonallocated_shared( container );
 		}
 
 		virtual void renderScene( Tag ) {
-			displayList.call();
+			if( visible ) {
+				displayList.call();
+			}
 		}
 	};
 
@@ -294,24 +297,24 @@ namespace DebugObjects {
 
 		AntTWBarUI::SimpleContainer container;
 
-		SGSRenderer( Application *application ) : container( AntTWBarUI::CT_EMBEDDED ), application( application ) {
+		SGSRenderer( Application *application ) : container( "SGSSceneRenderer" ), application( application ) {
 			init();
 		}
 
 		void init() {
-			container.add( AntTWBarUI::makeSharedVariable( 
+			container.add( AntTWBarUI::makeSharedVariable(
 				"Show scene as wireframe",
 				AntTWBarUI::makeReferenceAccessor( application->world->sceneRenderer.debug.showSceneWireframe )
 			) );
-			container.add( AntTWBarUI::makeSharedVariable( 
+			container.add( AntTWBarUI::makeSharedVariable(
 				"Show bounding boxes",
 				AntTWBarUI::makeReferenceAccessor( application->world->sceneRenderer.debug.showBoundingSpheres )
 			) );
-			container.add( AntTWBarUI::makeSharedVariable( 
+			container.add( AntTWBarUI::makeSharedVariable(
 				"Show terrain bounding boxes",
 				AntTWBarUI::makeReferenceAccessor( application->world->sceneRenderer.debug.showTerrainBoundingSpheres )
 			) );
-			container.add( AntTWBarUI::makeSharedVariable( 
+			container.add( AntTWBarUI::makeSharedVariable(
 				"Update render lists",
 				AntTWBarUI::makeReferenceAccessor( application->world->sceneRenderer.debug.updateRenderLists )
 			) );
@@ -323,7 +326,220 @@ namespace DebugObjects {
 		}
 
 		virtual AntTWBarUI::Element::SPtr getUI( Tag ) {
-			return make_nonallocated_shared( container );	
+			return make_nonallocated_shared( container );
+		}
+
+		virtual void renderScene( Tag ) {
+		}
+	};
+
+	struct ProbeDatabase : IDebugObject {
+		Application *application;
+
+		DebugUI *debugUI;
+
+		AntTWBarUI::SimpleContainer container;
+
+		Vector3f skyColor;
+
+		ProbeDatabase( Application *application ) 
+			: container( "Probe database" )
+			, application( application )
+			, skyColor( 0.5, 1.0, 0.5 )
+		{
+			init();
+		}
+
+		void visualizeModel( int modelIndex, ProbeVisualizationMode pvm ) {
+			if( application->probeDatabase.isEmpty( modelIndex ) ) {
+				return;
+			}
+
+			// TODO: add an instanceIndex member to each instance in ProbeDatabase [10/16/2012 kirschan2]
+			const auto instanceIndices = application->world->sceneRenderer.getModelInstances( modelIndex );
+			int counter = 0;
+			for( auto instanceIndex = instanceIndices.begin() ; instanceIndex != instanceIndices.end() ; ++instanceIndex, ++counter ) {
+				const auto transformation = application->world->sceneRenderer.getInstanceTransformation( *instanceIndex );
+
+				DebugRender::setTransformation( transformation );
+				DebugRender::startLocalTransform();
+				visualizeProbeDataset(
+					skyColor,
+					application->settings.probeGenerator_maxDistance,
+					application->settings.probeGenerator_resolution,
+					application->probeDatabase.getIdDatasets()[ modelIndex ].getProbes(),
+					application->probeDatabase.getIdDatasets()[ modelIndex ].getInstances()[ counter ].getProbeContexts(),
+					pvm
+				);
+				DebugRender::endLocalTransform();
+			}
+		}
+
+		void visualizeAll( ProbeVisualizationMode pvm ) {
+			DebugRender::begin();
+
+			const int numIds = application->probeDatabase.getNumIdDatasets();
+			for( int modelIndex = 0 ; modelIndex < numIds ; ++modelIndex ) {
+				visualizeModel( modelIndex, pvm );
+			}
+
+			DebugRender::end();
+		}
+
+		void addVisualization( ProbeVisualizationMode pvm, const std::string &name ) {
+			GL::ScopedDisplayList list;
+			list.begin();
+
+			visualizeAll( pvm );
+
+			list.end();
+
+			debugUI->add(
+				std::make_shared< DebugObjects::SceneDisplayListObject >( name, list.publish() )
+			);
+		}
+
+		void standaloneVisualization( const std::string &name ) {
+			auto window = std::make_shared< MultiDisplayListVisualizationWindow >();
+			// render the scene as wireframe
+			{
+				auto &modelVisualization = window->visualizations[0];
+				modelVisualization.name = "scene (wireframe)";
+				window->makeVisible( 0 );
+				modelVisualization.displayList.create();
+				modelVisualization.displayList.begin();
+				application->world->sceneRenderer.renderFullScene( true );
+				modelVisualization.displayList.end();
+			}
+			// render the scene
+			{
+				auto &modelVisualization = window->visualizations[9];
+				modelVisualization.name = "scene (normal)";
+				modelVisualization.displayList.create();
+				modelVisualization.displayList.begin();
+				application->world->sceneRenderer.renderFullScene( false );
+				modelVisualization.displayList.end();
+			}
+			// render the samples using position colors
+			{
+				auto &probeVisualization = window->visualizations[1];
+				probeVisualization.name = "color samples";
+				probeVisualization.displayList.create();
+				probeVisualization.displayList.begin();
+				visualizeAll( PVM_COLOR );
+				probeVisualization.displayList.end();
+			}
+			// render the samples using hits
+			{
+				auto &probeVisualization = window->visualizations[2];
+				probeVisualization.name = "occlusion samples";
+				probeVisualization.displayList.create();
+				probeVisualization.displayList.begin();
+				visualizeAll( PVM_OCCLUSION );
+				probeVisualization.displayList.end();
+			}
+			// render the samples using hits
+			{
+				auto &probeVisualization = window->visualizations[3];
+				probeVisualization.name = "distance samples";
+				probeVisualization.displayList.create();
+				probeVisualization.displayList.begin();
+				visualizeAll( PVM_DISTANCE );
+				probeVisualization.displayList.end();
+			}
+
+			window->keyLogics[1].disableMask = window->keyLogics[2].disableMask = window->keyLogics[3].disableMask = 2+4+8;
+			window->keyLogics[0].disableMask = window->keyLogics[9].disableMask = 512 + 1;
+
+			window->init( name );
+
+			application->debugWindowManager.add( window );
+		}
+
+		void visualizeMaxDistance() {
+			GL::ScopedDisplayList list;
+			list.begin();
+
+			DebugRender::begin();
+			DebugRender::setColor( Vector3f( 1.0, 1.0, 0.0 ) );
+
+			const int numIds = application->probeDatabase.getNumIdDatasets();
+			for( int modelIndex = 0 ; modelIndex < numIds ; ++modelIndex ) {
+				if( application->probeDatabase.isEmpty( modelIndex ) ) {
+					continue;
+				}
+
+				// TODO: add an instanceIndex member to each instance in ProbeDatabase [10/16/2012 kirschan2]
+				const auto instanceIndices = application->world->sceneRenderer.getModelInstances( modelIndex );
+				for( auto instanceIndex = instanceIndices.begin() ; instanceIndex != instanceIndices.end() ; ++instanceIndex ) {
+					const auto transformation = application->world->sceneRenderer.getInstanceTransformation( *instanceIndex );
+
+					DebugRender::setPosition( transformation.translation() );
+					DebugRender::drawAbstractSphere( application->settings.probeGenerator_maxDistance );
+				}
+			}
+
+			DebugRender::end();
+
+			list.end();
+
+			debugUI->add(
+				std::make_shared< DebugObjects::SceneDisplayListObject >( "ProbeGenerator maxDistance", list.publish() )
+			);
+		}
+
+		void init() {
+			container.add( AntTWBarUI::makeSharedButton(
+				"Max distance for all sampled instances",
+				[&] () {
+					visualizeMaxDistance();
+				}
+			) );
+
+			/*container.add( AntTWBarUI::makeSharedVariableWithConfig<AntTWBarUI::VariableConfigs::ForcedType< TW_TYPE_COLOR3F >(
+				"Sky color replacement",
+				makeReferenceAccessor<float*>( &skyColor[0] )
+			) );*/
+			container.add( EigenColor3fUI().makeShared( 
+				AntTWBarUI::makeReferenceAccessor( skyColor ),
+				AntTWBarUI::CT_GROUP,
+				"Sky color replacement"
+			) );
+
+			container.add( AntTWBarUI::makeSharedButton(
+				"color for all sampled instances",
+				[&] () {
+					addVisualization( PVM_COLOR, "Probe database (Color)" );
+				}
+			) );
+			container.add( AntTWBarUI::makeSharedButton(
+				"occlusion for all sampled instances",
+				[&] () {
+					addVisualization( PVM_OCCLUSION, "Probe database (Occlusion)" );
+				}
+			) );
+			container.add( AntTWBarUI::makeSharedButton(
+				"distance for all sampled instances",
+				[&] () {
+					addVisualization( PVM_DISTANCE, "Probe database (Distance)" );
+				}
+			) );
+			container.add( AntTWBarUI::makeSharedSeparator() );
+			container.add( AntTWBarUI::makeSharedButton(
+				"standalone visualization",
+				[&] () {
+					standaloneVisualization( "Probe database" );
+				}
+			) );
+		}
+
+		// TODO: maybe make this just a normal member of IDebugObject?
+		virtual void link( DebugUI *debugUI, Tag ) {
+			this->debugUI = debugUI;
+		}
+
+		virtual AntTWBarUI::Element::SPtr getUI( Tag ) {
+			return make_nonallocated_shared( container );
 		}
 
 		virtual void renderScene( Tag ) {
@@ -337,12 +553,12 @@ namespace DebugObjects {
 
 		AntTWBarUI::SimpleContainer container;
 
-		OptixView( Application *application ) : container( AntTWBarUI::CT_EMBEDDED ), application( application ) {
+		OptixView( Application *application ) : container( "Optix" ), application( application ) {
 			init();
 		}
 
 		void init() {
-			container.add( AntTWBarUI::makeSharedButton( 
+			container.add( AntTWBarUI::makeSharedButton(
 				"Create optix view window",
 				[&] () {
 					auto window = std::make_shared< TextureVisualizationWindow >();
@@ -350,10 +566,10 @@ namespace DebugObjects {
 					window->texture = application->world->optixRenderer.debugTexture;
 					application->debugWindowManager.add( window );
 
-					application->renderOptixView = true;					
+					application->renderOptixView = true;
 				}
 			) );
-			container.add( AntTWBarUI::makeSharedVariable( 
+			container.add( AntTWBarUI::makeSharedVariable(
 				"Update optix view",
 				AntTWBarUI::makeReferenceAccessor( application->renderOptixView )
 			) );
@@ -365,7 +581,7 @@ namespace DebugObjects {
 		}
 
 		virtual AntTWBarUI::Element::SPtr getUI( Tag ) {
-			return make_nonallocated_shared( container );	
+			return make_nonallocated_shared( container );
 		}
 
 		virtual void renderScene( Tag ) {
@@ -379,24 +595,22 @@ namespace DebugObjects {
 
 		AntTWBarUI::SimpleContainer container;
 
-		ModelDatabase( Application *application ) : container( AntTWBarUI::CT_GROUP ), application( application ) {
+		ModelDatabase( Application *application ) : container( AntTWBarUI::CT_GROUP, "ModelDatabase" ), application( application ) {
 			init();
 		}
 
 		void init() {
 			container.setName( "Model Database" );
 			for( int modelIndex = 0 ; modelIndex < application->modelDatabase.informationById.size() ; modelIndex++ ) {
-				container.add( AntTWBarUI::makeSharedButton( 
+				container.add( AntTWBarUI::makeSharedButton(
 					application->modelDatabase.informationById[ modelIndex ].shortName,
 					[&, modelIndex] () {
-						auto window = std::make_shared< MultiDisplayListVisualizationWindow >();
-						
 						const auto &modelInformation = application->modelDatabase.informationById[ modelIndex ];
 
 						// TODO: it would be nice to add this as rendered displaylist to the debug viz window [10/16/2012 kirschan2]
 						// display some debug output
-						log( 
-							boost::format( 
+						log(
+							boost::format(
 								"Model information %i '%s':\n"
 								"\tvolume: %f\n"
 								"\tarea: %f\n"
@@ -411,6 +625,7 @@ namespace DebugObjects {
 							% modelInformation.voxelResolution
 						);
 
+						auto window = std::make_shared< MultiDisplayListVisualizationWindow >();
 						// render the object
 						{
 							auto &modelVisualization = window->visualizations[0];
@@ -454,7 +669,7 @@ namespace DebugObjects {
 							voxelVisualization.name = "probes";
 							voxelVisualization.displayList.create();
 							voxelVisualization.displayList.begin();
-							visualizeProbes( 
+							visualizeProbes(
 								modelInformation.voxels.getMapping().getResolution(),
 								modelInformation.probes
 							);
@@ -496,13 +711,13 @@ namespace aop {
 			ProbeDatabaseUI *probeDatabaseUI;
 
 			DatasetView( ProbeDatabaseUI *probeDatabaseUI )
-				: probeDatabaseUI( probeDatabaseUI ) 
+				: probeDatabaseUI( probeDatabaseUI )
 			{
 			}
 
 			template< typename ElementAccessor >
 			void setup( AntTWBarUI::Container *container, ElementAccessor &accessor ) const {
-				container->add( AntTWBarUI::makeSharedLabel( 
+				container->add( AntTWBarUI::makeSharedLabel(
 					AntTWBarUI::makeExpressionAccessor<std::string>(
 						[&] () -> std::string {
 							return probeDatabaseUI->application->modelDatabase.informationById[ accessor.elementIndex ].shortName;
@@ -513,7 +728,7 @@ namespace aop {
 					AntTWBarUI::CallbackAccessor<int>(
 						[&] ( int &shadow ) {
 							shadow = probeDatabaseUI->application->probeDatabase.getIdDatasets()[ accessor.]
-						} 
+						}
 					)
 				) );
 			}
@@ -546,9 +761,9 @@ namespace aop {
 			ui.add( AntTWBarUI::makeSharedButton( "Load", [&] () { application->modelDatabase.load( "modelDatabase" ); } ) );
 			ui.add( AntTWBarUI::makeSharedButton( "Store", [&] () { application->modelDatabase.store( "modelDatabase" ); } ) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
-			ui.add( AntTWBarUI::makeSharedButton( "Sample models", [&] { 
+			ui.add( AntTWBarUI::makeSharedButton( "Sample models", [&] {
 				application->startLongOperation();
-				application->ModelDatabase_sampleAll(); 
+				application->ModelDatabase_sampleAll();
 				application->endLongOperation();
 			} ) );
 			ui.link();
@@ -559,8 +774,6 @@ namespace aop {
 		}
 	};
 }
-
-const float probeResolution = 0.25;
 
 namespace aop {
 	struct Application::NamedVolumesEditorView : Editor::Volumes {
@@ -604,54 +817,13 @@ namespace aop {
 					application->sampleInstances( *modelIndex );
 					progressTracker.markFinished();
 				}
-				
+
 				application->probeDatabase.integrateDatasets();
 				progressTracker.markFinished();
 
 				application->endLongOperation();
-
-				application->mainWindow.pushGLStates();
-				application->mainWindow.resetGLStates();
-
-				// visualize
-				GL::ScopedDisplayList list;
-				list.begin();
-
-				DebugRender::begin();
-				for( auto modelIndex = modelIndices.begin() ; modelIndex != modelIndices.end() ; ++modelIndex ) {
-					const auto instanceIndices = application->world->sceneRenderer.getModelInstances( *modelIndex );
-
-					if( application->probeDatabase.isEmpty( *modelIndex ) ) {
-						continue;
-					}
-
-					int counter = 0;
-					for( auto instanceIndex = instanceIndices.begin() ; instanceIndex != instanceIndices.end() ; ++instanceIndex, ++counter ) {
-						const auto transformation = application->world->sceneRenderer.getInstanceTransformation( *instanceIndex );
-
-						DebugRender::setTransformation( transformation );
-						DebugRender::startLocalTransform();
-						visualizeProbeDataset(
-							0.25,
-							application->probeDatabase.getIdDatasets()[ *modelIndex ].getProbes(),
-							application->probeDatabase.getIdDatasets()[ *modelIndex ].getInstances()[ counter ].getProbeContexts(),
-							PVM_COLOR
-						);
-						DebugRender::endLocalTransform();
-					}
-				}
-				DebugRender::end();
-
-				list.end();
-
-				application->mainWindow.popGLStates();
-
-				application->debugUI->add(
-					std::make_shared< DebugObjects::SceneDisplayListObject >( "Probe database datasets", list.publish() )
-				);
 			} ) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
-			ui.add( AntTWBarUI::makeSharedVariable( "Query tolerance", AntTWBarUI::makeReferenceAccessor( application->settings.neighborhoodQueryTolerance ) ) );
 			ui.add( AntTWBarUI::makeSharedButton( "Query volume", [this] () {
 				struct QueryVolumeVisitor : Editor::SelectionVisitor {
 					Application *application;
@@ -667,7 +839,7 @@ namespace aop {
 						application->endLongOperation();
 
 						typedef ProbeDatabase::Query::MatchInfo MatchInfo;
-						boost::sort( 
+						boost::sort(
 							matchInfos,
 							[] (const MatchInfo &a, MatchInfo &b ) {
 								return a.score > b.score;
@@ -676,7 +848,7 @@ namespace aop {
 
 						std::vector<int> modelIndices;
 						for( auto matchInfo = matchInfos.begin() ; matchInfo != matchInfos.end() ; ++matchInfo ) {
-							modelIndices.push_back( matchInfo->id );	
+							modelIndices.push_back( matchInfo->id );
 						}
 
 						application->candidateSidebarUI->clear();
@@ -700,7 +872,7 @@ namespace aop {
 						application->endLongOperation();
 
 						typedef ProbeDatabase::WeightedQuery::MatchInfo MatchInfo;
-						boost::sort( 
+						boost::sort(
 							matchInfos,
 							[] (const MatchInfo &a, MatchInfo &b ) {
 								return a.score > b.score;
@@ -719,6 +891,7 @@ namespace aop {
 				QueryVolumeVisitor( application ).dispatch( application->editor.selection );
 			} ) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
+			ui.add( AntTWBarUI::makeSharedVariable( "Query tolerance", AntTWBarUI::makeReferenceAccessor( application->settings.neighborhoodDatabase_queryTolerance ) ) );
 			ui.add( AntTWBarUI::makeSharedButton( "Query neighbors", [this] () {
 				struct QueryNeighborsVisitor : Editor::SelectionVisitor {
 					Application *application;
@@ -734,14 +907,14 @@ namespace aop {
 							application->world.get(),
 							application->neighborDatabase,
 							selection->getObb().transformation.translation(),
-							neighborhoodMaxDistance,
-							application->settings.neighborhoodQueryTolerance
+							application->settings.neighborhoodDatabase_maxDistance,
+							application->settings.neighborhoodDatabase_queryTolerance
 						);
 						application->endLongOperation();
 
 						std::vector<int> modelIndices;
 						for( auto queryResult = queryResults.begin() ; queryResult != queryResults.end() ; ++queryResult ) {
-							modelIndices.push_back( queryResult->second );	
+							modelIndices.push_back( queryResult->second );
 						}
 
 						application->candidateSidebarUI->clear();
@@ -765,14 +938,14 @@ namespace aop {
 							application->world.get(),
 							application->neighborDatabaseV2,
 							selection->getObb().transformation.translation(),
-							neighborhoodMaxDistance, 
-							application->settings.neighborhoodQueryTolerance
+							application->settings.neighborhoodDatabase_maxDistance,
+							application->settings.neighborhoodDatabase_queryTolerance
 						);
 						application->endLongOperation();
 
 						std::vector<int> modelIndices;
 						for( auto queryResult = queryResults.begin() ; queryResult != queryResults.end() ; ++queryResult ) {
-							modelIndices.push_back( queryResult->second );	
+							modelIndices.push_back( queryResult->second );
 						}
 
 						application->candidateSidebarUI->clear();
@@ -797,7 +970,7 @@ namespace aop {
 						application->endLongOperation();
 
 						/*typedef ProbeDatabase::WeightedQuery::MatchInfo MatchInfo;
-						boost::sort( 
+						boost::sort(
 							matchInfos,
 							[] (const MatchInfo &a, MatchInfo &b ) {
 								return a.score > b.score;
@@ -809,14 +982,14 @@ namespace aop {
 							application->world.get(),
 							application->neighborDatabaseV2,
 							selection->getObb().transformation.translation(),
-							neighborhoodMaxDistance, 
-							application->settings.neighborhoodQueryTolerance
+							application->settings.neighborhoodDatabase_maxDistance,
+							application->settings.neighborhoodDatabase_queryTolerance
 						);
 						application->endLongOperation();
-						
+
 						std::vector< std::pair< float, int > > scores( application->modelDatabase.informationById.size() );
-						
-						// merge both results						
+
+						// merge both results
 						for( auto matchInfo = matchInfos.begin() ; matchInfo != matchInfos.end() ; ++matchInfo ) {
 							scores[ matchInfo->id ] = std::make_pair( matchInfo->score, matchInfo->id );
 						}
@@ -831,7 +1004,7 @@ namespace aop {
 
 						std::vector<int> modelIndices;
 						for( auto score = scores.begin() ; score != scores.end() ; ++score ) {
-							modelIndices.push_back( score->second );	
+							modelIndices.push_back( score->second );
 						}
 
 						application->candidateSidebarUI->clear();
@@ -866,16 +1039,17 @@ namespace aop {
 		cameraViewsUI.reset( new CameraViewsUI( this ) );
 		targetVolumesUI.reset( new TargetVolumesUI( this ) );
 		modelTypesUI.reset( new ModelTypesUI( this ) );
-	
+
 		modelDatabaseUI = std::make_shared< ModelDatabaseUI >( this );
 
 		candidateSidebarUI = createCandidateSidebarUI( this );
-		
+
 		// init the debug ui
 		debugUI = std::make_shared< DebugUI >();
 
 		// add some default objects to the debug ui
 		debugUI->add( std::make_shared< DebugObjects::SGSRenderer >( this ) );
+		debugUI->add( std::make_shared< DebugObjects::ProbeDatabase >( this ) );
 		debugUI->add( std::make_shared< DebugObjects::OptixView >( this ) );
 	}
 
@@ -934,12 +1108,12 @@ namespace aop {
 
 			modelDatabase.modelNameIdMap[ idInformation.name ] = modelId;
 			modelDatabase.informationById.emplace_back( std::move( idInformation ) );
-			
+
 		}
 
 		debugUI->add( std::make_shared< DebugObjects::ModelDatabase >( this ) );
 	}
-	
+
 	int Application::ModelDatabase_sampleModel( int modelId, float resolution ) {
 		AUTO_TIMER( boost::format( "model %i") % modelId );
 
@@ -948,7 +1122,7 @@ namespace aop {
 		ModelDatabase::ModelInformation & idInformation = modelDatabase.informationById[ modelId ];
 
 		idInformation.voxelResolution = resolution;
-			
+
 		const auto &voxels = idInformation.voxels = AUTO_TIME( world->sceneRenderer.voxelizeModel( modelId, resolution ), "voxelizing");
 
 		auto &probes = idInformation.probes;
@@ -983,11 +1157,11 @@ namespace aop {
 
 		const int count = voxels.getMapping().count;
 
-		log( boost::format( 
-			"Ratio %f = %i / %i (% i probes)" ) 
-			% (float( numNonEmpty ) / count) 
-			% numNonEmpty 
-			% voxels.getMapping().count 
+		log( boost::format(
+			"Ratio %f = %i / %i (% i probes)" )
+			% (float( numNonEmpty ) / count)
+			% numNonEmpty
+			% voxels.getMapping().count
 			% probes.size()
 		);
 
@@ -1003,14 +1177,12 @@ namespace aop {
 
 		ProgressTracker::Context progressTracker( numModels );
 
-		const float resolution = 0.25;
-
 		int totalNonEmpty = 0;
 		int totalCounts = 0;
 		int totalProbes = 0;
 
 		for( int modelId = 0 ; modelId < numModels ; modelId++ ) {
-			const int numNonEmpty = ModelDatabase_sampleModel( modelId, resolution );
+			const int numNonEmpty = ModelDatabase_sampleModel( modelId, settings.probeGenerator_resolution );
 
 			ModelDatabase::ModelInformation & idInformation = modelDatabase.informationById[ modelId ];
 
@@ -1021,10 +1193,10 @@ namespace aop {
 			progressTracker.markFinished();
 		}
 
-		log( boost::format( 
-			"Total ratio %f = %i / %i (%i probes in total)" ) 
-			% (float( totalNonEmpty ) / totalCounts) 
-			% totalNonEmpty 
+		log( boost::format(
+			"Total ratio %f = %i / %i (%i probes in total)" )
+			% (float( totalNonEmpty ) / totalCounts)
+			% totalNonEmpty
 			% totalCounts
 			% totalProbes
 		);
@@ -1034,7 +1206,7 @@ namespace aop {
 		AUTO_TIMER_FOR_FUNCTION();
 		log( boost::format( "sampling model %i" ) % modelIndex );
 
-		const auto &probes = modelDatabase.getProbes( modelIndex, probeResolution );
+		const auto &probes = modelDatabase.getProbes( modelIndex, settings.probeGenerator_resolution );
 		if( probes.empty() ) {
 			logError( boost::format( "empty model %i: '%s'!" ) % modelIndex % modelDatabase.informationById[ modelIndex ].shortName );
 			return;
@@ -1052,8 +1224,6 @@ namespace aop {
 
 		for( int i = 0 ; i < instanceIndices.size() ; i++ ) {
 			const int instanceIndex = instanceIndices[ i ];
-			
-			
 
 			std::vector<SGSInterface::Probe> transformedProbes;
 			{
@@ -1067,7 +1237,7 @@ namespace aop {
 
 			AUTO_TIMER_BLOCK( boost::str( boost::format( "sampling probe batch with %i probes for instance %i" ) % probes.size() % instanceIndex ) ) {
 				renderContext.disabledInstanceIndex = instanceIndex;
-				world->optixRenderer.sampleProbes( transformedProbes, rawDataset, renderContext );
+				world->optixRenderer.sampleProbes( transformedProbes, rawDataset, renderContext, settings.probeGenerator_maxDistance, instanceIndex );
 			}
 			progressTracker.markFinished();
 
@@ -1090,13 +1260,13 @@ namespace aop {
 
 		std::vector<OptixProgramInterface::Probe> probes;
 
-		ProbeGenerator::generateQueryProbes( queryVolume, probeResolution, probes );
+		ProbeGenerator::generateQueryProbes( queryVolume, settings.probeGenerator_resolution, probes );
 
 		progressTracker.markFinished();
 
 		RawProbeDataset rawDataset;
 		AUTO_TIMER_BLOCK( "sampling scene") {
-			world->optixRenderer.sampleProbes( probes, rawDataset, renderContext );
+			world->optixRenderer.sampleProbes( probes, rawDataset, renderContext, settings.probeGenerator_maxDistance );
 		}
 		progressTracker.markFinished();
 
@@ -1114,14 +1284,14 @@ namespace aop {
 
 		const auto &matchInfos = query.getCandidates();
 		for( auto matchInfo = matchInfos.begin() ; matchInfo != matchInfos.end() ; ++matchInfo ) {
-			log( 
-				boost::format( 
+			log(
+				boost::format(
 					"%i:\tnumMatches %f\n"
 					"\tdbMatchPercentage %f\n"
 					"\tqueryMatchPercentage %f\n"
 					"\tscore %f\n"
-				) 
-				% matchInfo->id 
+				)
+				% matchInfo->id
 				% matchInfo->numMatches
 				% matchInfo->probeMatchPercentage
 				% matchInfo->queryMatchPercentage
@@ -1142,14 +1312,14 @@ namespace aop {
 		renderContext.setDefault();
 
 		std::vector<OptixProgramInterface::Probe> probes;
-		ProbeGenerator::generateQueryProbes( queryVolume, probeResolution, probes );
+		ProbeGenerator::generateQueryProbes( queryVolume, settings.probeGenerator_resolution, probes );
 
 		progressTracker.markFinished();
 
 		RawProbeDataset rawDataset;
 		{
 			AUTO_TIMER_FOR_FUNCTION( "sampling scene");
-			world->optixRenderer.sampleProbes( probes, rawDataset, renderContext );
+			world->optixRenderer.sampleProbes( probes, rawDataset, renderContext, settings.probeGenerator_maxDistance );
 		}
 		progressTracker.markFinished();
 
@@ -1167,14 +1337,14 @@ namespace aop {
 		progressTracker.markFinished();
 
 		for( auto matchInfo = matchInfos.begin() ; matchInfo != matchInfos.end() ; ++matchInfo ) {
-			log( 
-				boost::format( 
+			log(
+				boost::format(
 					"%i:\tnumMatches %f\n"
 					"\tdbMatchPercentage %f\n"
 					"\tqueryMatchPercentage %f\n"
 					"\tscore %f\n"
-				) 
-				% matchInfo->id 
+				)
+				% matchInfo->id
 				% matchInfo->numMatches
 				% matchInfo->probeMatchPercentage
 				% matchInfo->queryMatchPercentage
@@ -1220,8 +1390,8 @@ namespace aop {
 		initSGSInterface();
 
 		// TODO: fix parameter order [10/10/2012 kirschan2]
-		/*sampleAllNeighbors( neighborhoodMaxDistance, neighborDatabase, *world );
-		sampleAllNeighborsV2( neighborhoodMaxDistance, neighborDatabaseV2, *world );*/
+		/*sampleAllNeighbors( application->settings.neighborhoodDatabase_maxDistance, neighborDatabase, *world );
+		sampleAllNeighborsV2( application->settings.neighborhoodDatabase_maxDistance, neighborDatabaseV2, *world );*/
 
 		probeDatabase.reserveIds( world->scene.modelNames.size() );
 
@@ -1310,7 +1480,7 @@ namespace aop {
 			mainWindow.setActive();
 
 			eventSystem.update( frameClock.restart().asSeconds(), clock.getElapsedTime().asSeconds() );
-				
+
 			updateUI();
 
 			timedLog->updateTime( clock.getElapsedTime().asSeconds() );
@@ -1375,7 +1545,7 @@ namespace aop {
 				glEnable( GL_DEPTH_TEST );
 
 				renderDuration.setString( renderTimer.format() );
-				
+
 				mainWindow.pushGLStates();
 				mainWindow.resetGLStates();
 
@@ -1384,7 +1554,7 @@ namespace aop {
 					renderDuration.setPosition( 0.0, windowSize.y - height );
 					mainWindow.draw( renderDuration );
 				}
-				
+
 				timedLog->renderAsNotifications();
 
 				mainWindow.popGLStates();
@@ -1401,7 +1571,7 @@ namespace aop {
 	// TODO: fix this variable hack [10/14/2012 kirschan2]
 	static float lastUpdateTime;
 	void Application::updateProgress() {
-		const float minDuration = 1.0/25.0f; // target fps 
+		const float minDuration = 1.0/25.0f; // target fps
 		const float currentTime = clock.getElapsedTime().asSeconds();
 		if( currentTime - lastUpdateTime < minDuration ) {
 			return;
@@ -1415,14 +1585,14 @@ namespace aop {
 		glClearColor( 0.2, 0.2, 0.2, 1.0 );
 		mainWindow.clear();
 		glClearColor( 0.0, 0.0, 0.0, 0.0 );
-	
+
 		timedLog->updateTime( clock.getElapsedTime().asSeconds() );
 		timedLog->updateText();
 		timedLog->renderAsLog();
 
 		sf::RectangleShape progressBar;
 		progressBar.setPosition( 0.0, windowSize.y * 0.95 );
-		
+
 		const float progressPercentage = ProgressTracker::getProgress();
 		progressBar.setSize( sf::Vector2f( windowSize.x * progressPercentage, windowSize.y * 0.05 ) );
 		progressBar.setFillColor( sf::Color( 100 * progressPercentage, 255, 100 * progressPercentage) );
@@ -1561,7 +1731,7 @@ void main() {
 	memoryStatusEx.dwLength = sizeof( memoryStatusEx );
 	GlobalMemoryStatusEx( &memoryStatusEx );
 
-	std::cout 
+	std::cout
 		<< "Memory info\n"
 		<< "\tMemory load: " << memoryStatusEx.dwMemoryLoad << "%\n"
 		<< "\tTotal physical memory: " << (memoryStatusEx.ullTotalPhys >> 30) << " GB\n"
@@ -1592,7 +1762,7 @@ void main() {
 	}
 
 	if( !AssignProcessToJobObject( jobObject, GetCurrentProcess() ) ) {
-		std::cerr << "Failed to assign the process to its job object! Try to deactivate the application compatibility assistent for Visual Studio 2010!\n";
+		std::cerr << "Failed to assign the process to its job object! Try to deactivate the application compatibility assistant for Visual Studio 2010!\n";
 		return;
 	}
 

@@ -427,18 +427,7 @@ struct Editor : EventDispatcher {
 	};
 	ModeState currentMode;
 
-	Editor()
-		:
-		EventDispatcher( "Editor" ),
-		modes( "Mode" ),
-		dispatcher( "" ),
-		selecting( this, "Select" ),
-		placing( this, "Place" ),
-		moving( this, "Move" ),
-		rotating( this, "Rotate" ),
-		resizing( this, "Resize" ),
-		currentMode( M_FREELOOK )
-	{}
+	Editor();
 
 	void selectMode( ModeState newMode );
 	void validateMode() {

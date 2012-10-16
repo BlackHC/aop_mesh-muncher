@@ -574,10 +574,51 @@ void SGSSceneRenderer::buildDrawLists( const Matrix4f &projectionView, const Ren
 	}
 }
 
-void SGSSceneRenderer::renderScene( const Matrix4f &projectionView, const Vector3f &worldViewerPosition, const RenderContext &renderContext ) {
+void SGSSceneRenderer::buildCompleteDrawLists( const RenderContext &renderContext ) {
+	terrainLists.clear();
+	for( int tileIndex = 0 ; tileIndex < scene->terrain.tiles.size() ; tileIndex++ ) {
+		const SGSScene::BoundingSphere &boundingSphere = scene->terrain.tiles[tileIndex].bounding.sphere;
+		terrainLists.push_back( tileIndex );
+	}
+
+	solidLists.clear();
+	alphaLists.clear();
+	for( int objectIndex = 0 ; objectIndex < scene->numSceneObjects ; ++objectIndex ) {
+		const SGSScene::Object &object = scene->objects[objectIndex];
+
+		if( objectIndex == renderContext.disabledInstanceIndex || object.modelId == renderContext.disabledModelIndex ) {
+			continue;
+		}
+
+		const int endSubObject = object.startSubObject + object.numSubObjects;
+		for( int subObjectIndex = object.startSubObject ; subObjectIndex < endSubObject ; ++subObjectIndex ) {
+			const SGSScene::SubObject &subObject = scene->subObjects[subObjectIndex];
+			const SGSScene::BoundingSphere &boundingSphere = subObject.bounding.sphere;
+
+			if( scene->subObjects[subObjectIndex].material.alphaType == SGSScene::Material::AT_NONE ) {
+				solidLists.push_back( subObjectIndex );
+			}
+			else {
+				alphaLists.push_back( subObjectIndex );
+			}
+		}
+	}
+}
+
+void SGSSceneRenderer::renderSceneView( const Matrix4f &projectionView, const Vector3f &worldViewerPosition, const RenderContext &renderContext ) {
 	buildDrawLists( projectionView, renderContext );
 	sortAlphaList( worldViewerPosition );
 
+	drawScene( worldViewerPosition, renderContext, debug.showSceneWireframe );
+}
+
+void SGSSceneRenderer::renderFullScene( bool wireframe ) {
+	RenderContext renderContext;
+	buildCompleteDrawLists( renderContext );
+	drawScene( Eigen::Vector3f::Zero(), renderContext, wireframe );
+}
+
+void SGSSceneRenderer::drawScene( const Vector3f &worldViewerPosition, const RenderContext &renderContext, bool wireframe ) {
 	// render the lists now
 	glDisable( GL_CULL_FACE );
 	glCullFace( GL_BACK );
@@ -592,7 +633,7 @@ void SGSSceneRenderer::renderScene( const Matrix4f &projectionView, const Vector
 
 	glDepthMask( GL_TRUE );
 
-	if( debug.showSceneWireframe ) {
+	if( wireframe ) {
 		glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
 	}
 
@@ -668,7 +709,7 @@ void SGSSceneRenderer::renderScene( const Matrix4f &projectionView, const Vector
 		staticObjectsMesh.vao.unbind();
 	}
 
-	if( debug.showSceneWireframe ) {
+	if( wireframe ) {
 		glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
 	}
 

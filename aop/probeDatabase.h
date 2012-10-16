@@ -351,6 +351,12 @@ struct IdDatasets {
 		instances.emplace_back( std::move( dataset ) );
 	}
 
+	void clear() {
+		instances.clear();
+		mergedInstances = IndexedProbeDataset();
+		probes.clear();
+	}
+
 	IdDatasets() 
 	{}
 
@@ -390,6 +396,10 @@ struct IdDatasets {
 			// merge them all
 			mergedInstances = std::move( SortedProbeDataset::mergeMultiple( datasets ) );
 		}
+	}
+
+	bool isEmpty() const {
+		return mergedInstances.size() == 0;
 	}
 
 	const Instances & getInstances() const {
@@ -446,14 +456,12 @@ struct ProbeDatabase {
 		}
 	}
 
-
-
 	size_t getNumIdDatasets() const {
 		return idDatasets.size();
 	}
 	
 	bool isEmpty( int modelIndex ) const {
-		return idDatasets[ modelIndex ].getMergedInstances().size() == 0;
+		return idDatasets[ modelIndex ].isEmpty();
 	}
 
 	// see candidateFinderCache.cpp

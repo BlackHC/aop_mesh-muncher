@@ -77,7 +77,7 @@ struct SelectionResult {
 	}
 };
 
-#define _numProbeSamples 31
+#define _numProbeSamples 127
 
 // this should go into its own file
 namespace CIELAB {
@@ -96,7 +96,7 @@ namespace CIELAB {
 		0.0557101034f, -0.204021037f, 1.05699599f
 	};
 
-	HOSTORDEVICE float3 fromRGB( const float3 &rgb ) {
+	inline HOSTORDEVICE float3 fromRGB( const float3 &rgb ) {
 		const float3 XYZ = *reinterpret_cast<const Matrix3x3*>(rgb2XYZ) * rgb;
 
 		// I'm leaving out the linear small value correction
@@ -115,7 +115,7 @@ namespace CIELAB {
 		return Lab;
 	}
 
-	HOSTORDEVICE float3 toRGB( const float3 &Lab ) {
+	inline HOSTORDEVICE float3 toRGB( const float3 &Lab ) {
 		float3 transformedXYZ;
 		transformedXYZ.y = (Lab.x + 16.0) / 116.0;
 

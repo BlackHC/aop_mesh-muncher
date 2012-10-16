@@ -55,7 +55,8 @@ struct OptixRenderer {
 		const Probes &probes,
 		ProbeContexts &probeContexts,
 		const RenderContext &renderContext,
-		float maxDistance = RT_DEFAULT_MAX
+		float maxDistance = RT_DEFAULT_MAX,
+		int sampleOffset = 0
 	);
 
 	void addSceneChild( const optix::GeometryGroup &child ) {

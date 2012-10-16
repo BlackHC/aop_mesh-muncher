@@ -117,7 +117,7 @@ void Editor::selectMode( ModeState newMode ) {
 		}
 		break;
 	}
-		
+
 	modes.setTarget( mode );
 	getEventSystem()->setCapture( mode,  FT_KEYBOARD );
 }
@@ -140,6 +140,19 @@ Eigen::Vector3f Editor::getScaledRelativeViewMovement( const Eigen::Vector3f &re
 		v * scale * relativeMovement.y() +
 		w * scale * relativeMovement.z()
 		;
+}
+
+Editor::Editor()
+	: EventDispatcher( "Editor" )
+	, modes( "Mode" )
+	, dispatcher( "" )
+	, selecting( this, "Select" )
+	, placing( this, "Place" )
+	, moving( this, "Move" )
+	, rotating( this, "Rotate" )
+	, resizing( this, "Resize" )
+	, currentMode( M_FREELOOK )
+{
 }
 
 void Editor::TransformMode::storeState() {
@@ -484,8 +497,8 @@ void Editor::Rotating::transform( const Eigen::Vector3f &relativeMovement, bool 
 void Editor::Rotating::onKeyboard( EventState &eventState ) {
 	TransformMode::onKeyboard( eventState );
 
-	if( 
-		eventState.event.type == sf::Event::KeyPressed 
+	if(
+		eventState.event.type == sf::Event::KeyPressed
 		&&
 		eventState.event.key.code == sf::Keyboard::Home
 		) {

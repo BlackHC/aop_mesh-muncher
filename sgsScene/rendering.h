@@ -6,6 +6,10 @@ struct RenderContext {
 	int disabledInstanceIndex;
 	int disabledModelIndex;
 
+	RenderContext() {
+		setDefault();
+	}
+
 	void setDefault() {
 		disabledInstanceIndex = -1;
 		disabledModelIndex = -1;

@@ -517,18 +517,19 @@ void OptixRenderer::selectFromPinholeCamera( const std::vector< optix::float2 > 
 	OptixHelpers::Buffer::copyToHost( this->selectionResults, selectionResults.front(), selectionResults.size() );
 }
 
-void OptixRenderer::sampleProbes( const std::vector< Probe > &probes, std::vector< ProbeContext > &probeContexts, const RenderContext &renderContext, float maxDistance ) {
+void OptixRenderer::sampleProbes( const std::vector< Probe > &probes, std::vector< ProbeContext > &probeContexts, const RenderContext &renderContext, float maxDistance, int sampleOffset ) {
 	// check bounds
 	if( probes.size() > maxNumProbes ) {
 		throw std::invalid_argument( "too many probes!" );
 	}
 	if( probes.size() == 0 ) {
-		throw std::invalid_argument( "too many probes!" );
+		throw std::invalid_argument( "no probes!" );
 	}
 
 	setRenderContext( renderContext );
 
 	context[ "maxDistance" ]->setFloat( maxDistance );
+	context[ "sampleOffset" ]->setUint( sampleOffset );
 
 	OptixHelpers::Buffer::copyToDevice( this->probes, probes );
 
@@ -560,8 +561,17 @@ void OptixRenderer::createHemisphereSamples( optix::float3 *hemisphereSamples ) 
 	// see pseudo-random number generators
 	boost::random::uniform_01<> distribution;
 
+
+	// info about how cosine_sample_hemisphere's parameters work
+	// we sample a disk and project it up onto the hemisphere
+	// 
+	// u1 is the radius and u2 the angle
+
+	// we have 8 sample directions in every unit circle slice
+	// => fov: 45° => half is 22.5
+	// // sin(22.5°) = 0.38268343236
 	for( int i = 0 ; i < numHemisphereSamples ; ++i ) {
-		const float u1 = distribution(rng);
+		const float u1 = distribution(rng) * 0.38268343236;
 		const float u2 = distribution(rng);
 		optix::cosine_sample_hemisphere( u1, u2, hemisphereSamples[i] );
 	}
