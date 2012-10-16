@@ -304,7 +304,7 @@ void real_main() {
 			// TODO: move this into the render functions [9/23/2012 kirschan2]
 			glLoadIdentity();
 
-			sgsSceneRenderer.render( camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition(), renderContext );
+			sgsSceneRenderer.renderScene( camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition(), renderContext );
 
 			probeDumps.render();		
 

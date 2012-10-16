@@ -19,7 +19,7 @@ namespace aop {
 			template< typename ElementAccessor >
 			void setup( AntTWBarUI::Container *container, ElementAccessor &accessor ) const {
 				container->add(
-					AntTWBarUI::makeSharedVariable(
+					AntTWBarUI::makeSharedVariableWithConfig< AntTWBarUI::VariableConfigs::SetContainerName >( 
 						"Name",
 						AntTWBarUI::makeMemberAccessor( accessor, &aop::Settings::NamedTargetVolume::name )
 					)

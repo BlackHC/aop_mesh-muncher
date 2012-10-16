@@ -37,7 +37,7 @@ namespace aop {
 
 			template< typename ElementAccessor >
 			void setup( AntTWBarUI::Container *container, ElementAccessor &accessor ) const {
-				container->add( AntTWBarUI::makeSharedReadOnlyVariable(
+				container->add( AntTWBarUI::makeSharedVariableWithConfig<AntTWBarUI::VariableConfigs::ReadOnly>(
 						"Name",
 						AntTWBarUI::makeExpressionAccessor<std::string>( [&] () -> std::string & { return modelTypesUI->beautifiedModelNames[ accessor.pull() ]; } )
 					)

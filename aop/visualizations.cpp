@@ -1,0 +1,94 @@
+#include "visualizations.h"
+
+#include "debugRender.h"
+#include "optixEigenInterop.h"
+#include "sgsInterface.h"
+
+using namespace Eigen;
+
+void visualizeProbes( float resolution, const std::vector< SGSInterface::Probe > &probes ) {
+	DebugRender::begin();
+	glColor3f( 0.0, 1.0, 1.0 );
+	glBegin( GL_LINES );
+	for( auto probe = probes.begin() ; probe != probes.end() ; ++probe ) {
+		glVertex( map( probe->position ) );
+		glVertex( map( probe->position ) + map( probe->direction ) * resolution / 3 );
+	}
+	glEnd();
+	DebugRender::end();
+}
+
+void visualizeColorGrid( const VoxelizedModel::Voxels &grid, GridVisualizationMode gvm ) {
+	const float size = grid.getMapping().getResolution();
+	
+	DebugRender::begin();
+	for( auto iterator = grid.getIterator() ; iterator.hasMore() ; ++iterator ) {
+		const auto &normalHit = grid[ *iterator ];
+
+		if( normalHit.numSamples != 0 ) {
+			DebugRender::setPosition( grid.getMapping().getPosition( iterator.getIndex3() ) );
+
+			Vector3f positionColor = iterator.getIndex3().cast<float>().cwiseQuotient( grid.getMapping().getSize().cast<float>() );
+
+			switch( gvm ) {
+			case GVM_POSITION:
+				DebugRender::setColor( positionColor );
+				break;
+			case GVM_HITS:
+				DebugRender::setColor( Vector3f::UnitY() * (0.5 + normalHit.numSamples / 128.0) );
+				break;
+			case GVM_NORMAL:
+				glColor3ubv( &normalHit.nx );
+				break;
+			}
+			
+			DebugRender::drawBox( Vector3f::Constant( size ), false );
+		}
+	}
+	DebugRender::end();
+}
+
+void visualizeProbeDataset( float resolution, const std::vector< SortedProbeDataset::Probe > &probes, const std::vector< SortedProbeDataset::ProbeContext > &probeContexts, ProbeVisualizationMode pvm ) {
+	using namespace Eigen;
+
+	const float directionDistance = 0.5 * resolution;
+	const float radius = 0.25 * resolution;
+
+	DebugRender::begin();
+	for( auto probeContext = probeContexts.begin() ; probeContext != probeContexts.end() ; ++probeContext ) {
+		const SortedProbeDataset::Probe &probe = probes[ probeContext->probeIndex ];
+		
+		const auto direction = map( probe.direction );
+
+		DebugRender::setPosition( map( probe.position ) + direction * directionDistance );
+		
+		// build the two axes		
+		const Eigen::Vector3f axis1 = direction.unitOrthogonal();
+		const Eigen::Vector3f axis2 = direction.cross( axis1 );
+
+		DebugRender::setColor( 
+			map( 
+				OptixProgramInterface::CIELAB::toRGB( 
+					optix::make_float3( probeContext->Lab.x, probeContext->Lab.y, probeContext->Lab.z )
+				) 
+			) 
+		);
+#if 0
+		DebugRender::setColor( 
+			map( 
+				float( probeContext->hitCounter ) / OptixProgramInterface::numProbeSamples * Vector3f::Constant( 1.0 );
+			) 
+		);
+
+		DebugRender::setColor( 
+			map( 
+				float( probeContext->hitCounter ) / OptixProgramInterface::numProbeSamples * Vector3f::Constant( 1.0 );
+			) 
+		);
+#endif 
+
+		// draw the probe
+		DebugRender::drawEllipse( radius, false, 20, axis1, axis2 );
+	}
+	DebugRender::end();
+}

@@ -146,7 +146,9 @@ CUDA_ADD_EXECUTABLE(aop
 	sgsInterface.h
 	sgsInterface.cpp
 	optixEigenInterop.h
-	probeVisualization.cpp
+
+	visualizations.h
+	visualizations.cpp
 
 	modelDatabase.h
 	modelDatabase.cpp

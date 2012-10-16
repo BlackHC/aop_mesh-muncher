@@ -5,6 +5,10 @@
 
 #if !defined(__CUDACC__)
 namespace OptixProgramInterface {
+
+#	define HOSTORDEVICE
+#else
+#	define HOSTORDEVICE __device__
 #endif
 
 //////////////////////////////////////////////////////////////////////////
@@ -75,6 +79,62 @@ struct SelectionResult {
 
 #define _numProbeSamples 31
 
+// this should go into its own file
+namespace CIELAB {
+	using namespace optix;
+
+	HOSTORDEVICE const float3 D65white = { 0.95047f,1.0f,1.08883f };
+	HOSTORDEVICE const float rgb2XYZ[] = {
+		0.4124f, 0.3576f, 0.1805f,
+		0.2126f, 0.7152f, 0.0722f,
+		0.0193f, 0.1192f, 0.9505f
+	};
+
+	HOSTORDEVICE const float XYZ2rgb[] = {
+		3.24062514f, -1.53720784f, -0.498628557f,
+		-0.968930602f,  1.87575603f, 0.0415175036f,
+		0.0557101034f, -0.204021037f, 1.05699599f
+	};
+
+	HOSTORDEVICE float3 fromRGB( const float3 &rgb ) {
+		const float3 XYZ = *reinterpret_cast<const Matrix3x3*>(rgb2XYZ) * rgb;
+
+		// I'm leaving out the linear small value correction
+		const float3 transformedXYZ = {
+			powf( XYZ.x / D65white.x, 1.f/3.f),
+			powf( XYZ.y / D65white.y, 1.f/3.f),
+			powf( XYZ.z / D65white.z, 1.f/3.f)
+		};
+
+		const float3 Lab = {
+			116.0 * transformedXYZ.y - 16.0,
+			500.0 * (transformedXYZ.x - transformedXYZ.y),
+			200.0 * (transformedXYZ.y - transformedXYZ.z),
+		};
+
+		return Lab;
+	}
+
+	HOSTORDEVICE float3 toRGB( const float3 &Lab ) {
+		float3 transformedXYZ;
+		transformedXYZ.y = (Lab.x + 16.0) / 116.0;
+
+		transformedXYZ.x = transformedXYZ.y + Lab.y / 500.0;
+		transformedXYZ.z = transformedXYZ.y - Lab.z / 200.0;
+
+		// again I'm leaving out the linear small value correction
+		const float3 XYZ = {
+			powf( transformedXYZ.x, 3.0f ) * D65white.x,
+			powf( transformedXYZ.y, 3.0f ) * D65white.y,
+			powf( transformedXYZ.z, 3.0f ) * D65white.z
+		};
+
+		const float3 rgb = *reinterpret_cast<const Matrix3x3*>(XYZ2rgb) * XYZ;
+
+		return rgb;
+	}
+}
+
 //////////////////////////////////////////////////////////////////////////
 // CUDA specific declarations/definitions
 #if defined(__CUDACC__)
@@ -135,60 +195,6 @@ __device__ float getDirectionalLightTransmittance( const float3 &position, const
 	rtTrace(rootObject, subRay, subRay_shadow);
 
 	return subRay_shadow.transmittance;
-}
-
-// this should go into its own file
-namespace CIELAB {
-	__device__ const float3 D65white = { 0.95047f,1.0f,1.08883f };
-	__device__ const float rgb2XYZ[] = {
-		0.4124f, 0.3576f, 0.1805f,
-		0.2126f, 0.7152f, 0.0722f,
-		0.0193f, 0.1192f, 0.9505f
-	};
-
-	__device__ const float XYZ2rgb[] = {
-		3.24062514f, -1.53720784f, -0.498628557f,
-		-0.968930602f,  1.87575603f, 0.0415175036f,
-		0.0557101034f, -0.204021037f, 1.05699599f
-	};
-
-	__device__ float3 fromRGB( const float3 &rgb ) {
-		const float3 XYZ = *reinterpret_cast<const Matrix3x3*>(rgb2XYZ) * rgb;
-
-		// I'm leaving out the linear small value correction
-		const float3 transformedXYZ = {
-			powf( XYZ.x / D65white.x, 1.f/3.f),
-			powf( XYZ.y / D65white.y, 1.f/3.f),
-			powf( XYZ.z / D65white.z, 1.f/3.f)
-		};
-
-		const float3 Lab = {
-			116.0 * transformedXYZ.y - 16.0,
-			500.0 * (transformedXYZ.x - transformedXYZ.y),
-			200.0 * (transformedXYZ.y - transformedXYZ.z),
-		};
-
-		return Lab;
-	}
-
-	__device__ float3 toRGB( const float3 &Lab ) {
-		float3 transformedXYZ;
-		transformedXYZ.y = (Lab.x + 16.0) / 116.0;
-
-		transformedXYZ.x = transformedXYZ.y + Lab.y / 500.0;
-		transformedXYZ.z = transformedXYZ.y - Lab.z / 200.0;
-
-		// again I'm leaving out the linear small value correction
-		const float3 XYZ = {
-			powf( transformedXYZ.x, 3.0f ) * D65white.x,
-			powf( transformedXYZ.y, 3.0f ) * D65white.y,
-			powf( transformedXYZ.z, 3.0f ) * D65white.z
-		};
-
-		const float3 rgb = *reinterpret_cast<const Matrix3x3*>(XYZ2rgb) * XYZ;
-
-		return rgb;
-	}
 }
 
 #else

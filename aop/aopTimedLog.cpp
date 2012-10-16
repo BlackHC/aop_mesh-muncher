@@ -32,6 +32,8 @@ namespace aop {
 					entry.renderText.setColor( sf::Color( 255, 0, 0 ) );
 					break;
 				default:
+					entry.renderText.setStyle( 0 );
+					entry.renderText.setColor( sf::Color( 255, 255, 255 ) );
 					break;
 				}
 

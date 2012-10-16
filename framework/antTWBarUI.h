@@ -63,7 +63,9 @@ namespace AntTWBarUI {
 		}
 
 		void setLabel( const std::string &label ) {
-			TwSetParam( twBar, NULL, "label", TW_PARAM_CSTRING, 1, label.empty() ? " " : label.c_str() );
+			if( twBar ) {
+				TwSetParam( twBar, NULL, "label", TW_PARAM_CSTRING, 1, label.empty() ? " " : label.c_str() );
+			}
 		}
 
 		~InternalBar() {
@@ -276,7 +278,7 @@ namespace AntTWBarUI {
 			}
 		}
 	private:
-		// this is only backed up from AntTweakBar on unlink, so inbetween the value might be incorrect
+		// this is only backed up from AntTweakBar on unlink, so in between the value might be incorrect
 		bool expanded;
 		InternalElement &element;
 	};
@@ -317,6 +319,9 @@ namespace AntTWBarUI {
 
 		void setName( const std::string &name ) {
 			this->name = name;
+
+			// TODO: groups are simple, this needs to be simplified, too [10/16/2012 kirschan2]
+			updateLabel();
 		}
 
 		void setExpanded( bool newExpanded ) {
@@ -345,6 +350,7 @@ namespace AntTWBarUI {
 
 				if( containerType == CT_GROUP ) {
 					group.nest( getParent()->getGroup() );
+
 					seperatorElement.nest( group );
 					seperatorElement.makeSeparator( "visible=false" );
 
@@ -400,11 +406,22 @@ namespace AntTWBarUI {
 			if( bar.hasBar() ) {
 				bar.unlink();
 			}
+
+			cachedName = std::string();
+		}
+
+		void updateLabel() {
+			if( cachedName != name && isLinked() ) {
+				cachedName = name;
+
+				bar.setLabel( name );
+				group.setLabel( name );
+			}
 		}
 
 	private:
 		ContainerType containerType;
-		std::string name;
+		std::string name, cachedName;
 
 		InternalBar bar;
 
@@ -515,7 +532,7 @@ namespace AntTWBarUI {
 		Name( InternalElement &element, const std::string &name ) : element( element ), name( name ) {}
 
 		void link() {
-			if( element.removable ) {
+			if( element.spawned ) {
 				element.setLabel( name );
 			}
 		}
@@ -834,9 +851,30 @@ namespace AntTWBarUI {
 	};
 
 	//////////////////////////////////////////////////////////////////////////
+#if 0
+	struct VariableConfig {
+		static const bool readOnly;
+		static const bool setContainerName;
+		static const int forcedType;
+	};
+#endif
+
+	namespace VariableConfigs {
+		struct Default {
+			static const bool readOnly = false;
+			static const bool setContainerName = false;
+			static const int forcedType = TW_TYPE_UNDEF;
+		};
+		struct ReadOnly : Default {
+			static const bool readOnly = true;
+		};
+		struct SetContainerName : Default {
+			static const bool setContainerName = true;
+		};
+	}
 
 	// only standard anttweakbar types are supported
-	template< typename Accessor, bool readOnly = false, int forcedType = TW_TYPE_UNDEF >
+	template< typename Accessor, typename Config = VariableConfigs::Default >
 	struct Variable : Element {
 		typedef typename Accessor::Type Type;
 
@@ -855,7 +893,7 @@ namespace AntTWBarUI {
 	private:
 		void doLink() {
 			element.nest( getParent()->getGroup() );
-			int type = forcedType;
+			int type = Config::forcedType;
 			if( type == TW_TYPE_UNDEF ) {
 				type = detail::TypeMapper< Type >::Type;
 			}
@@ -865,10 +903,10 @@ namespace AntTWBarUI {
 				std::cerr << "TW_TYPE_UNDEF, unsupported type!";
 			}
 			else if( type == TW_TYPE_STDSTRING ) {
-				element.makeVariableCB( (TwType) TW_TYPE_CDSTRING, (TwGetVarCallback) Variable::staticGetStdString, (TwSetVarCallback) (readOnly ? nullptr : Variable::staticSetStdString), (void*) this, def );
+				element.makeVariableCB( (TwType) TW_TYPE_CDSTRING, (TwGetVarCallback) Variable::staticGetStdString, (TwSetVarCallback) (Config::readOnly ? nullptr : Variable::staticSetStdString), (void*) this, def );
 			}
 			else {
-				element.makeVariableCB( (TwType) type, (TwGetVarCallback) Variable::staticGet, (TwSetVarCallback) (readOnly ? nullptr : Variable::staticSet), (void*) this, def );
+				element.makeVariableCB( (TwType) type, (TwGetVarCallback) Variable::staticGet, (TwSetVarCallback) (Config::readOnly ? nullptr : Variable::staticSet), (void*) this, def );
 			}
 			name.link();
 		}
@@ -877,8 +915,17 @@ namespace AntTWBarUI {
 			element.unnest();
 		}
 
-		void doRefresh() {}
+		void doRefresh() {
+			if( Config::setContainerName ) {
+				const std::string &pulledValue = *reinterpret_cast<std::string*>(&accessor.pull());
+				Container *parent = getParent();
+				if( parent ) {
+					parent->setName( pulledValue );
+				}
+			}
+		}
 
+		// TODO: it would be preferable to use static dispatch depending on Type [10/16/2012 kirschan2]
 		static void TW_CALL staticGet(Type &value, Variable &me) {
 			value = me.accessor.pull();
 		}
@@ -889,7 +936,8 @@ namespace AntTWBarUI {
 		}
 
 		static void TW_CALL staticGetStdString( char **value, Variable &me) {
-			TwCopyCDStringToLibrary( value, reinterpret_cast<std::string*>(&me.accessor.pull())->c_str() );
+			const std::string &pulledValue = *reinterpret_cast<std::string*>(&me.accessor.pull());
+			TwCopyCDStringToLibrary( value, pulledValue.c_str() );
 		}
 
 		static void TW_CALL staticSetStdString(const char **value, Variable &me) {
@@ -911,20 +959,19 @@ namespace AntTWBarUI {
 		return std::make_shared< Variable< Accessor > >( name, std::move( accessor ), def );
 	}
 
-	template< typename Accessor >
-	Variable< Accessor, true > makeReadOnlyVariable( const std::string &name, Accessor &&accessor, const std::string &def = std::string() ) {
-		return Variable< Accessor, true >( name, std::move( accessor ), def );
+	template< typename Config, typename Accessor >
+	Variable< Accessor, Config > makeVariableWithConfig( const std::string &name, Accessor &&accessor, const std::string &def = std::string() ) {
+		return Variable< Accessor, Config >( name, std::move( accessor ), def );
 	}
 
-	template< typename Accessor >
-	std::shared_ptr< Variable< Accessor, true > > makeSharedReadOnlyVariable( const std::string &name, Accessor &&accessor, const std::string &def = std::string() ) {
-		return std::make_shared< Variable< Accessor, true > >( name, std::move( accessor ), def );
+	template< typename Config, typename Accessor >
+	std::shared_ptr< Variable< Accessor, Config > > makeSharedVariableWithConfig( const std::string &name, Accessor &&accessor, const std::string &def = std::string() ) {
+		return std::make_shared< Variable< Accessor, Config > >( name, std::move( accessor ), def );
 	}
 
-	template< int forcedType, typename Accessor >
-	std::shared_ptr< Variable< Accessor, false, forcedType > > makeSharedVariableWithType( const std::string &name, Accessor &&accessor, const std::string &def = std::string() ) {
-		return std::make_shared< Variable< Accessor, false, forcedType > >( name, std::move( accessor ), def );
-	}
+	//////////////////////////////////////////////////////////////////////////
+	// sometimes we want to set the container label dynamically too
+	//
 
 	//////////////////////////////////////////////////////////////////////////
 	template< typename Accessor >

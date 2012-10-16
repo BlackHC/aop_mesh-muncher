@@ -70,49 +70,12 @@ using namespace Eigen;
 #include "aopModelTypesUI.h"
 #include "aopTimedLog.h"
 
-enum GridVisualizationMode {
-	GVM_POSITION,
-	GVM_HITS,
-	GVM_NORMAL,
-	GVM_MAX
-};
-
-void visualizeColorGrid( const VoxelizedModel::Voxels &grid, GridVisualizationMode gvm = GVM_POSITION ) {
-	const float size = grid.getMapping().getResolution();
-	
-	DebugRender::begin();
-	for( auto iterator = grid.getIterator() ; iterator.hasMore() ; ++iterator ) {
-		const auto &normalHit = grid[ *iterator ];
-
-		if( normalHit.numSamples != 0 ) {
-			DebugRender::setPosition( grid.getMapping().getPosition( iterator.getIndex3() ) );
-
-			Eigen::Vector3f positionColor = iterator.getIndex3().cast<float>().cwiseQuotient( grid.getMapping().getSize().cast<float>() );
-
-			switch( gvm ) {
-			case GVM_POSITION:
-				DebugRender::setColor( positionColor );
-				break;
-			case GVM_HITS:
-				DebugRender::setColor( Vector3f::UnitY() * (0.5 + normalHit.numSamples / 128.0) );
-				break;
-			case GVM_NORMAL:
-				glColor3ubv( &normalHit.nx );
-				break;
-			}
-			
-			DebugRender::drawBox( Vector3f::Constant( size ), false );
-		}
-	}
-	DebugRender::end();
-}
+#include "visualizations.h"
 
 const float neighborhoodMaxDistance = 100.0;
 // TODO XXX [10/11/2012 kirschan2]
 
 std::weak_ptr<AntTweakBarEventHandler::GlobalScope> AntTweakBarEventHandler::globalScope;
-
-void visualizeProbes( float resolution, const std::vector< SGSInterface::Probe > &probes );
 
 // TODO: reorder the parameters in some consistent way! [10/10/2012 kirschan2]
 void sampleAllNeighbors( float maxDistance, NeighborhoodDatabase &database, SGSInterface::World &world ) {
@@ -267,6 +230,12 @@ struct DebugUI {
 		container.refresh();
 	}
 
+	void render() {
+		for( auto debugObject = debugObjects.begin() ; debugObject != debugObjects.end() ; ++debugObject ) {
+			(*debugObject)->renderScene();
+		}
+	}
+
 private:
 	// order is important here because debugObjectsContainer might contain stack pointers to debugObjects
 	std::vector< IDebugObject::SPtr > debugObjects;
@@ -278,6 +247,89 @@ private:
 
 namespace aop {
 namespace DebugObjects {
+	struct SceneDisplayListObject : IDebugObject {
+		// TODO: scoped objects should accept nonscoped objects as move targets! [10/15/2012 kirschan2]
+		GL::DisplayList displayList;
+
+		DebugUI *debugUI;
+
+		AntTWBarUI::SimpleContainer container;
+
+		SceneDisplayListObject( const std::string &name, GL::DisplayList &displayList )
+			: container( AntTWBarUI::CT_GROUP, name )
+			, displayList( displayList )
+		{
+			init();
+		}
+
+		~SceneDisplayListObject() {
+			displayList.release();
+		}
+
+		void init() {
+			container.add( AntTWBarUI::makeSharedButton( "Remove",
+				[&] () {
+					debugUI->remove( this );
+				}
+			) );
+		}
+
+		virtual void link( DebugUI *debugUI, Tag ) {
+			this->debugUI = debugUI;
+		}
+
+		virtual AntTWBarUI::Element::SPtr getUI( Tag ) {
+			return make_nonallocated_shared( container );	
+		}
+
+		virtual void renderScene( Tag ) {
+			displayList.call();
+		}
+	};
+
+	struct SGSRenderer : IDebugObject {
+		Application *application;
+
+		DebugUI *debugUI;
+
+		AntTWBarUI::SimpleContainer container;
+
+		SGSRenderer( Application *application ) : container( AntTWBarUI::CT_EMBEDDED ), application( application ) {
+			init();
+		}
+
+		void init() {
+			container.add( AntTWBarUI::makeSharedVariable( 
+				"Show scene as wireframe",
+				AntTWBarUI::makeReferenceAccessor( application->world->sceneRenderer.debug.showSceneWireframe )
+			) );
+			container.add( AntTWBarUI::makeSharedVariable( 
+				"Show bounding boxes",
+				AntTWBarUI::makeReferenceAccessor( application->world->sceneRenderer.debug.showBoundingSpheres )
+			) );
+			container.add( AntTWBarUI::makeSharedVariable( 
+				"Show terrain bounding boxes",
+				AntTWBarUI::makeReferenceAccessor( application->world->sceneRenderer.debug.showTerrainBoundingSpheres )
+			) );
+			container.add( AntTWBarUI::makeSharedVariable( 
+				"Update render lists",
+				AntTWBarUI::makeReferenceAccessor( application->world->sceneRenderer.debug.updateRenderLists )
+			) );
+		}
+
+		// TODO: maybe make this just a normal member of IDebugObject?
+		virtual void link( DebugUI *debugUI, Tag ) {
+			this->debugUI = debugUI;
+		}
+
+		virtual AntTWBarUI::Element::SPtr getUI( Tag ) {
+			return make_nonallocated_shared( container );	
+		}
+
+		virtual void renderScene( Tag ) {
+		}
+	};
+
 	struct OptixView : IDebugObject {
 		Application *application;
 
@@ -339,6 +391,26 @@ namespace DebugObjects {
 					[&, modelIndex] () {
 						auto window = std::make_shared< MultiDisplayListVisualizationWindow >();
 						
+						const auto &modelInformation = application->modelDatabase.informationById[ modelIndex ];
+
+						// TODO: it would be nice to add this as rendered displaylist to the debug viz window [10/16/2012 kirschan2]
+						// display some debug output
+						log( 
+							boost::format( 
+								"Model information %i '%s':\n"
+								"\tvolume: %f\n"
+								"\tarea: %f\n"
+								"\tdiagonalLength: %f\n"
+								"\tvoxelResolution: %f"
+							)
+							% modelIndex
+							% modelInformation.name
+							% modelInformation.volume
+							% modelInformation.area
+							% modelInformation.diagonalLength
+							% modelInformation.voxelResolution
+						);
+
 						// render the object
 						{
 							auto &modelVisualization = window->visualizations[0];
@@ -355,7 +427,7 @@ namespace DebugObjects {
 							voxelVisualization.name = "voxels (colored using positions)";
 							voxelVisualization.displayList.create();
 							voxelVisualization.displayList.begin();
-							visualizeColorGrid( application->modelDatabase.informationById[ modelIndex ].voxels, GVM_POSITION );
+							visualizeColorGrid( modelInformation.voxels, GVM_POSITION );
 							voxelVisualization.displayList.end();
 						}
 						// render the samples using hits
@@ -364,7 +436,7 @@ namespace DebugObjects {
 							voxelVisualization.name = "voxels (colored using overdraw)";
 							voxelVisualization.displayList.create();
 							voxelVisualization.displayList.begin();
-							visualizeColorGrid( application->modelDatabase.informationById[ modelIndex ].voxels, GVM_HITS );
+							visualizeColorGrid( modelInformation.voxels, GVM_HITS );
 							voxelVisualization.displayList.end();
 						}
 						// render the samples using hits
@@ -373,7 +445,7 @@ namespace DebugObjects {
 							voxelVisualization.name = "voxels (colored using normals)";
 							voxelVisualization.displayList.create();
 							voxelVisualization.displayList.begin();
-							visualizeColorGrid( application->modelDatabase.informationById[ modelIndex ].voxels, GVM_NORMAL );
+							visualizeColorGrid( modelInformation.voxels, GVM_NORMAL );
 							voxelVisualization.displayList.end();
 						}
 						// render the samples using samples
@@ -383,8 +455,8 @@ namespace DebugObjects {
 							voxelVisualization.displayList.create();
 							voxelVisualization.displayList.begin();
 							visualizeProbes( 
-								application->modelDatabase.informationById[ modelIndex ].voxels.getMapping().getResolution(),
-								application->modelDatabase.informationById[ modelIndex ].probes
+								modelInformation.voxels.getMapping().getResolution(),
+								modelInformation.probes
 							);
 							voxelVisualization.displayList.end();
 						}
@@ -392,7 +464,7 @@ namespace DebugObjects {
 						window->keyLogics[1].disableMask = window->keyLogics[2].disableMask = window->keyLogics[3].disableMask = 2+4+8;
 
 
-						window->init( application->modelDatabase.informationById[ modelIndex ].name );
+						window->init( modelInformation.name );
 
 						application->debugWindowManager.add( window );
 					}
@@ -537,6 +609,46 @@ namespace aop {
 				progressTracker.markFinished();
 
 				application->endLongOperation();
+
+				application->mainWindow.pushGLStates();
+				application->mainWindow.resetGLStates();
+
+				// visualize
+				GL::ScopedDisplayList list;
+				list.begin();
+
+				DebugRender::begin();
+				for( auto modelIndex = modelIndices.begin() ; modelIndex != modelIndices.end() ; ++modelIndex ) {
+					const auto instanceIndices = application->world->sceneRenderer.getModelInstances( *modelIndex );
+
+					if( application->probeDatabase.isEmpty( *modelIndex ) ) {
+						continue;
+					}
+
+					int counter = 0;
+					for( auto instanceIndex = instanceIndices.begin() ; instanceIndex != instanceIndices.end() ; ++instanceIndex, ++counter ) {
+						const auto transformation = application->world->sceneRenderer.getInstanceTransformation( *instanceIndex );
+
+						DebugRender::setTransformation( transformation );
+						DebugRender::startLocalTransform();
+						visualizeProbeDataset(
+							0.25,
+							application->probeDatabase.getIdDatasets()[ *modelIndex ].getProbes(),
+							application->probeDatabase.getIdDatasets()[ *modelIndex ].getInstances()[ counter ].getProbeContexts(),
+							PVM_COLOR
+						);
+						DebugRender::endLocalTransform();
+					}
+				}
+				DebugRender::end();
+
+				list.end();
+
+				application->mainWindow.popGLStates();
+
+				application->debugUI->add(
+					std::make_shared< DebugObjects::SceneDisplayListObject >( "Probe database datasets", list.publish() )
+				);
 			} ) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
 			ui.add( AntTWBarUI::makeSharedVariable( "Query tolerance", AntTWBarUI::makeReferenceAccessor( application->settings.neighborhoodQueryTolerance ) ) );
@@ -758,8 +870,12 @@ namespace aop {
 		modelDatabaseUI = std::make_shared< ModelDatabaseUI >( this );
 
 		candidateSidebarUI = createCandidateSidebarUI( this );
+		
+		// init the debug ui
 		debugUI = std::make_shared< DebugUI >();
 
+		// add some default objects to the debug ui
+		debugUI->add( std::make_shared< DebugObjects::SGSRenderer >( this ) );
 		debugUI->add( std::make_shared< DebugObjects::OptixView >( this ) );
 	}
 
@@ -918,6 +1034,12 @@ namespace aop {
 		AUTO_TIMER_FOR_FUNCTION();
 		log( boost::format( "sampling model %i" ) % modelIndex );
 
+		const auto &probes = modelDatabase.getProbes( modelIndex, probeResolution );
+		if( probes.empty() ) {
+			logError( boost::format( "empty model %i: '%s'!" ) % modelIndex % modelDatabase.informationById[ modelIndex ].shortName );
+			return;
+		}
+
 		RenderContext renderContext;
 		renderContext.setDefault();
 		//renderContext.disabledModelIndex = modelIndex;
@@ -931,7 +1053,7 @@ namespace aop {
 		for( int i = 0 ; i < instanceIndices.size() ; i++ ) {
 			const int instanceIndex = instanceIndices[ i ];
 			
-			const auto &probes = modelDatabase.getProbes( modelIndex, probeResolution );
+			
 
 			std::vector<SGSInterface::Probe> transformedProbes;
 			{
@@ -1098,8 +1220,8 @@ namespace aop {
 		initSGSInterface();
 
 		// TODO: fix parameter order [10/10/2012 kirschan2]
-		sampleAllNeighbors( neighborhoodMaxDistance, neighborDatabase, *world );
-		sampleAllNeighborsV2( neighborhoodMaxDistance, neighborDatabaseV2, *world );
+		/*sampleAllNeighbors( neighborhoodMaxDistance, neighborDatabase, *world );
+		sampleAllNeighborsV2( neighborhoodMaxDistance, neighborDatabaseV2, *world );*/
 
 		probeDatabase.reserveIds( world->scene.modelNames.size() );
 
@@ -1136,6 +1258,7 @@ namespace aop {
 		cameraViewsUI->update();
 		modelTypesUI->update();
 		mainUI->update();
+
 		// TODO: settle on refresh or update [10/12/2012 kirschan2]
 		debugUI->refresh();
 
@@ -1213,6 +1336,8 @@ namespace aop {
 				cameraView.updateFromCamera( mainCamera );
 
 				world->renderViewFrame( cameraView );
+
+				debugUI->render();
 
 				// render target volumes
 				// render obbs

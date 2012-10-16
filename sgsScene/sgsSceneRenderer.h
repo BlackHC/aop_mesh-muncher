@@ -52,7 +52,7 @@ namespace VoxelizedModel {
 			// -1..+1 packed into 0..255
 			unsigned char nx, ny, nz, numSamples;
 		};
-		
+
 		//typedef boost::multi_array< Color4ub, 3 > Voxels;
 		typedef GridStorage<NormalOverdraw4ub> Voxels;
 };
@@ -61,7 +61,7 @@ struct SGSSceneRenderer {
 	struct Optix {
 		optix::GeometryGroup staticScene, dynamicScene;
 		optix::Acceleration staticAcceleration, dynamicAcceleration;
-				
+
 		struct MeshData {
 			optix::Buffer indexBuffer, vertexBuffer;
 			optix::Geometry geometry;
@@ -118,12 +118,17 @@ struct SGSSceneRenderer {
 	Program voxelizerSplatterProgram, voxelizerMuxerProgram;
 
 	struct Debug {
-		bool showBoundingSpheres, showTerrainBoundingSpheres;
+		bool showBoundingSpheres, showTerrainBoundingSpheres, showSceneWireframe;
 		DebugRender::CombinedCalls boundingSpheres, terrainBoundingSpheres;
 
 		bool updateRenderLists;
 
-		Debug() : showBoundingSpheres( false ), showTerrainBoundingSpheres( false ), updateRenderLists( true ) {}
+		Debug()
+			: showBoundingSpheres( false )
+			, showTerrainBoundingSpheres( false )
+			, showSceneWireframe( false )
+			, updateRenderLists( true )
+		{}
 	} debug;
 
 	std::vector<int> solidLists;
@@ -173,7 +178,7 @@ struct SGSSceneRenderer {
 
 	ObjectMesh staticObjectsMesh;
 	TerrainMesh terrainMesh;
-	
+
 	// one display list per sub object
 	GL::ScopedDisplayLists materialDisplayLists;
 
@@ -202,7 +207,7 @@ struct SGSSceneRenderer {
 				texture.load( 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, &image.front() );
 			}
 		};
-		
+
 		int magicStamp;
 
 		TextureDump bakedTerrainTexture;
@@ -211,7 +216,7 @@ struct SGSSceneRenderer {
 
 		SERIALIZER_DEFAULT_IMPL( (magicStamp)(bakedTerrainTexture)(mergedTextureInfos)(mergedObjectTextures) );
 	};
-		
+
 	SGSSceneRenderer() {}
 
 	// TODO> move this into scene [10/13/2012 kirschan2]
@@ -253,7 +258,7 @@ struct SGSSceneRenderer {
 	void drawInstance( Instance &instance );
 
 	void resetState();
-	void render( const Eigen::Matrix4f &projectionView, const Eigen::Vector3f &worldViewerPosition, const RenderContext &renderContext );
+	void renderScene( const Eigen::Matrix4f &projectionView, const Eigen::Vector3f &worldViewerPosition, const RenderContext &renderContext );
 
 	// renders a model at the origin
 	void renderModel( const Eigen::Vector3f &worldViewerPosition, int modelIndex );
@@ -355,7 +360,7 @@ struct SGSSceneRenderer {
 	}
 
 	typedef std::vector<int> InstanceIndices;
-	
+
 	InstanceIndices getModelInstances( int modelIndex ) const {
 		InstanceIndices indices;
 

@@ -574,7 +574,7 @@ void SGSSceneRenderer::buildDrawLists( const Matrix4f &projectionView, const Ren
 	}
 }
 
-void SGSSceneRenderer::render( const Matrix4f &projectionView, const Vector3f &worldViewerPosition, const RenderContext &renderContext ) {
+void SGSSceneRenderer::renderScene( const Matrix4f &projectionView, const Vector3f &worldViewerPosition, const RenderContext &renderContext ) {
 	buildDrawLists( projectionView, renderContext );
 	sortAlphaList( worldViewerPosition );
 
@@ -591,6 +591,10 @@ void SGSSceneRenderer::render( const Matrix4f &projectionView, const Vector3f &w
 	glDisable( GL_ALPHA_TEST );
 
 	glDepthMask( GL_TRUE );
+
+	if( debug.showSceneWireframe ) {
+		glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
+	}
 
 	// terrain rendering
 	{
@@ -662,6 +666,10 @@ void SGSSceneRenderer::render( const Matrix4f &projectionView, const Vector3f &w
 		glPopMatrix();
 
 		staticObjectsMesh.vao.unbind();
+	}
+
+	if( debug.showSceneWireframe ) {
+		glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
 	}
 
 	resetState();

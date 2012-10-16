@@ -35,6 +35,10 @@ struct SimpleIndexer3 {
 	Eigen::Vector3i size;
 	int count;
 
+	bool isEmpty() const {
+		return count == 0;
+	}
+
 	const Eigen::Vector3i & getSize() const {
 		return size;
 	}
@@ -102,6 +106,10 @@ struct SubIndexer3 {
 	Eigen::Vector3i size;
 	Eigen::Vector3i beginCorner, endCorner;
 	int count;
+
+	bool isEmpty() const {
+		return count == 0;
+	}
 	
 	const Eigen::Vector3i &getSize() const {
 		return size;
@@ -375,6 +383,10 @@ struct IndexMapping3 : conceptIndexer3 {
 	}
 
 	float getResolution() const {
+		if( count == 0 ) {
+			return 0.0f;
+		}
+
 		BOOST_ASSERT( indexToPosition(0,0) == indexToPosition(1,1) && indexToPosition(1,1) == indexToPosition(2,2) );
 		return indexToPosition(0,0);
 	}

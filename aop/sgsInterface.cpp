@@ -52,7 +52,7 @@ namespace SGSInterface {
 		glMatrixMode( GL_MODELVIEW );
 		glLoadIdentity();
 
-		sceneRenderer.render( view.viewerContext.projectionView, view.viewerContext.worldViewerPosition, view.renderContext );
+		sceneRenderer.renderScene( view.viewerContext.projectionView, view.viewerContext.worldViewerPosition, view.renderContext );
 	}
 
 	void World::renderOptixViewFrame( const View &view ) {
