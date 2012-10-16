@@ -5,6 +5,8 @@
 #include <mathUtility.h>
 #include "camera.h"
 
+#include "probeDatabase.h"
+
 namespace aop {
 	struct Settings {
 		struct CameraState {
@@ -48,11 +50,18 @@ namespace aop {
 		float probeGenerator_maxDistance;
 		float probeGenerator_resolution;
 
+		float probeQuery_occlusionTolerance;
+		float probeQuery_distanceTolerance;
+		float probeQuery_colorTolerance;
+
 		Settings() 
 			: neighborhoodDatabase_queryTolerance( 1.0 )
 			, neighborhoodDatabase_maxDistance( 150.0 )
 			, probeGenerator_maxDistance( 5.0 )
 			, probeGenerator_resolution( 0.25 ) 
+			, probeQuery_occlusionTolerance( 0.125 )
+			, probeQuery_distanceTolerance( 0.25 )
+			, probeQuery_colorTolerance( 1.0 )
 		{}
 
 		void load();

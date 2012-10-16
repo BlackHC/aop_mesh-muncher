@@ -60,6 +60,7 @@ namespace aop {
 		SGSInterface::View cameraView;
 
 		Settings settings;
+		bool hideScene;
 
 		ProbeDatabase probeDatabase;
 		NeighborhoodDatabase neighborDatabase;
@@ -68,7 +69,7 @@ namespace aop {
 
 		bool renderOptixView;
 
-		Application() : renderOptixView( false ), modelDatabase( this ) {}
+		Application() : renderOptixView( false ), modelDatabase( this ), hideScene( false ) {}
 
 		struct MainUI;
 		struct NamedVolumesEditorView;
@@ -116,5 +117,6 @@ namespace aop {
 		ProbeDatabase::Query::MatchInfos queryVolume( const Obb &queryVolume );
 		ProbeDatabase::WeightedQuery::MatchInfos weightedQueryVolume( const Obb &queryVolume );
 		void sampleInstances( int modelIndex );
+		ProbeContextTolerance Application::getPCTFromSettings();
 	};
 }

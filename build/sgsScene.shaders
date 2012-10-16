@@ -35,7 +35,7 @@ sceneLighting:
 			viewportCoords.z *= 0.9995;
 
 			float refDepth = texture( shadowMap, viewportCoords.xy ).r;
-			if( refDepth >= viewportCoords.z )
+			if( refDepth > viewportCoords.z )
 				return 1.0;
 			else
 				return 0.0;
@@ -93,7 +93,8 @@ terrain:
 			vec4 terrainColor = texture( terrainTexture, gl_TexCoord[0].st );
 
 			// add some very simple lighting
-			return lightFragment( worldPosition, worldNormal, terrainColor );
+			vec4 color = lightFragment( worldPosition, worldNormal, terrainColor );
+			return color;
 		}
 
 object:
@@ -114,7 +115,8 @@ object:
 			vec4 baseColor = texture( baseTetxture, gl_TexCoord[0].st );
 
 			// add some very simple lighting
-			return lightFragment( worldPosition, worldNormal, baseColor );
+			vec4 color = lightFragment( worldPosition, worldNormal, baseColor );
+			return color;
 		}
 
 previewObject:

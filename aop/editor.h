@@ -351,7 +351,7 @@ struct Editor : EventDispatcher {
 		void onMouse( EventState &eventState );
 
 		std::string getHelp( const std::string &prefix /* = std::string */ ) {
-			return prefix + name + ": click to select. keep ALT pressed to select all instances of the same model; SHIFT to add/remove from selection (toggle); CTRL to subtract from the selection. press DEL to delete an instance\n";
+			return prefix + name + ": click to select. keep ALT pressed to select one instance instead of all instances of the same model; SHIFT to add/remove from selection (toggle); CTRL to subtract from the selection. press DEL to delete an instance\n";
 		}
 	};
 

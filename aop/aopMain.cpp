@@ -303,6 +303,10 @@ namespace DebugObjects {
 
 		void init() {
 			container.add( AntTWBarUI::makeSharedVariable(
+				"Hide scene",
+				AntTWBarUI::makeReferenceAccessor( application->hideScene )
+			) );
+			container.add( AntTWBarUI::makeSharedVariable(
 				"Show scene as wireframe",
 				AntTWBarUI::makeReferenceAccessor( application->world->sceneRenderer.debug.showSceneWireframe )
 			) );
@@ -803,6 +807,15 @@ namespace aop {
 
 		void init() {
 			ui.setName( "aop" );
+			ui.add( AntTWBarUI::makeSharedVariable( 
+				"Probe maxDistance",
+				AntTWBarUI::makeReferenceAccessor( application->settings.probeGenerator_maxDistance )
+			) );
+			ui.add( AntTWBarUI::makeSharedVariable( 
+				"Probe resolution",
+				AntTWBarUI::makeReferenceAccessor( application->settings.probeGenerator_resolution )
+			) );
+			ui.add( AntTWBarUI::makeSharedSeparator() );
 			ui.add( AntTWBarUI::makeSharedButton( "Load settings", [this] { application->settings.load(); } ) );
 			ui.add( AntTWBarUI::makeSharedButton( "Store settings", [this] { application->settings.store(); } ) );
 			//ui.add( AntTWBarUI::makeSharedVector< NamedTargetVolumeView >( "Camera Views", application->settings.volumes) );
@@ -823,6 +836,19 @@ namespace aop {
 
 				application->endLongOperation();
 			} ) );
+			ui.add( AntTWBarUI::makeSharedSeparator() );
+			ui.add( AntTWBarUI::makeSharedVariable( 
+				"Probe query occlusion tolerance",
+				AntTWBarUI::makeReferenceAccessor( application->settings.probeQuery_occlusionTolerance )
+			) );
+			ui.add( AntTWBarUI::makeSharedVariable( 
+				"Probe query distance tolerance",
+				AntTWBarUI::makeReferenceAccessor( application->settings.probeQuery_distanceTolerance )
+			) );
+			ui.add( AntTWBarUI::makeSharedVariable( 
+				"Probe query color tolerance",
+				AntTWBarUI::makeReferenceAccessor( application->settings.probeQuery_colorTolerance )
+			) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
 			ui.add( AntTWBarUI::makeSharedButton( "Query volume", [this] () {
 				struct QueryVolumeVisitor : Editor::SelectionVisitor {
@@ -891,7 +917,14 @@ namespace aop {
 				QueryVolumeVisitor( application ).dispatch( application->editor.selection );
 			} ) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
-			ui.add( AntTWBarUI::makeSharedVariable( "Query tolerance", AntTWBarUI::makeReferenceAccessor( application->settings.neighborhoodDatabase_queryTolerance ) ) );
+			ui.add( AntTWBarUI::makeSharedVariable(
+				"Neighborhood max distance",
+				AntTWBarUI::makeReferenceAccessor( application->settings.neighborhoodDatabase_maxDistance )
+			) );
+			ui.add( AntTWBarUI::makeSharedVariable(
+				"Neighborhood query tolerance",
+				AntTWBarUI::makeReferenceAccessor( application->settings.neighborhoodDatabase_queryTolerance )
+			) );
 			ui.add( AntTWBarUI::makeSharedButton( "Query neighbors", [this] () {
 				struct QueryNeighborsVisitor : Editor::SelectionVisitor {
 					Application *application;
@@ -966,7 +999,7 @@ namespace aop {
 					}
 					void visit( Editor::ObbSelection *selection ) {
 						application->startLongOperation();
-						auto matchInfos = application->weightedQueryVolume( selection->getObb() );
+						auto matchInfos = application->queryVolume( selection->getObb() );
 						application->endLongOperation();
 
 						/*typedef ProbeDatabase::WeightedQuery::MatchInfo MatchInfo;
@@ -995,9 +1028,9 @@ namespace aop {
 						}
 
 						for( auto queryResult = queryResults.begin() ; queryResult != queryResults.end() ; ++queryResult ) {
-							//if( scores[ queryResult->second ].first > 0 ) {
+							if( scores[ queryResult->second ].first > 0 ) {
 								scores[ queryResult->second ].first += queryResult->first * 0.5;
-							//}
+							}
 						}
 
 						boost::sort( scores, std::greater< std::pair< float, int > >() );
@@ -1138,7 +1171,8 @@ namespace aop {
 					numNonEmpty++;
 
 					const Vector3f position = voxels.getMapping().getPosition( iter.getIndex3() );
-#if 1
+					// use the trivial normal calculations for now [10/16/2012 kirschan2]
+#if 0
 					const Vector3f normal(
 						sample.nx / 255.0 * 2 - 1.0,
 						sample.ny / 255.0 * 2 - 1.0,
@@ -1250,6 +1284,14 @@ namespace aop {
 		log( boost::format( "total sampled probes: %i" ) % totalCount );
 	}
 
+	ProbeContextTolerance Application::getPCTFromSettings() {
+		ProbeContextTolerance pct;
+		pct.occusionTolerance = settings.probeQuery_occlusionTolerance;
+		pct.distanceTolerance = settings.probeQuery_distanceTolerance;
+		pct.colorLabTolerance = settings.probeQuery_colorTolerance;
+		return pct;
+	}
+
 	ProbeDatabase::Query::MatchInfos Application::queryVolume( const Obb &queryVolume ) {
 		ProgressTracker::Context progressTracker(4);
 
@@ -1274,9 +1316,7 @@ namespace aop {
 		{
 			query.setQueryDataset( std::move( rawDataset ) );
 
-			ProbeContextTolerance pct;
-			pct.setDefault();
-			query.setProbeContextTolerance( pct );
+			query.setProbeContextTolerance( getPCTFromSettings() );
 
 			query.execute();
 		}
@@ -1326,9 +1366,7 @@ namespace aop {
 		ProbeDatabase::WeightedQuery query( probeDatabase );
 		query.setQueryDataset( std::move( probes ), std::move( rawDataset ) );
 
-		ProbeContextTolerance pct;
-		pct.setDefault();
-		query.setProbeContextTolerance( pct );
+		query.setProbeContextTolerance( getPCTFromSettings() );
 
 		query.execute();
 
@@ -1390,8 +1428,10 @@ namespace aop {
 		initSGSInterface();
 
 		// TODO: fix parameter order [10/10/2012 kirschan2]
-		/*sampleAllNeighbors( application->settings.neighborhoodDatabase_maxDistance, neighborDatabase, *world );
-		sampleAllNeighborsV2( application->settings.neighborhoodDatabase_maxDistance, neighborDatabaseV2, *world );*/
+#if 1
+		sampleAllNeighbors( settings.neighborhoodDatabase_maxDistance, neighborDatabase, *world );
+		sampleAllNeighborsV2( settings.neighborhoodDatabase_maxDistance, neighborDatabaseV2, *world );
+#endif
 
 		probeDatabase.reserveIds( world->scene.modelNames.size() );
 
@@ -1505,7 +1545,9 @@ namespace aop {
 
 				cameraView.updateFromCamera( mainCamera );
 
-				world->renderViewFrame( cameraView );
+				if( !hideScene) {
+					world->renderViewFrame( cameraView );
+				}
 
 				debugUI->render();
 

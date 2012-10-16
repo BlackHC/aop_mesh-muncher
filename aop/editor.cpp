@@ -301,7 +301,7 @@ void Editor::Selecting::onKeyboard( EventState &eventState ) {
 }
 
 void Editor::Selecting::onMouse( EventState &eventState ) {
-	bool selectModel = sf::Keyboard::isKeyPressed( sf::Keyboard::LAlt );
+	bool selectModel = !sf::Keyboard::isKeyPressed( sf::Keyboard::LAlt );
 	bool inclusiveToggleSelection = sf::Keyboard::isKeyPressed( sf::Keyboard::LShift );
 	bool removeFromSelection = sf::Keyboard::isKeyPressed( sf::Keyboard::LControl );
 
