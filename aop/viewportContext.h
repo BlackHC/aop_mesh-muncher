@@ -22,6 +22,10 @@ struct ViewportContext : AsExecutionContext< ViewportContext > {
 	void updateGLViewport();
 	float getAspectRatio() const;
 
+	Eigen::Vector2i globalToGL( const Eigen::Vector2i &screenCords ) const {
+		return Eigen::Vector2i( screenCords[0], height - screenCords[1] );
+	}
+
 #if 0
 	// currently unused 
 	// viewport coords are relative 0..1

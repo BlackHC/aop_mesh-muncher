@@ -14,6 +14,9 @@ struct TransformChain {
 	void setOffset( const Eigen::Vector2f &offset );
 	Eigen::Vector2f getOffset() const;
 
+	void setScale( float scale );
+	float getScale() const;
+
 	// screen: absolute screen/window coordinates
 	// local: 0..1
 	

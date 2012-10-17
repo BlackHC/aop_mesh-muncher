@@ -81,6 +81,9 @@ int AntTWBarUI::detail::TypeMap< Editor::ModeState >::Type = TW_TYPE_UNDEF;
 
 std::weak_ptr<AntTweakBarEventHandler::GlobalScope> AntTweakBarEventHandler::globalScope;
 
+
+//////////////////////////////////////////////////////////////////////////
+
 // TODO: reorder the parameters in some consistent way! [10/10/2012 kirschan2]
 void sampleAllNeighbors( float maxDistance, NeighborhoodDatabase &database, SGSInterface::World &world ) {
 	AUTO_TIMER_FOR_FUNCTION();
@@ -825,6 +828,20 @@ namespace aop {
 			;
 
 			ui.setName( "aop" );
+
+			ui.add( AntTWBarUI::makeSharedButton( 
+				"Load settings",
+				[this] {
+					LocalCandidateBarUI::Candidates candidates;
+					candidates.push_back( LocalCandidateBarUI::ScoreModelIndexPair( 1.0, 0 ) );
+					candidates.push_back( LocalCandidateBarUI::ScoreModelIndexPair( 0.5, 1 ) );
+
+					application->localCandidateBarUIs.emplace_back(
+						std::make_shared<LocalCandidateBarUI>( application, candidates, Obb( Affine3f( Matrix3f::Identity() ), Vector3f::Constant( 10.0 ) ) )
+					);
+				}
+			) );
+
 			ui.add( AntTWBarUI::makeSharedVariable(
 				"Editor mode",
 				AntTWBarUI::CallbackAccessor<Editor::ModeState>(
@@ -904,6 +921,9 @@ namespace aop {
 						}
 
 						application->candidateSidebarUI->setModels( scoredModelIndices, selection->getObb().transformation.translation() );
+						application->localCandidateBarUIs.emplace_back(
+							std::make_shared<LocalCandidateBarUI>( application, scoredModelIndices, selection->getObb() )
+						);
 					}
 				};
 				QueryVolumeVisitor( application ).dispatch( application->editor.selection );
@@ -1483,6 +1503,10 @@ namespace aop {
 		debugUI->refresh();
 
 		modelDatabaseUI->refresh();
+
+		for( auto localCandidateBarUI = localCandidateBarUIs.begin() ; localCandidateBarUI != localCandidateBarUIs.end() ; ++localCandidateBarUI ) {
+			(*localCandidateBarUI)->refresh();
+		}
 	}
 
 	void Application::eventLoop() {
@@ -1529,15 +1553,13 @@ namespace aop {
 			// we set the main window again because we might have created another window in-between
 			mainWindow.setActive();
 
-			eventSystem.update( frameClock.restart().asSeconds(), clock.getElapsedTime().asSeconds() );
-
-			updateUI();
-
 			timedLog->updateTime( clock.getElapsedTime().asSeconds() );
 			timedLog->updateText();
 
 			{
 				boost::timer::cpu_timer renderTimer;
+
+				cameraView.updateFromCamera( mainCamera );
 
 				//probeVisualization.render();
 
@@ -1551,9 +1573,7 @@ namespace aop {
 				glLoadMatrix( cameraView.viewerContext.projectionView );
 
 				glMatrixMode( GL_MODELVIEW );
-				glLoadIdentity();
-
-				cameraView.updateFromCamera( mainCamera );
+				glLoadIdentity();			
 
 				if( !hideScene) {
 					world->renderViewFrame( cameraView );
@@ -1577,6 +1597,10 @@ namespace aop {
 				if( renderOptixView ) {
 					world->renderOptixViewFrame( cameraView );
 				}
+
+				// update the UIs
+				eventSystem.update( frameClock.restart().asSeconds(), clock.getElapsedTime().asSeconds() );
+				updateUI();
 
 				// render widgets
 				glMatrixMode( GL_PROJECTION );

@@ -13,6 +13,10 @@ struct Obb {
 		transformation( transformation ),
 		size( size ) {
 	}
+
+	Eigen::AlignedBox3f asLocalAlignedBox3f() const {
+		return Eigen::AlignedBox3f( -size * 0.5f, size * 0.5f );
+	}
 };
 
 // z: 9, x: 9, y: 8
@@ -41,6 +45,17 @@ inline Eigen::Matrix4f permutedToUnpermutedMatrix( const int *permutation );
 inline Eigen::Matrix4f unpermutedToPermutedMatrix( const int *permutation );
 
 inline Obb makeOBB( const Eigen::Affine3f &transformation, const Eigen::AlignedBox3f &alignedBox );
+
+inline Eigen::AlignedBox3f Eigen_getTransformedAlignedBox( const Eigen::Projective3f &transformation, const Eigen::AlignedBox3f &source ) {
+	Eigen::AlignedBox3f transformed;
+	for( int cornerIndex = 0 ; cornerIndex < 8 ; cornerIndex++ ) {
+		const Eigen::Vector3f corner = source.corner( Eigen::AlignedBox3f::CornerType( cornerIndex ) );
+		// fuck you Eigen! [10/17/2012 kirschan2]
+		const Eigen::Vector3f transformedCorner = (transformation * Eigen::Vector4f( corner[0], corner[1], corner[2], 1.0 )).matrix().hnormalized();
+		transformed.extend( transformedCorner );
+	}
+	return transformed;
+}
 
 const Eigen::Vector3f flipSign( const Eigen::Vector3f &v, const Eigen::Vector3f &c );
 

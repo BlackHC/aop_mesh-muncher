@@ -16,11 +16,19 @@ void TransformChain::update( TransformChain *parent ) {
 }
 
 void TransformChain::setOffset( const Eigen::Vector2f &offset ) {
-	localTransform = Eigen::Translation3f( Eigen::Vector3f( offset[0], offset[1], 0.0f ) );
+	localTransform.translation() = Eigen::Vector3f( offset[0], offset[1], 0.0f );
 }
 
 Eigen::Vector2f TransformChain::getOffset() const {
 	return localTransform.translation().head<2>();
+}
+
+void TransformChain::setScale( float scale ) {
+	localTransform.linear() = Eigen::AlignedScaling3f( scale, scale, 0.0 );
+}
+
+float TransformChain::getScale() const {
+	return localTransform.linear()(0,0);
 }
 
 Eigen::Vector2f TransformChain::pointToScreen( const Eigen::Vector2f &point ) const {
