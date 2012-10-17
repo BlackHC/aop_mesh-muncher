@@ -2,6 +2,116 @@
 
 #include <Eigen/Eigen>
 
+namespace ColorConversion {
+	namespace HSV {
+		/*
+	    typedef struct {
+			double r;       // percent
+			double g;       // percent
+			double b;       // percent
+		} rgb;
+
+			typedef struct {
+			double h;       // angle in degrees
+			double s;       // percent
+			double v;       // percent
+		} hsv;*/
+
+		Eigen::Vector3f rgb2hsv(const Eigen::Vector3f &rgb)
+		{
+			Eigen::Vector3f hsv;
+
+			const float min = rgb.minCoeff();
+			const float max = rgb.maxCoeff();
+
+			hsv[2] = max; // v
+			const float delta = max - min;
+			if( max > 0.0 ) {
+				hsv[1] = delta / max; // s
+			} else {
+				// r = g = b = 0
+				// s = 0, v is undefined
+				hsv[1] = 0.0;
+				hsv[0] = 0.0;
+				return hsv;
+			}
+			if( rgb[0] >= max ) // > is bogus, just keeps compilor happy
+				hsv[0] = ( rgb[1] - rgb[2] ) / delta;        // between yellow & magenta
+			else
+			if( rgb[1] >= max )
+				hsv[0] = 2.0 + ( rgb[2] - rgb[0] ) / delta;  // between cyan & yellow
+			else
+				hsv[0] = 4.0 + ( rgb[0] - rgb[1] ) / delta;  // between magenta & cyan
+
+			hsv[0] *= 60.0;                              // degrees
+
+			if( hsv[0] < 0.0 )
+				hsv[0] += 360.0;
+
+			return hsv;
+		}
+
+
+		Eigen::Vector3f hsv2rgb( const Eigen::Vector3f &hsv )
+		{
+			float hh, p, q, t, ff;
+			long i;
+			Eigen::Vector3f rgb;
+
+			if(hsv[1] <= 0.0) {       // < is bogus, just shuts up warnings
+				rgb[0] = 0.0;
+				rgb[1] = 0.0;
+				rgb[2] = 0.0;
+				return rgb;
+			}
+			hh = hsv[0];
+			if(hh >= 360.0) hh = 0.0;
+			hh /= 60.0;
+			i = (long)hh;
+			ff = hh - i;
+			p = hsv[2] * (1.0 - hsv[1]);
+			q = hsv[2] * (1.0 - (hsv[1] * ff));
+			t = hsv[2] * (1.0 - (hsv[1] * (1.0 - ff)));
+
+			switch(i) {
+			case 0:
+				rgb[0] = hsv[2];
+				rgb[1] = t;
+				rgb[2] = p;
+				break;
+			case 1:
+				rgb[0] = q;
+				rgb[1] = hsv[2];
+				rgb[2] = p;
+				break;
+			case 2:
+				rgb[0] = p;
+				rgb[1] = hsv[2];
+				rgb[2] = t;
+				break;
+
+			case 3:
+				rgb[0] = p;
+				rgb[1] = q;
+				rgb[2] = hsv[2];
+				break;
+			case 4:
+				rgb[0] = t;
+				rgb[1] = p;
+				rgb[2] = hsv[2];
+				break;
+			case 5:
+			default:
+				rgb[0] = hsv[2];
+				rgb[1] = p;
+				rgb[2] = q;
+				break;
+			}
+			return rgb;     
+		}
+	}
+}
+
 struct Obb {
 	typedef Eigen::Affine3f Transformation;
 	// origin box to world (without scaling)

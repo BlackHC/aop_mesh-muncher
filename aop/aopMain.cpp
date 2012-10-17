@@ -1556,10 +1556,13 @@ namespace aop {
 			timedLog->updateTime( clock.getElapsedTime().asSeconds() );
 			timedLog->updateText();
 
+			// update the UIs
+			eventSystem.update( frameClock.restart().asSeconds(), clock.getElapsedTime().asSeconds() );
+			cameraView.updateFromCamera( mainCamera );
+			updateUI();			
+
 			{
 				boost::timer::cpu_timer renderTimer;
-
-				cameraView.updateFromCamera( mainCamera );
 
 				//probeVisualization.render();
 
@@ -1597,10 +1600,6 @@ namespace aop {
 				if( renderOptixView ) {
 					world->renderOptixViewFrame( cameraView );
 				}
-
-				// update the UIs
-				eventSystem.update( frameClock.restart().asSeconds(), clock.getElapsedTime().asSeconds() );
-				updateUI();
 
 				// render widgets
 				glMatrixMode( GL_PROJECTION );

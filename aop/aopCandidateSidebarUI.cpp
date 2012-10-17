@@ -1,6 +1,10 @@
 #include "aopCandidateSidebarUI.h"
 
 void aop::LocalCandidateContainer::onRender() {
+	if( !visible ) {
+		return;
+	}
+
 	const auto &topLeft = ViewportContext::context->globalToGL( transformChain.pointToScreen( Eigen::Vector2f::Zero() ).cast<int>() );
 	const auto &bottomRight = ViewportContext::context->globalToGL( transformChain.pointToScreen( size ).cast<int>() );
 
@@ -13,7 +17,8 @@ void aop::LocalCandidateContainer::onRender() {
 }
 
 void aop::LocalCandidateBarUI::init() {
-	application->widgetRoot.addEventHandler( make_nonallocated_shared( candidatesContainer ) );
+	application->widgetRoot.addEventHandler( make_nonallocated_shared( clipper ) );
+	clipper.addEventHandler( make_nonallocated_shared( scroller ) );
 
 	const float buttonWidth = 0.1f;
 	const float buttonAbsPadding = 32;
@@ -29,18 +34,18 @@ void aop::LocalCandidateBarUI::init() {
 	const int numDisplayedModels = std::min<int>( numModels, 1.0 / totalEntryHeight );
 	const float totalHeight = totalEntryHeight * numDisplayedModels;
 
-	candidatesContainer.size.x() = buttonWidth;
-	candidatesContainer.size.y() = totalHeight;
+	clipper.size.x() = buttonWidth;
+	clipper.size.y() = totalHeight;
 
-	candidatesContainer.minY = 0;
-	candidatesContainer.maxY = (numModels - 1 ) * totalEntryHeight;
-	candidatesContainer.scrollStep = totalEntryHeight;
+	scroller.minY = 0;
+	scroller.maxY = (numModels - 1 ) * totalEntryHeight;
+	scroller.scrollStep = totalEntryHeight;
 
 	for( int i = 0 ; i < numModels ; i++ ) {
 		const float score = candidates[ i ].first;
 		const int modelIndex = candidates[ i ].second;
 
-		candidatesContainer.addEventHandler(
+		scroller.addEventHandler(
 			std::make_shared< ActionModelButton >(
 				Eigen::Vector2f( 0.0, buttonVerticalPadding + i * totalEntryHeight ),
 				Eigen::Vector2f( buttonWidth, buttonHeight ),
@@ -56,7 +61,7 @@ void aop::LocalCandidateBarUI::init() {
 					}
 			}
 		) );
-		candidatesContainer.addEventHandler(
+		scroller.addEventHandler(
 			std::make_shared< ProgressBarWidget >(
 				score,
 				Eigen::Vector2f( 0.0, buttonVerticalPadding + i * totalEntryHeight + buttonHeight ),
@@ -67,15 +72,24 @@ void aop::LocalCandidateBarUI::init() {
 }
 
 void aop::LocalCandidateBarUI::refresh() {
-	const auto screenBox = Eigen_getTransformedAlignedBox( application->cameraView.viewerContext.projectionView * queryObb.transformation, queryObb.asLocalAlignedBox3f() );
+	const auto pos = application->cameraView.viewerContext.projectionView * queryObb.transformation.translation().homogeneous().matrix();
+	if( pos[2] < -pos[3] ) {
+		clipper.visible = false;
+		return;
+	}
+	else {
+		clipper.visible = true;
+	}
 
+	const auto screenBox = Eigen_getTransformedAlignedBox( application->cameraView.viewerContext.projectionView * queryObb.transformation, queryObb.asLocalAlignedBox3f() );
+	
 	Eigen::Vector2f offset = screenBox.corner( Eigen::AlignedBox3f::TopRightCeil ).head<2>();
 	offset.y() *= -1.0f;
 
 	const float scale = std::max<float>( 0.025f, screenBox.sizes().head<2>().norm() ) / 4.0; // 4.0 = screenWidth * screenHeight in -1..1x-1..1 coords
 
-	candidatesContainer.transformChain.setOffset( offset * 0.5 + Eigen::Vector2f::Constant( 0.5 ) );
-	candidatesContainer.transformChain.setScale( 2.0 * scale );
+	clipper.transformChain.setOffset( offset * 0.5 + Eigen::Vector2f::Constant( 0.5 ) );
+	clipper.transformChain.setScale( 2.0 * scale );
 }
 
 void aop::CandidateSidebarUI::setModels( std::vector<ScoreModelIndexPair> scoredModelIndices, const Eigen::Vector3f &position ) {

@@ -33,6 +33,8 @@ struct ITransformChain : virtual EventHandler {
 };
 
 struct IWidget : virtual ITransformChain, virtual EventHandler::WithParentDecl< ITransformChain > {
+	typedef std::shared_ptr< IWidget > SPtr;
+
 	virtual void onRender() = 0;
 };
 
