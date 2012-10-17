@@ -1303,7 +1303,7 @@ namespace aop {
 			}
 			progressTracker.markFinished();
 
-			probeDatabase.addDataset(modelIndex, probes, SortedProbeDataset( rawDataset ) );
+			probeDatabase.addDataset(modelIndex, probes, InstanceProbeDataset( rawDataset ) );
 			progressTracker.markFinished();
 
 			totalCount += (int) transformedProbes.size();

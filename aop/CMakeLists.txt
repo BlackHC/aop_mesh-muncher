@@ -200,6 +200,34 @@ ADD_EXECUTABLE(Test_aop
 	../gtest/gtest-all.cc
 )
 
+ADD_EXECUTABLE(Test_aop_widgets
+	${GLEW_SOURCE_FILE}
+
+	../framework/eventHandling.h
+
+	../framework/verboseEventHandlers.h
+
+	../framework/mathUtility.h
+	../framework/contextHelper.h
+
+	../framework/autoTimer.h
+	../framework/autoTimer.cpp
+
+	../framework/antTweakBarEventHandler.h
+	../framework/twEventSFML20.cpp
+	../framework/anttwbarcollection.h
+	../framework/anttwbarui.h
+	../framework/anttwbarui.cpp
+
+	viewportContext.h
+	viewportContext.cpp
+
+	test_widgets.cpp
+
+	widgets.h
+	widgets.cpp
+)
+
 SET_SOURCE_FILES_PROPERTIES(
 	probeDatabase.cpp
 	PROPERTIES
@@ -224,6 +252,14 @@ TARGET_LINK_LIBRARIES(Test_aop ${OPENGL_LIBRARIES})
 TARGET_LINK_LIBRARIES(Test_aop ${Boost_LIBRARIES})
 TARGET_LINK_LIBRARIES(Test_aop ${SOIL_LIBRARY})
 TARGET_LINK_LIBRARIES(Test_aop ${optix_LIBRARY})
+
+TARGET_LINK_LIBRARIES(Test_aop_widgets ${ANTTWEAKBAR_LIBRARY})
+TARGET_LINK_LIBRARIES(Test_aop_widgets ${SFML_LIBRARIES})
+TARGET_LINK_LIBRARIES(Test_aop_widgets ${OPENGL_LIBRARIES})
+
+TARGET_LINK_LIBRARIES(Test_aop_widgets ${Boost_LIBRARIES})
+TARGET_LINK_LIBRARIES(Test_aop_widgets ${SOIL_LIBRARY})
+TARGET_LINK_LIBRARIES(Test_aop_widgets ${optix_LIBRARY})
 
 SOURCE_GROUP( "aop" REGULAR_EXPRESSION "[^/\\]*$" )
 SOURCE_GROUP( "build" REGULAR_EXPRESSION "../build/[^/\\]*" )

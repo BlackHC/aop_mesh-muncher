@@ -46,13 +46,11 @@ void Editor::renderHighlitOBB( const Obb &obb ) {
 	for( int pass = 0 ; pass < 2 ; pass++ ) {
 		switch( pass ) {
 		case 0:
-			glDepthMask( GL_FALSE );
-			glDepthFunc( GL_GEQUAL );
+			DebugRender::onlyDrawOccluded();
 			DebugRender::setColor( Eigen::Vector3f::UnitX() * 0.5f );
 			break;
 		case 1:
-			glDepthMask( GL_TRUE );
-			glDepthFunc( GL_LEQUAL );
+			DebugRender::onlyDrawUnoccluded();
 			DebugRender::setColor( Eigen::Vector3f::UnitX() );
 			break;
 		}

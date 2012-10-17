@@ -23,7 +23,7 @@ struct ProbeDatabase::Query {
 		probeContextTolerance = pct;
 	}
 
-	void setQueryDataset( SortedProbeDataset &&dataset ) {
+	void setQueryDataset( InstanceProbeDataset &&dataset ) {
 		this->dataset = std::move( dataset );
 	}
 
@@ -171,11 +171,11 @@ protected:
 	}
 
 	void matchSortedRanges(
-		const SortedProbeDataset &overlappedDataset,
+		const ProbeContexts &overlappedDataset,
 		const IntRange &overlappedRange,
 		boost::dynamic_bitset<> &overlappedProbesMatched,
 
-		const SortedProbeDataset &pureDataset,
+		const ProbeContexts &pureDataset,
 		const IntRange &pureRange,
 		boost::dynamic_bitset<> &pureProbesMatched,
 
@@ -194,9 +194,9 @@ protected:
 		const int endPureIndex = pureRange.second;
 		int pureIndex = beginPureIndex;
 
-		ProbeContext pureContext = pureDataset.getProbeContexts()[ pureIndex ];
+		ProbeContext pureContext = pureDataset[ pureIndex ];
 		for( ; pureIndex < endPureIndex - 1 ; pureIndex++ ) {
-			const ProbeContext nextPureContext = pureDataset.getProbeContexts()[ pureIndex + 1 ];
+			const ProbeContext nextPureContext = pureDataset[ pureIndex + 1 ];
 			int nextBeginOverlappedIndex = overlappedIndex;
 
 			const float minDistance = pureContext.distance - probeContextTolerance.distanceTolerance;
@@ -206,7 +206,7 @@ protected:
 			bool pureProbeMatched = false;
 
 			for( ; overlappedIndex < endOverlappedIndex ; overlappedIndex++ ) {
-				const ProbeContext overlappedContext = overlappedDataset.getProbeContexts()[ overlappedIndex ];
+				const ProbeContext overlappedContext = overlappedDataset[ overlappedIndex ];
 
 				// distance too small?
 				if( overlappedContext.distance < minDistance ) {
@@ -230,7 +230,7 @@ protected:
 				}
 
 				if( matchColor( pureContext, overlappedContext ) ) {
-					numMatches++;
+					numMatches += pureContext.weight * overlappedContext.weight;
 
 					overlappedProbesMatched[ overlappedIndex ] = true;
 					pureProbeMatched = true;
@@ -253,7 +253,7 @@ protected:
 			bool pureProbeMatched = false;
 
 			for( ; overlappedIndex < endOverlappedIndex ; overlappedIndex++ ) {
-				const ProbeContext overlappedContext = overlappedDataset.getProbeContexts()[ overlappedIndex ];
+				const ProbeContext overlappedContext = overlappedDataset[ overlappedIndex ];
 
 				// distance too small?
 				if( overlappedContext.distance < minDistance ) {
@@ -267,7 +267,7 @@ protected:
 				}
 
 				if( matchColor( pureContext, overlappedContext ) ) {
-					numMatches++;
+					numMatches += pureContext.weight * overlappedContext.weight;
 
 					overlappedProbesMatched[ overlappedIndex ] = true;
 					pureProbeMatched = true;
@@ -539,7 +539,7 @@ struct ProbeDatabase::WeightedQuery {
 		probeContextTolerance = pct;
 	}
 
-	void setQueryDataset( std::vector< Probe > &&probes, SortedProbeDataset &&dataset ) {
+	void setQueryDataset( std::vector< Probe > &&probes, InstanceProbeDataset &&dataset ) {
 		this->probes = std::move( probes );
 		this->dataset = std::move( dataset );
 	}
@@ -713,7 +713,7 @@ protected:
 
 	void matchSortedRanges(
 		// query
-		const SortedProbeDataset &overlappedDataset,
+		const ProbeContexts &overlappedDataset,
 		const IntRange &overlappedRange,
 		std::vector< float > &overlappedProbesMatched,
 
@@ -749,7 +749,7 @@ protected:
 			float pureProbeBestMatch = 0.0f;
 
 			for( ; overlappedIndex < endOverlappedIndex ; overlappedIndex++ ) {
-				const ProbeContext overlappedContext = overlappedDataset.getProbeContexts()[ overlappedIndex ];
+				const ProbeContext overlappedContext = overlappedDataset[ overlappedIndex ];
 
 				// distance too small?
 				if( overlappedContext.distance < minDistance ) {
@@ -775,7 +775,11 @@ protected:
 				if( matchColor( pureContext, overlappedContext ) ) {
 					numMatches++;
 
-					const float matchScore = getMatchScore( probes[ overlappedContext.probeIndex ], refDatasets.getProbes()[ pureContext.probeIndex ] );
+					const float matchScore = 
+							pureContext.weight * overlappedContext.weight 
+						*
+							getMatchScore( probes[ overlappedContext.probeIndex ], refDatasets.getProbes()[ pureContext.probeIndex ] )
+					;
 
 					overlappedProbesMatched[ overlappedIndex ] = std::max( matchScore, overlappedProbesMatched[ overlappedIndex ] );
 					pureProbeBestMatch = matchScore;
@@ -798,7 +802,7 @@ protected:
 			float pureProbeBestMatch = 0.0f;
 
 			for( ; overlappedIndex < endOverlappedIndex ; overlappedIndex++ ) {
-				const ProbeContext overlappedContext = overlappedDataset.getProbeContexts()[ overlappedIndex ];
+				const ProbeContext overlappedContext = overlappedDataset[ overlappedIndex ];
 
 				// distance too small?
 				if( overlappedContext.distance < minDistance ) {
@@ -814,10 +818,11 @@ protected:
 				if( matchColor( pureContext, overlappedContext ) ) {
 					numMatches++;
 
-					const float matchScore = getMatchScore( probes[ overlappedContext.probeIndex ], refDatasets.getProbes()[ pureContext.probeIndex ] );
-
-					overlappedProbesMatched[ overlappedIndex ] = std::max( matchScore, overlappedProbesMatched[ overlappedIndex ] );
-					pureProbeBestMatch = matchScore;
+					const float matchScore = 
+							pureContext.weight * overlappedContext.weight 
+						*
+							getMatchScore( probes[ overlappedContext.probeIndex ], refDatasets.getProbes()[ pureContext.probeIndex ] )
+					;
 				}
 			}
 

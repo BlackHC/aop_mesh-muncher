@@ -372,6 +372,21 @@ namespace DebugRender {
 		glPopMatrix();
 	}
 
+	void onlyDrawOccluded() {
+		glDepthMask( GL_FALSE );
+		glDepthFunc( GL_GEQUAL );
+	}
+
+	void onlyDrawUnoccluded() {
+		glDepthMask( GL_TRUE );
+		glDepthFunc( GL_LEQUAL );
+	}
+
+	void alwaysDraw() {
+		glDepthMask( GL_TRUE );
+		glDepthFunc( GL_ALWAYS );
+	}
+
 	// from glut 3.7 and SFML's SimpleGLScene
 	inline void drawBox(const Eigen::Vector3f &size, bool wireframe = true, bool gay = false)
 	{

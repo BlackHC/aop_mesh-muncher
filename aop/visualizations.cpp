@@ -48,7 +48,7 @@ void visualizeColorGrid( const VoxelizedModel::Voxels &grid, GridVisualizationMo
 	DebugRender::end();
 }
 
-void visualizeProbeDataset( const Eigen::Vector3f &skyColor, float maxDistance, float resolution, const std::vector< SortedProbeDataset::Probe > &probes, const std::vector< SortedProbeDataset::ProbeContext > &probeContexts, ProbeVisualizationMode pvm ) {
+void visualizeProbeDataset( const Eigen::Vector3f &skyColor, float maxDistance, float resolution, const std::vector< InstanceProbeDataset::Probe > &probes, const std::vector< InstanceProbeDataset::ProbeContext > &probeContexts, ProbeVisualizationMode pvm ) {
 	using namespace Eigen;
 
 	// sin and cos of 22.5°
@@ -57,7 +57,7 @@ void visualizeProbeDataset( const Eigen::Vector3f &skyColor, float maxDistance, 
 
 	DebugRender::begin();
 	for( auto probeContext = probeContexts.begin() ; probeContext != probeContexts.end() ; ++probeContext ) {
-		const SortedProbeDataset::Probe &probe = probes[ probeContext->probeIndex ];
+		const InstanceProbeDataset::Probe &probe = probes[ probeContext->probeIndex ];
 		
 		const auto direction = map( probe.direction );
 

@@ -26,27 +26,27 @@ namespace ColorConversion {
 
 			hsv[2] = max; // v
 			const float delta = max - min;
-			if( max > 0.0 ) {
+			if( max > 0.0f ) {
 				hsv[1] = delta / max; // s
 			} else {
 				// r = g = b = 0
 				// s = 0, v is undefined
-				hsv[1] = 0.0;
-				hsv[0] = 0.0;
+				hsv[1] = 0.0f;
+				hsv[0] = 0.0f;
 				return hsv;
 			}
 			if( rgb[0] >= max ) // > is bogus, just keeps compilor happy
 				hsv[0] = ( rgb[1] - rgb[2] ) / delta;        // between yellow & magenta
 			else
 			if( rgb[1] >= max )
-				hsv[0] = 2.0 + ( rgb[2] - rgb[0] ) / delta;  // between cyan & yellow
+				hsv[0] = 2.0f + ( rgb[2] - rgb[0] ) / delta;  // between cyan & yellow
 			else
-				hsv[0] = 4.0 + ( rgb[0] - rgb[1] ) / delta;  // between magenta & cyan
+				hsv[0] = 4.0f + ( rgb[0] - rgb[1] ) / delta;  // between magenta & cyan
 
-			hsv[0] *= 60.0;                              // degrees
+			hsv[0] *= 60.0f;                              // degrees
 
 			if( hsv[0] < 0.0 )
-				hsv[0] += 360.0;
+				hsv[0] += 360.0f;
 
 			return hsv;
 		}
@@ -58,20 +58,20 @@ namespace ColorConversion {
 			long i;
 			Eigen::Vector3f rgb;
 
-			if(hsv[1] <= 0.0) {       // < is bogus, just shuts up warnings
-				rgb[0] = 0.0;
-				rgb[1] = 0.0;
-				rgb[2] = 0.0;
+			if(hsv[1] <= 0.0f) {       // < is bogus, just shuts up warnings
+				rgb[0] = 0.0f;
+				rgb[1] = 0.0f;
+				rgb[2] = 0.0f;
 				return rgb;
 			}
 			hh = hsv[0];
-			if(hh >= 360.0) hh = 0.0;
-			hh /= 60.0;
+			if(hh >= 360.0f) hh = 0.0f;
+			hh /= 60.0f;
 			i = (long)hh;
 			ff = hh - i;
-			p = hsv[2] * (1.0 - hsv[1]);
-			q = hsv[2] * (1.0 - (hsv[1] * ff));
-			t = hsv[2] * (1.0 - (hsv[1] * (1.0 - ff)));
+			p = hsv[2] * (1.0f - hsv[1]);
+			q = hsv[2] * (1.0f - (hsv[1] * ff));
+			t = hsv[2] * (1.0f - (hsv[1] * (1.0f - ff)));
 
 			switch(i) {
 			case 0:

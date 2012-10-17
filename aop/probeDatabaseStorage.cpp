@@ -15,13 +15,13 @@ namespace Serializer {
 		}
 	}*/
 
-SERIALIZER_DEFAULT_EXTERN_IMPL( SortedProbeDataset, (data) )
+SERIALIZER_DEFAULT_EXTERN_IMPL( InstanceProbeDataset, (data) )
 SERIALIZER_DEFAULT_EXTERN_IMPL( IndexedProbeDataset, (data)(hitCounterLowerBounds) )
 SERIALIZER_DEFAULT_EXTERN_IMPL( IdDatasets, (instances)(mergedInstances)(probes) )
 
 SERIALIZER_ENABLE_RAW_MODE_EXTERN( OptixProgramInterface::ProbeContext );
 SERIALIZER_ENABLE_RAW_MODE_EXTERN( OptixProgramInterface::Probe );
-SERIALIZER_ENABLE_RAW_MODE_EXTERN( SortedProbeDataset::ProbeContext );
+SERIALIZER_ENABLE_RAW_MODE_EXTERN( InstanceProbeDataset::ProbeContext );
 
 const int CACHE_FORMAT_VERSION = 2;
 

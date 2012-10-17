@@ -123,9 +123,10 @@ namespace aop {
 		ScrollableContainer scroller;
 
 		Obb queryObb;
-
+		
 		typedef std::vector< ScoreModelIndexPair > Candidates;
 		Candidates candidates;
+		
 
 		LocalCandidateBarUI( Application *application, Candidates candidates, const Obb &queryObb ) 
 			: application( application )

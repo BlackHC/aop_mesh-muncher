@@ -18,7 +18,7 @@ void RawProbeDataset::sort() {
 }
 #endif
 
-SortedProbeDataset SortedProbeDataset::merge( const SortedProbeDataset &first, const SortedProbeDataset &second ) {
+InstanceProbeDataset InstanceProbeDataset::merge( const InstanceProbeDataset &first, const InstanceProbeDataset &second ) {
 	AUTO_TIMER_DEFAULT( boost::str( boost::format( "with %i + %i = %i probes ") % first.size() % second.size() % (first.size() + second.size()) ) );
 
 #if 0
@@ -47,7 +47,7 @@ SortedProbeDataset SortedProbeDataset::merge( const SortedProbeDataset &first, c
 
 	return std::move( dataset );
 #else
-	SortedProbeDataset dataset;
+	InstanceProbeDataset dataset;
 	dataset.probeContexts().resize( first.size() + second.size() );
 	boost::merge( first.getProbeContexts(), second.getProbeContexts(), dataset.probeContexts().begin(), ProbeContext::lexicographicalLess );
 
@@ -55,7 +55,7 @@ SortedProbeDataset SortedProbeDataset::merge( const SortedProbeDataset &first, c
 #endif
 }
 
-SortedProbeDataset SortedProbeDataset::mergeMultiple( const std::vector< const SortedProbeDataset* > &datasets) {
+InstanceProbeDataset InstanceProbeDataset::mergeMultiple( const std::vector< const InstanceProbeDataset* > &datasets) {
 	AUTO_TIMER_DEFAULT( boost::str( boost::format( "with %i datasets" ) % datasets.size() ) );
 
 
@@ -132,7 +132,7 @@ SortedProbeDataset SortedProbeDataset::mergeMultiple( const std::vector< const S
 
 	log( boost::format( "merging %i probes" ) % totalCount );
 
-	SortedProbeDataset mergedDataset;
+	InstanceProbeDataset mergedDataset;
 
 	// reserve enough space for all probes
 	mergedDataset.probeContexts().reserve( totalCount );
@@ -148,7 +148,7 @@ SortedProbeDataset SortedProbeDataset::mergeMultiple( const std::vector< const S
 #endif
 }
 
-SortedProbeDataset SortedProbeDataset::subSet( const std::pair< int, int > &range ) const {
+InstanceProbeDataset InstanceProbeDataset::subSet( const std::pair< int, int > &range ) const {
 #if 0
 	using namespace generic;
 
@@ -174,7 +174,7 @@ SortedProbeDataset SortedProbeDataset::subSet( const std::pair< int, int > &rang
 
 	return dataset;
 #else
-	SortedProbeDataset dataset;
+	InstanceProbeDataset dataset;
 
 	const int rangeSize = range.second - range.first;
 	if( !rangeSize ) {

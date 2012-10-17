@@ -2,13 +2,13 @@
 #include "gtest.h"
 
 TEST( SortedProbeDataset_ProbeContext, lexicographicalLess ) {
-	SortedProbeDataset::ProbeContext a, b;
+	InstanceProbeDataset::ProbeContext a, b;
 	{
 		a.hitCounter = 10;
 		b.hitCounter = 20;
 
-		ASSERT_TRUE( SortedProbeDataset::ProbeContext::lexicographicalLess( a, b ) );
-		ASSERT_FALSE( SortedProbeDataset::ProbeContext::lexicographicalLess( b, a ) );
+		ASSERT_TRUE( InstanceProbeDataset::ProbeContext::lexicographicalLess( a, b ) );
+		ASSERT_FALSE( InstanceProbeDataset::ProbeContext::lexicographicalLess( b, a ) );
 	}
 	{
 		a.hitCounter = b.hitCounter = 10;
@@ -16,11 +16,11 @@ TEST( SortedProbeDataset_ProbeContext, lexicographicalLess ) {
 		a.distance = 10;
 		b.distance = 20;
 
-		ASSERT_TRUE( SortedProbeDataset::ProbeContext::lexicographicalLess( a, b ) );
-		ASSERT_FALSE( SortedProbeDataset::ProbeContext::lexicographicalLess( b, a ) );
+		ASSERT_TRUE( InstanceProbeDataset::ProbeContext::lexicographicalLess( a, b ) );
+		ASSERT_FALSE( InstanceProbeDataset::ProbeContext::lexicographicalLess( b, a ) );
 
-		ASSERT_TRUE( SortedProbeDataset::ProbeContext::lexicographicalLess_startWithDistance( a, b ) );
-		ASSERT_FALSE( SortedProbeDataset::ProbeContext::lexicographicalLess_startWithDistance( b, a ) );
+		ASSERT_TRUE( InstanceProbeDataset::ProbeContext::lexicographicalLess_startWithDistance( a, b ) );
+		ASSERT_FALSE( InstanceProbeDataset::ProbeContext::lexicographicalLess_startWithDistance( b, a ) );
 	}
 	{
 		a.hitCounter = b.hitCounter = 10;
@@ -29,11 +29,11 @@ TEST( SortedProbeDataset_ProbeContext, lexicographicalLess ) {
 		a.Lab.x = 10;
 		b.Lab.x = 20;
 
-		ASSERT_TRUE( SortedProbeDataset::ProbeContext::lexicographicalLess( a, b ) );
-		ASSERT_FALSE( SortedProbeDataset::ProbeContext::lexicographicalLess( b, a ) );
+		ASSERT_TRUE( InstanceProbeDataset::ProbeContext::lexicographicalLess( a, b ) );
+		ASSERT_FALSE( InstanceProbeDataset::ProbeContext::lexicographicalLess( b, a ) );
 
-		ASSERT_TRUE( SortedProbeDataset::ProbeContext::lexicographicalLess_startWithDistance( a, b ) );
-		ASSERT_FALSE( SortedProbeDataset::ProbeContext::lexicographicalLess_startWithDistance( b, a ) );
+		ASSERT_TRUE( InstanceProbeDataset::ProbeContext::lexicographicalLess_startWithDistance( a, b ) );
+		ASSERT_FALSE( InstanceProbeDataset::ProbeContext::lexicographicalLess_startWithDistance( b, a ) );
 	}
 	{
 		a.hitCounter = b.hitCounter = 10;
@@ -44,11 +44,11 @@ TEST( SortedProbeDataset_ProbeContext, lexicographicalLess ) {
 		a.Lab.y = 10;
 		b.Lab.y = 20;
 
-		ASSERT_TRUE( SortedProbeDataset::ProbeContext::lexicographicalLess( a, b ) );
-		ASSERT_FALSE( SortedProbeDataset::ProbeContext::lexicographicalLess( b, a ) );
+		ASSERT_TRUE( InstanceProbeDataset::ProbeContext::lexicographicalLess( a, b ) );
+		ASSERT_FALSE( InstanceProbeDataset::ProbeContext::lexicographicalLess( b, a ) );
 
-		ASSERT_TRUE( SortedProbeDataset::ProbeContext::lexicographicalLess_startWithDistance( a, b ) );
-		ASSERT_FALSE( SortedProbeDataset::ProbeContext::lexicographicalLess_startWithDistance( b, a ) );
+		ASSERT_TRUE( InstanceProbeDataset::ProbeContext::lexicographicalLess_startWithDistance( a, b ) );
+		ASSERT_FALSE( InstanceProbeDataset::ProbeContext::lexicographicalLess_startWithDistance( b, a ) );
 	}
 	{
 		a.hitCounter = b.hitCounter = 10;
@@ -60,17 +60,17 @@ TEST( SortedProbeDataset_ProbeContext, lexicographicalLess ) {
 		a.Lab.z = 10;
 		b.Lab.z = 20;
 
-		ASSERT_TRUE( SortedProbeDataset::ProbeContext::lexicographicalLess( a, b ) );
-		ASSERT_FALSE( SortedProbeDataset::ProbeContext::lexicographicalLess( b, a ) );
+		ASSERT_TRUE( InstanceProbeDataset::ProbeContext::lexicographicalLess( a, b ) );
+		ASSERT_FALSE( InstanceProbeDataset::ProbeContext::lexicographicalLess( b, a ) );
 
-		ASSERT_TRUE( SortedProbeDataset::ProbeContext::lexicographicalLess_startWithDistance( a, b ) );
-		ASSERT_FALSE( SortedProbeDataset::ProbeContext::lexicographicalLess_startWithDistance( b, a ) );
+		ASSERT_TRUE( InstanceProbeDataset::ProbeContext::lexicographicalLess_startWithDistance( a, b ) );
+		ASSERT_FALSE( InstanceProbeDataset::ProbeContext::lexicographicalLess_startWithDistance( b, a ) );
 	}
 }
 
 // ProbeDataset is covered by sort_permute_iter's tests
-SortedProbeDataset::ProbeContext makeProbeContext( int hitCounter, float distance = 10 ) {
-	SortedProbeDataset::ProbeContext probeContext;
+InstanceProbeDataset::ProbeContext makeProbeContext( int hitCounter, float distance = 10 ) {
+	InstanceProbeDataset::ProbeContext probeContext;
 	probeContext.hitCounter = hitCounter;
 	probeContext.distance = distance;
 	probeContext.Lab.x = probeContext.Lab.y = probeContext.Lab.z = 0;
@@ -90,7 +90,7 @@ TEST( IndexedProbeDataset, idAndWeight ) {
 			rawDataset.push_back( makeProbeContext( i, j ) );	
 		}
 	}
-	IndexedProbeDataset dataset = SortedProbeDataset( rawDataset );
+	IndexedProbeDataset dataset = InstanceProbeDataset( rawDataset );
 
 	ASSERT_EQ( rawDataset.size(), dataset.size() );
 	for( int i = 0 ; i < dataset.size() ; i++ ) {
@@ -112,7 +112,7 @@ TEST( IndexedProbeDataset, setHitCounterLowerBounds ) {
 			rawDataset.push_back( makeProbeContext( i, j ) );
 		}
 	}
-	IndexedProbeDataset dataset = SortedProbeDataset( rawDataset );
+	IndexedProbeDataset dataset = InstanceProbeDataset( rawDataset );
 
 	ASSERT_EQ( rawDataset.size(), dataset.size() );
 
@@ -129,7 +129,7 @@ TEST( IndexedProbeDataset, setHitCounterLowerBounds ) {
 	}
 }
 
-TEST( SortedProbeDataset, subSet ) {
+TEST( InstanceProbeDataset, subSet ) {
 	RawProbeDataset rawDataset;
 
 	for( int i = 0 ; i < 1000 ; i++ ) {
@@ -139,16 +139,16 @@ TEST( SortedProbeDataset, subSet ) {
 		rawDataset.push_back( makeProbeContext( 0, 2*i + 1 ) );
 	}
 
-	SortedProbeDataset dataset = SortedProbeDataset( rawDataset );
+	InstanceProbeDataset dataset = InstanceProbeDataset( rawDataset );
 
-	SortedProbeDataset scratch = dataset.subSet( std::make_pair( 0, 2000 ) );
+	InstanceProbeDataset scratch = dataset.subSet( std::make_pair( 0, 2000 ) );
 
 	for( int j = 0 ; j < 2000 ; j++ ) {
 		ASSERT_EQ( j, scratch.getProbeContexts()[j].distance );
 	}
 }
 
-TEST( SortedProbeDataset, merge ) {
+TEST( InstanceProbeDataset, merge ) {
 	RawProbeDataset first, second;
 
 	for( int i = 0 ; i < 1000 ; i++ ) {
@@ -156,7 +156,7 @@ TEST( SortedProbeDataset, merge ) {
 		second.push_back( makeProbeContext( 0, 2*i + 1 ) );
 	}
 
-	SortedProbeDataset result = SortedProbeDataset::merge( SortedProbeDataset( first ), SortedProbeDataset( second ) );
+	InstanceProbeDataset result = InstanceProbeDataset::merge( InstanceProbeDataset( first ), InstanceProbeDataset( second ) );
 
 	for( int j = 0 ; j < 2000 ; j++ ) {
 		ASSERT_EQ( j, result.getProbeContexts()[j].distance );
@@ -165,22 +165,22 @@ TEST( SortedProbeDataset, merge ) {
 
 TEST( IndexedProbeDataset, mergeMultiple ) {
 	const int numDatasets = 10;
-	SortedProbeDataset datasets[numDatasets];
+	InstanceProbeDataset datasets[numDatasets];
 
 	for( int j = 0 ; j < numDatasets ; j++ ) {
 		RawProbeDataset rawDataset;
 		for( int i = 0 ; i < 1000 ; i++ ) {
 			rawDataset.push_back( makeProbeContext( 0, numDatasets * i + j ) );
 		}
-		datasets[j] = SortedProbeDataset( rawDataset );
+		datasets[j] = InstanceProbeDataset( rawDataset );
 	}
 
-	std::vector< const SortedProbeDataset * > pDatasets;
+	std::vector< const InstanceProbeDataset * > pDatasets;
 	for( int j = 0 ; j < numDatasets ; j++ ) {
 		pDatasets.push_back( &datasets[j] );
 	}
 
-	SortedProbeDataset result = SortedProbeDataset::mergeMultiple( pDatasets );
+	InstanceProbeDataset result = InstanceProbeDataset::mergeMultiple( pDatasets );
 
 	for( int j = 0 ; j < numDatasets * 1000 ; j++ ) {
 		ASSERT_EQ( j, result.getProbeContexts()[j].distance );
@@ -189,14 +189,14 @@ TEST( IndexedProbeDataset, mergeMultiple ) {
 
 TEST( IndexedProbeDataset, mergeMultiple_empty ) {
 	const int numDatasets = 10;
-	SortedProbeDataset datasets[numDatasets];
+	InstanceProbeDataset datasets[numDatasets];
 
-	std::vector< const SortedProbeDataset * > pDatasets;
+	std::vector< const InstanceProbeDataset * > pDatasets;
 	for( int j = 0 ; j < numDatasets ; j++ ) {
 		pDatasets.push_back( &datasets[j] );
 	}
 
-	SortedProbeDataset result = SortedProbeDataset::mergeMultiple( pDatasets );
+	InstanceProbeDataset result = InstanceProbeDataset::mergeMultiple( pDatasets );
 
 	ASSERT_EQ( result.size(), 0 );
 }
@@ -211,7 +211,7 @@ TEST( ProbeDatabase, zeroTolerance ) {
 		}
 	}
 
-	SortedProbeDataset dataset = SortedProbeDataset( rawDataset ), testDataset = SortedProbeDataset( rawTestDataset );
+	InstanceProbeDataset dataset = InstanceProbeDataset( rawDataset ), testDataset = InstanceProbeDataset( rawTestDataset );
 
 	auto probes = std::vector< ProbeDatabase::Probe >( 5*1000 );
 
@@ -277,7 +277,7 @@ TEST( ProbeDatabase, zeroTolerance_biggerDB ) {
 		}
 	}
 
-	SortedProbeDataset dataset = SortedProbeDataset( rawDataset ), testDataset = SortedProbeDataset( rawTestDataset );
+	InstanceProbeDataset dataset = InstanceProbeDataset( rawDataset ), testDataset = InstanceProbeDataset( rawTestDataset );
 
 	auto probes = std::vector< ProbeDatabase::Probe >( 5*1000 );
 
@@ -339,7 +339,7 @@ TEST( ProbeDatabase, oneTolerance ) {
 		}
 	}
 
-	SortedProbeDataset dataset = SortedProbeDataset( rawDataset ), testDataset = SortedProbeDataset( rawTestDataset );
+	InstanceProbeDataset dataset = InstanceProbeDataset( rawDataset ), testDataset = InstanceProbeDataset( rawTestDataset );
 
 	auto probes = std::vector< ProbeDatabase::Probe >( 5*1000 );
 
@@ -400,7 +400,7 @@ TEST( ProbeDatabase, big ) {
 
 	auto probes = std::vector< ProbeDatabase::Probe >( rawDataset.size() );
 
-	SortedProbeDataset dataset = SortedProbeDataset( rawDataset ), testDataset = SortedProbeDataset( rawTestDataset );
+	InstanceProbeDataset dataset = InstanceProbeDataset( rawDataset ), testDataset = InstanceProbeDataset( rawTestDataset );
 
 	ProbeDatabase candidateFinder;
 	candidateFinder.reserveIds( 0 );
