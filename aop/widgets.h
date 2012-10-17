@@ -3,6 +3,8 @@
 #include <Eigen/Eigen>
 #include <eventHandling.h>
 
+// The widgets use a 0..1x0..1 relative coordinate system with 0,0 being in the top left corner
+
 struct TransformChain {
 	Eigen::Affine3f localTransform, globalTransform;
 
@@ -11,8 +13,12 @@ struct TransformChain {
 	void update( TransformChain *parent = nullptr );
 	void setOffset( const Eigen::Vector2f &offset );
 	Eigen::Vector2f getOffset() const;
+
+	// screen: absolute screen/window coordinates
+	// local: 0..1
 	
 	Eigen::Vector2f pointToScreen( const Eigen::Vector2f &point ) const;
+	
 	Eigen::Vector2f vectorToScreen( const Eigen::Vector2f &point ) const;
 
 	Eigen::Vector2f screenToPoint( const Eigen::Vector2f &point ) const;
@@ -65,6 +71,22 @@ struct WidgetRoot : TemplateEventDispatcher< IWidget, EventHandler::WithSimplePa
 	}
 };
 
+struct ProgressBarWidget : WidgetBase {
+	Eigen::Vector2f size;
+
+	float percentage;
+	
+	ProgressBarWidget( float percentage, const Eigen::Vector2f &offset, const Eigen::Vector2f &size ) 
+		: percentage( percentage )
+		, size( size )
+	{
+		transformChain.setOffset( offset );
+	}
+
+	void doRender();
+	void doUpdate( EventSystem &eventSystem, const float frameDuration, const float elapsedTime ) {}
+};
+
 struct ButtonWidget : WidgetBase {
 	enum State {
 		STATE_INACTIVE,
@@ -74,7 +96,10 @@ struct ButtonWidget : WidgetBase {
 
 	Eigen::Vector2f size;
 
-	ButtonWidget( const Eigen::Vector2f &offset, const Eigen::Vector2f &size ) : state(), size( size ) {
+	ButtonWidget( const Eigen::Vector2f &offset, const Eigen::Vector2f &size ) 
+		: state()
+		, size( size )
+	{
 		transformChain.setOffset( offset );
 	}
 

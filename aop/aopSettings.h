@@ -8,7 +8,22 @@
 #include "probeDatabase.h"
 
 namespace aop {
+	//const char const *
 	struct Settings {
+		std::string scenePath;
+		std::string sceneSettingsPath;
+		std::string probeDatabasePath;
+		std::string modelDatabasePath;
+		std::string neighborhoodDatabasePath;
+		std::string neighborhoodDatabaseV2Path;
+
+		Settings();
+
+		void load();
+		void store() const;
+	};
+
+	struct SceneSettings {
 		struct CameraState {
 			Eigen::Vector3f position;
 			Eigen::Vector3f direction;
@@ -54,7 +69,7 @@ namespace aop {
 		float probeQuery_distanceTolerance;
 		float probeQuery_colorTolerance;
 
-		Settings() 
+		SceneSettings() 
 			: neighborhoodDatabase_queryTolerance( 1.0 )
 			, neighborhoodDatabase_maxDistance( 150.0 )
 			, probeGenerator_maxDistance( 5.0 )
@@ -64,7 +79,7 @@ namespace aop {
 			, probeQuery_colorTolerance( 1.0 )
 		{}
 
-		void load();
-		void store() const;
+		void load( const char *filename );
+		void store( const char *filename ) const;
 	};
 }

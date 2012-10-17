@@ -116,13 +116,13 @@ void ButtonWidget::doRender() {
 	// render the background
 	switch( state ) {
 	case STATE_HOVER:
-		glColor4f( 0.2, 0.2, 0.9, 0.8 );
+		glColor4f( 0.2f, 0.2f, 0.9f, 0.8f );
 		break;
 	case STATE_CLICKED:
-		glColor4f( 0.7, 0.7, 0.7, 0.8 );
+		glColor4f( 0.7f, 0.7f, 0.7f, 0.8f );
 		break;
 	default:
-		glColor4f( 0.2, 0.2, 0.2, 0.8 );
+		glColor4f( 0.2f, 0.2f, 0.2f, 0.8f );
 		break;
 	}
 	glEnable( GL_BLEND );
@@ -133,17 +133,29 @@ void ButtonWidget::doRender() {
 	// render the border
 	switch( state ) {
 	case STATE_HOVER:
-		DebugRender::setColor( Eigen::Vector3f( 1.0, 1.0, 1.0 ) );
+		DebugRender::setColor( Eigen::Vector3f( 1.0f, 1.0f, 1.0f ) );
 		break;
 	case STATE_CLICKED:
-		DebugRender::setColor( Eigen::Vector3f( 1.0, 0.0, 0.0 ) );
+		DebugRender::setColor( Eigen::Vector3f( 1.0f, 0.0f, 0.0f ) );
 		break;
 	default:
-		DebugRender::setColor( Eigen::Vector3f( 0.5, 0.5, 0.5 ) );
+		DebugRender::setColor( Eigen::Vector3f( 0.5f, 0.5f, 0.5f ) );
 		break;
 	}
-
 	DebugRender::drawQuad( Eigen::Vector2f::Zero(), size );
 
 	doRenderInside();
+}
+
+void ProgressBarWidget::doRender() {
+	// render the progress bar
+	// we blend between dark/bluish and light green
+	const Eigen::Vector3f zero( 0.0f, 0.5f, 0.3f );
+	const Eigen::Vector3f one( 0.3f, 1.0f, 0.3f );
+	DebugRender::setColor( one * percentage + (1.0 - percentage) * zero );
+	DebugRender::drawQuad( Eigen::Vector2f::Zero(), size.cwiseProduct( Eigen::Vector2f( percentage, 1.0f ) ), false );
+
+	// render the border
+	DebugRender::setColor( Eigen::Vector3f::Constant( 0.5f ) );
+	DebugRender::drawQuad( Eigen::Vector2f::Zero(), size );
 }

@@ -29,7 +29,12 @@ float ViewportContext::getAspectRatio() const {
 	return float( framebufferWidth ) / framebufferHeight;
 }
 
-// relative coords are 0..1
+#if 0
 Eigen::Vector2f ViewportContext::screenToViewport( const Eigen::Vector2i &screen ) const {
-	return Eigen::Vector2f( (screen[0] - left) / float( width ), (screen[1] - top) / float( height ) );
+	return Eigen::Vector2f( (screen[0] - left) / float( width ), (top - screen[1]) / float( height ) );
 }
+
+Eigen::Vector2i ViewportContext::viewportToScreen( const Eigen::Vector2f &viewportCoords ) const {
+	return Eigen::Vector2f( left + width * viewportCoords.x(), top - height * viewportCoords.y() );
+}
+#endif

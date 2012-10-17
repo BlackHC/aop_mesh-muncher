@@ -72,6 +72,13 @@ using namespace Eigen;
 
 #include "visualizations.h"
 
+template<>
+struct AntTWBarUI::detail::TypeMap< Editor::ModeState > {
+	static int Type;
+};
+
+int AntTWBarUI::detail::TypeMap< Editor::ModeState >::Type = TW_TYPE_UNDEF;
+
 std::weak_ptr<AntTweakBarEventHandler::GlobalScope> AntTweakBarEventHandler::globalScope;
 
 // TODO: reorder the parameters in some consistent way! [10/10/2012 kirschan2]
@@ -346,7 +353,7 @@ namespace DebugObjects {
 
 		Vector3f skyColor;
 
-		ProbeDatabase( Application *application ) 
+		ProbeDatabase( Application *application )
 			: container( "Probe database" )
 			, application( application )
 			, skyColor( 0.5, 1.0, 0.5 )
@@ -369,8 +376,8 @@ namespace DebugObjects {
 				DebugRender::startLocalTransform();
 				visualizeProbeDataset(
 					skyColor,
-					application->settings.probeGenerator_maxDistance,
-					application->settings.probeGenerator_resolution,
+					application->sceneSettings.probeGenerator_maxDistance,
+					application->sceneSettings.probeGenerator_resolution,
 					application->probeDatabase.getIdDatasets()[ modelIndex ].getProbes(),
 					application->probeDatabase.getIdDatasets()[ modelIndex ].getInstances()[ counter ].getProbeContexts(),
 					pvm
@@ -479,7 +486,7 @@ namespace DebugObjects {
 					const auto transformation = application->world->sceneRenderer.getInstanceTransformation( *instanceIndex );
 
 					DebugRender::setPosition( transformation.translation() );
-					DebugRender::drawAbstractSphere( application->settings.probeGenerator_maxDistance );
+					DebugRender::drawAbstractSphere( application->sceneSettings.probeGenerator_maxDistance );
 				}
 			}
 
@@ -504,7 +511,7 @@ namespace DebugObjects {
 				"Sky color replacement",
 				makeReferenceAccessor<float*>( &skyColor[0] )
 			) );*/
-			container.add( EigenColor3fUI().makeShared( 
+			container.add( EigenColor3fUI().makeShared(
 				AntTWBarUI::makeReferenceAccessor( skyColor ),
 				AntTWBarUI::CT_GROUP,
 				"Sky color replacement"
@@ -762,8 +769,8 @@ namespace aop {
 
 		void init() {
 			ui.setName( "Model Database" );
-			ui.add( AntTWBarUI::makeSharedButton( "Load", [&] () { application->modelDatabase.load( "modelDatabase" ); } ) );
-			ui.add( AntTWBarUI::makeSharedButton( "Store", [&] () { application->modelDatabase.store( "modelDatabase" ); } ) );
+			ui.add( AntTWBarUI::makeSharedButton( "Load", [&] () { application->modelDatabase.load( application->settings.modelDatabasePath.c_str() ); } ) );
+			ui.add( AntTWBarUI::makeSharedButton( "Store", [&] () { application->modelDatabase.store( application->settings.modelDatabasePath.c_str() ); } ) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
 			ui.add( AntTWBarUI::makeSharedButton( "Sample models", [&] {
 				application->startLongOperation();
@@ -781,9 +788,9 @@ namespace aop {
 
 namespace aop {
 	struct Application::NamedVolumesEditorView : Editor::Volumes {
-		std::vector< aop::Settings::NamedTargetVolume > &volumes;
+		std::vector< aop::SceneSettings::NamedTargetVolume > &volumes;
 
-		NamedVolumesEditorView( std::vector< aop::Settings::NamedTargetVolume > &volumes  ) : volumes( volumes ) {}
+		NamedVolumesEditorView( std::vector< aop::SceneSettings::NamedTargetVolume > &volumes  ) : volumes( volumes ) {}
 
 		int getCount() {
 			return (int) volumes.size();
@@ -806,18 +813,37 @@ namespace aop {
 		}
 
 		void init() {
+			AntTWBarUI::detail::TypeMap< Editor::ModeState >::Type =
+				AntTWBarUI::TypeBuilder::Enum<Editor::ModeState>( "EditorStateEnum" )
+					.add( "Freelook", Editor::M_FREELOOK )
+					.add( "Selecting", Editor::M_SELECTING )
+					.add( "Placing", Editor::M_PLACING )
+					.add( "Moving", Editor::M_MOVING )
+					.add( "Rotating", Editor::M_ROTATING )
+					.add( "Resizing", Editor::M_RESIZING )
+					.define();
+			;
+
 			ui.setName( "aop" );
-			ui.add( AntTWBarUI::makeSharedVariable( 
+			ui.add( AntTWBarUI::makeSharedVariable(
+				"Editor mode",
+				AntTWBarUI::CallbackAccessor<Editor::ModeState>(
+					[&] ( Editor::ModeState &v ) { v = application->editor.currentMode; },
+					[&] ( const Editor::ModeState &v ) { application->editor.selectMode( v ); }
+				)
+			));
+			ui.add( AntTWBarUI::makeSharedSeparator() );
+			ui.add( AntTWBarUI::makeSharedVariable(
 				"Probe maxDistance",
-				AntTWBarUI::makeReferenceAccessor( application->settings.probeGenerator_maxDistance )
+				AntTWBarUI::makeReferenceAccessor( application->sceneSettings.probeGenerator_maxDistance )
 			) );
-			ui.add( AntTWBarUI::makeSharedVariable( 
+			ui.add( AntTWBarUI::makeSharedVariable(
 				"Probe resolution",
-				AntTWBarUI::makeReferenceAccessor( application->settings.probeGenerator_resolution )
+				AntTWBarUI::makeReferenceAccessor( application->sceneSettings.probeGenerator_resolution )
 			) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
-			ui.add( AntTWBarUI::makeSharedButton( "Load settings", [this] { application->settings.load(); } ) );
-			ui.add( AntTWBarUI::makeSharedButton( "Store settings", [this] { application->settings.store(); } ) );
+			ui.add( AntTWBarUI::makeSharedButton( "Load settings", [this] { application->sceneSettings.load( application->settings.sceneSettingsPath.c_str() ); } ) );
+			ui.add( AntTWBarUI::makeSharedButton( "Store settings", [this] { application->sceneSettings.store( application->settings.sceneSettingsPath.c_str() ); } ) );
 			//ui.add( AntTWBarUI::makeSharedVector< NamedTargetVolumeView >( "Camera Views", application->settings.volumes) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
 			ui.add( AntTWBarUI::makeSharedButton( "Sample marked objects", [this] {
@@ -827,7 +853,7 @@ namespace aop {
 
 				ProgressTracker::Context progressTracker( modelIndices.size() + 1 );
 				for( auto modelIndex = modelIndices.begin() ; modelIndex != modelIndices.end() ; ++modelIndex ) {
-					application->sampleInstances( *modelIndex );
+					application->ProbeDatabase_sampleInstances( *modelIndex );
 					progressTracker.markFinished();
 				}
 
@@ -837,17 +863,17 @@ namespace aop {
 				application->endLongOperation();
 			} ) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
-			ui.add( AntTWBarUI::makeSharedVariable( 
+			ui.add( AntTWBarUI::makeSharedVariable(
 				"Probe query occlusion tolerance",
-				AntTWBarUI::makeReferenceAccessor( application->settings.probeQuery_occlusionTolerance )
+				AntTWBarUI::makeReferenceAccessor( application->sceneSettings.probeQuery_occlusionTolerance )
 			) );
-			ui.add( AntTWBarUI::makeSharedVariable( 
+			ui.add( AntTWBarUI::makeSharedVariable(
 				"Probe query distance tolerance",
-				AntTWBarUI::makeReferenceAccessor( application->settings.probeQuery_distanceTolerance )
+				AntTWBarUI::makeReferenceAccessor( application->sceneSettings.probeQuery_distanceTolerance )
 			) );
-			ui.add( AntTWBarUI::makeSharedVariable( 
+			ui.add( AntTWBarUI::makeSharedVariable(
 				"Probe query color tolerance",
-				AntTWBarUI::makeReferenceAccessor( application->settings.probeQuery_colorTolerance )
+				AntTWBarUI::makeReferenceAccessor( application->sceneSettings.probeQuery_colorTolerance )
 			) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
 			ui.add( AntTWBarUI::makeSharedButton( "Query volume", [this] () {
@@ -872,13 +898,12 @@ namespace aop {
 							}
 						);
 
-						std::vector<int> modelIndices;
+						std::vector<CandidateSidebarUI::ScoreModelIndexPair> scoredModelIndices;
 						for( auto matchInfo = matchInfos.begin() ; matchInfo != matchInfos.end() ; ++matchInfo ) {
-							modelIndices.push_back( matchInfo->id );
+							scoredModelIndices.push_back( std::make_pair( matchInfo->score, matchInfo->id ) );
 						}
 
-						application->candidateSidebarUI->clear();
-						application->candidateSidebarUI->addModels( modelIndices, selection->getObb().transformation.translation() );
+						application->candidateSidebarUI->setModels( scoredModelIndices, selection->getObb().transformation.translation() );
 					}
 				};
 				QueryVolumeVisitor( application ).dispatch( application->editor.selection );
@@ -905,13 +930,12 @@ namespace aop {
 							}
 						);
 
-						std::vector<int> modelIndices;
+						std::vector<CandidateSidebarUI::ScoreModelIndexPair> scoredModelIndices;
 						for( auto matchInfo = matchInfos.begin() ; matchInfo != matchInfos.end() ; ++matchInfo ) {
-							modelIndices.push_back( matchInfo->id );
+							scoredModelIndices.push_back( std::make_pair( matchInfo->score, matchInfo->id ) );
 						}
 
-						application->candidateSidebarUI->clear();
-						application->candidateSidebarUI->addModels( modelIndices, selection->getObb().transformation.translation() );
+						application->candidateSidebarUI->setModels( scoredModelIndices, selection->getObb().transformation.translation() );
 					}
 				};
 				QueryVolumeVisitor( application ).dispatch( application->editor.selection );
@@ -919,11 +943,11 @@ namespace aop {
 			ui.add( AntTWBarUI::makeSharedSeparator() );
 			ui.add( AntTWBarUI::makeSharedVariable(
 				"Neighborhood max distance",
-				AntTWBarUI::makeReferenceAccessor( application->settings.neighborhoodDatabase_maxDistance )
+				AntTWBarUI::makeReferenceAccessor( application->sceneSettings.neighborhoodDatabase_maxDistance )
 			) );
 			ui.add( AntTWBarUI::makeSharedVariable(
 				"Neighborhood query tolerance",
-				AntTWBarUI::makeReferenceAccessor( application->settings.neighborhoodDatabase_queryTolerance )
+				AntTWBarUI::makeReferenceAccessor( application->sceneSettings.neighborhoodDatabase_queryTolerance )
 			) );
 			ui.add( AntTWBarUI::makeSharedButton( "Query neighbors", [this] () {
 				struct QueryNeighborsVisitor : Editor::SelectionVisitor {
@@ -940,18 +964,12 @@ namespace aop {
 							application->world.get(),
 							application->neighborDatabase,
 							selection->getObb().transformation.translation(),
-							application->settings.neighborhoodDatabase_maxDistance,
-							application->settings.neighborhoodDatabase_queryTolerance
+							application->sceneSettings.neighborhoodDatabase_maxDistance,
+							application->sceneSettings.neighborhoodDatabase_queryTolerance
 						);
 						application->endLongOperation();
 
-						std::vector<int> modelIndices;
-						for( auto queryResult = queryResults.begin() ; queryResult != queryResults.end() ; ++queryResult ) {
-							modelIndices.push_back( queryResult->second );
-						}
-
-						application->candidateSidebarUI->clear();
-						application->candidateSidebarUI->addModels( modelIndices, selection->getObb().transformation.translation() );
+						application->candidateSidebarUI->setModels( queryResults, selection->getObb().transformation.translation() );
 					}
 				};
 				QueryNeighborsVisitor( application ).dispatch( application->editor.selection );
@@ -971,18 +989,12 @@ namespace aop {
 							application->world.get(),
 							application->neighborDatabaseV2,
 							selection->getObb().transformation.translation(),
-							application->settings.neighborhoodDatabase_maxDistance,
-							application->settings.neighborhoodDatabase_queryTolerance
+							application->sceneSettings.neighborhoodDatabase_maxDistance,
+							application->sceneSettings.neighborhoodDatabase_queryTolerance
 						);
 						application->endLongOperation();
 
-						std::vector<int> modelIndices;
-						for( auto queryResult = queryResults.begin() ; queryResult != queryResults.end() ; ++queryResult ) {
-							modelIndices.push_back( queryResult->second );
-						}
-
-						application->candidateSidebarUI->clear();
-						application->candidateSidebarUI->addModels( modelIndices, selection->getObb().transformation.translation() );
+						application->candidateSidebarUI->setModels( queryResults, selection->getObb().transformation.translation() );
 					}
 				};
 				QueryNeighborsVisitor( application ).dispatch( application->editor.selection );
@@ -1015,8 +1027,8 @@ namespace aop {
 							application->world.get(),
 							application->neighborDatabaseV2,
 							selection->getObb().transformation.translation(),
-							application->settings.neighborhoodDatabase_maxDistance,
-							application->settings.neighborhoodDatabase_queryTolerance
+							application->sceneSettings.neighborhoodDatabase_maxDistance,
+							application->sceneSettings.neighborhoodDatabase_queryTolerance
 						);
 						application->endLongOperation();
 
@@ -1030,26 +1042,23 @@ namespace aop {
 						for( auto queryResult = queryResults.begin() ; queryResult != queryResults.end() ; ++queryResult ) {
 							if( scores[ queryResult->second ].first > 0 ) {
 								scores[ queryResult->second ].first += queryResult->first * 0.5;
+								// we might disable the if-check again, so here.. make it always work correctly :)
+								scores[ queryResult->second ].second = queryResult->second;
 							}
 						}
 
 						boost::sort( scores, std::greater< std::pair< float, int > >() );
+						boost::remove_erase_if( scores, [] ( const std::pair< float, int > &x ) { return x.first == 0.0; } );
 
-						std::vector<int> modelIndices;
-						for( auto score = scores.begin() ; score != scores.end() ; ++score ) {
-							modelIndices.push_back( score->second );
-						}
-
-						application->candidateSidebarUI->clear();
-						application->candidateSidebarUI->addModels( modelIndices, selection->getObb().transformation.translation() );
+						application->candidateSidebarUI->setModels( scores, selection->getObb().transformation.translation() );
 					}
 				};
 				QueryVolumeVisitor( application ).dispatch( application->editor.selection );
 			} ) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
-			ui.add( AntTWBarUI::makeSharedButton( "Load database", [this] { application->probeDatabase.loadCache( "database"); } ) );
-			ui.add( AntTWBarUI::makeSharedButton( "Reset database", [this] { application->probeDatabase.clear(); } ) );
-			ui.add( AntTWBarUI::makeSharedButton( "Store database", [this] { application->probeDatabase.storeCache( "database"); } ) );
+			ui.add( AntTWBarUI::makeSharedButton( "Load probe database", [this] { application->probeDatabase.loadCache( application->settings.probeDatabasePath.c_str() ); } ) );
+			ui.add( AntTWBarUI::makeSharedButton( "Reset probe database", [this] { application->probeDatabase.clear(); } ) );
+			ui.add( AntTWBarUI::makeSharedButton( "Store probe database", [this] { application->probeDatabase.storeCache( application->settings.probeDatabasePath.c_str() ); } ) );
 			ui.link();
 		}
 
@@ -1104,8 +1113,7 @@ namespace aop {
 
 		world.reset( new SGSInterface::World() );
 
-		const char *scenePath = "P:\\sgs\\sg_and_sgs_source\\survivor\\__GameData\\Editor\\Save\\Survivor_original_mission_editorfiles\\test\\scene.glscene";
-		world->init( scenePath );
+		world->init( settings.scenePath.c_str() );
 	}
 
 	// this just fills the model database with whatever data we can quickly extract from the scene
@@ -1216,7 +1224,7 @@ namespace aop {
 		int totalProbes = 0;
 
 		for( int modelId = 0 ; modelId < numModels ; modelId++ ) {
-			const int numNonEmpty = ModelDatabase_sampleModel( modelId, settings.probeGenerator_resolution );
+			const int numNonEmpty = ModelDatabase_sampleModel( modelId, sceneSettings.probeGenerator_resolution );
 
 			ModelDatabase::ModelInformation & idInformation = modelDatabase.informationById[ modelId ];
 
@@ -1236,11 +1244,11 @@ namespace aop {
 		);
 	}
 
-	void Application::sampleInstances( int modelIndex ) {
+	void Application::ProbeDatabase_sampleInstances( int modelIndex ) {
 		AUTO_TIMER_FOR_FUNCTION();
 		log( boost::format( "sampling model %i" ) % modelIndex );
 
-		const auto &probes = modelDatabase.getProbes( modelIndex, settings.probeGenerator_resolution );
+		const auto &probes = modelDatabase.getProbes( modelIndex, sceneSettings.probeGenerator_resolution );
 		if( probes.empty() ) {
 			logError( boost::format( "empty model %i: '%s'!" ) % modelIndex % modelDatabase.informationById[ modelIndex ].shortName );
 			return;
@@ -1271,7 +1279,7 @@ namespace aop {
 
 			AUTO_TIMER_BLOCK( boost::str( boost::format( "sampling probe batch with %i probes for instance %i" ) % probes.size() % instanceIndex ) ) {
 				renderContext.disabledInstanceIndex = instanceIndex;
-				world->optixRenderer.sampleProbes( transformedProbes, rawDataset, renderContext, settings.probeGenerator_maxDistance, instanceIndex );
+				world->optixRenderer.sampleProbes( transformedProbes, rawDataset, renderContext, sceneSettings.probeGenerator_maxDistance, instanceIndex );
 			}
 			progressTracker.markFinished();
 
@@ -1286,9 +1294,9 @@ namespace aop {
 
 	ProbeContextTolerance Application::getPCTFromSettings() {
 		ProbeContextTolerance pct;
-		pct.occusionTolerance = settings.probeQuery_occlusionTolerance;
-		pct.distanceTolerance = settings.probeQuery_distanceTolerance;
-		pct.colorLabTolerance = settings.probeQuery_colorTolerance;
+		pct.occusionTolerance = sceneSettings.probeQuery_occlusionTolerance;
+		pct.distanceTolerance = sceneSettings.probeQuery_distanceTolerance;
+		pct.colorLabTolerance = sceneSettings.probeQuery_colorTolerance;
 		return pct;
 	}
 
@@ -1302,13 +1310,13 @@ namespace aop {
 
 		std::vector<OptixProgramInterface::Probe> probes;
 
-		ProbeGenerator::generateQueryProbes( queryVolume, settings.probeGenerator_resolution, probes );
+		ProbeGenerator::generateQueryProbes( queryVolume, sceneSettings.probeGenerator_resolution, probes );
 
 		progressTracker.markFinished();
 
 		RawProbeDataset rawDataset;
 		AUTO_TIMER_BLOCK( "sampling scene") {
-			world->optixRenderer.sampleProbes( probes, rawDataset, renderContext, settings.probeGenerator_maxDistance );
+			world->optixRenderer.sampleProbes( probes, rawDataset, renderContext, sceneSettings.probeGenerator_maxDistance );
 		}
 		progressTracker.markFinished();
 
@@ -1352,14 +1360,14 @@ namespace aop {
 		renderContext.setDefault();
 
 		std::vector<OptixProgramInterface::Probe> probes;
-		ProbeGenerator::generateQueryProbes( queryVolume, settings.probeGenerator_resolution, probes );
+		ProbeGenerator::generateQueryProbes( queryVolume, sceneSettings.probeGenerator_resolution, probes );
 
 		progressTracker.markFinished();
 
 		RawProbeDataset rawDataset;
 		{
 			AUTO_TIMER_FOR_FUNCTION( "sampling scene");
-			world->optixRenderer.sampleProbes( probes, rawDataset, renderContext, settings.probeGenerator_maxDistance );
+			world->optixRenderer.sampleProbes( probes, rawDataset, renderContext, sceneSettings.probeGenerator_maxDistance );
 		}
 		progressTracker.markFinished();
 
@@ -1421,6 +1429,8 @@ namespace aop {
 
 		ProbeGenerator::initDirections();
 
+		settings.load();
+
 		initMainWindow();
 		initCamera();
 		initEventHandling();
@@ -1429,13 +1439,13 @@ namespace aop {
 
 		// TODO: fix parameter order [10/10/2012 kirschan2]
 #if 1
-		sampleAllNeighbors( settings.neighborhoodDatabase_maxDistance, neighborDatabase, *world );
-		sampleAllNeighborsV2( settings.neighborhoodDatabase_maxDistance, neighborDatabaseV2, *world );
+		sampleAllNeighbors( sceneSettings.neighborhoodDatabase_maxDistance, neighborDatabase, *world );
+		sampleAllNeighborsV2( sceneSettings.neighborhoodDatabase_maxDistance, neighborDatabaseV2, *world );
 #endif
 
 		probeDatabase.reserveIds( world->scene.modelNames.size() );
 
-		namedVolumesEditorView.reset( new NamedVolumesEditorView( settings.volumes ) );
+		namedVolumesEditorView.reset( new NamedVolumesEditorView( sceneSettings.volumes ) );
 
 		initEditor();
 
@@ -1450,14 +1460,14 @@ namespace aop {
 		ModelDatabase_init();
 		neighborDatabaseV2.modelDatabase = &modelDatabase;
 
-		// load settings
-		settings.load();
+		// load sceneSettings
+		sceneSettings.load( settings.sceneSettingsPath.c_str() );
 
-		if( !settings.views.empty() ) {
-			settings.views.front().pushTo( mainCamera );
+		if( !sceneSettings.views.empty() ) {
+			sceneSettings.views.front().pushTo( mainCamera );
 		}
 
-		if( !settings.volumes.empty() ) {
+		if( !sceneSettings.volumes.empty() ) {
 			// TODO: add select wrappers to editorWrapper or editor [10/3/2012 kirschan2]
 			editor.selectObb( 0 );
 		}
@@ -1555,7 +1565,7 @@ namespace aop {
 				// render obbs
 				DebugRender::begin();
 				DebugRender::setColor( Eigen::Vector3f::Constant( 1.0 ) );
-				for( auto namedObb = settings.volumes.begin() ; namedObb != settings.volumes.end() ; ++namedObb ) {
+				for( auto namedObb = sceneSettings.volumes.begin() ; namedObb != sceneSettings.volumes.end() ; ++namedObb ) {
 					DebugRender::setTransformation( namedObb->volume.transformation );
 					DebugRender::drawBox( namedObb->volume.size );
 				}
@@ -1754,7 +1764,7 @@ void real_main() {
 #endif
 
 	{
-		aop::Settings::NamedTargetVolume targetVolume;
+		aop::SceneSettings::NamedTargetVolume targetVolume;
 
 		targetVolume.name = "test";
 		targetVolume.volume.transformation.setIdentity();

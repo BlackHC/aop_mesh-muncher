@@ -107,9 +107,9 @@ namespace CIELAB {
 		};
 
 		const float3 Lab = {
-			116.0 * transformedXYZ.y - 16.0,
-			500.0 * (transformedXYZ.x - transformedXYZ.y),
-			200.0 * (transformedXYZ.y - transformedXYZ.z),
+			116.0f * transformedXYZ.y - 16.0f,
+			500.0f * (transformedXYZ.x - transformedXYZ.y),
+			200.0f * (transformedXYZ.y - transformedXYZ.z),
 		};
 
 		return Lab;
@@ -117,10 +117,10 @@ namespace CIELAB {
 
 	inline HOSTORDEVICE float3 toRGB( const float3 &Lab ) {
 		float3 transformedXYZ;
-		transformedXYZ.y = (Lab.x + 16.0) / 116.0;
+		transformedXYZ.y = (Lab.x + 16.0f) / 116.0f;
 
-		transformedXYZ.x = transformedXYZ.y + Lab.y / 500.0;
-		transformedXYZ.z = transformedXYZ.y - Lab.z / 200.0;
+		transformedXYZ.x = transformedXYZ.y + Lab.y / 500.0f;
+		transformedXYZ.z = transformedXYZ.y - Lab.z / 200.0f;
 
 		// again I'm leaving out the linear small value correction
 		const float3 XYZ = {

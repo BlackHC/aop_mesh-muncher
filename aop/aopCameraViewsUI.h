@@ -10,7 +10,7 @@ namespace aop {
 
 		AntTWBarUI::SimpleContainer ui;
 
-		struct NamedCameraStateView : AntTWBarUI::SimpleStructureFactory< aop::Settings::NamedCameraState, NamedCameraStateView >{
+		struct NamedCameraStateView : AntTWBarUI::SimpleStructureFactory< aop::SceneSettings::NamedCameraState, NamedCameraStateView >{
 			Application *application;
 
 			NamedCameraStateView( Application *application ) : application( application ) {}
@@ -20,14 +20,14 @@ namespace aop {
 				container->add(
 					AntTWBarUI::makeSharedVariable(
 						"Name",
-						AntTWBarUI::makeMemberAccessor( accessor, &aop::Settings::NamedCameraState::name )
+						AntTWBarUI::makeMemberAccessor( accessor, &aop::SceneSettings::NamedCameraState::name )
 					)
 				);
 				container->add(
 					AntTWBarUI::makeSharedButton(
 						"Set default",
 						[&] () {
-							auto &views = application->settings.views;
+							auto &views = application->sceneSettings.views;
 							std::swap( views.begin(), views.begin() + accessor.elementIndex );
 						}
 					)
@@ -62,20 +62,20 @@ namespace aop {
 			ui.add( AntTWBarUI::makeSharedButton(
 					"Add current view",
 					[this] () {
-						application->settings.views.push_back( aop::Settings::NamedCameraState() );
-						application->settings.views.back().pullFrom( application->mainCamera );
+						application->sceneSettings.views.push_back( aop::SceneSettings::NamedCameraState() );
+						application->sceneSettings.views.back().pullFrom( application->mainCamera );
 					}
 				)
 			);
 			ui.add( AntTWBarUI::makeSharedButton(
 					"Clear all",
 					[this] () {
-						application->settings.views.clear();
+						application->sceneSettings.views.clear();
 					}
 				)
 			);
 
-			auto cameraStatesView = AntTWBarUI::makeSharedVector( application->settings.views, NamedCameraStateView( application ) );
+			auto cameraStatesView = AntTWBarUI::makeSharedVector( application->sceneSettings.views, NamedCameraStateView( application ) );
 			ui.add( cameraStatesView );
 
 			ui.link();

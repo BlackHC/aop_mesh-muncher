@@ -11,7 +11,7 @@ namespace aop {
 
 		AntTWBarUI::SimpleContainer ui;
 
-		struct NamedTargetVolumeView : AntTWBarUI::SimpleStructureFactory< aop::Settings::NamedTargetVolume, NamedTargetVolumeView > {
+		struct NamedTargetVolumeView : AntTWBarUI::SimpleStructureFactory< aop::SceneSettings::NamedTargetVolume, NamedTargetVolumeView > {
 			TargetVolumesUI *targetVolumesUI;
 
 			NamedTargetVolumeView( TargetVolumesUI *targetVolumesUI ) : targetVolumesUI( targetVolumesUI ) {}
@@ -21,7 +21,7 @@ namespace aop {
 				container->add(
 					AntTWBarUI::makeSharedVariableWithConfig< AntTWBarUI::VariableConfigs::SetContainerName >( 
 						"Name",
-						AntTWBarUI::makeMemberAccessor( accessor, &aop::Settings::NamedTargetVolume::name )
+						AntTWBarUI::makeMemberAccessor( accessor, &aop::SceneSettings::NamedTargetVolume::name )
 					)
 				);
 				container->add(
@@ -68,13 +68,13 @@ namespace aop {
 
 		void init() {
 			ui.setName( "Query volumes" );
-			auto uiVector = AntTWBarUI::makeSharedVector( "Volumes", application->settings.volumes, NamedTargetVolumeView( this ) );
+			auto uiVector = AntTWBarUI::makeSharedVector( "Volumes", application->sceneSettings.volumes, NamedTargetVolumeView( this ) );
 
 			ui.add( uiVector );
 			ui.add( AntTWBarUI::makeSharedButton( "Add new",
 					[this, uiVector] () {
 						const auto &camera = this->application->mainCamera;
-						aop::Settings::NamedTargetVolume volume;
+						aop::SceneSettings::NamedTargetVolume volume;
 
 						volume.volume.size = Eigen::Vector3f::Constant( 5.0 );
 						volume.volume.transformation =
@@ -82,7 +82,7 @@ namespace aop {
 							camera.getViewRotation().transpose()
 							;
 
-						this->application->settings.volumes.push_back( volume );
+						this->application->sceneSettings.volumes.push_back( volume );
 					}
 				)
 			);

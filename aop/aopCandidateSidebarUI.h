@@ -6,31 +6,60 @@
 #include "viewportContext.h"
 
 namespace aop {
+	struct CandidateContainer : WidgetContainer {
+		float minY, maxY;
+		float scrollStep;
+
+		CandidateContainer() : minY(), maxY(), scrollStep() {}
+
+		void onMouse( EventState &eventState ) {
+			if( eventState.event.type == sf::Event::MouseWheelMoved ) {
+				//log( boost::format( "mouse wheel moved %i" ) % eventState.event.mouseWheel.delta );
+					
+				auto offset = transformChain.getOffset();
+				offset.y() = std::min( -minY, std::max( -maxY, offset.y() + eventState.event.mouseWheel.delta * scrollStep ) );
+				transformChain.setOffset( offset );
+
+				eventState.accept();
+			}
+			else {
+				WidgetContainer::onMouse( eventState );
+			}
+		}
+	};
+
+#if 0
+	// we set a scissor rectangle here
+	struct LocalCandidateContainer : CandidateContainer {
+		Eigen::Vector2f size;
+
+		LocalCandidateContainer( const Eigen::Vector2f &size ) 
+			: size( size )
+		{
+		}
+
+		void onRender() {
+			ViewportContext viewportContext;
+			
+			const auto &topLeft = viewportContext.viewportToScreen( transformChain.pointToScreen( Eigen::Vector2f::Zero() ) );
+			const auto &bottomRight = viewportContext.viewportToScreen( transformChain.screenToPoint( size ) );
+
+			glEnable( GL_SCISSOR_TEST );
+			glScissor( topLeft.x(), bottomRight.y(), bottomRight.x() - topLeft.x(), topLeft.y() - bottomRight.y() );
+
+			CandidateContainer::onRender();
+
+			glDisable( GL_SCISSOR_TEST );
+		}
+	};		
+#endif
+
 	struct CandidateSidebarUI {
+		typedef std::pair< float, int > ScoreModelIndexPair;
+
 		Application *application;
 
-		struct CandidateContainer : WidgetContainer {
-			float minY, maxY;
-			float scrollStep;
 
-			CandidateContainer() : minY(), maxY(), scrollStep() {}
-
-			void onMouse( EventState &eventState ) {
-				if( eventState.event.type == sf::Event::MouseWheelMoved ) {
-					//log( boost::format( "mouse wheel moved %i" ) % eventState.event.mouseWheel.delta );
-					
-					auto offset = transformChain.getOffset();
-					offset.y() = std::min( -minY, std::max( -maxY, offset.y() + eventState.event.mouseWheel.delta * scrollStep ) );
-					transformChain.setOffset( offset );
-
-					eventState.accept();
-				}
-				else {
-					WidgetContainer::onMouse( eventState );
-				}
-			}
-		};
-		
 		CandidateContainer sidebar;
 
 		struct CandidateModelButton : ModelButtonWidget {
@@ -67,7 +96,9 @@ namespace aop {
 			sidebar.clear();
 		}
 
-		void addModels( std::vector<int> modelIndices, const Eigen::Vector3f &position ) {
+		void setModels( std::vector<ScoreModelIndexPair> scoredModelIndices, const Eigen::Vector3f &position ) {
+			clear();
+
 			const float buttonWidth = 0.1;
 			const float buttonAbsPadding = 32;
 			const float buttonVerticalPadding = buttonAbsPadding / ViewportContext::context->framebufferHeight;
@@ -77,23 +108,26 @@ namespace aop {
 			sidebar.transformChain.setOffset( Eigen::Vector2f( 1 - buttonHorizontalPadding - buttonWidth, 0 ) );
 
 			const float buttonHeight = buttonWidth * ViewportContext::context->getAspectRatio();
-			const float buttonHeightWithPadding = buttonHeight + buttonVerticalPadding;
+			const float barHeight = buttonHeight / 8.0;
+
+			const float totalEntryHeight = buttonHeight + barHeight + buttonVerticalPadding;
 
 			const int maxNumModels = 30;
 
 			// add 5 at most
-			const int numModels = std::min<int>( maxNumModels, modelIndices.size() );
+			const int numModels = std::min<int>( maxNumModels, scoredModelIndices.size() );
 
 			sidebar.minY = 0;
-			sidebar.maxY = (numModels - 1 ) * buttonHeightWithPadding;
-			sidebar.scrollStep = buttonHeightWithPadding;
+			sidebar.maxY = (numModels - 1 ) * totalEntryHeight;
+			sidebar.scrollStep = totalEntryHeight;
 			
 			for( int i = 0 ; i < numModels ; i++ ) {
-				const int modelIndex = modelIndices[ i ];
+				const float score = scoredModelIndices[ i ].first;
+				const int modelIndex = scoredModelIndices[ i ].second;
 
 				sidebar.addEventHandler(
 					std::make_shared< CandidateModelButton >(
-						Eigen::Vector2f( 0.0, buttonVerticalPadding + i * buttonHeightWithPadding ),
+						Eigen::Vector2f( 0.0, buttonVerticalPadding + i * totalEntryHeight ),
 						Eigen::Vector2f( buttonWidth, buttonHeight ),
 						modelIndex,
 						application->world->sceneRenderer,
@@ -106,6 +140,13 @@ namespace aop {
 								application->world->addInstance( modelIndex, position );
 							}
 						}
+					)
+				);
+				sidebar.addEventHandler(
+					std::make_shared< ProgressBarWidget >(
+						score,
+						Eigen::Vector2f( 0.0, buttonVerticalPadding + i * totalEntryHeight + buttonHeight ),
+						Eigen::Vector2f( buttonWidth, barHeight )
 					)
 				);
 			}

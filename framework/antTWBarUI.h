@@ -8,6 +8,43 @@
 #include <boost/lexical_cast.hpp>
 
 namespace AntTWBarUI {
+	namespace TypeBuilder {
+		template<typename E>
+		struct Enum {
+			const char *name;
+			std::vector<TwEnumVal> values;
+
+			Enum( const char *name ) : name( name ) {}
+
+			Enum & add( const char *label, E value ) {
+				TwEnumVal def;
+				def.Value = value;
+				def.Label = label;
+				values.push_back( def );
+
+				return *this;
+			}
+
+			Enum & add( const char *label ) {
+				TwEnumVal def;
+				def.Label = label;
+				if( !values.empty() ) {
+					def.Value = values.back().Value + 1;
+				}
+				else {
+					def.Value = 0;
+				}
+				values.push_back( def );
+
+				return *this;
+			}
+
+			TwType define() {
+				return TwDefineEnum( name, &values.front(), (int) values.size() );
+			}
+		};
+	}
+
 	// support two creation modes: simply wrap an object or make it more complex by instantiating the UI element yourself
 
 	enum ContainerType {
@@ -620,6 +657,7 @@ namespace AntTWBarUI {
 		};
 	}
 
+	// TODO: rename this from detail to something global [10/17/2012 kirschan2]
 	namespace detail {
 		template< typename T >
 		struct TypeMap {
@@ -884,7 +922,7 @@ namespace AntTWBarUI {
 		};
 		template< int _forcedType >
 		struct ForcedType : Default {
-			static const bool forcedType = _forcedType;
+			static const int forcedType = _forcedType;
 		};
 	}
 

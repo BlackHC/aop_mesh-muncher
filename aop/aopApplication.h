@@ -60,6 +60,7 @@ namespace aop {
 		SGSInterface::View cameraView;
 
 		Settings settings;
+		SceneSettings sceneSettings;
 		bool hideScene;
 
 		ProbeDatabase probeDatabase;
@@ -114,9 +115,14 @@ namespace aop {
 		virtual void sampleModel( int modelId, float resolution, ModelDatabase::ImportInterface::Tag ) {
 			ModelDatabase_sampleModel( modelId, resolution );
 		}
+
 		ProbeDatabase::Query::MatchInfos queryVolume( const Obb &queryVolume );
 		ProbeDatabase::WeightedQuery::MatchInfos weightedQueryVolume( const Obb &queryVolume );
-		void sampleInstances( int modelIndex );
-		ProbeContextTolerance Application::getPCTFromSettings();
+
+		void ProbeDatabase_sampleInstances( int modelIndex );
+
+		ProbeContextTolerance getPCTFromSettings();
+
+		void NeighborhoodDatabase_sampleScene();
 	};
 }
