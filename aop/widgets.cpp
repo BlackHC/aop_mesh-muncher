@@ -25,7 +25,7 @@ Eigen::Vector2f TransformChain::getOffset() const {
 }
 
 void TransformChain::setScale( float scale ) {
-	localTransform.linear() = Eigen::AlignedScaling3f( scale, scale, 0.0 );
+	localTransform.linear() = Eigen::AlignedScaling3f( scale, scale, 1.0 );
 }
 
 float TransformChain::getScale() const {
