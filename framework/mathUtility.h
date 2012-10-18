@@ -17,7 +17,7 @@ namespace ColorConversion {
 			double v;       // percent
 		} hsv;*/
 
-		Eigen::Vector3f rgb2hsv(const Eigen::Vector3f &rgb)
+		inline Eigen::Vector3f rgb2hsv(const Eigen::Vector3f &rgb)
 		{
 			Eigen::Vector3f hsv;
 
@@ -52,7 +52,7 @@ namespace ColorConversion {
 		}
 
 
-		Eigen::Vector3f hsv2rgb( const Eigen::Vector3f &hsv )
+		inline Eigen::Vector3f hsv2rgb( const Eigen::Vector3f &hsv )
 		{
 			float hh, p, q, t, ff;
 			long i;

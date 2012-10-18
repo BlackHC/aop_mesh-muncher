@@ -232,7 +232,7 @@ void SGSSceneRenderer::processScene( const std::shared_ptr<SGSScene> &scene, con
 	terrainLists.reserve( scene->terrain.tiles.size() );
 	visibleSolidInstancedSubObjects.reserve( scene->subObjects.size() );
 	visibleTransparentInstancedSubObjects.reserve( scene->subObjects.size() );
-	instancedSubObjects.reserve( scene->numSceneSubObjects );
+	instancedSubObjects.reserve( scene->numSceneObjects * 3  );
 	refreshInstancedSubObjects();
 
 	loadStaticBuffers();
@@ -377,7 +377,7 @@ void SGSSceneRenderer::prepareMaterialDisplayLists() {
 
 void SGSSceneRenderer::prerenderDebugInfos() {
 	{
-		debug.boundingSpheres.begin();
+		/*debug.boundingSpheres.begin();
 
 		for( int subObjectIndex = 0 ; subObjectIndex < scene->numSceneSubObjects ; ++subObjectIndex ) {
 			const SGSScene::BoundingSphere &boundingSphere = scene->subObjects[subObjectIndex].bounding.sphere;
@@ -386,7 +386,7 @@ void SGSSceneRenderer::prerenderDebugInfos() {
 			glColor3f( 0.0, 1.0, 1.0 );
 			debug.boundingSpheres.drawAbstractSphere( boundingSphere.radius, true, 5 );
 		}
-		debug.boundingSpheres.end();
+		debug.boundingSpheres.end();*/
 	}
 	{
 		debug.terrainBoundingSpheres.begin();
@@ -420,7 +420,8 @@ void SGSSceneRenderer::updateSceneBoundingBox() {
 		sceneBoundingBox.extend( AlignedBox3f( Vector3f::Map( boundingBox.min ), Vector3f::Map( boundingBox.max ) ) );
 	}
 
-	for( int subObjectIndex = 0 ; subObjectIndex < scene->numSceneSubObjects ; ++subObjectIndex ) {
+	for( int instancedSubObjectIndex = 0 ; instancedSubObjectIndex < instancedSubObjects.size() ; instancedSubObjectIndex++ ) {
+		const int subObjectIndex = instancedSubObjects[ instancedSubObjectIndex ].subObjectIndex;
 		const SGSScene::BoundingBox &boundingBox = scene->subObjects[subObjectIndex].bounding.box;
 
 		sceneBoundingBox.extend( AlignedBox3f( Vector3f::Map( boundingBox.min ), Vector3f::Map( boundingBox.max ) ) );

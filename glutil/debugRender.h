@@ -372,17 +372,17 @@ namespace DebugRender {
 		glPopMatrix();
 	}
 
-	void onlyDrawOccluded() {
+	inline void onlyDrawOccluded() {
 		glDepthMask( GL_FALSE );
 		glDepthFunc( GL_GEQUAL );
 	}
 
-	void onlyDrawUnoccluded() {
+	inline void onlyDrawUnoccluded() {
 		glDepthMask( GL_TRUE );
 		glDepthFunc( GL_LEQUAL );
 	}
 
-	void alwaysDraw() {
+	inline void alwaysDraw() {
 		glDepthMask( GL_TRUE );
 		glDepthFunc( GL_ALWAYS );
 	}

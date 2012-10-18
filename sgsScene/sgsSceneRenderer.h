@@ -25,6 +25,8 @@ SERIALIZER_ENABLE_RAW_MODE_EXTERN( OptixProgramInterface::MergedTextureInfo );
 #include <unsupported/Eigen/openglsupport>
 //#include "boost/multi_array.hpp"
 
+#include "optixProgramHelpers.h"
+
 #include <gridStorage.h>
 
 namespace Eigen {
@@ -253,8 +255,8 @@ struct SGSSceneRenderer {
 
 	// TODO> move this into scene [10/13/2012 kirschan2]
 	unsigned getSceneHash() {
-		int xor1 = scene->numSceneIndices ^ scene->numSceneVertices;
-		int xor2 = scene->numSceneObjects ^ scene->numSceneSubObjects;
+		int xor1 = scene->vertices.size() ^ scene->indices.size();
+		int xor2 = scene->numSceneObjects ^ scene->subObjects.size();
 		int xor3 = scene->textures.size() ^ scene->terrain.mapSize[0] ^ scene->terrain.mapSize[1];
 		return (xor1 << 16) | (xor1 >> 16) | xor2 | (xor3 << 8);
 	}
@@ -300,6 +302,8 @@ struct SGSSceneRenderer {
 	bool loadOptixCache();
 	void writeOptixCache();
 	void refillDynamicOptixBuffers();
+
+	void refillOptixBuffer( const int beginInstanceIndex, const int endInstanceIndex, Optix::ObjectMeshData &meshData );
 	//////////////////////////////////////////////////////////////////////////
 
 	// TODO: most of this should be moved into ModelDatabase [10/13/2012 kirschan2]
@@ -411,4 +415,6 @@ struct SGSSceneRenderer {
 	// there is not accurate specular lighting and there is no alpha sorting
 	void renderFullScene( bool wireframe );
 	void sortInstancedSubObjectsByDistance( std::vector< int > &list, const Eigen::Vector3f &worldViewerPosition );
+
+	void initObjectMeshData( OptixRenderer *optixRenderer, const OptixHelpers::Namespace::Modules &modules, Optix::ObjectMeshData &meshData );
 };

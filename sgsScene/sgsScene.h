@@ -106,13 +106,13 @@ struct SGSScene {
 		SERIALIZER_DEFAULT_IMPL( (startSubObject)(numSubObjects)(bounding) );
 	};
 
-	struct Object : Model {
+	struct Object {
 		int modelId;
 		// column major in OGL (== row major in DX)
 		float transformation[16];
 
 		// TODO: add inheritance support to serializer? [9/23/2012 kirschan2]
-		SERIALIZER_DEFAULT_IMPL( (modelId)(startSubObject)(numSubObjects)(bounding)(transformation) );
+		SERIALIZER_DEFAULT_IMPL( (modelId)(transformation) );
 	};
 
 	struct Terrain {
@@ -176,16 +176,13 @@ struct SGSScene {
 	// in model id order
 	std::vector<Model> models;
 
-	int numSceneVertices;
-	int numSceneIndices;
-	int numSceneSubObjects;
 	int numSceneObjects;
 
 	std::vector<Texture> textures;
 
 	Terrain terrain;
 
-	SERIALIZER_DEFAULT_IMPL( (numSceneVertices)(numSceneIndices)(numSceneSubObjects)(numSceneObjects)(modelNames)(models)(objects)(subObjects)(textures)(vertices)(indices)(terrain) );
+	SERIALIZER_DEFAULT_IMPL( (numSceneObjects)(modelNames)(models)(objects)(subObjects)(textures)(vertices)(indices)(terrain) );
 
 	SGSScene() {}
 };
