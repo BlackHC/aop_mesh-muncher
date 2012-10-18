@@ -146,11 +146,11 @@ void SGSSceneRenderer::reloadShaders() {
 			voxelizerSplatterProgram.fragmentShader = voxelizerShaders[ "splatterFragmentShader" ];
 
 			voxelizerMuxerProgram.vertexShader = voxelizerShaders[ "muxer" ];
-			
-			if( 
-				terrainProgram.build( shaders ) && 
-				objectProgram.build( shaders ) && 
-				previewObjectProgram.build( shaders ) && 
+
+			if(
+				terrainProgram.build( shaders ) &&
+				objectProgram.build( shaders ) &&
+				previewObjectProgram.build( shaders ) &&
 				shadowMapProgram.build( shaders ) &&
 
 				voxelizerSplatterProgram.build( voxelizerShaders ) &&
@@ -189,7 +189,7 @@ void SGSSceneRenderer::processScene( const std::shared_ptr<SGSScene> &scene, con
 	textures.resize( numTextures );
 
 	for( int textureIndex = 0 ; textureIndex < numTextures ; ++textureIndex ) {
-		const auto &rawContent = scene->textures[ textureIndex ].rawContent;	
+		const auto &rawContent = scene->textures[ textureIndex ].rawContent;
 
 		SOIL_load_OGL_texture_from_memory( &rawContent.front(), rawContent.size(), 0, textures[ textureIndex ].handle, SOIL_FLAG_DDS_LOAD_DIRECT | SOIL_FLAG_MIPMAPS | SOIL_FLAG_TEXTURE_REPEATS );
 	}
@@ -230,8 +230,10 @@ void SGSSceneRenderer::processScene( const std::shared_ptr<SGSScene> &scene, con
 
 	// render everything into display lists
 	terrainLists.reserve( scene->terrain.tiles.size() );
-	solidLists.reserve( scene->subObjects.size() );
-	alphaLists.reserve( scene->subObjects.size() );
+	visibleSolidInstancedSubObjects.reserve( scene->subObjects.size() );
+	visibleTransparentInstancedSubObjects.reserve( scene->subObjects.size() );
+	instancedSubObjects.reserve( scene->numSceneSubObjects );
+	refreshInstancedSubObjects();
 
 	loadStaticBuffers();
 	setVertexArrayObjects();
@@ -241,7 +243,7 @@ void SGSSceneRenderer::processScene( const std::shared_ptr<SGSScene> &scene, con
 	prepareMaterialDisplayLists();
 
 	prerenderDebugInfos();
-	
+
 
 	// flush the cache if necessary
 	if( cacheChanged ) {
@@ -263,7 +265,7 @@ void SGSSceneRenderer::loadStaticBuffers() {
 void SGSSceneRenderer::setVertexArrayObjects() {
 	staticObjectsMesh.init();
 	terrainMesh.init();
-	
+
 	// reset the state
 	// TODO: verify that this is unnecessary and remove the following block [9/23/2012 kirschan2]
 	GL::Buffer::unbind( GL_ARRAY_BUFFER );
@@ -451,48 +453,46 @@ void SGSSceneRenderer::renderShadowmap( const RenderContext &renderContext ) {
 	glMatrixMode( GL_MODELVIEW );
 	glLoadIdentity();
 
-	shadowMapProgram.use();		
+	shadowMapProgram.use();
 
-	buildDrawLists( sunProjectionMatrix, renderContext );
+	refreshVisibilityLists( sunProjectionMatrix, renderContext );
 
 	// draw terrain
 	{
 		Texture2D::unbind();
-		terrainMesh.vao.bind();		
+		terrainMesh.vao.bind();
 		glDrawElements( GL_TRIANGLES, scene->terrain.indices.size(), GL_UNSIGNED_INT, nullptr );
 		terrainMesh.vao.unbind();
 	}
 
-	// render dynamic objects
-	{
-		staticObjectsMesh.vao.bind();
-
-		glPushMatrix();
-		for( int instanceIndex = 0 ; instanceIndex < instances.size() ; ++instanceIndex ) {
-			const Instance &instance = instances[ instanceIndex ];
-			if( renderContext.disabledModelIndex != instance.modelId && renderContext.disabledInstanceIndex != scene->objects.size() + instanceIndex ) {
-				drawInstance( instances[ instanceIndex ] );
-			}
-		}
-		glPopMatrix();
-
-		staticObjectsMesh.vao.unbind();
-	}
-
+	// draw all instances
 	{
 		staticObjectsMesh.vao.bind();
 
 		GLuint *firstIndex = nullptr;
-		for( int i = 0 ; i < solidLists.size() ; i++ ) {
-			const int subObjectIndex = solidLists[i];
-			glDrawElements( GL_TRIANGLES, scene->subObjects[ subObjectIndex ].numIndices, GL_UNSIGNED_INT, firstIndex + scene->subObjects[ subObjectIndex ].startIndex );
+		for( int i = 0 ; i < visibleSolidInstancedSubObjects.size() ; i++ ) {
+			const int instancedSubObjectIndex = visibleSolidInstancedSubObjects[i];
+			const auto &instancedSubObject = instancedSubObjects[ instancedSubObjectIndex ];
+
+			const int subObjectIndex = instancedSubObject.subObjectIndex;
+
+			glMatrixLoad( GL_MODELVIEW, getInstanceTransformation( instancedSubObject.instanceIndex ) );
+			glDrawElements(
+				GL_TRIANGLES,
+				scene->subObjects[ subObjectIndex ].numIndices,
+				GL_UNSIGNED_INT,
+				firstIndex + scene->subObjects[ subObjectIndex ].startIndex
+			);
 		}
 
 		glEnable( GL_ALPHA_TEST );
 		glAlphaFunc( GL_GREATER, 0.2f );
 
-		for( int i = 0 ; i < alphaLists.size() ; i++ ) {
-			const int subObjectIndex = alphaLists[i];
+		for( int i = 0 ; i < visibleTransparentInstancedSubObjects.size() ; i++ ) {
+			const int instancedSubObjectIndex = visibleTransparentInstancedSubObjects[i];
+			const auto &instancedSubObject = instancedSubObjects[ instancedSubObjectIndex ];
+
+			const int subObjectIndex = instancedSubObject.subObjectIndex;
 			const SGSScene::SubObject &subObject = scene->subObjects[ subObjectIndex ];
 
 			const auto &material = subObject.material;
@@ -507,7 +507,13 @@ void SGSSceneRenderer::renderShadowmap( const RenderContext &renderContext ) {
 				Texture2D::unbind();
 			}
 
-			glDrawElements( GL_TRIANGLES, scene->subObjects[ subObjectIndex ].numIndices, GL_UNSIGNED_INT, firstIndex + scene->subObjects[ subObjectIndex ].startIndex );
+			glMatrixLoad( GL_MODELVIEW, getInstanceTransformation( instancedSubObject.instanceIndex ) );
+			glDrawElements(
+				GL_TRIANGLES,
+				scene->subObjects[ subObjectIndex ].numIndices,
+				GL_UNSIGNED_INT,
+				firstIndex + scene->subObjects[ subObjectIndex ].startIndex
+			);
 		}
 
 		staticObjectsMesh.vao.unbind();
@@ -515,6 +521,7 @@ void SGSSceneRenderer::renderShadowmap( const RenderContext &renderContext ) {
 
 	// state reset
 	{
+		glMatrixLoad( GL_MODELVIEW, Eigen::Matrix4f::Identity() );
 		glDisable( GL_BLEND );
 		glDisable( GL_ALPHA_TEST );
 		glDisable( GL_CULL_FACE );
@@ -535,86 +542,52 @@ void SGSSceneRenderer::renderShadowmap( const RenderContext &renderContext ) {
 	//glStringMarkerGREMEDY( 0, "shadow map done" );
 }
 
-void SGSSceneRenderer::buildDrawLists( const Matrix4f &projectionView, const RenderContext &renderContext ) {
-	FrustumPlanesMatrixf frustumPlanes = Frustum::normalize( projectionToFrustumPlanes * projectionView );
-
-	if( debug.updateRenderLists ) {
-		terrainLists.clear();
-		for( int tileIndex = 0 ; tileIndex < scene->terrain.tiles.size() ; tileIndex++ ) {
-			const SGSScene::BoundingSphere &boundingSphere = scene->terrain.tiles[tileIndex].bounding.sphere;
-			if( Frustum::isInside( frustumPlanes, Map< const Vector3f>( boundingSphere.center ).eval(), -boundingSphere.radius ) ) {
-				terrainLists.push_back( tileIndex );
-			}
-		}
-
-		solidLists.clear();
-		alphaLists.clear();
-		for( int objectIndex = 0 ; objectIndex < scene->numSceneObjects ; ++objectIndex ) {
-			const SGSScene::Object &object = scene->objects[objectIndex];
-
-			if( objectIndex == renderContext.disabledInstanceIndex || object.modelId == renderContext.disabledModelIndex ) {
-				continue;
-			}
-
-			const int endSubObject = object.startSubObject + object.numSubObjects;
-			for( int subObjectIndex = object.startSubObject ; subObjectIndex < endSubObject ; ++subObjectIndex ) {
-				const SGSScene::SubObject &subObject = scene->subObjects[subObjectIndex];
-				const SGSScene::BoundingSphere &boundingSphere = subObject.bounding.sphere;
-
-				if( Frustum::isInside( frustumPlanes, Vector3f::Map( boundingSphere.center ).eval(), -boundingSphere.radius ) ) {
-					if( scene->subObjects[subObjectIndex].material.alphaType == SGSScene::Material::AT_NONE ) {
-						solidLists.push_back( subObjectIndex );
-					}
-					else {
-						alphaLists.push_back( subObjectIndex );
-					}
-				}
-			}
-		}
+void SGSSceneRenderer::refreshVisibilityLists_noCulling( const RenderContext &renderContext ) {
+	if( !debug.updateRenderLists ) {
+		return;
 	}
-}
 
-void SGSSceneRenderer::buildCompleteDrawLists( const RenderContext &renderContext ) {
+	// cull terrain tiles
 	terrainLists.clear();
 	for( int tileIndex = 0 ; tileIndex < scene->terrain.tiles.size() ; tileIndex++ ) {
 		const SGSScene::BoundingSphere &boundingSphere = scene->terrain.tiles[tileIndex].bounding.sphere;
 		terrainLists.push_back( tileIndex );
 	}
 
-	solidLists.clear();
-	alphaLists.clear();
-	for( int objectIndex = 0 ; objectIndex < scene->numSceneObjects ; ++objectIndex ) {
-		const SGSScene::Object &object = scene->objects[objectIndex];
+	visibleSolidInstancedSubObjects.clear();
+	visibleTransparentInstancedSubObjects.clear();
 
-		if( objectIndex == renderContext.disabledInstanceIndex || object.modelId == renderContext.disabledModelIndex ) {
+	for( int instancedSubObjectIndex = 0 ; instancedSubObjectIndex < instancedSubObjects.size() ; instancedSubObjectIndex++ ) {
+		const auto &instancedSubObject = instancedSubObjects[ instancedSubObjectIndex ];
+
+		if(
+				instancedSubObject.instanceIndex == renderContext.disabledInstanceIndex
+			||
+				instancedSubObject.modelIndex == renderContext.disabledModelIndex
+		) {
 			continue;
 		}
 
-		const int endSubObject = object.startSubObject + object.numSubObjects;
-		for( int subObjectIndex = object.startSubObject ; subObjectIndex < endSubObject ; ++subObjectIndex ) {
-			const SGSScene::SubObject &subObject = scene->subObjects[subObjectIndex];
-			const SGSScene::BoundingSphere &boundingSphere = subObject.bounding.sphere;
+		const SGSScene::SubObject &subObject = scene->subObjects[ instancedSubObject.subObjectIndex ];
+		const SGSScene::BoundingSphere &boundingSphere = subObject.bounding.sphere;
+		const Eigen::Vector3f transformedCenter = getInstanceTransformation( instancedSubObject.instanceIndex ) * Vector3f::Map( subObject.bounding.sphere.center );
 
-			if( scene->subObjects[subObjectIndex].material.alphaType == SGSScene::Material::AT_NONE ) {
-				solidLists.push_back( subObjectIndex );
-			}
-			else {
-				alphaLists.push_back( subObjectIndex );
-			}
-		}
+		visibleSolidInstancedSubObjects.push_back( instancedSubObjectIndex );
+		visibleTransparentInstancedSubObjects.push_back( instancedSubObjectIndex );
 	}
 }
 
 void SGSSceneRenderer::renderSceneView( const Matrix4f &projectionView, const Vector3f &worldViewerPosition, const RenderContext &renderContext ) {
-	buildDrawLists( projectionView, renderContext );
-	sortAlphaList( worldViewerPosition );
+	refreshVisibilityLists( projectionView, renderContext );
+	//refreshVisibilityLists_noCulling( renderContext );
+	sortInstancedSubObjectsByDistance( visibleTransparentInstancedSubObjects, worldViewerPosition );
 
 	drawScene( worldViewerPosition, renderContext, debug.showSceneWireframe );
 }
 
 void SGSSceneRenderer::renderFullScene( bool wireframe ) {
 	RenderContext renderContext;
-	buildCompleteDrawLists( renderContext );
+	refreshVisibilityLists_noCulling( renderContext );
 	drawScene( Eigen::Vector3f::Zero(), renderContext, wireframe );
 }
 
@@ -648,7 +621,7 @@ void SGSSceneRenderer::drawScene( const Vector3f &worldViewerPosition, const Ren
 		glUniform( terrainProgram.uniformLocations[ "sunShadowProjection" ], sunProjectionMatrix );
 
 		SimpleGL::ImmediateMultiDrawElements multiDrawElements;
-		multiDrawElements.reserve( terrainLists.size() );			
+		multiDrawElements.reserve( terrainLists.size() );
 		GLuint *firstIndex = nullptr;
 		for( int i = 0 ; i < terrainLists.size() ; i++ ) {
 			const int tileIndex = terrainLists[i];
@@ -673,38 +646,39 @@ void SGSSceneRenderer::drawScene( const Vector3f &worldViewerPosition, const Ren
 		staticObjectsMesh.vao.bind();
 
 		GLuint *firstIndex = nullptr;
-		for( int i = 0 ; i < solidLists.size() ; i++ ) {
-			const int subObjectIndex = solidLists[i];
+		for( int i = 0 ; i < visibleSolidInstancedSubObjects.size() ; i++ ) {
+			const int instancedSubObjectIndex = visibleSolidInstancedSubObjects[i];
+			const auto &instancedSubObject = instancedSubObjects[ instancedSubObjectIndex ];
+
+			const int subObjectIndex = instancedSubObject.subObjectIndex;
+
 			materialDisplayLists[ subObjectIndex ].call();
-			glDrawElements( GL_TRIANGLES, scene->subObjects[ subObjectIndex ].numIndices, GL_UNSIGNED_INT, firstIndex + scene->subObjects[ subObjectIndex ].startIndex );
+
+			glMatrixLoad( GL_MODELVIEW, getInstanceTransformation( instancedSubObject.instanceIndex ) );
+			glDrawElements(
+				GL_TRIANGLES,
+				scene->subObjects[ subObjectIndex ].numIndices,
+				GL_UNSIGNED_INT,
+				firstIndex + scene->subObjects[ subObjectIndex ].startIndex
+			);
 		}
 
-		for( int i = 0 ; i < alphaLists.size() ; i++ ) {
-			const int subObjectIndex = alphaLists[i];
+		for( int i = 0 ; i < visibleTransparentInstancedSubObjects.size() ; i++ ) {
+			const int instancedSubObjectIndex = visibleTransparentInstancedSubObjects[i];
+			const auto &instancedSubObject = instancedSubObjects[ instancedSubObjectIndex ];
+
+			const int subObjectIndex = instancedSubObject.subObjectIndex;
+
 			materialDisplayLists[ subObjectIndex ].call();
-			glDrawElements( GL_TRIANGLES, scene->subObjects[ subObjectIndex ].numIndices, GL_UNSIGNED_INT, firstIndex + scene->subObjects[ subObjectIndex ].startIndex );
+
+			glMatrixLoad( GL_MODELVIEW, getInstanceTransformation( instancedSubObject.instanceIndex ) );
+			glDrawElements(
+				GL_TRIANGLES,
+				scene->subObjects[ subObjectIndex ].numIndices,
+				GL_UNSIGNED_INT,
+				firstIndex + scene->subObjects[ subObjectIndex ].startIndex
+			);
 		}
-
-		staticObjectsMesh.vao.unbind();
-	}
-
-	// dynamic object rendering
-	{
-		objectProgram.use();
-
-		glUniform( objectProgram.uniformLocations[ "viewerPosition" ], worldViewerPosition );
-		glUniform( objectProgram.uniformLocations[ "sunShadowProjection" ], sunProjectionMatrix );
-
-		staticObjectsMesh.vao.bind();
-		
-		glPushMatrix();
-		for( int instanceIndex = 0 ; instanceIndex < instances.size() ; ++instanceIndex ) {
-			const Instance &instance = instances[ instanceIndex ];
-			if( renderContext.disabledModelIndex != instance.modelId && renderContext.disabledInstanceIndex != scene->objects.size() + instanceIndex ) {
-				drawInstance( instances[ instanceIndex ] );
-			}
-		}
-		glPopMatrix();
 
 		staticObjectsMesh.vao.unbind();
 	}
@@ -712,6 +686,8 @@ void SGSSceneRenderer::drawScene( const Vector3f &worldViewerPosition, const Ren
 	if( wireframe ) {
 		glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
 	}
+
+	glMatrixLoad( GL_MODELVIEW, Eigen::Matrix4f::Identity() );
 
 	resetState();
 	{
@@ -770,12 +746,16 @@ void SGSSceneRenderer::renderModel( const Vector3f &worldViewerPosition, int mod
 }
 
 
-void SGSSceneRenderer::sortAlphaList( const Vector3f &worldViewerPosition ) {
+void SGSSceneRenderer::sortInstancedSubObjectsByDistance( std::vector< int > &list, const Vector3f &worldViewerPosition ) {
 	boost::sort(
-		alphaLists, [&, this] ( int indexA, int indexB ) {
-			return ( Vector3f::Map( scene->subObjects[indexA].bounding.sphere.center ) - worldViewerPosition).squaredNorm() >
-				( Vector3f::Map( scene->subObjects[indexB].bounding.sphere.center ) - worldViewerPosition).squaredNorm();
-	}
+		list, 
+		[&] ( int indexA, int indexB ) {
+			return 
+					( Vector3f::Map( scene->subObjects[ instancedSubObjects[ indexA ].subObjectIndex ].bounding.sphere.center ) - worldViewerPosition).squaredNorm()
+				>
+					( Vector3f::Map( scene->subObjects[ instancedSubObjects[ indexB ].subObjectIndex ].bounding.sphere.center ) - worldViewerPosition).squaredNorm()
+			;
+		}
 	);
 }
 
@@ -929,9 +909,9 @@ void SGSSceneRenderer::drawModel( SGSScene::Model &model ) {
 	}
 }
 
-void SGSSceneRenderer::drawInstance( Instance &instance ) {
-	glMatrixLoad( GL_MODELVIEW, instance.transformation.matrix() );
-	drawModel( scene->models[ instance.modelId ] );
+void SGSSceneRenderer::drawInstance( int instanceIndex ) {
+	glMatrixLoad( GL_MODELVIEW, getInstanceTransformation( instanceIndex ) );
+	drawModel( scene->models[ getModelIndex( instanceIndex ) ] );
 }
 
 int SGSSceneRenderer::addInstance( const Instance &instance ) {
@@ -940,6 +920,7 @@ int SGSSceneRenderer::addInstance( const Instance &instance ) {
 	instances.push_back( instance );
 	refillDynamicOptixBuffers();
 	updateSceneBoundingBox();
+	refreshInstancedSubObjects();
 
 	return instanceIndex;
 }
@@ -949,6 +930,7 @@ void SGSSceneRenderer::removeInstance( int instanceIndex ) {
 	if( instanceIndex >= 0 ) {
 		instances.erase( instances.begin() + instanceIndex );
 
+		refreshInstancedSubObjects();
 		refillDynamicOptixBuffers();
 		updateSceneBoundingBox();
 	}
@@ -1013,15 +995,15 @@ namespace VoxelizedModel {
 			int *permutation = permutations[i];
 			const Vector3i permutedSize = permute( indexMapping3.getSize(), permutation );
 			// the grid points are the centers of their voxel's boxes
-			auto projection = Eigen::createOrthoProjectionMatrixLH( Vector3f::Zero() - offset, permutedSize.cast<float>() - offset ); 
-			
+			auto projection = Eigen::createOrthoProjectionMatrixLH( Vector3f::Zero() - offset, permutedSize.cast<float>() - offset );
+
 			//glUniform( splatShader.mainAxisProjection[i], projection );
 			//glUniform( splatShader.mainAxisPermutation[i], unpermutedToPermutedMatrix( permutation ).topLeftCorner<3,3>().matrix() );
-			
+
 			glUniform( splatProgram.uniform( "mainAxisProjection", i ), projection );
 			// this could be set as default or we could set these in the shader!
 			glUniform( splatProgram.uniform( "mainAxisPermutation", i), unpermutedToPermutedMatrix( permutation ).topLeftCorner<3,3>().matrix() );
-			
+
 			glViewportIndexedf( i, 0, 0, (float) permutedSize.x(), (float) permutedSize.y() );
 		}
 
@@ -1064,7 +1046,7 @@ namespace VoxelizedModel {
 		// read back our data
 		// TODO: this is slow.. asynchronous pixel pack buffers would be better [10/13/2012 kirschan2]
 		//Color4ub *volumeData = new Color4ub[ indexMapping3.count ];
-		// 
+		//
 		// SimpleIndexer3 uses x-minor ordering[10/13/2012 kirschan2]
 		Voxels voxels( indexMapping3 );
 		glGetTexImage( GL_TEXTURE_3D, 0, GL_RGBA, GL_UNSIGNED_BYTE, voxels.getData() );
@@ -1098,7 +1080,7 @@ VoxelizedModel::Voxels SGSSceneRenderer::voxelizeModel( int modelIndex, float re
 	// set up the index mapping
 	SimpleIndexMapping3 indexMapping = createCenteredIndexMapping( resolution, boundingBox.sizes(), boundingBox.center() );
 
-	return VoxelizedModel::voxelize( 
+	return VoxelizedModel::voxelize(
 		indexMapping,
 		[&] () {
 			const auto &model = scene->models[ modelIndex ];
@@ -1117,4 +1099,62 @@ VoxelizedModel::Voxels SGSSceneRenderer::voxelizeModel( int modelIndex, float re
 		voxelizerSplatterProgram,
 		voxelizerMuxerProgram
 	);
+}
+
+void SGSSceneRenderer::refreshVisibilityLists( const Eigen::Matrix4f &projectionView, const RenderContext &renderContext ) {
+	if( !debug.updateRenderLists ) {
+		return;
+	}
+
+	FrustumPlanesMatrixf frustumPlanes = Frustum::normalize( projectionToFrustumPlanes * projectionView );
+
+	// cull terrain tiles
+	terrainLists.clear();
+	for( int tileIndex = 0 ; tileIndex < scene->terrain.tiles.size() ; tileIndex++ ) {
+		const SGSScene::BoundingSphere &boundingSphere = scene->terrain.tiles[tileIndex].bounding.sphere;
+		if( Frustum::isInside( frustumPlanes, Map< const Vector3f>( boundingSphere.center ).eval(), -boundingSphere.radius ) ) {
+			terrainLists.push_back( tileIndex );
+		}
+	}
+	
+	visibleSolidInstancedSubObjects.clear();
+	visibleTransparentInstancedSubObjects.clear();
+
+	// add the visible sub objects
+	for( int instancedSubObjectIndex = 0 ; instancedSubObjectIndex < instancedSubObjects.size() ; instancedSubObjectIndex++ ) {
+		const auto &instancedSubObject = instancedSubObjects[ instancedSubObjectIndex ];
+
+		if(
+				instancedSubObject.instanceIndex == renderContext.disabledInstanceIndex
+			||
+				instancedSubObject.modelIndex == renderContext.disabledModelIndex
+		) {
+			continue;
+		}
+
+		const SGSScene::SubObject &subObject = scene->subObjects[ instancedSubObject.subObjectIndex ];
+		const SGSScene::BoundingSphere &boundingSphere = subObject.bounding.sphere;
+		const Eigen::Vector3f transformedCenter = getInstanceTransformation( instancedSubObject.instanceIndex ) * Vector3f::Map( subObject.bounding.sphere.center );
+
+		if( Frustum::isInside( frustumPlanes, transformedCenter, -boundingSphere.radius ) ) {
+			if( subObject.material.alphaType == SGSScene::Material::AT_NONE ) {
+				visibleSolidInstancedSubObjects.push_back( instancedSubObjectIndex );
+			}
+			else {
+				visibleTransparentInstancedSubObjects.push_back( instancedSubObjectIndex );
+			}
+		}
+	}
+}
+
+void SGSSceneRenderer::refreshInstancedSubObjects() {
+	instancedSubObjects.clear();
+	// start with the fixed objects
+	for( int instanceIndex = 0 ; instanceIndex < getNumInstances() ; ++instanceIndex ) {
+		const int modelIndex = getModelIndex( instanceIndex );
+		const auto &model = getModel( modelIndex );
+		for( int subObjectCounter = 0 ; subObjectCounter < model.numSubObjects ; subObjectCounter++ ) {
+			instancedSubObjects.push_back( InstancedSubObject( instanceIndex, model.startSubObject + subObjectCounter, modelIndex ) );
+		}
+	}
 }

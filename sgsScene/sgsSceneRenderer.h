@@ -29,9 +29,13 @@ SERIALIZER_ENABLE_RAW_MODE_EXTERN( OptixProgramInterface::MergedTextureInfo );
 
 namespace Eigen {
 	// DSA support
-	EIGEN_GL_FUNC1_DECLARATION       (glMatrixLoad,GLenum,const)
-	EIGEN_GL_FUNC1_SPECIALIZATION_MAT(glMatrixLoad,GLenum,const,float,  4,4,fEXT)
-	EIGEN_GL_FUNC1_SPECIALIZATION_MAT(glMatrixLoad,GLenum,const,double, 4,4,dEXT)
+	EIGEN_GL_FUNC1_DECLARATION( glMatrixLoad,GLenum,const )
+	EIGEN_GL_FUNC1_SPECIALIZATION_MAT( glMatrixLoad,GLenum,const,double, 4,4,dEXT )
+	EIGEN_GL_FUNC1_SPECIALIZATION_MAT( glMatrixLoad,GLenum,const,float,  4,4,fEXT )
+
+	template<typename Scalar> void glMatrixLoad( GLenum mode, const Transform<Scalar,3,Affine>& t )        { glMatrixLoad( mode, t.matrix() ); }
+	template<typename Scalar> void glMatrixLoad( GLenum mode, const Transform<Scalar,3,Projective>& t )    { glMatrixLoad( mode, t.matrix() ); }
+	template<typename Scalar> void glMatrixLoad( GLenum mode, const Transform<Scalar,3,AffineCompact>& t ) { glMatrixLoad( mode, Transform<Scalar,3,Affine>(t).matrix() ); }
 }
 
 
@@ -131,9 +135,37 @@ struct SGSSceneRenderer {
 		{}
 	} debug;
 
-	std::vector<int> solidLists;
-	std::vector<int> alphaLists;
+	struct InstancedSubObject {
+		int instanceIndex;
+		int subObjectIndex;
+		int modelIndex;
+
+		InstancedSubObject() {}
+
+		InstancedSubObject( int instanceIndex, int subObjectIndex, int modelIndex )
+			: instanceIndex( instanceIndex )
+			, subObjectIndex( subObjectIndex )
+			, modelIndex( modelIndex )
+		{
+		}
+	};
+
+	std::vector< InstancedSubObject > instancedSubObjects;
+
+	// contains the indices of instanced subobjects
+	std::vector<int> visibleSolidInstancedSubObjects;
+	// contains the indices of instanced subobjects
+	std::vector<int> visibleTransparentInstancedSubObjects;
+
+	// contains the indicies of visible terrain tiles
 	std::vector<int> terrainLists;
+
+	void refreshInstancedSubObjects();
+
+	void refreshVisibilityLists( const Eigen::Matrix4f &projectionView, const RenderContext &renderContext );
+	void refreshVisibilityLists_noCulling( const RenderContext &renderContext );
+
+	void drawScene( const Eigen::Vector3f &worldViewerPosition, const RenderContext &renderContext, bool wireframe );
 
 	struct Mesh {
 		GL::ScopedBuffer vertexBuffer, indexBuffer;
@@ -251,11 +283,8 @@ struct SGSSceneRenderer {
 	void initShadowMapProjectionMatrix( const Eigen::AlignedBox3f &boundingBox, const Eigen::Vector3f &direction );
 	void renderShadowmap( const RenderContext &renderContext );
 
-	void buildDrawLists( const Eigen::Matrix4f &projectionView, const RenderContext &renderContext );
-	void sortAlphaList( const Eigen::Vector3f &worldViewerPosition );
-
 	void drawModel( SGSScene::Model &model );
-	void drawInstance( Instance &instance );
+	void drawInstance( int instanceIndex );
 
 	void resetState();
 	void renderSceneView( const Eigen::Matrix4f &projectionView, const Eigen::Vector3f &worldViewerPosition, const RenderContext &renderContext );
@@ -378,11 +407,8 @@ struct SGSSceneRenderer {
 		return indices;
 	}
 
-	void drawScene( const Eigen::Vector3f &worldViewerPosition, const RenderContext &renderContext, bool wireframe );
-	void buildCompleteDrawLists( const RenderContext &renderContext );
-
-
 	// renders the full scene with no real viewer position and no render context
 	// there is not accurate specular lighting and there is no alpha sorting
 	void renderFullScene( bool wireframe );
+	void sortInstancedSubObjectsByDistance( std::vector< int > &list, const Eigen::Vector3f &worldViewerPosition );
 };
