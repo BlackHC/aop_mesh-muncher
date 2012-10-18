@@ -879,6 +879,17 @@ namespace aop {
 
 				application->endLongOperation();
 			} ) );
+			ui.add( AntTWBarUI::makeSharedButton( "Remerge models", [this] {
+				application->startLongOperation();
+
+				const auto &modelIndices = application->modelTypesUI->markedModels;
+
+				ProgressTracker::Context progressTracker( modelIndices.size() + 1 );
+				application->probeDatabase.integrateDatasets();
+				progressTracker.markFinished();
+
+				application->endLongOperation();
+			} ) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
 			ui.add( AntTWBarUI::makeSharedVariable(
 				"Probe query occlusion tolerance",
@@ -1458,7 +1469,7 @@ namespace aop {
 		initSGSInterface();
 
 		// TODO: fix parameter order [10/10/2012 kirschan2]
-#if 1
+#if 0
 		sampleAllNeighbors( sceneSettings.neighborhoodDatabase_maxDistance, neighborDatabase, *world );
 		sampleAllNeighborsV2( sceneSettings.neighborhoodDatabase_maxDistance, neighborDatabaseV2, *world );
 #endif

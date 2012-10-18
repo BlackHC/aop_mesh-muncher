@@ -23,6 +23,7 @@
 #include "optixEigenInterop.h"
 
 #include <serializer_fwd.h>
+#include <algorithm>
 
 /*
 struct ProbeDatabase {
@@ -186,12 +187,8 @@ struct InstanceProbeDataset {
 			;
 		}
 
-		static __forceinline__ bool lexicographicalLess_withId( const ProbeContext &a, const ProbeContext &b ) {
-			return
-				boost::make_tuple( a.probeIndex, a.hitCounter, a.distance, a.Lab.x, a.Lab.y, a.Lab.z )
-				<
-				boost::make_tuple( b.probeIndex, b.hitCounter, b.distance, b.Lab.x, a.Lab.y, a.Lab.z )
-			;
+		static __forceinline__ bool less_byId( const ProbeContext &a, const ProbeContext &b ) {
+			return a.probeIndex < b.probeIndex;
 		}
 
 		static __forceinline__ bool lexicographicalLess_startWithDistance( const ProbeContext &a, const ProbeContext &b ) {
@@ -313,39 +310,41 @@ namespace CompressedDataset {
 	typedef InstanceProbeDataset::ProbeContext ProbeContext;
 	typedef std::vector< ProbeContext > ProbeContexts;
 
-	static void compress( ProbeContexts &data, const ProbeContextToleranceV2 &pct ) {
+	static void compress( int numInstances, int numProbes, ProbeContexts &data, const ProbeContextToleranceV2 &pct ) {
 		AUTO_TIMER_FUNCTION();
 
 		AUTO_TIMER_BLOCK( "presorting" ) {
-			// TODO: use stable sort for bigger sets or sort for smaller ones [10/17/2012 kirschan2]
-			boost::sort( data, ProbeContext::lexicographicalLess_withId );
+			// TODO: we know how the probe contests are interleaved, so we can just permute them
+			boost::sort( data, ProbeContext::less_byId );
 		}
 
 		AUTO_TIMER_BLOCK( "compressing" ) {
 			ProbeContexts compressedData;
 			compressedData.reserve( data.size() );
 
-			for( auto probeContext_mergeBegin = data.begin() ; probeContext_mergeBegin != data.end() ; ) {
-				decltype( probeContext_mergeBegin ) probeContext_mergeEnd;
-				for( probeContext_mergeEnd = probeContext_mergeBegin + 1 ; probeContext_mergeEnd != data.end() ; ++probeContext_mergeEnd ) {
-					if( !ProbeContext::matchOcclusionDistanceColor(
-						*probeContext_mergeBegin,
-						*probeContext_mergeEnd,
-						pct.occlusion_integerTolerance,
-						pct.distance_tolerance,
-						pct.colorLab_squaredTolerance
-					) ) {
-						break;
-					}
+			for( int probeIndex = 0 ; probeIndex < numProbes ; ++probeIndex ) {
+				const auto probeContext_end = data.begin() + (probeIndex + 1) * numInstances;
+				auto probeContext_mergeBegin = data.begin() + probeIndex * numInstances;
+				while( probeContext_mergeBegin != probeContext_end ) {
+					auto probeContext_mergeEnd = std::partition( probeContext_mergeBegin, probeContext_end,
+						[probeContext_mergeBegin, pct] ( const ProbeContext &context ) {
+							return ProbeContext::matchOcclusionDistanceColor( 
+								*probeContext_mergeBegin,
+								context,
+								pct.occlusion_integerTolerance,
+								pct.distance_tolerance,
+								pct.colorLab_squaredTolerance
+							);
+						}
+					);
+
+					auto probeContext_median = probeContext_mergeBegin + (probeContext_mergeEnd - probeContext_mergeBegin) / 2;
+					// TODO: we can do this in place without a second vector [10/17/2012 kirschan2]
+					compressedData.push_back( *probeContext_median );
+					compressedData.back().weight = probeContext_mergeEnd - probeContext_mergeBegin;
+
+					probeContext_mergeBegin = probeContext_mergeEnd;
 				}
-
-				auto probeContext_median = probeContext_mergeBegin + (probeContext_mergeEnd - probeContext_mergeBegin) / 2;
-				// TODO: we can do this in place without a second vector [10/17/2012 kirschan2]
-				compressedData.push_back( *probeContext_median );
-
-				compressedData.back().weight = probeContext_mergeEnd - probeContext_mergeBegin;
-
-				probeContext_mergeBegin = probeContext_mergeEnd;
 			}
 
 			log(
@@ -551,7 +550,7 @@ struct IdDatasets {
 			}
 
 			// TODO: magic constants!!! [10/17/2012 kirschan2]
-			CompressedDataset::compress( probeContexts, ProbeContextToleranceV2( 0.24 * OptixProgramInterface::numProbeSamples, 9, 0.25 * 0.95 ) );
+			CompressedDataset::compress( instances.size(), probes.size(), probeContexts, ProbeContextToleranceV2( 0.124 * OptixProgramInterface::numProbeSamples, 1, 0.25 * 0.95 ) );
 			
 			mergedInstances = IndexedProbeDataset( std::move( probeContexts ) );
 		}
