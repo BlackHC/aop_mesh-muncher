@@ -173,7 +173,7 @@ void real_main() {
 	IntVariableControl disabledObjectIndexControl( "disabledModelIndex", renderContext.disabledModelIndex, -1, sgsScene.modelNames.size(), sf::Keyboard::Numpad7, sf::Keyboard::Numpad1 );
 	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( disabledObjectIndexControl ) );
 
-	IntVariableControl disabledInstanceIndexControl( "disabledInstanceIndex",renderContext.disabledInstanceIndex, -1, sgsScene.numSceneObjects, sf::Keyboard::Numpad9, sf::Keyboard::Numpad3 );
+	IntVariableControl disabledInstanceIndexControl( "disabledInstanceIndex",renderContext.disabledInstanceIndex, -1, sgsScene.objects.size(), sf::Keyboard::Numpad9, sf::Keyboard::Numpad3 );
 	verboseEventDispatcher.eventHandlers.push_back( make_nonallocated_shared( disabledInstanceIndexControl ) );
 
 	KeyAction probeInstances( "probe disabled instances", sf::Keyboard::X, [&] () {

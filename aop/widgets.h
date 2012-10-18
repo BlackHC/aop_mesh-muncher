@@ -152,3 +152,38 @@ struct DummyButtonWidget : ButtonWidget {
 	void doRenderInside() {}
 };
 
+struct ScrollableContainer : WidgetContainer {
+	float minY, maxY;
+	float scrollStep;
+
+	ScrollableContainer() : minY(), maxY(), scrollStep() {}
+
+	void onMouse( EventState &eventState ) {
+		if( eventState.event.type == sf::Event::MouseWheelMoved ) {
+			//log( boost::format( "mouse wheel moved %i" ) % eventState.event.mouseWheel.delta );
+					
+			auto offset = transformChain.getOffset();
+			offset.y() = std::min( -minY, std::max( -maxY, offset.y() + eventState.event.mouseWheel.delta * scrollStep ) );
+			transformChain.setOffset( offset );
+
+			eventState.accept();
+		}
+		else {
+			WidgetContainer::onMouse( eventState );
+		}
+	}
+};
+
+// we set a scissor rectangle here
+struct ClippedContainer : WidgetContainer  {
+	Eigen::Vector2f size;
+	bool visible;
+
+	ClippedContainer( const Eigen::Vector2f &size = Eigen::Vector2f::Zero() ) 
+		: size( size )
+		, visible( true )
+	{
+	}
+
+	void onRender();
+};

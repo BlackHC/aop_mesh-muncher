@@ -1,20 +1,6 @@
 #include "aopCandidateSidebarUI.h"
 
-void aop::LocalCandidateContainer::onRender() {
-	if( !visible ) {
-		return;
-	}
-
-	const auto &topLeft = ViewportContext::context->globalToGL( transformChain.pointToScreen( Eigen::Vector2f::Zero() ).cast<int>() );
-	const auto &bottomRight = ViewportContext::context->globalToGL( transformChain.pointToScreen( size ).cast<int>() );
-
-	glEnable( GL_SCISSOR_TEST );
-	glScissor( topLeft.x(), bottomRight.y(), bottomRight.x() - topLeft.x() + 1, topLeft.y() - bottomRight.y() + 1 );
-
-	CandidateContainer::onRender();
-
-	glDisable( GL_SCISSOR_TEST );
-}
+#include "viewportContext.h"
 
 void aop::LocalCandidateBarUI::init() {
 	application->widgetRoot.addEventHandler( make_nonallocated_shared( clipper ) );

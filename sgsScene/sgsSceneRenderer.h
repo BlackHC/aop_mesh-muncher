@@ -65,6 +65,8 @@ namespace VoxelizedModel {
 
 struct SGSSceneRenderer {
 	struct Optix {
+		bool dynamicBufferDirty;
+
 		optix::GeometryGroup staticScene, dynamicScene;
 		optix::Acceleration staticAcceleration, dynamicAcceleration;
 
@@ -96,6 +98,8 @@ struct SGSSceneRenderer {
 
 			SERIALIZER_DEFAULT_IMPL( (magicStamp)(staticSceneAccelerationCache)(prototypesAccelerationCache) );
 		};
+
+		Optix() : dynamicBufferDirty( false ) {}
 	} optix;
 
 	std::shared_ptr<SGSScene> scene;
@@ -256,7 +260,7 @@ struct SGSSceneRenderer {
 	// TODO> move this into scene [10/13/2012 kirschan2]
 	unsigned getSceneHash() {
 		int xor1 = scene->vertices.size() ^ scene->indices.size();
-		int xor2 = scene->numSceneObjects ^ scene->subObjects.size();
+		int xor2 = scene->objects.size() ^ scene->subObjects.size();
 		int xor3 = scene->textures.size() ^ scene->terrain.mapSize[0] ^ scene->terrain.mapSize[1];
 		return (xor1 << 16) | (xor1 >> 16) | xor2 | (xor3 << 8);
 	}
@@ -309,12 +313,45 @@ struct SGSSceneRenderer {
 	// TODO: most of this should be moved into ModelDatabase [10/13/2012 kirschan2]
 	std::vector< Instance > instances;
 
+	void makeAllInstancesStatic() {
+		for( int i = 0 ; i < instances.size() ; i++ ) {
+			const auto &instance = instances[ i ];
+			SGSScene::Object object;
+			object.modelId = instance.modelId;
+			Eigen::Matrix4f::Map( object.transformation ) = instance.transformation.matrix();
+			scene->objects.push_back( object );
+		}
+		instances.clear();
+
+		refreshOptixObjectBuffers();
+	}
+
+	void makeAllInstancesDynamic() {
+		for( int i = 0 ; i < scene->objects.size() ; i++ ) {
+			const auto &object = scene->objects[ i ];
+			Instance instance;
+			instance.modelId = object.modelId;
+			instance.transformation = Eigen::Matrix4f::Map( object.transformation );
+			instances.push_back( instance );
+		}
+		scene->objects.clear();
+
+		refreshOptixObjectBuffers();
+	}
+
+	void refreshOptixObjectBuffers() {
+		refillOptixBuffer( 0, scene->objects.size(), optix.staticObjects );
+		optix.staticAcceleration->markDirty();
+
+		optix.dynamicBufferDirty = true;
+	}
+
 	int getNumInstances() const {
-		return int( scene->numSceneObjects + instances.size() );
+		return int( scene->objects.size() + instances.size() );
 	}
 
 	bool isDynamicInstance( int instanceIndex ) {
-		return instanceIndex >= scene->numSceneObjects;
+		return instanceIndex >= scene->objects.size();
 	}
 
 	int addInstance( const Instance &instance );
@@ -322,9 +359,9 @@ struct SGSSceneRenderer {
 	void removeInstance( int instanceIndex );
 
 	void setInstanceTransformation( int instanceIndex, const Eigen::Affine3f &transformation ) {
-		instances[ instanceIndex - scene->numSceneObjects ].transformation = transformation;
+		instances[ instanceIndex - scene->objects.size() ].transformation = transformation;
 
-		refillDynamicOptixBuffers();
+		optix.dynamicBufferDirty = true;
 	}
 
 	Eigen::Affine3f getInstanceTransformation( int instanceIndex ) const {

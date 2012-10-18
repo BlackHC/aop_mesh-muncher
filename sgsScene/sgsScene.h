@@ -176,13 +176,11 @@ struct SGSScene {
 	// in model id order
 	std::vector<Model> models;
 
-	int numSceneObjects;
-
 	std::vector<Texture> textures;
 
 	Terrain terrain;
 
-	SERIALIZER_DEFAULT_IMPL( (numSceneObjects)(modelNames)(models)(objects)(subObjects)(textures)(vertices)(indices)(terrain) );
+	SERIALIZER_DEFAULT_IMPL( (modelNames)(models)(objects)(subObjects)(textures)(vertices)(indices)(terrain) );
 
 	SGSScene() {}
 };

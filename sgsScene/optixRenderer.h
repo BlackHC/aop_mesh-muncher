@@ -39,6 +39,8 @@ struct OptixRenderer {
 
 	void createHemisphereSamples( optix::float3 *hemisphereSamples );
 
+	void prepareLaunch();
+
 	void compileContext();
 
 	void setRenderContext( const RenderContext &renderContext );

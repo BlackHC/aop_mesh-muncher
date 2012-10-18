@@ -3,6 +3,7 @@
 #include <gl/glew.h>
 #include <unsupported/Eigen/OpenGLSupport>
 #include <debugRender.h>
+#include "viewportContext.h"
 
 TransformChain::TransformChain() : localTransform( Eigen::Affine3f::Identity() ), globalTransform( Eigen::Affine3f::Identity() ) {}
 
@@ -166,4 +167,20 @@ void ProgressBarWidget::doRender() {
 	// render the border
 	DebugRender::setColor( Eigen::Vector3f::Constant( 0.5f ) );
 	DebugRender::drawQuad( Eigen::Vector2f::Zero(), size );
+}
+
+void ClippedContainer::onRender() {
+	if( !visible ) {
+		return;
+	}
+
+	const auto &topLeft = ViewportContext::context->globalToGL( transformChain.pointToScreen( Eigen::Vector2f::Zero() ).cast<int>() );
+	const auto &bottomRight = ViewportContext::context->globalToGL( transformChain.pointToScreen( size ).cast<int>() );
+
+	glEnable( GL_SCISSOR_TEST );
+	glScissor( topLeft.x(), bottomRight.y(), bottomRight.x() - topLeft.x() + 1, topLeft.y() - bottomRight.y() + 1 );
+
+	WidgetContainer::onRender();
+
+	glDisable( GL_SCISSOR_TEST );
 }

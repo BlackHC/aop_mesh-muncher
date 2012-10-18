@@ -830,7 +830,20 @@ namespace aop {
 			ui.setName( "aop" );
 
 			ui.add( AntTWBarUI::makeSharedButton( 
-				"Load settings",
+				"Make all objects dynamic",
+				[this] {
+					application->world->sceneRenderer.makeAllInstancesDynamic();
+				}
+			) );
+			ui.add( AntTWBarUI::makeSharedButton( 
+				"Make all objects static",
+				[this] {
+					application->world->sceneRenderer.makeAllInstancesStatic();
+				}
+			) );
+
+			ui.add( AntTWBarUI::makeSharedButton( 
+				"Test local candidate bars",
 				[this] {
 					LocalCandidateBarUI::Candidates candidates;
 					candidates.push_back( LocalCandidateBarUI::ScoreModelIndexPair( 1.0, 0 ) );

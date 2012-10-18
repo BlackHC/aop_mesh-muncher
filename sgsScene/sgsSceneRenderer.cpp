@@ -232,7 +232,7 @@ void SGSSceneRenderer::processScene( const std::shared_ptr<SGSScene> &scene, con
 	terrainLists.reserve( scene->terrain.tiles.size() );
 	visibleSolidInstancedSubObjects.reserve( scene->subObjects.size() );
 	visibleTransparentInstancedSubObjects.reserve( scene->subObjects.size() );
-	instancedSubObjects.reserve( scene->numSceneObjects * 3  );
+	instancedSubObjects.reserve( scene->objects.size() * 3  );
 	refreshInstancedSubObjects();
 
 	loadStaticBuffers();
@@ -746,7 +746,6 @@ void SGSSceneRenderer::renderModel( const Vector3f &worldViewerPosition, int mod
 	resetState();
 }
 
-
 void SGSSceneRenderer::sortInstancedSubObjectsByDistance( std::vector< int > &list, const Vector3f &worldViewerPosition ) {
 	boost::sort(
 		list, 
@@ -916,7 +915,7 @@ void SGSSceneRenderer::drawInstance( int instanceIndex ) {
 }
 
 int SGSSceneRenderer::addInstance( const Instance &instance ) {
-	int instanceIndex = instances.size() + scene->numSceneObjects;
+	int instanceIndex = instances.size() + scene->objects.size();
 
 	instances.push_back( instance );
 	refillDynamicOptixBuffers();
@@ -927,7 +926,7 @@ int SGSSceneRenderer::addInstance( const Instance &instance ) {
 }
 
 void SGSSceneRenderer::removeInstance( int instanceIndex ) {
-	instanceIndex -= scene->numSceneObjects;
+	instanceIndex -= scene->objects.size();
 	if( instanceIndex >= 0 ) {
 		instances.erase( instances.begin() + instanceIndex );
 
