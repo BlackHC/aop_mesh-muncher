@@ -32,7 +32,7 @@ sceneLighting:
 
 			vec3 viewportCoords = transformedPosition.xyz / transformedPosition.w;
 			viewportCoords = (viewportCoords + 1) / 2;
-			viewportCoords.z *= 0.9995;
+			viewportCoords.z *= 0; // 0.05;
 
 			float refDepth = texture( shadowMap, viewportCoords.xy ).r;
 			if( refDepth > viewportCoords.z )
@@ -113,7 +113,7 @@ object:
 
 	code::
 		vec4 surfaceShader() {
-			vec4 baseColor = vertexColor * texture( baseTetxture, gl_TexCoord[0].st );
+			vec4 baseColor = vertexColor; // * texture( baseTetxture, gl_TexCoord[0].st );
 
 			// add some very simple lighting
 			vec4 color = lightFragment( worldPosition, worldNormal, baseColor );
@@ -172,7 +172,7 @@ shadowMapSurface:
 	code::
 		vec4 surfaceShader() {
 			vec4 baseColor = texture( baseTexture, gl_TexCoord[0].st );
-			return baseColor;	
+			return vec4(1.0);
 		}
 
 shadowMapMesh:

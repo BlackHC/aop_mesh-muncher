@@ -112,6 +112,8 @@ struct SGSSceneRenderer {
 	// in textureIndex order
 	std::vector<MergedTextureInfo> mergedTextureInfos;
 
+	ScopedTexture2D whiteTexture;
+
 	void mergeTextures( const ScopedTextures2D &textures );
 
 	//////////////////////////////////////////////////////////////////////////

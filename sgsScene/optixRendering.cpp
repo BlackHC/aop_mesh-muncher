@@ -4,6 +4,14 @@
 #include "boost/timer/timer.hpp"
 #include <boost/random.hpp>
 
+template< typename T >
+T *getVectorData( std::vector< T > &container ) {
+	if( container.empty() ) {
+		return nullptr;
+	}
+	return &container.front();
+}
+
 void SGSSceneRenderer::initOptix( OptixRenderer *optixRenderer ) {
 	OptixHelpers::Namespace::Modules terrainModule = OptixHelpers::Namespace::makeModules( "cuda_compile_ptx_generated_terrainMesh.cu.ptx" );
 	OptixHelpers::Namespace::Modules objectModule = OptixHelpers::Namespace::makeModules( "cuda_compile_ptx_generated_objectMesh.cu.ptx" );
@@ -39,7 +47,7 @@ void SGSSceneRenderer::initOptix( OptixRenderer *optixRenderer ) {
 
 		optix.textureInfos = optixRenderer->context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_USER, mergedTextureInfos.size() );
 		optix.textureInfos->setElementSize( sizeof MergedTextureInfo );
-		::memcpy( optix.textureInfos->map(), &mergedTextureInfos.front(), sizeof( MergedTextureInfo ) * mergedTextureInfos.size() );
+		::memcpy( optix.textureInfos->map(), getVectorData( mergedTextureInfos ), sizeof( MergedTextureInfo ) * mergedTextureInfos.size() );
 		optix.textureInfos->unmap();
 		optix.textureInfos->validate();
 
@@ -129,7 +137,8 @@ void SGSSceneRenderer::initOptix( OptixRenderer *optixRenderer ) {
 	initObjectMeshData( optixRenderer, objectModule, optix.dynamicObjects );
 
 	// set up the terrain buffers
-	{
+	bool hasTerrain = !scene->terrain.indices.empty();
+	if( hasTerrain ){
 		int primitiveCount = scene->terrain.indices.size() / 3;
 		optix.terrain.indexBuffer = optixRenderer->context->createBufferFromGLBO( RT_BUFFER_INPUT, terrainMesh.indexBuffer.handle );
 		optix.terrain.indexBuffer->setFormat( RT_FORMAT_UNSIGNED_INT3 );
@@ -167,17 +176,29 @@ void SGSSceneRenderer::initOptix( OptixRenderer *optixRenderer ) {
 
 	optix.staticScene = optixRenderer->context->createGeometryGroup();
 	optix.staticScene->setAcceleration (optix.staticAcceleration);
-	optix.staticScene->setChildCount (2);
-	optix.staticScene->setChild (0, optix.staticObjects.geometryInstance);
-	optix.staticScene->setChild (1, optix.terrain.geometryInstance);
-	optix.staticScene->validate ();
+	
+	{
+		int numChildren = 1;
+		if( hasTerrain ) {
+			numChildren++;
+		}
+
+		optix.staticScene->setChildCount( numChildren );
+		optix.staticScene->setChild ( --numChildren, optix.staticObjects.geometryInstance );
+		if( hasTerrain ) {
+			optix.staticScene->setChild ( numChildren, optix.terrain.geometryInstance );
+		}
+		optix.staticScene->validate ();
+
+		optixRenderer->addSceneChild( optix.staticScene );
+	}
+	
 
 	optix.dynamicScene = optixRenderer->context->createGeometryGroup();
 	optix.dynamicScene->setAcceleration( optix.dynamicAcceleration );
 	optix.dynamicScene->setChildCount( 0 );
 	optix.dynamicScene->validate();
 
-	optixRenderer->addSceneChild( optix.staticScene );
 	optixRenderer->addSceneChild( optix.dynamicScene );
 }
 

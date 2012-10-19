@@ -41,6 +41,10 @@ void SGSSceneRenderer::bakeTerrainTexture( int detailFactor, float textureDetail
 	ScopedFramebufferObject fbo;
 
 	Vector2i mapSize( scene->terrain.mapSize[0], scene->terrain.mapSize[1] );
+	if( mapSize.isZero() ) {
+		mapSize.setConstant( 1 );
+	}
+
 	Vector2i bakeSize = mapSize * detailFactor;
 
 	bakedTerrainTexture.load( 0, GL_RGBA8, bakeSize.x(), bakeSize.y(), 0, GL_RGBA, GL_UNSIGNED_BYTE );
@@ -194,6 +198,12 @@ void SGSSceneRenderer::processScene( const std::shared_ptr<SGSScene> &scene, con
 		SOIL_load_OGL_texture_from_memory( &rawContent.front(), rawContent.size(), 0, textures[ textureIndex ].handle, SOIL_FLAG_DDS_LOAD_DIRECT | SOIL_FLAG_MIPMAPS | SOIL_FLAG_TEXTURE_REPEATS );
 	}
 
+	// create white texture
+	{
+		int data = ~0;
+		whiteTexture.load( 0, GL_RGBA8, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, &data);
+	}
+
 	if( cache.mergedObjectTextures.image.empty() ) {
 		mergeTextures( textures );
 
@@ -254,12 +264,20 @@ void SGSSceneRenderer::processScene( const std::shared_ptr<SGSScene> &scene, con
 	}
 }
 
-void SGSSceneRenderer::loadStaticBuffers() {
-	staticObjectsMesh.vertexBuffer.bufferData( scene->vertices.size() * sizeof( SGSScene::Vertex ), &scene->vertices.front(), GL_STATIC_DRAW );
-	staticObjectsMesh.indexBuffer.bufferData( scene->indices.size() * sizeof( unsigned ), &scene->indices.front(), GL_STATIC_DRAW );
+template< typename T >
+T *getVectorData( std::vector< T > &container ) {
+	if( container.empty() ) {
+		return nullptr;
+	}
+	return &container.front();
+}
 
-	terrainMesh.vertexBuffer.bufferData( scene->terrain.vertices.size() * sizeof( SGSScene::Terrain::Vertex ), &scene->terrain.vertices.front(), GL_STATIC_DRAW );
-	terrainMesh.indexBuffer.bufferData( scene->terrain.indices.size() * sizeof( unsigned ), &scene->terrain.indices.front(), GL_STATIC_DRAW );
+void SGSSceneRenderer::loadStaticBuffers() {
+	staticObjectsMesh.vertexBuffer.bufferData( scene->vertices.size() * sizeof( SGSScene::Vertex ), getVectorData( scene->vertices ), GL_STATIC_DRAW );
+	staticObjectsMesh.indexBuffer.bufferData( scene->indices.size() * sizeof( unsigned ), getVectorData( scene->indices ), GL_STATIC_DRAW );
+
+	terrainMesh.vertexBuffer.bufferData( scene->terrain.vertices.size() * sizeof( SGSScene::Terrain::Vertex ), getVectorData( scene->terrain.vertices ), GL_STATIC_DRAW );
+	terrainMesh.indexBuffer.bufferData( scene->terrain.indices.size() * sizeof( unsigned ), getVectorData( scene->terrain.indices ), GL_STATIC_DRAW );
 }
 
 void SGSSceneRenderer::setVertexArrayObjects() {
@@ -378,11 +396,11 @@ void SGSSceneRenderer::prepareMaterialDisplayLists() {
 
 		if( material.textureIndex[0] != SGSScene::NO_TEXTURE ) {
 			textures[ material.textureIndex[0] ].bind();
-			Texture2D::enable();			
 		}
 		else {
-			Texture2D::unbind();
+			whiteTexture.bind();
 		}
+		Texture2D::enable();
 
 		glColor4ub( material.diffuse.r, material.diffuse.g, material.diffuse.b, alpha );
 
@@ -430,6 +448,8 @@ void SGSSceneRenderer::initShadowMap() {
 }
 
 void SGSSceneRenderer::updateSceneBoundingBox() {
+	sceneBoundingBox.setEmpty();
+
 	for( int tileIndex = 0 ; tileIndex < scene->terrain.tiles.size() ; tileIndex++ ) {
 		const SGSScene::BoundingBox &boundingBox = scene->terrain.tiles[tileIndex].bounding.box;
 
@@ -437,10 +457,14 @@ void SGSSceneRenderer::updateSceneBoundingBox() {
 	}
 
 	for( int instancedSubObjectIndex = 0 ; instancedSubObjectIndex < instancedSubObjects.size() ; instancedSubObjectIndex++ ) {
-		const int subObjectIndex = instancedSubObjects[ instancedSubObjectIndex ].subObjectIndex;
-		const SGSScene::BoundingBox &boundingBox = scene->subObjects[subObjectIndex].bounding.box;
+		const auto &instancedSubObject = instancedSubObjects[ instancedSubObjectIndex ];
 
-		sceneBoundingBox.extend( AlignedBox3f( Vector3f::Map( boundingBox.min ), Vector3f::Map( boundingBox.max ) ) );
+		const int subObjectIndex = instancedSubObject.subObjectIndex;
+		const SGSScene::BoundingBox &rawBoundingBox = scene->subObjects[subObjectIndex].bounding.box;
+
+		const AlignedBox3f boundingBox( Vector3f::Map( rawBoundingBox.min ), Vector3f::Map( rawBoundingBox.max ) );
+		const auto transformedBoundingBox = Eigen_getTransformedAlignedBox( getInstanceTransformation( instancedSubObject.instanceIndex ), boundingBox );
+		sceneBoundingBox.extend( transformedBoundingBox );
 	}
 }
 

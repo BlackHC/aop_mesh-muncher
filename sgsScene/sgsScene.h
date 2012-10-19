@@ -161,6 +161,8 @@ struct SGSScene {
 		//std::vector< unsigned int > blockLayerMask;
 
 		SERIALIZER_DEFAULT_IMPL( (mapSize)(layerSize)(vertices)(indices)(layers)(tiles) );
+
+		Terrain() : mapSize(), layerSize() {}
 	};
 
 	// scene data first, then prototype object data

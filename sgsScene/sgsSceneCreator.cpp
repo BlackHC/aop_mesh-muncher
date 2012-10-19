@@ -43,6 +43,303 @@ struct SGSSceneRuntime {
 		return SGSScene::NO_TEXTURE;
 	}
 
+	int findModel( const std::string &name ) {
+		for( int modelIndex = 0 ; modelIndex < scene->models.size() ; modelIndex++ ) {
+			if( scene->modelNames[ modelIndex ] == name ) {
+				return modelIndex;
+			}
+		}
+
+		return -1;
+	}
+
+	/*int addColorTexture( int r, int g, int b ) {
+		const std::string name = boost::str( boost::format( "color %i %i %i" ) % r % g % b );
+
+		int textureIndex = findTexture( name );
+		if( textureIndex == SGSScene::NO_TEXTURE ) {
+			SGSScene::Texture texture;
+			texture.name = name;
+			texture.rawContent
+		}
+	}*/
+
+	static SGSScene::Material createMaterial( unsigned char r, unsigned char g, unsigned char b ) {
+		SGSScene::Material material;
+		material.diffuse.r = r;
+		material.diffuse.g = g;
+		material.diffuse.b = b;
+
+		material.ambient = material.specular = material.diffuse;
+
+		material.specularSharpness = 15.0;
+
+		material.doubleSided = true;
+		material.wireFrame = false;
+
+		material.alpha = 255;
+		material.alphaType = SGSScene::Material::AT_MATERIAL;
+
+		material.textureIndex[0] = -1;
+
+		return material;
+	}
+
+	int allocateVertices( int numVertices ) {
+		const int firstVertex = scene->vertices.size();
+		scene->vertices.reserve( firstVertex + numVertices );
+		return firstVertex;
+	}
+
+	int allocateIndices( int numIndices ) {
+		const int firstIndex = scene->indices.size();
+		scene->indices.reserve( firstIndex + numIndices );
+		return firstIndex;
+	}
+
+	SGSScene::Vertex createPrimitiveVertex( const Eigen::Vector3f &position, const Eigen::Vector3f &normal ) {
+		SGSScene::Vertex vertex;
+		Eigen::Vector3f::Map( vertex.position ) = position;
+		Eigen::Vector3f::Map( vertex.normal ) = normal;
+		vertex.uv[0][0] = vertex.uv[0][1] = 0.0f;
+		return vertex;
+	}
+
+	SGSScene::Vertex createPrimitiveVertex( const float *position, const float *normal ) {
+		SGSScene::Vertex vertex;
+		Eigen::Vector3f::Map( vertex.position ) = Eigen::Vector3f::Map( position );
+		Eigen::Vector3f::Map( vertex.normal ) = Eigen::Vector3f::Map( normal );
+		vertex.uv[0][0] = vertex.uv[0][1] = 0.0f;
+		return vertex;
+	}
+
+	SGSScene::SubObject createSubObject( const std::string &name, int firstVertex, int firstIndex, const SGSScene::Material &material ) {
+		SGSScene::SubObject subObject;
+
+		subObject.subModelName = name;
+
+		subObject.material = material;
+
+		subObject.startVertex = firstVertex;
+		subObject.startIndex = firstIndex;
+
+		subObject.numVertices = 0;
+		subObject.numIndices = 0;
+
+		return subObject;
+	}
+
+	SGSScene::Model createModel( const std::string &name ) {
+		SGSScene::Model model;
+
+		model.startSubObject = scene->models.size();
+		model.numSubObjects = 0;
+
+		scene->modelNames.push_back( name );
+
+		return model;
+	}
+
+	void calculateBoundingBox( SGSScene::SubObject &subObject ) {
+		Eigen::AlignedBox3f bbox;
+
+		for( int i = 0 ; i < subObject.numVertices ; i++ ) {
+			bbox.extend( Eigen::Vector3f::Map( scene->vertices[ subObject.startVertex + i ].position ) );
+		}
+
+		Eigen::Vector3f::Map( subObject.bounding.box.min ) = bbox.min();
+		Eigen::Vector3f::Map( subObject.bounding.box.max ) = bbox.max();
+
+		Eigen::Vector3f::Map( subObject.bounding.sphere.center ) = bbox.center();
+		subObject.bounding.sphere.radius = bbox.sizes().norm() * 0.5;
+	}
+
+	void calculateBoundingBox( SGSScene::Model &model ) {
+		Eigen::AlignedBox3f bbox;
+
+		for( int i = 0 ; i < model.numSubObjects ; i++ ) {
+			const auto &subObject = scene->subObjects[ model.startSubObject + i ];
+
+			bbox.extend( Eigen::Vector3f::Map( subObject.bounding.box.min ) );
+			bbox.extend( Eigen::Vector3f::Map( subObject.bounding.box.max ) );
+		}
+
+		Eigen::Vector3f::Map( model.bounding.box.min ) = bbox.min();
+		Eigen::Vector3f::Map( model.bounding.box.max ) = bbox.max();
+
+		Eigen::Vector3f::Map( model.bounding.sphere.center ) = bbox.center();
+		model.bounding.sphere.radius = bbox.sizes().norm() * 0.5;
+	}
+
+	void pushSingleTriangleVertex( SGSScene::SubObject &subObject, const SGSScene::Vertex &vertex ) {
+		scene->indices.push_back( scene->indices.size() );
+		scene->vertices.push_back( vertex );
+
+		subObject.numIndices++;
+		subObject.numVertices++;
+	}
+
+	int pushVertex( SGSScene::SubObject &subObject, const SGSScene::Vertex &vertex ) {
+		scene->vertices.push_back( vertex );
+
+		return subObject.numVertices++;
+	}
+
+	void pushIndex( SGSScene::SubObject &subObject, int index ) {
+		scene->indices.push_back( index );
+		subObject.numIndices++;
+	}
+
+	void pushQuad(
+		SGSScene::SubObject &subObject,
+		const SGSScene::Vertex &vertexA,
+		const SGSScene::Vertex &vertexB,
+		const SGSScene::Vertex &vertexC,
+		const SGSScene::Vertex &vertexD
+	) {
+		int firstVertex = scene->vertices.size();
+
+		pushVertex( subObject, vertexA );
+		pushVertex( subObject, vertexB );
+		pushVertex( subObject, vertexC );
+		pushVertex( subObject, vertexD );
+
+		pushIndex( subObject, firstVertex );
+		pushIndex( subObject, firstVertex + 1 );
+		pushIndex( subObject, firstVertex + 2 );
+		pushIndex( subObject, firstVertex + 2 );
+		pushIndex( subObject, firstVertex + 3 );
+		pushIndex( subObject, firstVertex );
+	}
+
+	void pushSubObject( SGSScene::Model &model, const SGSScene::SubObject &subObject ) {
+		scene->subObjects.push_back( subObject );
+		model.numSubObjects++;
+	}
+
+	int pushModel( const SGSScene::Model &model ) {
+		const int modelIndex = scene->models.size();
+		scene->models.push_back( model );
+		return modelIndex;
+	}
+
+	int addBoxModel( const Eigen::Vector3f &size, const SGSScene::Material &material ) {
+		const auto name = boost::str( boost::format( "Box %f %f %f" ) % size.x() % size.y() % size.z() );
+		{
+			int modelIndex = findModel( name );
+			if( modelIndex != -1 ) {
+				return modelIndex;
+			}
+		}
+		auto model = createModel( name );
+
+		static GLfloat n[6][3] =
+		{
+			{-1.0, 0.0, 0.0},
+			{0.0, 1.0, 0.0},
+			{1.0, 0.0, 0.0},
+			{0.0, -1.0, 0.0},
+			{0.0, 0.0, 1.0},
+			{0.0, 0.0, -1.0}
+		};
+		static GLint faces[6][4] =
+		{
+			{0, 1, 2, 3},
+			{3, 2, 6, 7},
+			{7, 6, 5, 4},
+			{4, 5, 1, 0},
+			{5, 6, 2, 1},
+			{7, 4, 0, 3}
+		};
+		GLfloat v[8][3];
+		GLint i;
+
+		v[0][0] = v[1][0] = v[2][0] = v[3][0] = -size.x() / 2;
+		v[4][0] = v[5][0] = v[6][0] = v[7][0] = size.x() / 2;
+		v[0][1] = v[1][1] = v[4][1] = v[5][1] = -size.y() / 2;
+		v[2][1] = v[3][1] = v[6][1] = v[7][1] = size.y() / 2;
+		v[0][2] = v[3][2] = v[4][2] = v[7][2] = -size.z() / 2;
+		v[1][2] = v[2][2] = v[5][2] = v[6][2] = size.z() / 2;
+
+		auto subObject = createSubObject(
+			"Faces",
+			allocateVertices( 4*6 ),
+			allocateIndices( 2*3*6 ),
+			material
+		);
+
+		for (i = 0; i < 6; ++i ) {
+			const int firstVertex = subObject.startVertex;
+
+			pushQuad(
+				subObject,
+				createPrimitiveVertex( &v[faces[i][0]][0], &n[i][0] ),
+				createPrimitiveVertex( &v[faces[i][1]][0], &n[i][0] ),
+				createPrimitiveVertex( &v[faces[i][2]][0], &n[i][0] ),
+				createPrimitiveVertex( &v[faces[i][3]][0], &n[i][0] )
+			);
+		}
+
+		calculateBoundingBox( subObject );
+
+		pushSubObject( model, subObject );
+
+		calculateBoundingBox( model );
+
+		return pushModel( model );
+	}
+
+	int addSphereModel( float radius, const SGSScene::Material &material, int u = 10, int v = 20 ) {
+		const auto name = boost::str( boost::format( "Sphere %f %i %i" ) % radius % u % v );
+		{
+			const int modelIndex = findModel( name );
+			if( modelIndex != -1 ) {
+				return modelIndex;
+			}
+		}
+
+		auto model = createModel( name );
+		auto subObject = createSubObject(
+			"Faces",
+			allocateVertices( u*v*4 ),
+			allocateIndices( u*v*2*3 ),
+			material
+		);
+
+		for( int i = 0 ; i < u ; i++ ) {
+			for( int j = 0 ; j < v ; j++ ) {
+				// cos | sin | cos
+				// cos | 1   | sin
+#define U(x) float((x)*M_PI/u - M_PI / 2)
+#define V(x) float((x)*2*M_PI/v)
+#define P(u_r,v_r) Eigen::Vector3f( cos(U(u_r)) * cos(V(v_r)), sin(U(u_r)), cos(U(u_r)) * sin(V(v_r)) )
+
+				pushQuad(
+					subObject,
+					createPrimitiveVertex( radius * P(i,j), P(i,j) ),
+					createPrimitiveVertex( radius * P(i + 1,j), P(i + 1,j) ),
+					createPrimitiveVertex( radius * P(i + 1,j + 1), P(i + 1,j + 1) ),
+					createPrimitiveVertex( radius * P(i,j + 1), P(i,j + 1) )
+				);
+#undef U
+#undef V
+#undef P
+			}
+		}
+
+		calculateBoundingBox( subObject );
+		pushSubObject( model, subObject );
+
+		calculateBoundingBox( model );
+		return pushModel( model );
+	}
+
+	void addInstance( int modelIndex, const Eigen::Affine3f &transformation ) {
+		SGSScene::Object object;
+		object.modelId = modelIndex;
+		Eigen::Matrix4f::Map( object.transformation ) = transformation.matrix();
+		scene->objects.push_back( object );
+	}
 };
 
 DebugRender::CombinedCalls selectionDR;
@@ -57,7 +354,7 @@ void selectObjectsByModelID( SGSSceneRenderer &renderer, int modelIndex ) {
 		auto transformation = renderer.getInstanceTransformation( *instanceIndex );
 		auto boundingBox = renderer.getUntransformedInstanceBoundingBox( *instanceIndex );
 
-		selectionDR.setTransformation( transformation.matrix() );	
+		selectionDR.setTransformation( transformation.matrix() );
 		selectionDR.drawAABB( boundingBox.min(), boundingBox.max() );
 	}
 
@@ -100,12 +397,28 @@ void real_main() {
 
 		sgsSceneRenderer.reloadShaders();
 
-		const char *scenePath = "P:\\sgs\\sg_and_sgs_source\\survivor\\__GameData\\Editor\\Save\\Survivor_original_mission_editorfiles\\test\\scene.glscene";
+		/*const char *scenePath = "P:\\sgs\\sg_and_sgs_source\\survivor\\__GameData\\Editor\\Save\\Survivor_original_mission_editorfiles\\test\\scene.glscene";
 		{
 			Serializer::BinaryReader reader( scenePath );
 			Serializer::read( reader, sgsScene );
-		}
-		
+		}*/
+
+		SGSSceneRuntime runtime;
+		runtime.scene = &sgsScene;
+
+		Eigen::Affine3f transformation;
+		transformation.setIdentity();
+
+		runtime.addInstance( 
+			runtime.addBoxModel( Eigen::Vector3f::Constant( 5.0 ), runtime.createMaterial( 255, 128, 128 ) ),
+			transformation
+		);
+
+		runtime.addInstance( 
+			runtime.addSphereModel( 5.0, runtime.createMaterial( 128, 128, 255 ) ),
+			Eigen::Affine3f( Eigen::Translation3f( Eigen::Vector3f::Constant( -10.0 ) ) )
+		);
+
 		const char *cachePath = "scene.sgsRendererCache";
 		sgsSceneRenderer.processScene( make_nonallocated_shared( sgsScene ), cachePath );
 	}
@@ -144,20 +457,20 @@ void real_main() {
 	IntVariableControl disabledInstanceIndexControl( "disabledInstanceIndex",renderContext.disabledInstanceIndex, -1, sgsScene.objects.size(), sf::Keyboard::Numpad9, sf::Keyboard::Numpad3 );
 	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( disabledInstanceIndexControl ) );
 
-	
+
 	DebugRender::CombinedCalls probeDumps;
-	KeyAction dumpProbeAction( "dump probe", sf::Keyboard::P, [&] () { 
+	KeyAction dumpProbeAction( "dump probe", sf::Keyboard::P, [&] () {
 		// dump a probe at the current position and view direction
 		const Eigen::Vector3f position = camera.getPosition();
 		const Eigen::Vector3f direction = camera.getDirection();
 
 		std::vector< OptixRenderer::Probe > probes;
 		std::vector< OptixRenderer::ProbeContext > probeContexts;
-		
+
 		OptixRenderer::Probe probe;
 		Eigen::Vector3f::Map( &probe.position.x ) = position;
 		Eigen::Vector3f::Map( &probe.direction.x ) = direction;
-		
+
 		probes.push_back( probe );
 
 		optixRenderer.sampleProbes( probes, probeContexts, renderContext );
@@ -170,7 +483,7 @@ void real_main() {
 	} );
 	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( dumpProbeAction ) );
 
-	KeyAction disableObjectAction( "disable models shot", sf::Keyboard::Numpad4, [&] () { 
+	KeyAction disableObjectAction( "disable models shot", sf::Keyboard::Numpad4, [&] () {
 		// dump a probe at the current position and view direction
 		const ViewerContext viewerContext = { camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() };
 
@@ -179,13 +492,13 @@ void real_main() {
 
 		OptixRenderer::SelectionResults selectionResults;
 		optixRenderer.selectFromPinholeCamera( selectionRays, selectionResults, viewerContext, renderContext );
-	
+
 		renderContext.disabledModelIndex = selectionResults.front().modelIndex;
 		std::cout << "object: " << selectionResults.front().modelIndex << "\n";
 	} );
 	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( disableObjectAction ) );
 
-	KeyAction disableInstanceAction( "disable instance shot", sf::Keyboard::Numpad6, [&] () { 
+	KeyAction disableInstanceAction( "disable instance shot", sf::Keyboard::Numpad6, [&] () {
 		// dump a probe at the current position and view direction
 		const ViewerContext viewerContext = { camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() };
 
@@ -201,8 +514,8 @@ void real_main() {
 	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( disableInstanceAction ) );
 
 	DebugWindowManager debugWindowManager;
-	
-#if 1
+
+#if 0
 	TextureVisualizationWindow optixWindow;
 	optixWindow.init( "Optix Version" );
 	optixWindow.texture = optixRenderer.debugTexture;
@@ -221,10 +534,10 @@ void real_main() {
 	renderDuration.setPosition( 0, 0 );
 	renderDuration.setCharacterSize( 10 );
 
-	Instance testInstance;
+	/*Instance testInstance;
 	testInstance.modelId = 1;
 	testInstance.transformation.setIdentity();
-	sgsSceneRenderer.addInstance( testInstance );
+	sgsSceneRenderer.addInstance( testInstance );*/
 
 	while (true)
 	{
@@ -252,7 +565,7 @@ void real_main() {
 		}
 
 		eventSystem.update( frameClock.restart().asSeconds(), clock.getElapsedTime().asSeconds() );
-		
+
 		{
 			boost::timer::cpu_timer renderTimer;
 			sgsSceneRenderer.renderShadowmap( renderContext );
@@ -270,15 +583,15 @@ void real_main() {
 
 			sgsSceneRenderer.renderSceneView( camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition(), renderContext );
 
-			probeDumps.render();		
+			probeDumps.render();
 
 			selectObjectsByModelID( sgsSceneRenderer, renderContext.disabledModelIndex );
 			glDisable( GL_DEPTH_TEST );
 			selectionDR.render();
 			glEnable( GL_DEPTH_TEST );
-			
+
 			const ViewerContext viewerContext = { camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() };
-			optixRenderer.renderPinholeCamera( viewerContext, renderContext );
+			//optixRenderer.renderPinholeCamera( viewerContext, renderContext );
 
 			// End the current frame and display its contents on screen
 			renderDuration.setString( renderTimer.format() );
@@ -290,7 +603,7 @@ void real_main() {
 
 			debugWindowManager.update();
 		}
-		
+
 	}
 };
 

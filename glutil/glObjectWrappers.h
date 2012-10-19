@@ -198,6 +198,10 @@ struct ScopedTextures : Textures< SpecializedTexture > {
 
 	void resize( int size ) {
 		if( handles.empty() ) {
+			if( size == 0 ) {
+				return;
+			}
+
 			handles.resize( size );
 			glGenTextures( size, &handles.front() );
 		}
@@ -411,6 +415,10 @@ struct ScopedArray : Array< Base > {
 
 	void resize( int size ) {
 		if( handles.empty() ) {
+			if( size == 0 ) {
+				return;
+			}
+
 			handles.resize( size );
 			Base::createMultiple( size, &handles.front() );
 		}
@@ -467,8 +475,12 @@ struct ScopedArray< DisplayList > : Array< DisplayList > {
 
 	void resize( int size ) {
 		if( !handle ) {
+			if( size == 0 ) {
+				return;
+			}
+
 			handle = glGenLists( size );
-			count = size;			
+			count = size;
 		}
 		else {
 			throw std::logic_error( "ScopedTextures not zero!" );
