@@ -23,6 +23,11 @@ rtBuffer<Vertex> vertexBuffer;
 rtBuffer<int3> indexBuffer; // position indices
 
 __device__ float4 getTexel() {
+	// return all white if no texture has been selected
+	if( materialInfo.textureIndex == -1 ) {
+		return make_float4( 1.0 );
+	}
+
 	MergedTextureInfo &textureInfo = textureInfos[ materialInfo.textureIndex ];
 
 	const float2 wrappedTexCoords = texCoord - floor( texCoord ); 
@@ -58,34 +63,35 @@ RT_PROGRAM void eye_closestHit() {
 	// actually -sunDirection but we don't need to care because of the abs
 	float diffuseAttenuation = abs( dot( ffnormal, sunDirection ) );
 
-	const float4 diffuseColor = getTexel();
-	
-	const float3 litSurfaceColor = make_float3( diffuseColor ) * 
-		(0.2 + 0.8 * diffuseAttenuation * getDirectionalLightTransmittance( hitPosition, sunDirection ));
+	const float4 diffuseColor = make_float4( materialInfo.diffuse, 1.0 ) * getTexel();
 
-	switch( materialInfo.alphaType ) {
-	default:
-	case MaterialInfo::AT_NONE:
-		currentRay_eye.color = litSurfaceColor;
-		break;
-	case MaterialInfo::AT_ADDITIVE:
+	if( materialInfo.alphaType == MaterialInfo::AT_ADDITIVE ) {
 		currentRay_eye.color = make_float3( diffuseColor ) + subTrace( hitPosition, currentRay.direction, false );
-		break;
-	case MaterialInfo::AT_MATERIAL: {
-		const float alpha = materialInfo.alpha;
-		currentRay_eye.color = litSurfaceColor * alpha + subTrace( hitPosition, currentRay.direction, alpha > 0.99f ) * (1.0f - alpha);
-		break;
 	}
-	case MaterialInfo::AT_TEXTURE:
-	case MaterialInfo::AT_ALPHATEST:
-		currentRay_eye.color = litSurfaceColor * diffuseColor.w + subTrace( hitPosition, currentRay.direction, diffuseColor.w > 0.99f ) * (1.0f - diffuseColor.w);
-		break;
-	case MaterialInfo::AT_MULTIPLY:
+	else if( materialInfo.alphaType == MaterialInfo::AT_MULTIPLY ) {
 		currentRay_eye.color = make_float3( diffuseColor ) * subTrace( hitPosition, currentRay.direction, false );
-		break;
-	case MaterialInfo::AT_MULTIPLY_2:
+	}
+	else if( materialInfo.alphaType == MaterialInfo::AT_MULTIPLY_2 ) {
 		currentRay_eye.color = make_float3( diffuseColor ) * subTrace( hitPosition, currentRay.direction, false ) * 2;
-		break;
+	}
+	else {
+		const float3 litSurfaceColor =
+				make_float3( diffuseColor )
+			* 
+				(0.2 + 0.8 * diffuseAttenuation * getDirectionalLightTransmittance( hitPosition, sunDirection ))
+		;
+
+		if( materialInfo.alphaType == MaterialInfo::AT_NONE ) {
+			currentRay_eye.color = litSurfaceColor;
+		}
+		else if( materialInfo.alphaType == MaterialInfo::AT_MATERIAL ) {
+			const float alpha = materialInfo.alpha;
+			currentRay_eye.color = litSurfaceColor * alpha + subTrace( hitPosition, currentRay.direction, alpha > 0.99f ) * (1.0f - alpha);
+		}
+		else if( materialInfo.alphaType == MaterialInfo::AT_TEXTURE || materialInfo.alphaType == MaterialInfo::AT_ALPHATEST ) {
+			const float alpha = materialInfo.alpha * diffuseColor.w;
+			currentRay_eye.color = litSurfaceColor * alpha + subTrace( hitPosition, currentRay.direction, alpha > 0.99f ) * (1.0f - alpha);
+		}
 	}
 }
 
@@ -94,6 +100,7 @@ RT_PROGRAM void eye_closestHit() {
 __device__ bool checkObjectDisabled() {
 	return materialInfo.objectIndex == disabledObjectIndex || materialInfo.modelIndex == disabledModelIndex;
 }
+
 RT_PROGRAM void eye_anyHit() {
 	if( checkObjectDisabled() ) {
 		rtIgnoreIntersection();
@@ -113,6 +120,8 @@ RT_PROGRAM void shadow_anyHit() {
 		rtTerminateRay();
 		return;
 	case MaterialInfo::AT_ADDITIVE:
+	case MaterialInfo::AT_MULTIPLY:
+	case MaterialInfo::AT_MULTIPLY_2:
 		rtIgnoreIntersection();
 		return;
 	case MaterialInfo::AT_MATERIAL:
@@ -120,7 +129,7 @@ RT_PROGRAM void shadow_anyHit() {
 		break;
 	case MaterialInfo::AT_ALPHATEST:
 	case MaterialInfo::AT_TEXTURE:
-		currentRay_shadow.transmittance *= 1.0 - getTexel().w;
+		currentRay_shadow.transmittance *= 1.0 - getTexel().w * materialInfo.alpha;
 		break;
 	}
 
@@ -145,13 +154,16 @@ RT_PROGRAM void selection_anyHit() {
 	case MaterialInfo::AT_NONE:
 		return;
 	case MaterialInfo::AT_ADDITIVE:
+	case MaterialInfo::AT_MULTIPLY:
+	case MaterialInfo::AT_MULTIPLY_2:
+		rtIgnoreIntersection();
 		return;
 	case MaterialInfo::AT_MATERIAL:
 		alpha = materialInfo.alpha;
 		break;
 	case MaterialInfo::AT_ALPHATEST:
 	case MaterialInfo::AT_TEXTURE:
-		alpha = getTexel().w;
+		alpha = getTexel().w * materialInfo.alpha;
 		break;
 	}
 

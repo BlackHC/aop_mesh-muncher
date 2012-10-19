@@ -64,7 +64,7 @@ struct SGSScene {
 			AT_ADDITIVE, // additive
 			AT_MULTIPLY,
 			AT_MULTIPLY_2,
-			AT_ALPHATEST // like AT_TEXTURE
+			AT_ALPHATEST // like AT_TEXTURE but with z writes
 		};
 
 		AlphaType alphaType;

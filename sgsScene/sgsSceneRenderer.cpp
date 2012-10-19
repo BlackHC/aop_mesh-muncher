@@ -287,14 +287,6 @@ void SGSSceneRenderer::prepareMaterialDisplayLists() {
 		// apply the material
 		const auto &material = subObject.material;
 
-		if( material.textureIndex[0] != SGSScene::NO_TEXTURE ) {
-			textures[ material.textureIndex[0] ].bind();
-			Texture2D::enable();
-		}
-		else {
-			Texture2D::unbind();
-		}
-
 		unsigned char alpha = 255;
 
 		switch( material.alphaType ) {
@@ -307,24 +299,36 @@ void SGSSceneRenderer::prepareMaterialDisplayLists() {
 
 			break;
 		case SGSScene::Material::AT_ADDITIVE:
-			glDepthMask( GL_FALSE );
-			glEnable( GL_BLEND );
 			glDisable( GL_ALPHA_TEST );
+			glDepthMask( GL_FALSE );	
 
-			glBlendFunc( GL_SRC_ALPHA, GL_ONE );
+			glEnable( GL_BLEND );
+			glBlendFunc( GL_ONE, GL_ONE );
 
 			break;
 		case SGSScene::Material::AT_TEXTURE:
-		case SGSScene::Material::AT_ALPHATEST:
 			glDepthMask( GL_FALSE );
+			
 			glEnable( GL_ALPHA_TEST );
 			glAlphaFunc( GL_GREATER, 0 );
-
+			
 			glEnable( GL_BLEND );
 			glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
 
 			alpha = material.alpha;
 
+			break;
+		case SGSScene::Material::AT_ALPHATEST:
+			glDepthMask( GL_TRUE );
+
+			glEnable( GL_ALPHA_TEST );
+			glAlphaFunc( GL_GREATER, 0 );
+			
+			glEnable( GL_BLEND );
+			glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
+
+			alpha = material.alpha;
+			
 			break;
 		case SGSScene::Material::AT_MATERIAL:
 			if( material.alpha == 255 ) {
@@ -334,7 +338,7 @@ void SGSSceneRenderer::prepareMaterialDisplayLists() {
 				glDepthMask( GL_TRUE );
 			}
 			else {
-				glDepthMask( GL_FALSE );
+				glDepthMask( GL_TRUE );
 				glDisable( GL_ALPHA_TEST );
 
 				glEnable( GL_BLEND );
@@ -348,7 +352,9 @@ void SGSSceneRenderer::prepareMaterialDisplayLists() {
 			glDisable( GL_ALPHA_TEST );
 
 			glEnable( GL_BLEND );
-			glBlendFunc( GL_ZERO, GL_SRC_COLOR );
+			glBlendFunc( GL_ZERO, GL_CONSTANT_ALPHA );
+
+			glBlendColor( 1.0, 1.0, 1.0, material.alpha / 255.0 );
 
 			break;
 		case SGSScene::Material::AT_MULTIPLY_2:
@@ -356,7 +362,9 @@ void SGSSceneRenderer::prepareMaterialDisplayLists() {
 			glDisable( GL_ALPHA_TEST );
 
 			glEnable( GL_BLEND );
-			glBlendFunc( GL_DST_COLOR, GL_SRC_COLOR );
+			glBlendFunc( GL_DST_COLOR, GL_CONSTANT_ALPHA );
+
+			glBlendColor( 1.0, 1.0, 1.0, material.alpha / 255.0 );
 
 			break;
 		}
@@ -367,6 +375,14 @@ void SGSSceneRenderer::prepareMaterialDisplayLists() {
 		else {
 		glEnable( GL_CULL_FACE );
 		}*/
+
+		if( material.textureIndex[0] != SGSScene::NO_TEXTURE ) {
+			textures[ material.textureIndex[0] ].bind();
+			Texture2D::enable();			
+		}
+		else {
+			Texture2D::unbind();
+		}
 
 		glColor4ub( material.diffuse.r, material.diffuse.g, material.diffuse.b, alpha );
 

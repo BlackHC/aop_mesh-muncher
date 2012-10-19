@@ -106,13 +106,14 @@ object:
 	inputs:
 		worldPosition	vec3
 		worldNormal		vec3
+		vertexColor		vec4
 
 	uniforms:
 		baseTetxture 'layout( binding = 0 ) sampler2D'
 
 	code::
 		vec4 surfaceShader() {
-			vec4 baseColor = texture( baseTetxture, gl_TexCoord[0].st );
+			vec4 baseColor = vertexColor * texture( baseTetxture, gl_TexCoord[0].st );
 
 			// add some very simple lighting
 			vec4 color = lightFragment( worldPosition, worldNormal, baseColor );
@@ -128,6 +129,7 @@ previewObject:
 	inputs:
 		worldPosition	vec3
 		worldNormal		vec3
+		vertexColor		vec4
 
 	uniforms:
 		baseTetxture 'layout( binding = 0 ) sampler2D'
@@ -135,7 +137,7 @@ previewObject:
 	code::
 		vec4 surfaceShader() {
 			//return vec4( worldNormal / 2 + 0.5, 1.0 );
-			vec4 baseColor = texture( baseTetxture, gl_TexCoord[0].st );
+			vec4 baseColor = vertexColor * texture( baseTetxture, gl_TexCoord[0].st );
 
 			// add some very simple lighting
 			return lightFragment( worldPosition, normalize( worldNormal ), baseColor );
@@ -150,12 +152,13 @@ sgsMesh:
 	outputs:
 		worldPosition	vec3
 		worldNormal		vec3
+		vertexColor		vec4
 
 	code::
 		void vertexShader() {
 			worldPosition = (gl_ModelViewMatrix * gl_Vertex).xyz;
 			worldNormal = mat3(gl_ModelViewMatrix) * gl_Normal;
-			//gl_Position = sunShadowProjection * gl_Vertex; 
+			vertexColor = gl_Color;
 			gl_Position = ftransform();
 			gl_TexCoord[0] = gl_MultiTexCoord0;
 		}

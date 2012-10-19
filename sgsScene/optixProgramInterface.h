@@ -39,6 +39,8 @@ struct MaterialInfo {
 
 	AlphaType alphaType;
 	float alpha;
+
+	optix::float3 diffuse;
 };
 
 struct Probe {

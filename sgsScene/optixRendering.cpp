@@ -42,7 +42,7 @@ void SGSSceneRenderer::initOptix( OptixRenderer *optixRenderer ) {
 		::memcpy( optix.textureInfos->map(), &mergedTextureInfos.front(), sizeof( MergedTextureInfo ) * mergedTextureInfos.size() );
 		optix.textureInfos->unmap();
 		optix.textureInfos->validate();
-		
+
 		optix.objectMaterial[ "textureInfos" ]->set( optix.textureInfos );
 	}
 	{
@@ -86,7 +86,7 @@ void SGSSceneRenderer::initOptix( OptixRenderer *optixRenderer ) {
 
 		optix.staticObjects.materialIndices = optixRenderer->context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_INT, primitiveCount );
 
-		OptixProgramInterface::MaterialInfo *materialInfos = (OptixProgramInterface::MaterialInfo *) optix.staticObjects.materialInfos->map();	
+		OptixProgramInterface::MaterialInfo *materialInfos = (OptixProgramInterface::MaterialInfo *) optix.staticObjects.materialInfos->map();
 		int *materialIndices = (int *) optix.staticObjects.materialIndices->map();
 
 		for( int objectIndex = 0 ; objectIndex < scene->numSceneObjects ; ++objectIndex ) {
@@ -103,6 +103,9 @@ void SGSSceneRenderer::initOptix( OptixRenderer *optixRenderer ) {
 				materialInfo.textureIndex = subObject.material.textureIndex[0];
 				materialInfo.alphaType = (OptixProgramInterface::MaterialInfo::AlphaType) subObject.material.alphaType;
 				materialInfo.alpha = subObject.material.alpha / 255.0f;
+				materialInfo.diffuse.x = subObject.material.diffuse.r / 255.0f;
+				materialInfo.diffuse.y = subObject.material.diffuse.g / 255.0f;
+				materialInfo.diffuse.z = subObject.material.diffuse.b / 255.0f;
 
 				const int startPrimitive = subObject.startIndex / 3;
 				const int endPrimitive = startPrimitive + subObject.numIndices / 3;
@@ -216,7 +219,7 @@ void SGSSceneRenderer::writeOptixCache() {
 	optix.staticAcceleration->getData( &cache.staticSceneAccelerationCache.front() );
 
 	boost::timer::auto_cpu_timer timer( "initOptix; write cache: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
-			
+
 	Serializer::BinaryWriter writer( optixCacheFilename, Optix::Cache::VERSION );
 	writer.put( cache );
 }
@@ -256,7 +259,7 @@ void OptixRenderer::init( const std::shared_ptr< SGSSceneRenderer > &sgsSceneRen
 	static const char *raytracerPtxFilename = "cuda_compile_ptx_generated_raytracer.cu.ptx";
 	static const char *probeSamplerPtxFilename = "cuda_compile_ptx_generated_probeTracer.cu.ptx";
 	static const char *pinholeSelectionPtxFilename = "cuda_compile_ptx_generated_pinholeSelection.cu.ptx";
-	
+
 	OptixHelpers::Namespace::Modules modules = OptixHelpers::Namespace::makeModules( raytracerPtxFilename, probeSamplerPtxFilename, pinholeSelectionPtxFilename );
 
 	OptixHelpers::Namespace::setRayGenerationPrograms( context, modules );
@@ -273,7 +276,7 @@ void OptixRenderer::init( const std::shared_ptr< SGSSceneRenderer > &sgsSceneRen
 	context["rootObject"]->set(scene);
 
 	// create and set the output buffer
-	outputBuffer = context->createBuffer( RT_BUFFER_OUTPUT,  RT_FORMAT_UNSIGNED_BYTE4, width = 640, height = 480 );	
+	outputBuffer = context->createBuffer( RT_BUFFER_OUTPUT,  RT_FORMAT_UNSIGNED_BYTE4, width = 640, height = 480 );
 	context["outputBuffer"]->set(outputBuffer);
 
 	// create and set the hemisphere sample buffer
@@ -283,7 +286,7 @@ void OptixRenderer::init( const std::shared_ptr< SGSSceneRenderer > &sgsSceneRen
 	hemisphereSamples->validate();
 
 	context[ "hemisphereSamples" ]->set( hemisphereSamples );
-	
+
 	// create and set the probe buffers
 	probes = context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_USER, maxNumProbes );
 	probes->setElementSize( sizeof OptixProgramInterface::Probe );
@@ -300,7 +303,7 @@ void OptixRenderer::init( const std::shared_ptr< SGSSceneRenderer > &sgsSceneRen
 	// init and set the selection buffers
 	selectionRays = context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_FLOAT2, maxNumSelectionRays );
 	selectionRays->validate();
-	
+
 	context[ "selectionRays" ]->set( selectionRays );
 
 	selectionResults = context->createBuffer( RT_BUFFER_OUTPUT, RT_FORMAT_USER, maxNumSelectionRays );
@@ -379,9 +382,9 @@ void OptixRenderer::selectFromPinholeCamera( const std::vector< optix::float2 > 
 
 	setRenderContext( renderContext );
 	setPinholeCameraViewerContext( viewerContext );
-	
+
 	OptixHelpers::Buffer::copyToDevice( this->selectionRays, selectionRays );
-	
+
 	context->launch( OptixProgramInterface::selectFromPinholeCamera, selectionRays.size() );
 
 	selectionResults.resize( selectionRays.size() );
@@ -437,7 +440,7 @@ void OptixRenderer::createHemisphereSamples( optix::float3 *hemisphereSamples ) 
 
 	// info about how cosine_sample_hemisphere's parameters work
 	// we sample a disk and project it up onto the hemisphere
-	// 
+	//
 	// u1 is the radius and u2 the angle
 
 	// we have 8 sample directions in every unit circle slice
@@ -490,7 +493,7 @@ void SGSSceneRenderer::refillOptixBuffer( const int beginInstanceIndex, const in
 	// set numVertices, numIndices and numSubObjects
 	for( int instanceIndex = beginInstanceIndex ; instanceIndex < endInstanceIndex ; instanceIndex++ ) {
 		const SGSScene::Model &model = scene->models[ getModelIndex( instanceIndex ) ];
-		
+
 		numSubObjects += model.numSubObjects;
 		const int endSubObject = model.startSubObject + model.numSubObjects;
 		for( int subObjectIndex = model.startSubObject ; subObjectIndex < endSubObject ; subObjectIndex++ ) {
@@ -513,11 +516,11 @@ void SGSSceneRenderer::refillOptixBuffer( const int beginInstanceIndex, const in
 	meshData.materialInfos->setSize( numSubObjects );
 	meshData.materialIndices->setSize( numPrimitives );
 
-	auto materialInfos = (OptixProgramInterface::MaterialInfo *) meshData.materialInfos->map();	
+	auto materialInfos = (OptixProgramInterface::MaterialInfo *) meshData.materialInfos->map();
 	auto materialIndices = (int *) meshData.materialIndices->map();
 	auto vertices = (SGSScene::Vertex *) meshData.vertexBuffer->map();
 	auto indices = (unsigned int *) meshData.indexBuffer->map();
-	
+
 	int vertexBufferIndex = 0;
 	int indexBufferIndex = 0;
 	int globalSubObjectIndex = 0;
@@ -543,6 +546,10 @@ void SGSSceneRenderer::refillOptixBuffer( const int beginInstanceIndex, const in
 			materialInfo.textureIndex = subObject.material.textureIndex[0];
 			materialInfo.alphaType = (OptixProgramInterface::MaterialInfo::AlphaType) subObject.material.alphaType;
 			materialInfo.alpha = subObject.material.alpha / 255.0f;
+
+			materialInfo.diffuse.x = subObject.material.diffuse.r / 255.0f;
+			materialInfo.diffuse.y = subObject.material.diffuse.g / 255.0f;
+			materialInfo.diffuse.z = subObject.material.diffuse.b / 255.0f;
 
 			// set the material indices
 			const int startPrimitive = indexBufferIndex / 3;
