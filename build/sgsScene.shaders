@@ -38,7 +38,7 @@ sceneLighting:
 			const vec3 viewportPosition = (clippedPosition + 1.0) * 0.5;
 
 			vec4 refDepth4 = textureGather( shadowMap, viewportPosition.xy );
-			if( any( greaterThan( refDepth4, vec4( viewportPosition.z * 0.9995 ) ) ) ) {
+			if( any( greaterThan( refDepth4, vec4( viewportPosition.z * 0.99995 ) ) ) ) {
 				return 1.0;
 			}
 			else {
@@ -47,7 +47,7 @@ sceneLighting:
 			//return clamp( pow( 1.0 + refDepth - viewportCoords.z, 0.3 ), 0.0, 1.0 );
 		}
 
-		vec4 lightFragment( const vec3 position, const vec3 normal, const vec4 diffuseColor ) {
+		vec3 lightFragment( const vec3 position, const vec3 normal, const vec3 diffuseColor ) {
 			//return vec4( ((sunShadowProjection * vec4( position, 1.0 )).xyz + 1) / 2, 1.0 );
 
 			// from position to light
@@ -69,7 +69,7 @@ previewLighting:
 		basicLightingFunction
 
 	code::
-		vec4 lightFragment( const vec3 position, const vec3 normal, const vec4 diffuseColor ) {
+		vec3 lightFragment( const vec3 position, const vec3 normal, const vec3 diffuseColor ) {
 			// from position to light
 			const vec3 lightDirection = normalize( vec3( 0.0, 1.0, 1.0 ) );
 			const float diffuseAttenuation = getDiffuseAttenuation( normal, lightDirection ) * 0.8;
@@ -96,11 +96,11 @@ terrain:
 
 	code::
 		vec4 surfaceShader() {
-			vec4 terrainColor = texture( terrainTexture, gl_TexCoord[0].st );
+			vec3 terrainColor = texture( terrainTexture, gl_TexCoord[0].st ).rgb;
 
 			// add some very simple lighting
-			vec4 color = lightFragment( worldPosition, worldNormal, terrainColor );
-			return color;
+			vec3 color = lightFragment( worldPosition, worldNormal, terrainColor );
+			return vec4( color, 1.0 );
 		}
 
 object:
@@ -119,11 +119,11 @@ object:
 
 	code::
 		vec4 surfaceShader() {
-			vec4 baseColor = vertexColor; // * texture( baseTetxture, gl_TexCoord[0].st );
+			vec4 baseColor = vertexColor * texture( baseTetxture, gl_TexCoord[0].st );
 
 			// add some very simple lighting
-			vec4 color = lightFragment( worldPosition, worldNormal, baseColor );
-			return color;
+			vec3 color = lightFragment( worldPosition, worldNormal, baseColor.rgb );
+			return vec4( color, baseColor.a );
 		}
 
 previewObject:
@@ -146,7 +146,8 @@ previewObject:
 			vec4 baseColor = vertexColor * texture( baseTetxture, gl_TexCoord[0].st );
 
 			// add some very simple lighting
-			return lightFragment( worldPosition, normalize( worldNormal ), baseColor );
+			vec3 color = lightFragment( worldPosition, normalize( worldNormal ), baseColor.rgb );
+			return vec4( color, baseColor.a );
 		}
 
 sgsMesh:
@@ -177,7 +178,11 @@ shadowMapSurface:
 
 	code::
 		vec4 surfaceShader() {
-			return vec4(1.0);
+			float alpha = texture( baseTexture, gl_TexCoord[0].st ).a;
+			if( alpha < 0.5 ) {
+				discard;
+			}
+			return vec4( 1.0 );
 		}
 
 shadowMapMesh:
@@ -185,6 +190,7 @@ shadowMapMesh:
 
 	code::
 		void vertexShader() {
+			gl_TexCoord[0] = gl_MultiTexCoord0;
 			gl_Position = ftransform();
 		}
 

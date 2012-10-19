@@ -84,7 +84,8 @@ void real_main() {
 
 		sgsSceneRenderer.reloadShaders();
 
-		const char *scenePath = "P:\\sgs\\sg_and_sgs_source\\survivor\\__GameData\\Editor\\Save\\Survivor_original_mission_editorfiles\\test\\scene.glscene";
+		const char *scenePath = "scene.glscene";
+		//"P:\\sgs\\sg_and_sgs_source\\survivor\\__GameData\\Editor\\Save\\Survivor_original_mission_editorfiles\\test\\scene.glscene";
 		{
 			Serializer::BinaryReader reader( scenePath );
 			Serializer::read( reader, sgsScene );
@@ -262,7 +263,7 @@ void real_main() {
 			glEnable( GL_DEPTH_TEST );
 			
 			const ViewerContext viewerContext = { camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() };
-			optixRenderer.renderPinholeCamera( viewerContext, renderContext );
+			//optixRenderer.renderPinholeCamera( viewerContext, renderContext );
 
 			// End the current frame and display its contents on screen
 			renderDuration.setString( renderTimer.format() );

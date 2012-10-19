@@ -324,6 +324,23 @@ void SGSSceneRenderer::prepareMaterialDisplayLists() {
 			glBlendFunc( GL_ONE, GL_ONE );
 
 			break;
+		case SGSScene::Material::AT_MATERIAL:
+			if( material.alpha == 255 ) {
+				glDepthMask( GL_TRUE );
+
+				glDisable( GL_BLEND );
+				glDisable( GL_ALPHA_TEST );
+			}
+			else {
+				glDepthMask( GL_TRUE );
+				glDisable( GL_ALPHA_TEST );
+
+				glEnable( GL_BLEND );
+				glBlendFunc( GL_CONSTANT_ALPHA, GL_ONE_MINUS_CONSTANT_ALPHA );
+
+				glBlendColor( 1.0, 1.0, 1.0, material.alpha / 255.0 );
+			}
+			break;
 		case SGSScene::Material::AT_TEXTURE:
 			glDepthMask( GL_FALSE );
 			
@@ -347,23 +364,6 @@ void SGSSceneRenderer::prepareMaterialDisplayLists() {
 
 			alpha = material.alpha;
 			
-			break;
-		case SGSScene::Material::AT_MATERIAL:
-			if( material.alpha == 255 ) {
-				glDisable( GL_BLEND );
-				glDisable( GL_ALPHA_TEST );
-
-				glDepthMask( GL_TRUE );
-			}
-			else {
-				glDepthMask( GL_TRUE );
-				glDisable( GL_ALPHA_TEST );
-
-				glEnable( GL_BLEND );
-				glBlendFunc( GL_CONSTANT_ALPHA, GL_ONE_MINUS_CONSTANT_ALPHA );
-
-				glBlendColor( 1.0, 1.0, 1.0, material.alpha / 255.0 );
-			}
 			break;
 		case SGSScene::Material::AT_MULTIPLY:
 			glDepthMask( GL_FALSE );
@@ -509,6 +509,8 @@ void SGSSceneRenderer::renderShadowmap( const RenderContext &renderContext ) {
 
 	// draw all instances
 	{
+		whiteTexture.bind();
+		whiteTexture.enable();
 		staticObjectsMesh.vao.bind();
 
 		GLuint *firstIndex = nullptr;
@@ -526,9 +528,6 @@ void SGSSceneRenderer::renderShadowmap( const RenderContext &renderContext ) {
 				firstIndex + scene->subObjects[ subObjectIndex ].startIndex
 			);
 		}
-
-		glEnable( GL_ALPHA_TEST );
-		glAlphaFunc( GL_GREATER, 0.2f );
 
 		for( int i = 0 ; i < visibleTransparentInstancedSubObjects.size() ; i++ ) {
 			const int instancedSubObjectIndex = visibleTransparentInstancedSubObjects[i];
@@ -570,6 +569,9 @@ void SGSSceneRenderer::renderShadowmap( const RenderContext &renderContext ) {
 
 		glDepthMask( GL_TRUE );
 		glDisable( GL_TEXTURE_2D );
+
+		Texture2D::unbind();
+		Texture2D::disable();
 	}
 
 	// reset the buffer state

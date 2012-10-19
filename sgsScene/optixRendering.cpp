@@ -186,7 +186,7 @@ void SGSSceneRenderer::initOptix( OptixRenderer *optixRenderer ) {
 		optix.staticScene->setChildCount( numChildren );
 		optix.staticScene->setChild ( --numChildren, optix.staticObjects.geometryInstance );
 		if( hasTerrain ) {
-			optix.staticScene->setChild ( numChildren, optix.terrain.geometryInstance );
+			optix.staticScene->setChild ( --numChildren, optix.terrain.geometryInstance );
 		}
 		optix.staticScene->validate ();
 
