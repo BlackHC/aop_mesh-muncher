@@ -40,7 +40,6 @@ namespace aop {
 		typedef std::vector< ScoreModelIndexPair > Candidates;
 		Candidates candidates;
 		
-
 		LocalCandidateBarUI( Application *application, Candidates candidates, const Obb &queryObb ) 
 			: application( application )
 			, candidates( std::move( candidates ) )
@@ -64,7 +63,7 @@ namespace aop {
 			init();
 		}
 
-		void init() {				
+		void init() {
 			application->widgetRoot.addEventHandler( make_nonallocated_shared( sidebar ) );
 		}
 

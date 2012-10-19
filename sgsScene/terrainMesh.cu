@@ -44,6 +44,7 @@ RT_PROGRAM void selection_closestHit() {
 
 	currentRay_selection.hitPosition = currentRay.origin + t_hit * currentRay.direction;
 	currentRay_selection.hitDistance = t_hit;
+	currentRay_selection.hitNormal = shadingNormal;
 }
 
 RT_PROGRAM void intersect( int primIdx )

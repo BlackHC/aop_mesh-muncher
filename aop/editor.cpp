@@ -390,8 +390,13 @@ void Editor::Placing::onMouse( EventState &eventState ) {
 		SGSInterface::SelectionResult result;
 		if( editor->world->selectFromView( *editor->view, xh, yh, &result ) ) {
 			const auto transformation = editor->selection->getTransformation();
+
+			const Vector3f hitNormal = map( result.hitNormal );
+			
+			const Vector3f obbCenter = map( result.hitPosition ) + 0.5 * editor->selection->getSize().cwiseProduct( hitNormal / hitNormal.cwiseAbs().maxCoeff() );
+
 			editor->selection->setTransformation(
-				Eigen::Translation3f( Eigen::map( result.hitPosition) ) * transformation.linear()
+				Eigen::Translation3f( obbCenter ) * transformation.linear()
 			);
 		}
 	}

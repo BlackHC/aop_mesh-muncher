@@ -67,8 +67,8 @@ struct SelectionResult {
 	int modelIndex;
 	int objectIndex;
 
-	// occlusion measure
 	optix::float3 hitPosition;
+	optix::float3 hitNormal;
 
 	float hitDistance;
 

@@ -23,8 +23,6 @@ rtDeclareVariable(float3, U, , );
 rtDeclareVariable(float3, V, , );
 rtDeclareVariable(float3, W, , );
 
-
-
 RT_PROGRAM void selectFromPinholeCamera()
 {
 	float2 selectionRayDirection = selectionRays[ selectionRayIndex ];
