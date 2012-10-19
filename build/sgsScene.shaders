@@ -27,18 +27,23 @@ sceneLighting:
 		sunShadowProjection	mat4
 
 	code::
-		float shadowMapLookUp( sampler2D shadowMap, const mat4 projectionMatrix, const vec3 position ) {
-			vec4 transformedPosition = projectionMatrix * vec4( position, 1.0 );
-
-			vec3 viewportCoords = transformedPosition.xyz / transformedPosition.w;
-			viewportCoords = (viewportCoords + 1) / 2;
-			viewportCoords.z *= 0; // 0.05;
-
-			float refDepth = texture( shadowMap, viewportCoords.xy ).r;
-			if( refDepth > viewportCoords.z )
-				return 1.0;
-			else
+		float shadowMapLookUp( sampler2D shadowMap, const mat4 lightProjectionMatrix, const vec3 worldPosition ) {
+			vec4 transformedPosition = lightProjectionMatrix * vec4( worldPosition, 1.0 );
+			// clip again
+			if( transformedPosition.z < -transformedPosition.w ) {
 				return 0.0;
+			}
+			// normalize the transformed position into clipping space coordinates
+			const vec3 clippedPosition = transformedPosition.xyz / transformedPosition.w;
+			const vec3 viewportPosition = (clippedPosition + 1.0) * 0.5;
+
+			vec4 refDepth4 = textureGather( shadowMap, viewportPosition.xy );
+			if( any( greaterThan( refDepth4, vec4( viewportPosition.z * 0.9995 ) ) ) ) {
+				return 1.0;
+			}
+			else {
+				return 0.0;
+			}
 			//return clamp( pow( 1.0 + refDepth - viewportCoords.z, 0.3 ), 0.0, 1.0 );
 		}
 
@@ -53,6 +58,7 @@ sceneLighting:
 			const float ambientAttenuation = 0.2;
 			const float shadowMapAttenuation = shadowMapLookUp( sunShadowTexture, sunShadowProjection, position );
 
+			//return vec4( vec3( shadowMapAttenuation ), 1.0 );
 			return diffuseColor * (ambientAttenuation +  (1.0 - ambientAttenuation) * shadowMapAttenuation * (diffuseAttenuation + specularAttenuation));
 		}
 
@@ -171,7 +177,6 @@ shadowMapSurface:
 
 	code::
 		vec4 surfaceShader() {
-			vec4 baseColor = texture( baseTexture, gl_TexCoord[0].st );
 			return vec4(1.0);
 		}
 

@@ -100,22 +100,24 @@ namespace Eigen {
 	}
 
 	inline Matrix4f createViewerMatrixLH( const Vector3f &position, const Vector3f &forward, const Vector3f &up ) {
+		const RowVector3f unitForward = forward.normalized();
 		const RowVector3f right = forward.cross( up ).normalized();
-		const RowVector3f realUp = right.cross( forward );
+		const RowVector3f orthogonalUp = right.cross( forward );
 
 		Matrix3f view;
-		view << right, realUp, forward.transpose();
+		view << right, orthogonalUp, unitForward;
 
 		return (view * Translation3f( -position )).matrix();
 	}
 
 	// TODO: rename header to something more fitting.. eigenMatrixHelpers?
 	inline Matrix4f createViewerMatrix( const Vector3f &position, const Vector3f &forward, const Vector3f &up ) {
+		const RowVector3f unitForward = forward.normalized();
 		const RowVector3f right = forward.cross( up ).normalized();
-		const RowVector3f realUp = right.cross( forward );
+		const RowVector3f orthogonalUp = right.cross( forward );
 
 		Matrix3f view;
-		view << right, realUp, -forward.transpose();
+		view << right, orthogonalUp, -unitForward;
 
 		return (view * Translation3f( -position )).matrix();
 	}

@@ -437,14 +437,14 @@ void SGSSceneRenderer::prerenderDebugInfos() {
 
 void SGSSceneRenderer::initShadowMap() {
 	sunShadowMapSize = 8192;
-	sunShadowMap.load( 0, GL_DEPTH_COMPONENT32F, sunShadowMapSize, sunShadowMapSize, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, nullptr );
+	sunShadowMap.load( 0, GL_DEPTH_COMPONENT24, sunShadowMapSize, sunShadowMapSize, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, nullptr );
 
 	SimpleGL::setClampToBorderST( sunShadowMap );
 	SimpleGL::setLinearMinMag( sunShadowMap );
 
-	sunShadowMap.parameter( GL_DEPTH_TEXTURE_MODE, GL_LUMINANCE );
-	sunShadowMap.parameter( GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE );
-	sunShadowMap.parameter( GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL );
+	//sunShadowMap.parameter( GL_DEPTH_TEXTURE_MODE, GL_LUMINANCE );
+	sunShadowMap.parameter( GL_TEXTURE_COMPARE_MODE, GL_NONE );
+	//sunShadowMap.parameter( GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL );
 }
 
 void SGSSceneRenderer::updateSceneBoundingBox() {
@@ -469,9 +469,10 @@ void SGSSceneRenderer::updateSceneBoundingBox() {
 }
 
 void SGSSceneRenderer::renderShadowmap( const RenderContext &renderContext ) {
+	// TODO: we don't have to set this every frame.. [10/19/2012 Andreas]
 	initShadowMap();
 
-	initShadowMapProjectionMatrix( sceneBoundingBox, Vector3f( 0.0, -1.0, -1.0 ).normalized() );
+	initShadowMapProjectionMatrix( sceneBoundingBox, Vector3f( 0.0, 1.0, 1.0 ).normalized() );
 
 	ScopedFramebufferObject fbo;
 	fbo.attach( sunShadowMap, GL_DEPTH_ATTACHMENT, 0 );
@@ -579,6 +580,8 @@ void SGSSceneRenderer::renderShadowmap( const RenderContext &renderContext ) {
 	glPopAttrib();
 
 	Program::useFixed();
+
+	glGetError();
 
 	//glStringMarkerGREMEDY( 0, "shadow map done" );
 }
@@ -746,6 +749,8 @@ void SGSSceneRenderer::drawScene( const Vector3f &worldViewerPosition, const Ren
 		lightFrustum.drawBox( Vector3f::Constant( 2.0 ), true, true );
 		lightFrustum.end();
 	}
+
+	glGetError();
 }
 
 void SGSSceneRenderer::resetState() {
@@ -799,34 +804,15 @@ void SGSSceneRenderer::sortInstancedSubObjectsByDistance( std::vector< int > &li
 	);
 }
 
+// direction is the direction towards the light
 void SGSSceneRenderer::initShadowMapProjectionMatrix( const AlignedBox3f &boundingBox, const Vector3f &direction ) {
-#if 0
-	// determine the main direction
-	int mainAxis;
-	{
-		auto weightedDirection = direction.cwiseProduct( boundingBox.sizes() );
-		weightedDirection.cwiseAbs().maxCoeff( &mainAxis );
-	}
-
-	int permutation[3] = { (mainAxis + 1) % 3, (mainAxis + 2) % 3, mainAxis };
-	auto permutedDirection = permute( direction, permutation );
-
-	AlignedBox3f permutedBox;
-	permutedBox.extend( permute( boundingBox.min(), permutation ) );
-	permutedBox.extend( permute( boundingBox.max(), permutation ) );
-
-	/*sunProjectionMatrix = createShearProjectionMatrixLH( )
-	createOrthoProjectionMatrixLH( permutedBox.min(), permutedBox.max() ) * unpermutedToPermutedMatrix( permutation );*/
-	sunProjectionMatrix = createOrthoProjectionMatrixLH( permutedBox.min(), permutedBox.max() ) * unpermutedToPermutedMatrix( permutation );
-#else
-	Matrix4f lightRotation = createViewerMatrixLH( Vector3f::Zero(), direction, Vector3f::UnitX() );
+	Matrix4f lightRotation = createViewerMatrixLH( Vector3f::Zero(), -direction, Vector3f::UnitX() );
 	AlignedBox3f lightVolumeBox;
 	for( int cornerIndex = 0 ; cornerIndex < 8 ; ++cornerIndex ) {
 		lightVolumeBox.extend( (lightRotation * boundingBox.corner( AlignedBox3f::CornerType( cornerIndex ) ).homogeneous().eval()).hnormalized() );
 	}
 
 	sunProjectionMatrix = createOrthoProjectionMatrixLH( lightVolumeBox.min(), lightVolumeBox.max() ) * lightRotation;
-#endif
 }
 
 void SGSSceneRenderer::mergeTextures( const ScopedTextures2D &textures ) {
