@@ -3,6 +3,8 @@
 #include "aopApplication.h"
 
 #include "antTWBarUI.h"
+#include "widgets.h"
+#include "modelButtonWidget.h"
 
 namespace aop {
 	struct ModelTypesUI {
@@ -13,7 +15,7 @@ namespace aop {
 
 		std::vector< std::string > beautifiedModelNames;
 		std::vector< int > markedModels;
-
+		
 		struct ModelNameView : AntTWBarUI::SimpleStructureFactory< std::string, ModelNameView >{
 			ModelTypesUI *modelTypesUI;
 
@@ -128,36 +130,42 @@ namespace aop {
 		void init() {
 			beautifyModelNames();
 
-			struct MyConfig {
-				enum { supportRemove = false };
-			};
-			modelsUi = std::make_shared< AntTWBarUI::Vector< ModelNameView, MyConfig > >( "All models", beautifiedModelNames, ModelNameView( this ), AntTWBarUI::CT_EMBEDDED );
-			modelsUi->link();
+			{
+				struct MyConfig {
+					enum { supportRemove = false };
+				};
+				modelsUi = std::make_shared< AntTWBarUI::Vector< ModelNameView, MyConfig > >( "All models", beautifiedModelNames, ModelNameView( this ), AntTWBarUI::CT_EMBEDDED );
+				modelsUi->link();
+			}
 
-			markedModelsUi.setName( "Marked models");
-			auto markedModelsVector = AntTWBarUI::makeSharedVector( "Models", markedModels, MarkedModelNameView( this ), AntTWBarUI::CT_EMBEDDED );
-			markedModelsUi.add( markedModelsVector );
-			markedModelsUi.add( AntTWBarUI::makeSharedSeparator() );
-			markedModelsUi.add( AntTWBarUI::makeSharedButton( "= {}", [this] () {
-				markedModels.clear();
-			} ) );
-			markedModelsUi.add( AntTWBarUI::makeSharedButton( "= selection", [this] () {
-				ReplaceWithSelectionVisitor( this ).dispatch( application->editor.selection );
-			} ) );
-			markedModelsUi.add( AntTWBarUI::makeSharedButton( "+= selection", [this] () {
-				AppendSelectionVisitor( this ).dispatch( application->editor.selection );
-			} ) );
-			markedModelsUi.add( AntTWBarUI::makeSharedSeparator() );
-			markedModelsUi.add( AntTWBarUI::makeSharedButton( "selection =", [this] () {
-				application->editor.selectModels( markedModels );
-			} ) );
-			markedModelsUi.add( AntTWBarUI::makeSharedButton( "-= already probe-sampled", [this] () {
-				removeAlreadySampledModels();
-			} ) );
-			markedModelsUi.add( AntTWBarUI::makeSharedButton( "+= already probe-sampled", [this] () {
-				addAlreadySampledModels();
-			} ) );
-			markedModelsUi.link();
+			{
+				markedModelsUi.setName( "Marked models");
+				markedModelsUi.add( AntTWBarUI::makeSharedButton( "= {}", [this] () {
+					markedModels.clear();
+				} ) );
+				markedModelsUi.add( AntTWBarUI::makeSharedButton( "= selection", [this] () {
+					ReplaceWithSelectionVisitor( this ).dispatch( application->editor.selection );
+				} ) );
+				markedModelsUi.add( AntTWBarUI::makeSharedButton( "+= selection", [this] () {
+					AppendSelectionVisitor( this ).dispatch( application->editor.selection );
+				} ) );
+				markedModelsUi.add( AntTWBarUI::makeSharedSeparator() );
+				markedModelsUi.add( AntTWBarUI::makeSharedButton( "selection =", [this] () {
+					application->editor.selectModels( markedModels );
+				} ) );
+				markedModelsUi.add( AntTWBarUI::makeSharedButton( "-= already probe-sampled", [this] () {
+					removeAlreadySampledModels();
+				} ) );
+				markedModelsUi.add( AntTWBarUI::makeSharedButton( "+= already probe-sampled", [this] () {
+					addAlreadySampledModels();
+				} ) );
+				markedModelsUi.add( AntTWBarUI::makeSharedSeparator() );
+
+				auto markedModelsVector = AntTWBarUI::makeSharedVector( "Models", markedModels, MarkedModelNameView( this ), AntTWBarUI::CT_EMBEDDED );
+				markedModelsUi.add( markedModelsVector );
+			
+				markedModelsUi.link();
+			}
 		}
 
 		void update() {

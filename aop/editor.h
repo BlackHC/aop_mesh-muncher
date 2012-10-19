@@ -13,6 +13,10 @@
 #include <SFML/Graphics.hpp>
 #include "boost/range/algorithm/find.hpp"
 
+namespace aop {
+	struct Application;
+}
+
 struct Editor : EventDispatcher {
 	struct Volumes {
 		virtual int getCount() = 0;
@@ -222,8 +226,6 @@ struct Editor : EventDispatcher {
 
 	// NOTE: modified visitor pattern to handle the no object case as well [10/2/2012 kirschan2]
 	struct SelectionVisitor {
-		virtual void visit() {}
-
 		void dispatch( ISelection *selection ) {
 			if( selection ) {
 				selection->acceptVisitor( *this );
@@ -236,6 +238,8 @@ struct Editor : EventDispatcher {
 		void dispatch( std::shared_ptr<ISelection> selection ) {
 			dispatch( selection.get() );
 		}
+
+		virtual void visit() {}
 
 		virtual void visit( ISelection *selection ) {}
 
@@ -258,6 +262,10 @@ struct Editor : EventDispatcher {
 
 	SGSInterface::View *view;
 	SGSInterface::World *world;
+
+	aop::Application *application;
+	// TODO: remove view and world if we have application now [10/19/2012 kirschan2]
+
 	Volumes *volumes;
 
 	struct Mode : NullEventHandler {

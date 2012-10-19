@@ -2,6 +2,7 @@
 
 #include <Eigen/Eigen>
 #include <eventHandling.h>
+#include <mathUtility.h>
 
 // The widgets use a 0..1x0..1 relative coordinate system with 0,0 being in the top left corner
 
@@ -19,13 +20,18 @@ struct TransformChain {
 
 	// screen: absolute screen/window coordinates
 	// local: 0..1
-	
+
 	Eigen::Vector2f pointToScreen( const Eigen::Vector2f &point ) const;
-	
 	Eigen::Vector2f vectorToScreen( const Eigen::Vector2f &point ) const;
 
 	Eigen::Vector2f screenToPoint( const Eigen::Vector2f &point ) const;
 	Eigen::Vector2f screenToVector( const Eigen::Vector2f &point ) const;
+
+	Eigen::Vector2f pointToParent( const Eigen::Vector2f &point ) const;
+	Eigen::Vector2f vectorToParent( const Eigen::Vector2f &point ) const;
+
+	Eigen::Vector2f parentToPoint( const Eigen::Vector2f &point ) const;
+	Eigen::Vector2f parentToVector( const Eigen::Vector2f &point ) const;
 };
 
 struct ITransformChain : virtual EventHandler {
@@ -36,12 +42,27 @@ struct IWidget : virtual ITransformChain, virtual EventHandler::WithParentDecl< 
 	typedef std::shared_ptr< IWidget > SPtr;
 
 	virtual void onRender() = 0;
+
+	// returns the area in the parent space---not screen!
+	Eigen::AlignedBox2f getArea() {
+		const auto localArea = getLocalArea();
+
+		Eigen::AlignedBox2f area;
+		area.extend( transformChain.pointToParent( localArea.min() ) );
+		area.extend( transformChain.pointToParent( localArea.max() ) );
+		return area;
+	}
+
+	// get local area
+	virtual Eigen::AlignedBox2f getLocalArea() = 0;
 };
 
 // TODO: this is a huge cluster fuck (together with WidgetRoot) and way too dependent on implementation details.. [10/4/2012 kirschan2]
 struct WidgetBase : TemplateNullEventHandler< ITransformChain, IWidget > {
 	void onRender();
 	void onUpdate( EventSystem &eventSystem, const float frameDuration, const float elapsedTime );
+
+	//Eigen::AlignedBox2f getArea() = 0;
 
 private:
 	virtual void doRender() = 0;
@@ -59,6 +80,18 @@ struct WidgetContainer : TemplateEventDispatcher< IWidget, EventHandler::WithSim
 		transformChain.update( &parent->transformChain );
 
 		Base::onUpdate( eventSystem, frameDuration, elapsedTime );
+	}
+
+	Eigen::AlignedBox2f getLocalChildArea() {
+		Eigen::AlignedBox2f area;
+		for( auto eventHandler = eventHandlers.rbegin() ; eventHandler != eventHandlers.rend() ; ++eventHandler ) {
+			area.extend( eventHandler->get()->getArea() );
+		}
+		return area;
+	}
+
+	Eigen::AlignedBox2f getLocalArea() {
+		return getLocalChildArea();
 	}
 };
 
@@ -80,8 +113,8 @@ struct ProgressBarWidget : WidgetBase {
 	Eigen::Vector2f size;
 
 	float percentage;
-	
-	ProgressBarWidget( float percentage, const Eigen::Vector2f &offset, const Eigen::Vector2f &size ) 
+
+	ProgressBarWidget( float percentage, const Eigen::Vector2f &offset, const Eigen::Vector2f &size )
 		: percentage( percentage )
 		, size( size )
 	{
@@ -90,6 +123,10 @@ struct ProgressBarWidget : WidgetBase {
 
 	void doRender();
 	void doUpdate( EventSystem &eventSystem, const float frameDuration, const float elapsedTime ) {}
+
+	Eigen::AlignedBox2f getLocalArea() {
+		return Eigen::AlignedBox2f( Eigen::Vector2f::Zero(), size );
+	}
 };
 
 struct ButtonWidget : WidgetBase {
@@ -101,7 +138,7 @@ struct ButtonWidget : WidgetBase {
 
 	Eigen::Vector2f size;
 
-	ButtonWidget( const Eigen::Vector2f &offset, const Eigen::Vector2f &size ) 
+	ButtonWidget( const Eigen::Vector2f &offset, const Eigen::Vector2f &size )
 		: state()
 		, size( size )
 	{
@@ -136,6 +173,10 @@ struct ButtonWidget : WidgetBase {
 		setState( STATE_INACTIVE );
 	}
 
+	Eigen::AlignedBox2f getLocalArea() {
+		return Eigen::AlignedBox2f( Eigen::Vector2f::Zero(), size );
+	}
+
 private:
 	void doRender();
 
@@ -153,17 +194,32 @@ struct DummyButtonWidget : ButtonWidget {
 };
 
 struct ScrollableContainer : WidgetContainer {
-	float minY, maxY;
+	Eigen::Vector2f size;
+
+	Eigen::AlignedBox2f scrollArea;
+	
 	float scrollStep;
 
-	ScrollableContainer() : minY(), maxY(), scrollStep() {}
+	bool verticalScrollByDefault;
+	
+	ScrollableContainer( const Eigen::Vector2f &size = Eigen::Vector2f::Zero() ) 
+		: scrollStep() 
+		, size( size )
+		, scrollArea( Eigen::Vector2f::Zero() )
+		, verticalScrollByDefault( true )
+	{}
 
 	void onMouse( EventState &eventState ) {
 		if( eventState.event.type == sf::Event::MouseWheelMoved ) {
 			//log( boost::format( "mouse wheel moved %i" ) % eventState.event.mouseWheel.delta );
-					
+
 			auto offset = transformChain.getOffset();
-			offset.y() = std::min( -minY, std::max( -maxY, offset.y() + eventState.event.mouseWheel.delta * scrollStep ) );
+			if( verticalScrollByDefault ) {
+				offset[1] = clamp( offset[1] + eventState.event.mouseWheel.delta * scrollStep, -scrollArea.min()[1], size[1] -scrollArea.max()[1] );
+			}
+			else {
+				offset[0] = clamp( offset[0] + eventState.event.mouseWheel.delta * scrollStep, -scrollArea.min()[0], size[0] -scrollArea.max()[0] );
+			}
 			transformChain.setOffset( offset );
 
 			eventState.accept();
@@ -172,18 +228,34 @@ struct ScrollableContainer : WidgetContainer {
 			WidgetContainer::onMouse( eventState );
 		}
 	}
+
+	void updateScrollArea() {
+		scrollArea = getLocalChildArea();
+	}
+
+	Eigen::AlignedBox2f getLocalArea() {
+		return Eigen::AlignedBox2f( Eigen::Vector2f::Zero(), size );
+	}
 };
 
-// we set a scissor rectangle here
+// we set a scissor rectangle here to the area of the children
 struct ClippedContainer : WidgetContainer  {
-	Eigen::Vector2f size;
+	Eigen::AlignedBox2f localArea;
 	bool visible;
 
-	ClippedContainer( const Eigen::Vector2f &size = Eigen::Vector2f::Zero() ) 
-		: size( size )
+	ClippedContainer()
+		: localArea()
 		, visible( true )
 	{
 	}
 
 	void onRender();
+
+	virtual Eigen::AlignedBox2f getLocalArea() {
+		return localArea;
+	}
+
+	void updateLocalArea() {
+		localArea = getLocalChildArea();
+	}
 };

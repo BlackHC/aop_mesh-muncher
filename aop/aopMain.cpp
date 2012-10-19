@@ -1458,6 +1458,7 @@ namespace aop {
 	}
 
 	void Application::initEditor() {
+		editor.application = this;
 		editor.world = world.get();
 		editor.view = &cameraView;
 		editor.volumes = namedVolumesEditorView.get();

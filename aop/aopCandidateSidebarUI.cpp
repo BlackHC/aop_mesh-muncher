@@ -20,11 +20,9 @@ void aop::LocalCandidateBarUI::init() {
 	const int numDisplayedModels = std::min<int>( numModels, 1.0 / totalEntryHeight );
 	const float totalHeight = totalEntryHeight * numDisplayedModels;
 
-	clipper.size.x() = buttonWidth;
-	clipper.size.y() = totalHeight;
+	scroller.size[0] = buttonWidth;
+	scroller.size[1] = totalHeight;
 
-	scroller.minY = 0;
-	scroller.maxY = (numModels - 1 ) * totalEntryHeight;
 	scroller.scrollStep = totalEntryHeight;
 
 	for( int i = 0 ; i < numModels ; i++ ) {
@@ -55,6 +53,9 @@ void aop::LocalCandidateBarUI::init() {
 			)
 		);
 	}
+
+	scroller.updateScrollArea();
+	clipper.updateLocalArea();
 }
 
 void aop::LocalCandidateBarUI::refresh() {

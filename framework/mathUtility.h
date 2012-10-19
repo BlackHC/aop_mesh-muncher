@@ -2,6 +2,19 @@
 
 #include <Eigen/Eigen>
 
+// TODO: cleanup declarations and definitions etc! [10/19/2012 kirschan2]
+
+template< typename Scalar >
+Scalar clamp( const Scalar &value, const Scalar &min, const Scalar &max ) {
+	if( value < min ) {
+		return min;
+	}
+	else if( value > max ) {
+		return max;
+	}
+	return value;
+}
+
 namespace ColorConversion {
 	namespace HSV {
 		/*

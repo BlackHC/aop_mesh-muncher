@@ -48,6 +48,22 @@ Eigen::Vector2f TransformChain::screenToVector( const Eigen::Vector2f &point ) c
 	return ( globalTransform.inverse().linear() * Eigen::Vector3f( point[0], point[1], 0.0f ) ).head<2>();
 }
 
+Eigen::Vector2f TransformChain::pointToParent( const Eigen::Vector2f &point ) const {
+	return ( localTransform * Eigen::Vector3f( point[0], point[1], 0.0f ) ).head<2>();
+}
+
+Eigen::Vector2f TransformChain::vectorToParent( const Eigen::Vector2f &point ) const {
+	return ( localTransform.linear() * Eigen::Vector3f( point[0], point[1], 0.0f ) ).head<2>();
+}
+
+Eigen::Vector2f TransformChain::parentToPoint( const Eigen::Vector2f &point ) const {
+	return ( localTransform.inverse() * Eigen::Vector3f( point[0], point[1], 0.0f ) ).head<2>();
+}
+
+Eigen::Vector2f TransformChain::parentToVector( const Eigen::Vector2f &point ) const {
+	return ( localTransform.inverse().linear() * Eigen::Vector3f( point[0], point[1], 0.0f ) ).head<2>();
+}
+
 void WidgetBase::onRender() {
 	glPushMatrix();
 	Eigen::glLoadMatrix( transformChain.globalTransform );
@@ -174,8 +190,8 @@ void ClippedContainer::onRender() {
 		return;
 	}
 
-	const auto &topLeft = ViewportContext::context->globalToGL( transformChain.pointToScreen( Eigen::Vector2f::Zero() ).cast<int>() );
-	const auto &bottomRight = ViewportContext::context->globalToGL( transformChain.pointToScreen( size ).cast<int>() );
+	const auto &topLeft = ViewportContext::context->globalToGL( transformChain.pointToScreen( localArea.min() ).cast<int>() );
+	const auto &bottomRight = ViewportContext::context->globalToGL( transformChain.pointToScreen( localArea.max() ).cast<int>() );
 
 	glEnable( GL_SCISSOR_TEST );
 	glScissor( topLeft.x(), bottomRight.y(), bottomRight.x() - topLeft.x() + 1, topLeft.y() - bottomRight.y() + 1 );

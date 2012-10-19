@@ -1,5 +1,9 @@
 #include "editor.h"
 
+#include "logger.h"
+#include "aopSettings.h"
+#include "aopApplication.h"
+
 using namespace Eigen;
 
 void Editor::init() {
@@ -15,24 +19,16 @@ void Editor::init() {
 		selectMode( M_SELECTING );
 	} ) );
 	addEventHandler( std::make_shared<KeyAction>( "enter placement mode", sf::Keyboard::F7, [&] () {
-		if( selection && selection->canTransform() ) {
-			selectMode( M_PLACING );
-		}
+		selectMode( M_PLACING );
 	} ) );
 	addEventHandler( std::make_shared<KeyAction>( "enter movement mode", sf::Keyboard::F8, [&] () {
-		if( selection && selection->canTransform() ) {
-			selectMode( M_MOVING );
-		}
+		selectMode( M_MOVING );
 	} ) );
 	addEventHandler( std::make_shared<KeyAction>( "enter rotation mode", sf::Keyboard::F9, [&] () {
-		if( selection && selection->canTransform() ) {
-			selectMode( M_ROTATING );
-		}
+		selectMode( M_ROTATING );
 	} ) );
 	addEventHandler( std::make_shared<KeyAction>( "enter resize mode", sf::Keyboard::F10, [&] () {
-		if( selection && selection->canResize() ) {
-			selectMode( M_RESIZING );
-		}
+		selectMode( M_RESIZING );
 	} ) );
 	addEventHandler( std::make_shared<KeyAction>( "enter free-look mode", sf::Keyboard::F5, [&] () {
 		selectMode( M_FREELOOK );
@@ -91,10 +87,8 @@ void Editor::selectMode( ModeState newMode ) {
 		currentMode = newMode;
 		break;
 	case M_PLACING:
-		if( selection && selection->canTransform() ) {
-			mode = &placing;
-			currentMode = newMode;
-		}
+		mode = &placing;
+		currentMode = newMode;
 		break;
 	case M_MOVING:
 		if( selection && selection->canTransform() ) {
@@ -333,8 +327,12 @@ void Editor::Selecting::onMouse( EventState &eventState ) {
 
 		// NOTE: this all only works if direction is normalized, so we can compare hitDistance with bestT! [9/30/2012 kirschan2]
 		SGSInterface::SelectionResult result;
-		if( editor->world->selectFromView( *editor->view, xh, yh, &result ) && result.objectIndex != SGSInterface::SelectionResult::SELECTION_INDEX_TERRAIN ) {
-			if( bestOBB == -1 || result.hitDistance < bestT) {
+		if( editor->world->selectFromView( *editor->view, xh, yh, &result ) ) {
+			if( 
+					result.objectIndex != SGSInterface::SelectionResult::SELECTION_INDEX_TERRAIN 
+				&& 
+					(bestOBB == -1 || result.hitDistance < bestT)
+			) {
 				bestOBB = -1;
 
 				if( !selectModel ) {
@@ -389,15 +387,87 @@ void Editor::Placing::onMouse( EventState &eventState ) {
 
 		SGSInterface::SelectionResult result;
 		if( editor->world->selectFromView( *editor->view, xh, yh, &result ) ) {
-			const auto transformation = editor->selection->getTransformation();
+			struct Placer : SelectionVisitor {
+				Editor *editor;
+				SGSInterface::SelectionResult &result;
 
-			const Vector3f hitNormal = map( result.hitNormal );
+				Placer( Editor *editor, SGSInterface::SelectionResult &result )
+					: editor( editor )
+					, result( result )
+				{
+				}
+
+				void visit() {
+					// we create a new query volume
+					aop::SceneSettings::NamedTargetVolume volume;
+
+					const float size = 5.0;
+
+					volume.volume.size = Eigen::Vector3f::Constant( size );
+
+					const Vector3f hitNormal = map( result.hitNormal );
+					const Vector3f obbCenter = map( result.hitPosition ) + 0.5 * size * saturate( hitNormal );
+
+					volume.volume.transformation = Eigen::Translation3f( obbCenter );
+
+					editor->application->sceneSettings.volumes.push_back( volume );
+				}
+
+				// TODO: move this into mathUtility.h [10/19/2012 kirschan2]
+				static Eigen::Vector3f saturate( const Eigen::Vector3f &normal ) {
+					Eigen::Vector3f saturated;
+
+					for( int i = 0 ; i < 3 ; i++ ) {
+						if( normal[i] < -Eigen::NumTraits<float>::dummy_precision() ) {
+							saturated[i] = -1.0f;
+						}
+						else if( normal[i] > Eigen::NumTraits<float>::dummy_precision() ) {
+							saturated[i] = 1.0f;
+						}
+						else {
+							saturated[i] = 0.0f;
+						}
+					}
+					return saturated;
+				}
+
+				void visit( ISelection *selection ) {
+					// we place the current selection if we can transform it
+					if( !selection->canTransform() ) {
+						logError( "Can't transform the selected object---maybe static?" );
+
+						return;
+					}
+
+					const auto transformation = editor->selection->getTransformation();
+
+					const Vector3f hitNormal = map( result.hitNormal );
 			
-			const Vector3f obbCenter = map( result.hitPosition ) + 0.5 * editor->selection->getSize().cwiseProduct( hitNormal / hitNormal.cwiseAbs().maxCoeff() );
+					const Vector3f obbCenter = map( result.hitPosition ) + 0.5 * editor->selection->getSize().cwiseProduct( saturate( hitNormal ) );
 
-			editor->selection->setTransformation(
-				Eigen::Translation3f( obbCenter ) * transformation.linear()
-			);
+					editor->selection->setTransformation(
+						Eigen::Translation3f( obbCenter ) * transformation.linear()
+					);
+				}
+
+				void visit( SGSMultiModelSelection *selection ) {
+					// we add a new instance if only one model type is selected
+					if( selection->modelIndices.size() != 1 ) {
+						logError( "Exactly model has to be selected!" );
+
+						return;
+					}
+
+					const int modelIndex = selection->modelIndices.front();
+					const auto boundingBox = editor->world->sceneRenderer.getModelBoundingBox( modelIndex );
+
+					const Vector3f hitNormal = map( result.hitNormal );
+					const Vector3f obbCenter = map( result.hitPosition ) + 0.5 * boundingBox.sizes().cwiseProduct( saturate( hitNormal ) );
+
+					editor->world->addInstance( modelIndex, obbCenter );
+				}
+			};
+			Placer( editor, result ).dispatch( editor->selection );
 		}
 	}
 	eventState.accept();
