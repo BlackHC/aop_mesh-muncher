@@ -31,8 +31,16 @@ using namespace Eigen;
 
 #include "boost/format.hpp"
 
+#include <boost/program_options/options_description.hpp>
+#include <boost/program_options/parsers.hpp>
+#include <boost/program_options/variables_map.hpp>
+#include <boost/algorithm/string.hpp>
+
+// allows us to modify a scene at runtime
 struct SGSSceneRuntime {
 	SGSScene *scene;
+
+	SGSSceneRuntime( SGSScene *scene ) : scene( scene ) {}
 
 	int findTexture( const std::string &name ) {
 		for( int textureIndex = 0 ; textureIndex < scene->textures.size() ; textureIndex++ ) {
@@ -83,6 +91,10 @@ struct SGSSceneRuntime {
 		material.textureIndex[0] = -1;
 
 		return material;
+	}
+
+	static SGSScene::Material createMaterial( const Eigen::Vector3f &rgb ) {
+		return createMaterial( rgb[0] * 255, rgb[1] * 255, rgb[2] * 255 );
 	}
 
 	int allocateVertices( int numVertices ) {
@@ -223,8 +235,12 @@ struct SGSSceneRuntime {
 		return modelIndex;
 	}
 
+	static std::string getSimpleMaterialName( const SGSScene::Material &material ) {
+		return boost::str( boost::format( "%i %i %i" ) % material.diffuse.r % material.diffuse.g % material.diffuse.b );
+	}
+
 	int addBoxModel( const Eigen::Vector3f &size, const SGSScene::Material &material ) {
-		const auto name = boost::str( boost::format( "Box %f %f %f" ) % size.x() % size.y() % size.z() );
+		const auto name = boost::str( boost::format( "Box %f %f %f %s" ) % size.x() % size.y() % size.z() % getSimpleMaterialName( material ) );
 		{
 			int modelIndex = findModel( name );
 			if( modelIndex != -1 ) {
@@ -290,7 +306,7 @@ struct SGSSceneRuntime {
 	}
 
 	int addSphereModel( float radius, const SGSScene::Material &material, int u = 10, int v = 20 ) {
-		const auto name = boost::str( boost::format( "Sphere %f %i %i" ) % radius % u % v );
+		const auto name = boost::str( boost::format( "Sphere %f %i %i %s" ) % radius % u % v % getSimpleMaterialName( material ) );
 		{
 			const int modelIndex = findModel( name );
 			if( modelIndex != -1 ) {
@@ -361,7 +377,137 @@ void selectObjectsByModelID( SGSSceneRenderer &renderer, int modelIndex ) {
 	selectionDR.end();
 }
 
-void real_main() {
+#if 1
+struct ModelDeclarations {
+	struct BoxDeclaration {
+		float size[3];
+		float color[3];
+
+		BoxDeclaration() {}
+
+		BoxDeclaration( const Vector3f &size, const Vector3f &color ) {
+			Vector3f::Map( this->size ) = size;
+			Vector3f::Map( this->color ) = color;
+		}
+
+		SERIALIZER_DEFAULT_IMPL( (size)(color) )
+	};
+	struct SphereDeclaration {
+		float radius;
+		float color[3];
+		int u, v;
+
+		SphereDeclaration() : u( 10 ), v( 20 ) {}
+
+		SphereDeclaration( float radius, const Vector3f &color ) {
+			this->radius = radius;
+			Vector3f::Map( this->color ) = color;
+		}
+
+		SERIALIZER_DEFAULT_IMPL( (radius)(color)(u)(v) )
+	};
+	std::vector<BoxDeclaration> boxes;
+	std::vector<SphereDeclaration> spheres;
+
+	SERIALIZER_DEFAULT_IMPL( (boxes)(spheres) )
+};
+
+ModelDeclarations readModelDeclarations( const char *filename ) {
+	Serializer::TextReader reader( filename );
+
+	ModelDeclarations modelDeclarations;
+	Serializer::read( reader, modelDeclarations );
+
+	return modelDeclarations;
+}
+
+void writeModelDeclarations( const char *filename, const ModelDeclarations &modelDeclarations ) {
+	Serializer::TextWriter writer( filename );
+
+	Serializer::write( writer, modelDeclarations );
+}
+
+using namespace boost;
+namespace po = boost::program_options;
+using namespace std;
+
+void real_main( int argc, const char **argv ) {
+	vector< string > args = po::split_winmain( "exampleModelDecls.wml testScene.sgsScene" );
+	
+	string modelDeclFilename, targetSceneFilename;
+	
+	po::options_description desc( "Program options" );
+	desc.add_options()
+		( "help,?", "produce this help message" )
+		( "modelDecls", po::value< std::string >( &modelDeclFilename )->default_value( "modelDecls.wml" ), "model declaration file to use" )
+		( "target", po::value< std::string >( &targetSceneFilename ), "target scene file" )
+		( "createExample", "dump an example model declaration" )
+	;
+
+	po::positional_options_description p;
+	p.add( "modelDecls", 1 );
+	p.add( "target", 1 );
+
+	po::variables_map vm;
+	po::store( po::command_line_parser( args ).options(desc).positional(p).run(), vm );
+	po::notify(vm);
+
+	if( vm.count( "help" ) ) {
+		std::cout << desc;
+		return;
+	}
+	else if( vm.count( "createExample" ) ) {
+		ModelDeclarations modelDeclarations;
+
+		modelDeclarations.boxes.push_back( ModelDeclarations::BoxDeclaration( Eigen::Vector3f::Constant( 5.0 ), Eigen::Vector3f( 1.0f, 0.5f, 0.5f ) ) );
+		modelDeclarations.boxes.push_back( ModelDeclarations::BoxDeclaration( Eigen::Vector3f::Constant( 10.0 ), Eigen::Vector3f( 1.0f, 0.5f, 0.5f ) ) );
+
+		modelDeclarations.spheres.push_back( ModelDeclarations::SphereDeclaration( 5.0, Eigen::Vector3f( 1.0f, 0.5f, 0.5f ) ) );
+		modelDeclarations.spheres.push_back( ModelDeclarations::SphereDeclaration( 10.0, Eigen::Vector3f( 1.0f, 0.5f, 0.5f ) ) );
+
+		writeModelDeclarations( "exampleModelDecls.wml", modelDeclarations );
+		cout << "Successfully wrote 'exampleModelDecls.wml'!\n";
+		return;
+	}
+
+	if( targetSceneFilename.empty() ) {
+		targetSceneFilename = algorithm::erase_last_copy( modelDeclFilename, ".wml" ) + ".sgsScene";
+	}
+
+	// read the decls
+	ModelDeclarations modelDeclarations;
+	{
+		Serializer::TextReader reader( modelDeclFilename.c_str() );
+		cout << "Decls:\n" << wml::emit( reader.root );
+
+		Serializer::read( reader, modelDeclarations );
+	}
+
+	{
+		cout << "creating target scene..\n";
+		SGSScene targetScene;
+
+		SGSSceneRuntime runtime( &targetScene );
+		for (auto box = modelDeclarations.boxes.begin() ; box != modelDeclarations.boxes.end() ; ++box ) {
+			runtime.addBoxModel( Vector3f::Map( box->size ), runtime.createMaterial( Vector3f::Map( box->color ) ) );
+		}
+
+		for (auto sphere = modelDeclarations.spheres.begin() ; sphere != modelDeclarations.spheres.end() ; ++sphere ) {
+			runtime.addSphereModel( sphere->radius, runtime.createMaterial( Vector3f::Map( sphere->color ) ), sphere->u, sphere->v );
+		}
+
+		cout << "writing target scene '" << targetSceneFilename << "'\n";
+		{
+			Serializer::BinaryWriter writer( targetSceneFilename.c_str() );
+
+			Serializer::write( writer, targetScene );
+		}
+
+		cout << "Target scene successfully written!\n";
+	}
+}
+#else
+void real_main( int argc, const char **argv ) {
 	sf::RenderWindow window( sf::VideoMode( 640, 480 ), "sgsSceneCreator", sf::Style::Default, sf::ContextSettings(24, 8, 0, 4, 2, false,true, false) );
 	glewInit();
 
@@ -409,15 +555,26 @@ void real_main() {
 		Eigen::Affine3f transformation;
 		transformation.setIdentity();
 
+		const int boxIndex = runtime.addBoxModel( Eigen::Vector3f::Constant( 5.0 ), runtime.createMaterial( 255, 128, 128 ) );
+		const int sphereIndex = runtime.addSphereModel( 5.0, runtime.createMaterial( 128, 128, 255 ) );
+
+#if 1
 		runtime.addInstance( 
-			runtime.addBoxModel( Eigen::Vector3f::Constant( 5.0 ), runtime.createMaterial( 255, 128, 128 ) ),
+			boxIndex,
 			transformation
 		);
 
 		runtime.addInstance( 
-			runtime.addSphereModel( 5.0, runtime.createMaterial( 128, 128, 255 ) ),
+			sphereIndex,
 			Eigen::Affine3f( Eigen::Translation3f( Eigen::Vector3f::Constant( -10.0 ) ) )
 		);
+#endif
+
+		{
+			Serializer::BinaryWriter writer( "testScene.sgsScene" );
+			Serializer::write( writer, sgsScene );
+			return;
+		}
 
 		const char *cachePath = "scene.sgsRendererCache";
 		sgsSceneRenderer.processScene( make_nonallocated_shared( sgsScene ), cachePath );
@@ -591,7 +748,7 @@ void real_main() {
 			glEnable( GL_DEPTH_TEST );
 
 			const ViewerContext viewerContext = { camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() };
-			//optixRenderer.renderPinholeCamera( viewerContext, renderContext );
+			optixRenderer.renderPinholeCamera( viewerContext, renderContext );
 
 			// End the current frame and display its contents on screen
 			renderDuration.setString( renderTimer.format() );
@@ -606,10 +763,11 @@ void real_main() {
 
 	}
 };
+#endif
 
-void main() {
+void main( int argc, const char **argv ) {
 	try {
-		real_main();
+		real_main( argc, argv );
 	}
 	catch( std::exception &e) {
 		std::cout << e.what() << "\n";

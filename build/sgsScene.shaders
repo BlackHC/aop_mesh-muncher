@@ -27,8 +27,9 @@ sceneLighting:
 		sunShadowProjection	mat4
 
 	code::
-		float shadowMapLookUp( sampler2D shadowMap, const mat4 lightProjectionMatrix, const vec3 worldPosition ) {
-			vec4 transformedPosition = lightProjectionMatrix * vec4( worldPosition, 1.0 );
+		float shadowMapLookUp( sampler2D shadowMap, const mat4 lightProjectionMatrix, const vec3 worldPosition, const vec3 worldNormal ) {
+			const vec4 transformedPosition = lightProjectionMatrix * vec4( worldPosition, 1.0 );
+
 			// clip again
 			if( transformedPosition.z < -transformedPosition.w ) {
 				return 0.0;
@@ -36,9 +37,10 @@ sceneLighting:
 			// normalize the transformed position into clipping space coordinates
 			const vec3 clippedPosition = transformedPosition.xyz / transformedPosition.w;
 			const vec3 viewportPosition = (clippedPosition + 1.0) * 0.5;
-
+						
 			vec4 refDepth4 = textureGather( shadowMap, viewportPosition.xy );
-			if( any( greaterThan( refDepth4, vec4( viewportPosition.z * 0.99995 ) ) ) ) {
+			//return refDepth4.x;
+			if( any( greaterThan( refDepth4, vec4( viewportPosition.z * 0.995 ) ) ) ) {
 				return 1.0;
 			}
 			else {
@@ -48,17 +50,15 @@ sceneLighting:
 		}
 
 		vec3 lightFragment( const vec3 position, const vec3 normal, const vec3 diffuseColor ) {
-			//return vec4( ((sunShadowProjection * vec4( position, 1.0 )).xyz + 1) / 2, 1.0 );
-
 			// from position to light
 			const vec3 lightDirection = normalize( vec3( 0.0, 1.0, 1.0 ) );
 			const float diffuseAttenuation = getDiffuseAttenuation( normal, lightDirection ) * 0.8;
 			const float specularAttenuation = pow( getSpecularAttenuation( position, normal, lightDirection ), 18 );
 
 			const float ambientAttenuation = 0.2;
-			const float shadowMapAttenuation = shadowMapLookUp( sunShadowTexture, sunShadowProjection, position );
+			const float shadowMapAttenuation = shadowMapLookUp( sunShadowTexture, sunShadowProjection, position, normal );
 
-			//return vec4( vec3( shadowMapAttenuation ), 1.0 );
+			//return vec3( shadowMapAttenuation );
 			return diffuseColor * (ambientAttenuation +  (1.0 - ambientAttenuation) * shadowMapAttenuation * (diffuseAttenuation + specularAttenuation));
 		}
 

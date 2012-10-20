@@ -541,12 +541,13 @@ void SGSSceneRenderer::renderShadowmap( const RenderContext &renderContext ) {
 				continue;
 			}
 			if( material.textureIndex[0] != SGSScene::NO_TEXTURE ) {
-				textures[ material.textureIndex[0] ].bind();
-				Texture2D::enable();
+				textures[ material.textureIndex[0] ].bind();				
 			}
 			else {
-				Texture2D::unbind();
+				whiteTexture.bind();
 			}
+
+			Texture2D::enable();
 
 			glMatrixLoad( GL_MODELVIEW, getInstanceTransformation( instancedSubObject.instanceIndex ) );
 			glDrawElements(
@@ -946,9 +947,12 @@ int SGSSceneRenderer::addInstance( const Instance &instance ) {
 	int instanceIndex = instances.size() + scene->objects.size();
 
 	instances.push_back( instance );
+	
+	refreshInstancedSubObjects();
+
 	refillDynamicOptixBuffers();
 	updateSceneBoundingBox();
-	refreshInstancedSubObjects();
+	
 
 	return instanceIndex;
 }
@@ -959,6 +963,7 @@ void SGSSceneRenderer::removeInstance( int instanceIndex ) {
 		instances.erase( instances.begin() + instanceIndex );
 
 		refreshInstancedSubObjects();
+
 		refillDynamicOptixBuffers();
 		updateSceneBoundingBox();
 	}
@@ -1012,6 +1017,7 @@ namespace VoxelizedModel {
 		glFramebufferRenderbuffer( GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, renderbuffer );
 		// disable framebuffer operations
 		glDisable( GL_DEPTH_TEST );
+		glDisable( GL_CULL_FACE );
 		glDrawBuffer( GL_NONE );
 		glColorMask( GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE );
 		glDepthMask( GL_FALSE );

@@ -198,7 +198,7 @@ splatterFragmentShader:
 
 				VoxelInfo voxelInfo = processFragment();
 		
-				float deltaZ = 0.5 * fwidth( viewPosition.z );
+				float deltaZ = 0.0; // 0.5 * fwidth( viewPosition.z );
 				int minZ = int( viewPosition.z - deltaZ );
 				int maxZ = int( ceil( viewPosition.z + deltaZ ) );
 
