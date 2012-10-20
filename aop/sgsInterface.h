@@ -27,8 +27,6 @@ namespace SGSInterface {
 		}
 	};
 
-
-
 	// allows for queries of object centers in a certain distance
 	struct SceneGrid {
 		const SGSSceneRenderer &renderer;

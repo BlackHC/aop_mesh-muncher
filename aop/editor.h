@@ -241,7 +241,9 @@ struct Editor : EventDispatcher {
 
 		virtual void visit() {}
 
-		virtual void visit( ISelection *selection ) {}
+		virtual void visit( ISelection *selection ) {
+			visit();
+		}
 
 		virtual void visit( ObbSelection *obbSelection ) {
 			visit( (ISelection *) obbSelection );
@@ -460,6 +462,32 @@ struct Editor : EventDispatcher {
 		validateMode();
 	}
 
+	void selectAdditionalModel( int modelIndex ) {
+		struct Selector : SelectionVisitor {
+			int modelIndex;
+			Editor *editor;
+
+			Selector( Editor *editor, int modelIndex )
+				: editor( editor )
+				, modelIndex( modelIndex )
+			{
+			}
+
+			void visit() {
+				editor->selectModel( modelIndex );
+			}
+
+			void visit( SGSMultiModelSelection *selection ) {
+				auto found = boost::find( selection->modelIndices, modelIndex );
+				if( found == selection->modelIndices.end() ) {
+					selection->modelIndices.push_back( modelIndex );
+				}
+			}
+		};
+		Selector( this, modelIndex ).dispatch( selection );
+		validateMode();
+	}
+
 	void selectModels( const std::vector<int> &modelIndices ) {
 		selection = std::make_shared<SGSMultiModelSelection>( this, modelIndices );
 		validateMode();
@@ -471,6 +499,7 @@ struct Editor : EventDispatcher {
 	}
 
 	static void renderHighlitOBB( const Obb &obb );
+	Eigen::Vector3f getWorldDirection( float xh, float yh, float distance );
 };
 
 

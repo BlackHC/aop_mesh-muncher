@@ -60,7 +60,7 @@ struct ProbeContext {
 // terrain is -1, -1
 // miss is -2, -2
 struct SelectionResult {
-	enum {
+	enum : signed int {
 		SELECTION_INDEX_TERRAIN = -1,
 		SELECTION_INDEX_MISS = -2,
 		SELECTION_INDEX_STACK_OVERFLOW = -3

@@ -31,6 +31,7 @@ struct DebugUI;
 namespace aop {
 	struct CandidateSidebarUI;
 	struct LocalCandidateBarUI;
+	struct ModelSelectionBarUI;
 
 	struct TargetVolumesUI;
 	struct CameraViewsUI;
@@ -85,6 +86,7 @@ namespace aop {
 		std::shared_ptr< NamedVolumesEditorView > namedVolumesEditorView;
 		std::shared_ptr< CandidateSidebarUI > candidateSidebarUI;
 		std::vector< std::shared_ptr< LocalCandidateBarUI > > localCandidateBarUIs;
+		std::shared_ptr< ModelSelectionBarUI > modelSelectionBarUI;
 
 		std::shared_ptr< DebugUI > debugUI;
 

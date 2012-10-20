@@ -154,9 +154,9 @@ struct ProbeContextToleranceV2 {
 	}
 
 	void setDefault() {
-		occlusion_integerTolerance = 0.25 * OptixProgramInterface::numProbeSamples;
+		occlusion_integerTolerance = int( 0.25 * OptixProgramInterface::numProbeSamples );
 		colorLab_squaredTolerance = 25;
-		distance_tolerance = 0.25;
+		distance_tolerance = 0.25f;
 	}
 };
 

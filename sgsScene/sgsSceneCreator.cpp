@@ -236,7 +236,7 @@ struct SGSSceneRuntime {
 	}
 
 	static std::string getSimpleMaterialName( const SGSScene::Material &material ) {
-		return boost::str( boost::format( "%i %i %i" ) % material.diffuse.r % material.diffuse.g % material.diffuse.b );
+		return boost::str( boost::format( "%i %i %i" ) % int( material.diffuse.r ) % int( material.diffuse.g ) % int( material.diffuse.b ) );
 	}
 
 	int addBoxModel( const Eigen::Vector3f &size, const SGSScene::Material &material ) {
@@ -406,9 +406,20 @@ struct ModelDeclarations {
 
 		SERIALIZER_DEFAULT_IMPL( (radius)(color)(u)(v) )
 	};
+
+	/*struct ModelImports {
+		std::string scene;
+
+		std::vector< std::string > modelName;
+
+		SERIALIZER_DEFAULT_IMPL( (scene)(modelName) );
+	};*/
+
 	std::vector<BoxDeclaration> boxes;
 	std::vector<SphereDeclaration> spheres;
+	//std::vector<ModelImports> modelImports;
 
+	//SERIALIZER_DEFAULT_IMPL( (boxes)(spheres)(modelImports) )
 	SERIALIZER_DEFAULT_IMPL( (boxes)(spheres) )
 };
 
@@ -487,6 +498,7 @@ void real_main( int argc, const char **argv ) {
 		cout << "creating target scene..\n";
 		SGSScene targetScene;
 
+		cout << "creating primitive models..\n";
 		SGSSceneRuntime runtime( &targetScene );
 		for (auto box = modelDeclarations.boxes.begin() ; box != modelDeclarations.boxes.end() ; ++box ) {
 			runtime.addBoxModel( Vector3f::Map( box->size ), runtime.createMaterial( Vector3f::Map( box->color ) ) );
@@ -495,6 +507,10 @@ void real_main( int argc, const char **argv ) {
 		for (auto sphere = modelDeclarations.spheres.begin() ; sphere != modelDeclarations.spheres.end() ; ++sphere ) {
 			runtime.addSphereModel( sphere->radius, runtime.createMaterial( Vector3f::Map( sphere->color ) ), sphere->u, sphere->v );
 		}
+
+		/*cout << "importing models..\n";
+		std::map< std::string, SGSScene > importedScenes;
+		for( */
 
 		cout << "writing target scene '" << targetSceneFilename << "'\n";
 		{

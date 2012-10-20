@@ -43,8 +43,9 @@ void aop::LocalCandidateBarUI::init() {
 					else {
 						application->world->addInstance( modelIndex, queryObb.transformation.translation() );
 					}
-			}
-		) );
+				}
+			)
+		);
 		scroller.addEventHandler(
 			std::make_shared< ProgressBarWidget >(
 				score,

@@ -790,6 +790,62 @@ namespace aop {
 }
 
 namespace aop {
+	struct ModelSelectionBarUI {
+		Application *application;
+
+		ClippedContainer clipper;
+		ScrollableContainer scroller;
+		
+		ModelSelectionBarUI( Application *application )
+			: application( application  )
+		{
+			init();
+		}
+
+		void init() {
+			application->widgetRoot.addEventHandler( make_nonallocated_shared( clipper ) );
+			clipper.addEventHandler( make_nonallocated_shared( scroller ) );
+
+			const float buttonWidth = 0.1f;
+			const float buttonHeight = buttonWidth * ViewportContext::context->getAspectRatio();
+
+			scroller.size[0] = 1.0f;
+			scroller.size[1] = buttonHeight;
+			scroller.verticalScrollByDefault = false;
+
+			clipper.transformChain.setOffset( Eigen::Vector2f( 0.0f, 1.0f - buttonHeight ) );
+			
+			const int numModels = application->world->scene.models.size();
+			for (int modelIndex = 0; modelIndex < numModels ; modelIndex++) {
+				scroller.addEventHandler(
+					std::make_shared< ActionModelButton >(
+						Eigen::Vector2f( buttonWidth * modelIndex, 0.0 ),
+						Eigen::Vector2f( buttonWidth, buttonHeight ),
+						modelIndex,
+						application->world->sceneRenderer,
+						[this, modelIndex] () {
+							log( application->world->scene.modelNames[ modelIndex ] );
+
+							if( sf::Keyboard::isKeyPressed( sf::Keyboard::LShift ) ) {
+								application->editor.selectAdditionalModel( modelIndex );
+							}
+							else {
+								application->editor.selectModel( modelIndex );
+							}
+						}
+					)
+				);
+			}
+
+			scroller.updateScrollArea();
+			clipper.updateLocalArea();
+		}
+
+		void refresh() {
+
+		}
+	};
+
 	struct Application::NamedVolumesEditorView : Editor::Volumes {
 		std::vector< aop::SceneSettings::NamedTargetVolume > &volumes;
 
@@ -1129,6 +1185,8 @@ namespace aop {
 		modelDatabaseUI = std::make_shared< ModelDatabaseUI >( this );
 
 		candidateSidebarUI = createCandidateSidebarUI( this );
+
+		modelSelectionBarUI = std::make_shared< ModelSelectionBarUI >( this );
 
 		// init the debug ui
 		debugUI = std::make_shared< DebugUI >();
@@ -1500,7 +1558,12 @@ namespace aop {
 		antTweakBarEventHandler.init( mainWindow );
 		eventDispatcher.addEventHandler( make_nonallocated_shared( antTweakBarEventHandler ) );
 
-		initUI();
+		{
+			// TODO: hack - fix this [10/20/2012 Andreas]
+			const sf::Vector2i windowSize( mainWindow.getSize() );
+			ViewportContext viewportContext( windowSize.x, windowSize.y );
+			initUI();
+		}
 
 		ModelDatabase_init();
 		neighborDatabaseV2.modelDatabase = &modelDatabase;
@@ -1523,6 +1586,8 @@ namespace aop {
 		cameraViewsUI->update();
 		modelTypesUI->update();
 		mainUI->update();
+
+		modelSelectionBarUI->refresh();
 
 		// TODO: settle on refresh or update [10/12/2012 kirschan2]
 		debugUI->refresh();

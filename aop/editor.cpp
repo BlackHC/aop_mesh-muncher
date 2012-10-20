@@ -121,6 +121,15 @@ void Editor::convertScreenToHomogeneous( int x, int y, float &xh, float &yh ) {
 	yh = -(float( y ) / size.y * 2 - 1);
 }
 
+Eigen::Vector3f Editor::getWorldDirection( float xh, float yh, float distance ) {
+	Eigen::Vector3f u, v, w;
+	Eigen::unprojectAxes( view->viewerContext.worldViewerPosition, view->viewerContext.projectionView, u, v, w );
+
+	const float scale = distance / w.norm();
+
+	return scale * (xh * u + yh * v + w);
+}
+
 Eigen::Vector3f Editor::getScaledRelativeViewMovement( const Eigen::Vector3f &relativeMovement ) {
 	Eigen::Vector3f u, v, w;
 	Eigen::unprojectAxes( view->viewerContext.worldViewerPosition, view->viewerContext.projectionView, u, v, w );
@@ -386,89 +395,101 @@ void Editor::Placing::onMouse( EventState &eventState ) {
 		editor->convertScreenToHomogeneous( eventState.event.mouseButton.x, eventState.event.mouseButton.y, xh, yh );
 
 		SGSInterface::SelectionResult result;
-		if( editor->world->selectFromView( *editor->view, xh, yh, &result ) ) {
-			struct Placer : SelectionVisitor {
-				Editor *editor;
-				SGSInterface::SelectionResult &result;
+		bool hitFound = editor->world->selectFromView( *editor->view, xh, yh, &result );
+		
+		Vector3f normal = map( result.hitNormal );
+		Vector3f position = map( result.hitPosition );
 
-				Placer( Editor *editor, SGSInterface::SelectionResult &result )
-					: editor( editor )
-					, result( result )
-				{
-				}
-
-				void visit() {
-					// we create a new query volume
-					aop::SceneSettings::NamedTargetVolume volume;
-
-					const float size = 5.0;
-
-					volume.volume.size = Eigen::Vector3f::Constant( size );
-
-					const Vector3f hitNormal = map( result.hitNormal );
-					const Vector3f obbCenter = map( result.hitPosition ) + 0.5 * size * saturate( hitNormal );
-
-					volume.volume.transformation = Eigen::Translation3f( obbCenter );
-
-					editor->application->sceneSettings.volumes.push_back( volume );
-				}
-
-				// TODO: move this into mathUtility.h [10/19/2012 kirschan2]
-				static Eigen::Vector3f saturate( const Eigen::Vector3f &normal ) {
-					Eigen::Vector3f saturated;
-
-					for( int i = 0 ; i < 3 ; i++ ) {
-						if( normal[i] < -Eigen::NumTraits<float>::dummy_precision() ) {
-							saturated[i] = -1.0f;
-						}
-						else if( normal[i] > Eigen::NumTraits<float>::dummy_precision() ) {
-							saturated[i] = 1.0f;
-						}
-						else {
-							saturated[i] = 0.0f;
-						}
-					}
-					return saturated;
-				}
-
-				void visit( ISelection *selection ) {
-					// we place the current selection if we can transform it
-					if( !selection->canTransform() ) {
-						logError( "Can't transform the selected object---maybe static?" );
-
-						return;
-					}
-
-					const auto transformation = editor->selection->getTransformation();
-
-					const Vector3f hitNormal = map( result.hitNormal );
-			
-					const Vector3f obbCenter = map( result.hitPosition ) + 0.5 * editor->selection->getSize().cwiseProduct( saturate( hitNormal ) );
-
-					editor->selection->setTransformation(
-						Eigen::Translation3f( obbCenter ) * transformation.linear()
-					);
-				}
-
-				void visit( SGSMultiModelSelection *selection ) {
-					// we add a new instance if only one model type is selected
-					if( selection->modelIndices.size() != 1 ) {
-						logError( "Exactly model has to be selected!" );
-
-						return;
-					}
-
-					const int modelIndex = selection->modelIndices.front();
-					const auto boundingBox = editor->world->sceneRenderer.getModelBoundingBox( modelIndex );
-
-					const Vector3f hitNormal = map( result.hitNormal );
-					const Vector3f obbCenter = map( result.hitPosition ) + 0.5 * boundingBox.sizes().cwiseProduct( saturate( hitNormal ) );
-
-					editor->world->addInstance( modelIndex, obbCenter );
-				}
-			};
-			Placer( editor, result ).dispatch( editor->selection );
+		if( !hitFound ) {
+			const Vector3f direction = editor->getWorldDirection( xh, yh, 10.0 );
+			normal = direction.normalized();
+			position = editor->view->viewerContext.worldViewerPosition + direction;
 		}
+
+		struct Placer : SelectionVisitor {
+			Editor *editor;
+			const Vector3f &position;
+			const Vector3f &normal;
+
+			Placer( Editor *editor, const Vector3f &position, const Vector3f &normal )
+				: editor( editor )
+				, position( position )
+				, normal( normal )
+			{
+			}
+
+			void visit() {
+				// we create a new query volume
+				aop::SceneSettings::NamedTargetVolume volume;
+
+				const float size = 5.0;
+
+				volume.volume.size = Eigen::Vector3f::Constant( size );
+
+				const Vector3f obbCenter = position + saturateInBox( normal, Eigen::Vector3f::Constant( size ) );
+
+				volume.volume.transformation = Eigen::Translation3f( obbCenter );
+
+				editor->application->sceneSettings.volumes.push_back( volume );
+			}
+
+			// TODO: move this into mathUtility.h [10/19/2012 kirschan2]
+			static Eigen::Vector3f saturate( const Eigen::Vector3f &normal ) {
+				Eigen::Vector3f saturated;
+
+				for( int i = 0 ; i < 3 ; i++ ) {
+					if( normal[i] < -Eigen::NumTraits<float>::dummy_precision() ) {
+						saturated[i] = -1.0f;
+					}
+					else if( normal[i] > Eigen::NumTraits<float>::dummy_precision() ) {
+						saturated[i] = 1.0f;
+					}
+					else {
+						saturated[i] = 0.0f;
+					}
+				}
+				return saturated;
+			}
+
+			static Eigen::Vector3f saturateInBox( const Eigen::Vector3f &normal, const Eigen::Vector3f &size ) {
+				const float scale = normal.cwiseQuotient( size ).cwiseAbs().maxCoeff();
+				return normal * 0.5 / scale;
+			}
+
+			void visit( ISelection *selection ) {
+				// we place the current selection if we can transform it
+				if( !selection->canTransform() ) {
+					logError( "Can't transform the selected object---maybe static?" );
+
+					return;
+				}
+
+				const auto transformation = editor->selection->getTransformation();
+
+				const Vector3f obbCenter = position + saturateInBox( normal, editor->selection->getSize() );
+
+				editor->selection->setTransformation(
+					Eigen::Translation3f( obbCenter ) * transformation.linear()
+				);
+			}
+
+			void visit( SGSMultiModelSelection *selection ) {
+				// we add a new instance if only one model type is selected
+				if( selection->modelIndices.size() != 1 ) {
+					logError( "Exactly model has to be selected!" );
+
+					return;
+				}
+
+				const int modelIndex = selection->modelIndices.front();
+				const auto boundingBox = editor->world->sceneRenderer.getModelBoundingBox( modelIndex );
+
+				const Vector3f obbCenter = position + saturateInBox( normal, boundingBox.sizes() );
+
+				editor->world->addInstance( modelIndex, obbCenter );
+			}
+		};
+		Placer( editor, position, normal ).dispatch( editor->selection );
 	}
 	eventState.accept();
 }
