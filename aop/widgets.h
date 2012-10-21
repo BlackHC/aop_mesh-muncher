@@ -213,12 +213,13 @@ struct ScrollableContainer : WidgetContainer {
 		if( eventState.event.type == sf::Event::MouseWheelMoved ) {
 			//log( boost::format( "mouse wheel moved %i" ) % eventState.event.mouseWheel.delta );
 
+			// we use the offset to change the origin from -(length - scrollArea.max) to -scrollArea.min
 			auto offset = transformChain.getOffset();
 			if( verticalScrollByDefault ) {
-				offset[1] = clamp( offset[1] + eventState.event.mouseWheel.delta * scrollStep, -scrollArea.min()[1], size[1] -scrollArea.max()[1] );
+				offset[1] = clamp( offset[1] + eventState.event.mouseWheel.delta * scrollStep, size[1] - scrollArea.max()[1], -scrollArea.min()[1] );
 			}
 			else {
-				offset[0] = clamp( offset[0] + eventState.event.mouseWheel.delta * scrollStep, -scrollArea.min()[0], size[0] -scrollArea.max()[0] );
+				offset[0] = clamp( offset[0] + eventState.event.mouseWheel.delta * scrollStep, size[0] - scrollArea.max()[0], -scrollArea.min()[0] );
 			}
 			transformChain.setOffset( offset );
 

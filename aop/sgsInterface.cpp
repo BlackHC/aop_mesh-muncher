@@ -55,6 +55,10 @@ namespace SGSInterface {
 		sceneRenderer.renderSceneView( view.viewerContext.projectionView, view.viewerContext.worldViewerPosition, view.renderContext );
 	}
 
+	void World::renderStandaloneFrame( const View &view, bool wireframe ) {
+		sceneRenderer.renderFullScene( view.viewerContext.worldViewerPosition, view.renderContext, wireframe );
+	}
+
 	void World::renderOptixViewFrame( const View &view ) {
 		optixRenderer.renderPinholeCamera( view.viewerContext, view.renderContext );
 	}

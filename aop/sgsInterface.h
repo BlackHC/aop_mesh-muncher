@@ -64,6 +64,7 @@ namespace SGSInterface {
 
 		void init( const char *scenePath);
 		void renderViewFrame( const View &view );
+		void renderStandaloneFrame( const View &view, bool wireframe );
 		void renderOptixViewFrame( const View &view );
 		// TODO: remove this function again [10/14/2012 kirschan2]
 		void generateProbes( int instanceIndex, float resolution, std::vector<Probe> &probes, std::vector<Probe> &transformedProbes );

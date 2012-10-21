@@ -39,6 +39,7 @@ rtBuffer<ProbeContext> probeContexts;
 RT_PROGRAM void sampleProbes() {
 	Probe probe = probes[ probeIndex ];
 
+#if 1
 	Onb onb( probe.direction );
 
 	//rtPrintf( "%f", dot( onb.m_normal, cross( onb.m_tangent, onb.m_binormal ) ) );
@@ -51,8 +52,8 @@ RT_PROGRAM void sampleProbes() {
 			numProbes * 1979
 	;
 
-	float distance = 0.0f;
-	float3 color = make_float3( 0.0f );
+	float avgDistance = 0.0f;
+	float3 avgColor = make_float3( 0.0f );
 	int numHits = 0;
 	for( int rayIndex = 0 ; rayIndex < numProbeSamples ; ++rayIndex ) {
 		const float3 sample = hemisphereSamples[ (sampleStartIndex + rayIndex) % numHemisphereSamples ];
@@ -66,19 +67,39 @@ RT_PROGRAM void sampleProbes() {
 		// TODO: could weight the probes by sample.z
 		if( ray_eye.distance < maxDistance ) {
 			++numHits;
-			distance += ray_eye.distance;
-			color += ray_eye.color;
+			avgDistance += ray_eye.distance;
+			avgColor += ray_eye.color;
 		}
 	}
+#else
+	float avgDistance = 0.0f;
+	float3 avgColor = make_float3( 0.0f );
+	int numHits = 0;
+
+	{
+		Ray ray( probe.position, probe.direction, RT_EYE, sceneEpsilon, maxDistance );
+
+		Ray_Eye ray_eye;
+		rtTrace( rootObject, ray, ray_eye );
+
+		if( ray_eye.distance < maxDistance ) {
+			++numHits;
+			avgDistance += ray_eye.distance;
+			avgColor += ray_eye.color;
+		}
+	}
+#endif
 
 	ProbeContext &context = probeContexts[ probeIndex ];
 	if( numHits ) {
-		const float3 avgColor = color / numHits;
-		// convert to cielab
-		const float3 Lab = CIELAB::fromRGB( avgColor );
-		context.Lab = make_Lab( Lab );
-		context.distance = distance / numHits;
+		avgDistance = avgDistance / numHits;
+		avgColor = avgColor / numHits;
 	}
+
+	// convert to cielab
+	const float3 Lab = CIELAB::fromRGB( avgColor );
+	context.Lab = make_Lab( Lab );
+	context.distance = avgDistance;
 	context.hitCounter = numHits;
 }
 

@@ -238,7 +238,7 @@ struct DebugUI {
 	}
 
 	void render() {
-		for( auto debugObject = debugObjects.begin() ; debugObject != debugObjects.end() ; ++debugObject ) {
+		for( auto debugObject = debugObjects.rbegin() ; debugObject != debugObjects.rend() ; ++debugObject ) {
 			(*debugObject)->renderScene();
 		}
 	}
@@ -422,7 +422,7 @@ namespace DebugObjects {
 				window->makeVisible( 0 );
 				modelVisualization.displayList.create();
 				modelVisualization.displayList.begin();
-				application->world->sceneRenderer.renderFullScene( true );
+				application->world->renderStandaloneFrame( application->cameraView, true );
 				modelVisualization.displayList.end();
 			}
 			// render the scene
@@ -431,7 +431,7 @@ namespace DebugObjects {
 				modelVisualization.name = "scene (normal)";
 				modelVisualization.displayList.create();
 				modelVisualization.displayList.begin();
-				application->world->sceneRenderer.renderFullScene( false );
+				application->world->renderStandaloneFrame( application->cameraView, false );
 				modelVisualization.displayList.end();
 			}
 			// render the samples using position colors
@@ -466,6 +466,8 @@ namespace DebugObjects {
 			window->keyLogics[0].disableMask = window->keyLogics[9].disableMask = 512 + 1;
 
 			window->init( name );
+
+			window->camera = application->mainCamera;
 
 			application->debugWindowManager.add( window );
 		}
@@ -812,6 +814,7 @@ namespace aop {
 			scroller.size[0] = 1.0f;
 			scroller.size[1] = buttonHeight;
 			scroller.verticalScrollByDefault = false;
+			scroller.scrollStep = buttonWidth;
 
 			clipper.transformChain.setOffset( Eigen::Vector2f( 0.0f, 1.0f - buttonHeight ) );
 			
@@ -884,6 +887,17 @@ namespace aop {
 			;
 
 			ui.setName( "aop" );
+
+			ui.add( AntTWBarUI::makeSharedButton( 
+				"Save scene",
+				[this] {
+					application->world->sceneRenderer.makeAllInstancesStatic();
+					{
+						Serializer::BinaryWriter writer( application->settings.scenePath.c_str() );
+						Serializer::write( writer, application->world->scene );
+					}
+				}
+			) );
 
 			ui.add( AntTWBarUI::makeSharedButton( 
 				"Make all objects dynamic",
@@ -1381,7 +1395,7 @@ namespace aop {
 
 			AUTO_TIMER_BLOCK( boost::str( boost::format( "sampling probe batch with %i probes for instance %i" ) % probes.size() % instanceIndex ) ) {
 				renderContext.disabledInstanceIndex = instanceIndex;
-				world->optixRenderer.sampleProbes( transformedProbes, rawDataset, renderContext, sceneSettings.probeGenerator_maxDistance, instanceIndex );
+				world->optixRenderer.sampleProbes( transformedProbes, rawDataset, renderContext, sceneSettings.probeGenerator_maxDistance, instanceIndex + rand() );
 			}
 			progressTracker.markFinished();
 

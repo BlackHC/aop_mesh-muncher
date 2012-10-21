@@ -3,16 +3,30 @@
 #include "boost/range/size.hpp"
 
 #include "optixEigenInterop.h"
+#include "boost/type_traits/extent.hpp"
 
 using namespace Eigen;
 
 namespace ProbeGenerator {
-	static Eigen::Vector3f directions[26];
+	static Eigen::Vector3f directions[ boost::extent< decltype( neighborOffsets ) >::value  ];
+	BOOST_STATIC_ASSERT( boost::extent< decltype( neighborOffsets ) >::value  == 26 );
 
 	void initDirections() {
 		for( int i = 0 ; i < boost::size( neighborOffsets ) ; i++ ) {
 			directions[i] = neighborOffsets[i].cast<float>().normalized();
 		}
+	}
+
+	const Eigen::Vector3f &getDirection( int index ) {
+		return directions[index];
+	}
+
+	const Eigen::Vector3f *getDirections() {
+		return directions;
+	}
+
+	int getNumDirections() {
+		return boost::size( neighborOffsets );
 	}
 
 	static void transformProbe( const Probe &probe, const Obb::Transformation &transformation, Probe &transformedProbe ) {
@@ -43,6 +57,7 @@ namespace ProbeGenerator {
 			for( int i = 0 ; i < boost::size( directions ) ; i++ ) {
 				if( position.dot( directions[i] ) >= 0 ) {
 					map( probe.direction ) = directions[i];
+					probe.directionIndex = i;
 					probes.push_back( probe );
 				}
 			}
@@ -65,6 +80,7 @@ namespace ProbeGenerator {
 
 			for( int i = 0 ; i < boost::size( directions ) ; i++ ) {
 				map( probe.direction ) = obb.transformation.linear() * directions[i];
+				probe.directionIndex = i;
 				transformedProbes.push_back( probe );
 			}
 		}
@@ -80,6 +96,7 @@ namespace ProbeGenerator {
 		for( int i = 0 ; i < boost::size( directions ) ; i++ ) {
 			if( averagedNormal.dot( directions[i] ) >= threshold ) {
 				map( probe.direction ) = directions[i];
+				probe.directionIndex = i;
 				probes.push_back( probe );
 			}
 		}

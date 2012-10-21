@@ -493,6 +493,11 @@ namespace Serializer {
 
 	template< typename Value >
 	void get( TextReader &reader, Value &value ) {
+		if( reader.mapNode->nodes.size() <= reader.unnamedCounter ) {
+			// TODO: print a warning? [10/21/2012 kirschan2]
+			return;
+		}
+
 		wml::Node &itemNode = reader.mapNode->nodes[ reader.unnamedCounter++ ];
 
 		// TODO: on demand keyNode creation would be better

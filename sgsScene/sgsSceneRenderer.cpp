@@ -632,10 +632,9 @@ void SGSSceneRenderer::renderSceneView( const Matrix4f &projectionView, const Ve
 	drawScene( worldViewerPosition, renderContext, debug.showSceneWireframe );
 }
 
-void SGSSceneRenderer::renderFullScene( bool wireframe ) {
-	RenderContext renderContext;
+void SGSSceneRenderer::renderFullScene( const Vector3f &worldViewerPosition, const RenderContext &renderContext, bool wireframe ) {
 	refreshVisibilityLists_noCulling( renderContext );
-	drawScene( Eigen::Vector3f::Zero(), renderContext, wireframe );
+	drawScene( worldViewerPosition, renderContext, wireframe );
 }
 
 void SGSSceneRenderer::drawScene( const Vector3f &worldViewerPosition, const RenderContext &renderContext, bool wireframe ) {

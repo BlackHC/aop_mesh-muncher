@@ -46,6 +46,7 @@ struct MaterialInfo {
 struct Probe {
 	optix::float3 position;
 	optix::float3 direction;
+	int directionIndex;
 };
 
 struct ProbeContext {

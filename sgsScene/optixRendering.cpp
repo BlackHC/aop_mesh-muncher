@@ -462,13 +462,13 @@ void OptixRenderer::createHemisphereSamples( optix::float3 *hemisphereSamples ) 
 	// info about how cosine_sample_hemisphere's parameters work
 	// we sample a disk and project it up onto the hemisphere
 	//
-	// u1 is the radius and u2 the angle
+	// u1 is the squared radius and u2 the angle
 
 	// we have 8 sample directions in every unit circle slice
 	// => fov: 45° => half is 22.5
 	// // sin(22.5°) = 0.38268343236
 	for( int i = 0 ; i < numHemisphereSamples ; ++i ) {
-		const float u1 = distribution(rng) * 0.38268343236;
+		const float u1 = distribution(rng) * 0.38268343236 * 0.38268343236;
 		const float u2 = distribution(rng);
 		optix::cosine_sample_hemisphere( u1, u2, hemisphereSamples[i] );
 	}

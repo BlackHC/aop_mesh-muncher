@@ -12,6 +12,11 @@ namespace ProbeGenerator {
 	typedef OptixProgramInterface::Probe Probe;
 
 	void initDirections();
+	
+	const Eigen::Vector3f &getDirection( int index );
+	const Eigen::Vector3f *getDirections();
+	int getNumDirections();
+
 	void transformProbe( const Probe &probe, const Obb::Transformation &transformation, Probe &transformedProbe );
 	void transformProbes( const std::vector<Probe> &probes,const Obb::Transformation &transformation, std::vector<Probe> &transformedProbes );
 

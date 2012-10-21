@@ -71,6 +71,8 @@ void visualizeProbeDataset( const Eigen::Vector3f &skyColor, float maxDistance, 
 
 		switch( pvm ) {
 		case PVM_COLOR:
+// blend with skyColor depending on the occlusion factor
+#if 0
 			DebugRender::setColor( 
 						map( OptixProgramInterface::CIELAB::toRGB( 
 								optix::make_float3( probeContext->Lab.x, probeContext->Lab.y, probeContext->Lab.z )
@@ -80,6 +82,18 @@ void visualizeProbeDataset( const Eigen::Vector3f &skyColor, float maxDistance, 
 				+
 					(1.0 - occlusionFactor) * skyColor
 			);
+#else
+			if( probeContext->hitCounter > 0 ) {
+				DebugRender::setColor( 
+					map( OptixProgramInterface::CIELAB::toRGB( 
+						optix::make_float3( probeContext->Lab.x, probeContext->Lab.y, probeContext->Lab.z )
+					) )
+				);
+			}
+			else {
+				DebugRender::setColor( skyColor );
+			}
+#endif
 			break;
 		case PVM_OCCLUSION:
 			DebugRender::setColor( 

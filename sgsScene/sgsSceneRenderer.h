@@ -452,7 +452,7 @@ struct SGSSceneRenderer {
 
 	// renders the full scene with no real viewer position and no render context
 	// there is not accurate specular lighting and there is no alpha sorting
-	void renderFullScene( bool wireframe );
+	void renderFullScene( const Eigen::Vector3f &worldViewerPosition, const RenderContext &renderContext, bool wireframe );
 	void sortInstancedSubObjectsByDistance( std::vector< int > &list, const Eigen::Vector3f &worldViewerPosition );
 
 	void initObjectMeshData( OptixRenderer *optixRenderer, const OptixHelpers::Namespace::Modules &modules, Optix::ObjectMeshData &meshData );

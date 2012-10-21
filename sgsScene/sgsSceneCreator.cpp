@@ -399,9 +399,12 @@ struct ModelDeclarations {
 
 		SphereDeclaration() : u( 10 ), v( 20 ) {}
 
-		SphereDeclaration( float radius, const Vector3f &color ) {
+		SphereDeclaration( float radius, const Vector3f &color, int u = 10, int v = 20 ) {
 			this->radius = radius;
 			Vector3f::Map( this->color ) = color;
+
+			this->u = u;
+			this->v = v;
 		}
 
 		SERIALIZER_DEFAULT_IMPL( (radius)(color)(u)(v) )
@@ -443,7 +446,11 @@ namespace po = boost::program_options;
 using namespace std;
 
 void real_main( int argc, const char **argv ) {
-	vector< string > args = po::split_winmain( "exampleModelDecls.wml testScene.sgsScene" );
+	//vector< string > args = po::split_winmain( "exampleModelDecls.wml testScene.sgsScene" );
+	vector< string > args;
+	for( int i = 1 ; i < argc ; i++ ) {
+		args.push_back( argv[ i ] );
+	}
 	
 	string modelDeclFilename, targetSceneFilename;
 	
