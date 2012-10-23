@@ -17,6 +17,12 @@ namespace ProbeGenerator {
 	const Eigen::Vector3f *getDirections();
 	int getNumDirections();
 
+	void initOrientations();
+	
+	int getNumOrientations();
+	const int *getRotatedDirections( int orientationIndex );
+	const Eigen::Matrix3f getRotation( int orientationIndex );
+
 	void transformProbe( const Probe &probe, const Obb::Transformation &transformation, Probe &transformedProbe );
 	void transformProbes( const std::vector<Probe> &probes,const Obb::Transformation &transformation, std::vector<Probe> &transformedProbes );
 

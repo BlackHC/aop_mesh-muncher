@@ -4,12 +4,28 @@
 
 #include "optixEigenInterop.h"
 #include "boost/type_traits/extent.hpp"
+#include "boost/format.hpp"
 
 using namespace Eigen;
+
+namespace {
+	// 11 main axes
+	const Eigen::Vector3i rotationAxes[] = {
+		Eigen::Vector3i( 1, 0, 0 ), Eigen::Vector3i( 0, 1, 0 ), Eigen::Vector3i( 0, 0, 1 ), 
+		Eigen::Vector3i( 1, 1, 0 ), Eigen::Vector3i( 1, -1, 0 ),
+		Eigen::Vector3i( 1, 0, 1 ), Eigen::Vector3i( 1, 0, -1 ), 
+		Eigen::Vector3i( 0, 1, -1 ), Eigen::Vector3i( 0, 1, 1 )
+		//Eigen::Vector3i( 1, -1, 1 ), Eigen::Vector3i( 1, 1, -1 ),
+		//Eigen::Vector3i( 1, 1, 1 ), Eigen::Vector3i( 1, -1, -1 ),
+	};
+}
 
 namespace ProbeGenerator {
 	static Eigen::Vector3f directions[ boost::extent< decltype( neighborOffsets ) >::value  ];
 	BOOST_STATIC_ASSERT( boost::extent< decltype( neighborOffsets ) >::value  == 26 );
+
+	static Eigen::Matrix3f orientations[ boost::extent< decltype( rotationAxes ) >::value * 3 + 1 ];
+	static int rotatedDirectionsMap[ boost::extent< decltype( orientations ) >::value ][ boost::extent< decltype( neighborOffsets ) >::value ];
 
 	void initDirections() {
 		for( int i = 0 ; i < boost::size( neighborOffsets ) ; i++ ) {
@@ -26,7 +42,53 @@ namespace ProbeGenerator {
 	}
 
 	int getNumDirections() {
-		return boost::size( neighborOffsets );
+		return (int) boost::size( neighborOffsets );
+	}
+
+	void initOrientations() {
+		// init the rotation matrices
+		orientations[0].setIdentity();
+
+		for( int i = 0 ; i < boost::size( rotationAxes ) ; ++i ) {
+			const Vector3d rotationAxis = rotationAxes[i].cast<double>().normalized();
+			orientations[ 1 + i * 3 ] = Eigen::AngleAxisd( Math::PI_2, rotationAxis ).toRotationMatrix().cast<float>();
+			orientations[ 1 + i * 3 + 1 ] = Eigen::AngleAxisd( Math::PI, rotationAxis ).toRotationMatrix().cast<float>();
+			orientations[ 1 + i * 3 + 2 ] = Eigen::AngleAxisd( Math::PI_2, -rotationAxis ).toRotationMatrix().cast<float>();
+		}
+
+		// map the directions
+		for( int i = 0 ; i < boost::size( orientations ) ; ++i ) {
+			//std::cout << "orientation: " << i << "\n";
+
+			for( int j = 0 ; j < boost::size( directions ) ; ++j ) {
+				const Vector3d rotatedDirection = (orientations[ i ] * directions[j]).cast<double>().normalized();
+
+				// find the best direction that matches the rotated direction
+				float bestCosAngle = -2.f;
+				int bestMatchIndex = 0;
+				for( int k = 0 ; k < boost::size( directions ) ; ++k ) {
+					const float cosAngle = (float) rotatedDirection.dot( directions[ k ].cast<double>().normalized() );
+					if( cosAngle > bestCosAngle ) {
+						bestCosAngle = cosAngle;
+						bestMatchIndex = k;
+					}
+				}
+				//std::cout << boost::format( "\tdirection: %i cosAngle: %f -> %i (%f %f)\n" ) % j % bestCosAngle % bestMatchIndex % rotatedDirection.norm() % directions[ bestMatchIndex ].norm();
+				rotatedDirectionsMap[ i ][ j ] = bestMatchIndex;
+			}
+		}
+	}
+	
+	int getNumOrientations() {
+		return (int) boost::size( orientations );
+	}
+
+	const int *getRotatedDirections( int orientationIndex ) {
+		return rotatedDirectionsMap[ orientationIndex ];
+	}
+
+	const Eigen::Matrix3f getRotation( int orientationIndex ) {
+		return orientations[ orientationIndex ];
 	}
 
 	static void transformProbe( const Probe &probe, const Obb::Transformation &transformation, Probe &transformedProbe ) {
@@ -91,7 +153,7 @@ namespace ProbeGenerator {
 		map( probe.position ) = position;
 
 		const float averagedNormalLength = averagedNormal.norm();
-		const float threshold = averagedNormalLength * (averagedNormalLength - 1.0);
+		const float threshold = averagedNormalLength * (averagedNormalLength - 1.0f);
 
 		for( int i = 0 ; i < boost::size( directions ) ; i++ ) {
 			if( averagedNormal.dot( directions[i] ) >= threshold ) {
