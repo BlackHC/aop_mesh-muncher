@@ -2,6 +2,7 @@
 #include <optix_world.h>
 
 #include "rendering.h"
+#include <vector>
 
 struct SGSSceneRenderer;
 
@@ -9,8 +10,8 @@ struct OptixRenderer {
 	typedef OptixProgramInterface::Probe Probe;
 	typedef OptixProgramInterface::ProbeContext ProbeContext;
 
-	typedef std::vector< Probe > Probes;
-	typedef std::vector< ProbeContext > ProbeContexts;
+	typedef OptixProgramInterface::Probes Probes;
+	typedef OptixProgramInterface::ProbeContexts ProbeContexts;
 
 	typedef std::vector< optix::float2 > SelectionRays;
 

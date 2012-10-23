@@ -2,114 +2,19 @@
 #include "boost/range/algorithm/merge.hpp"
 
 #if 0
-void RawProbeDataset::sort() {
-	AUTO_TIMER_FOR_FUNCTION();
-
-	using namespace generic;
-
-	const auto iterator_begin = make_sort_permute_iter( probeContexts.begin(), probes.begin() );
-	const auto iterator_end = make_sort_permute_iter( probeContexts.end(), probes.end() );
-
-	std::sort(
-		iterator_begin,
-		iterator_end,
-		make_sort_permute_iter_compare_pred<decltype(iterator_begin)>( probeContext_lexicographicalLess )
-	);
-}
-#endif
-
 InstanceProbeDataset InstanceProbeDataset::merge( const InstanceProbeDataset &first, const InstanceProbeDataset &second ) {
 	AUTO_TIMER_DEFAULT( boost::str( boost::format( "with %i + %i = %i probes ") % first.size() % second.size() % (first.size() + second.size()) ) );
 
-#if 0
-	using namespace generic;
-
-	SortedProbeDataset dataset;
-	dataset.probes().resize( first.size() + second.size() );
-	dataset.probeContexts().resize( first.size() + second.size() );
-
-	const auto first_iterator_begin = make_sort_permute_iter( first.getProbeContexts().begin(), first.getProbes().begin() );
-	const auto first_iterator_end = make_sort_permute_iter( first.getProbeContexts().end(), first.getProbes().end() );
-
-	const auto second_iterator_begin = make_sort_permute_iter( second.getProbeContexts().begin(), second.getProbes().begin() );
-	const auto second_iterator_end = make_sort_permute_iter( second.getProbeContexts().end(), second.getProbes().end() );
-
-	const auto dataset_iterator_begin = make_sort_permute_iter( dataset.probeContexts().begin(), dataset.probes().begin() );
-
-	std::merge(
-		first_iterator_begin,
-		first_iterator_end,
-		second_iterator_begin,
-		second_iterator_end,
-		dataset_iterator_begin,
-		make_sort_permute_iter_compare_pred<decltype(first_iterator_begin)>( probeContext_lexicographicalLess )
-	);
-
-	return std::move( dataset );
-#else
 	InstanceProbeDataset dataset;
 	dataset.probeContexts().resize( first.size() + second.size() );
 	boost::merge( first.getProbeContexts(), second.getProbeContexts(), dataset.probeContexts().begin(), ProbeContext::lexicographicalLess );
 
 	return std::move( dataset );
-#endif
 }
 
 InstanceProbeDataset InstanceProbeDataset::mergeMultiple( const std::vector< const InstanceProbeDataset* > &datasets) {
 	AUTO_TIMER_DEFAULT( boost::str( boost::format( "with %i datasets" ) % datasets.size() ) );
 
-
-#if 0
-	using namespace generic;
-
-	// best performance when using binary merges:
-	//	use a priority queue to merge the two shortest datasets into a bigger one
-	//	reinsert the resulting dataset into the heap
-	//
-	// use in-place merges, so no additional memory has to be allocated
-	//
-	// different idea:
-	//	implement n-way merge using a priority queue that keeps track where the elements were added from
-	//	for every element that drops out front, a new element from the dataset is inserted (until it runs out of elements)
-
-	if( datasets.size() < 2 ) {
-		throw std::invalid_argument( "less than 2 datasets passed to mergeMultiple!" );
-	}
-
-	// determine the total count of all probes
-	int totalCount = 0;
-	for( auto dataset = datasets.begin() ; dataset != datasets.end() ; ++dataset ) {
-		totalCount += (int) (*dataset)->size();
-	}
-
-	log( boost::format( "merging %i probes" ) % totalCount );
-
-	SortedProbeDataset mergedDataset;
-
-	// reserve enough space for all probes
-	mergedDataset.probes().reserve( totalCount );
-	mergedDataset.probeContexts().reserve( totalCount );
-
-
-	for( auto dataset = datasets.begin() ; dataset != datasets.end() ; ++dataset ) {
-		boost::push_back( mergedDataset.probes(), (*dataset)->getProbes() );
-		boost::push_back( mergedDataset.probeContexts(), (*dataset)->getProbeContexts() );
-	}
-
-	// stable sorting everything is the next best alternative to doing it manually :)
-	{
-		const auto iterator_begin = make_sort_permute_iter( mergedDataset.probeContexts().begin(), mergedDataset.probes().begin() );
-		const auto iterator_end = make_sort_permute_iter( mergedDataset.probeContexts().end(), mergedDataset.probes().end() );
-
-		std::stable_sort(
-			iterator_begin,
-			iterator_end,
-			make_sort_permute_iter_compare_pred<decltype(iterator_begin)>( probeContext_lexicographicalLess )
-		);
-	}
-
-	return std::move( mergedDataset );
-#else
 	// best performance when using binary merges:
 	//	use a priority queue to merge the two shortest datasets into a bigger one
 	//	reinsert the resulting dataset into the heap
@@ -145,35 +50,10 @@ InstanceProbeDataset InstanceProbeDataset::mergeMultiple( const std::vector< con
 	boost::stable_sort( mergedDataset.probeContexts(), ProbeContext::lexicographicalLess );
 
 	return std::move( mergedDataset );
-#endif
 }
 
 InstanceProbeDataset InstanceProbeDataset::subSet( const std::pair< int, int > &range ) const {
-#if 0
-	using namespace generic;
 
-	SortedProbeDataset dataset;
-
-	const int rangeSize = range.second - range.first;
-	if( !rangeSize ) {
-		return dataset;
-	}
-
-	dataset.probes().reserve( rangeSize );
-	dataset.probeContexts().reserve( rangeSize );
-
-	// copy data
-	std::copy( getProbeContexts().begin() + range.first, getProbeContexts().begin() + range.second, std::back_inserter( dataset.probeContexts() ) );
-	std::copy( getProbes().begin() + range.first, getProbes().begin() + range.second, std::back_inserter( dataset.probes() ) );
-
-	auto iterator_begin = make_sort_permute_iter( dataset.probeContexts().begin(), dataset.probes().begin() );
-	auto iterator_end = make_sort_permute_iter( dataset.probeContexts().end(), dataset.probes().end() );
-
-	// TODO: either use sort or stable_sort depending on the size of the dataset
-	std::stable_sort( iterator_begin, iterator_end, make_sort_permute_iter_compare_pred< decltype( iterator_begin ) >( probeContext_lexicographicalLess_startWithDistance ) );
-
-	return dataset;
-#else
 	InstanceProbeDataset dataset;
 
 	const int rangeSize = range.second - range.first;
@@ -190,10 +70,10 @@ InstanceProbeDataset InstanceProbeDataset::subSet( const std::pair< int, int > &
 	boost::stable_sort( dataset.probeContexts(), ProbeContext::lexicographicalLess_startWithDistance );
 
 	return dataset;
-#endif
 }
+#endif
 
-void IndexedProbeDataset::setHitCounterLowerBounds() {
+void IndexedProbeContexts::setHitCounterLowerBounds() {
 	AUTO_TIMER_FOR_FUNCTION();
 
 	// improvement idea: use a binary search like algorithm
@@ -219,5 +99,45 @@ void IndexedProbeDataset::setHitCounterLowerBounds() {
 	// fill the remaining levels
 	for( ; level <= OptixProgramInterface::numProbeSamples ; level++ ) {
 		hitCounterLowerBounds.push_back( size() );
+	}
+}
+
+void ProbeDatabase::registerSceneModels( const std::vector< std::string > &modelNames ) {
+	modelIndexMapper.registerSceneModels( modelNames );
+	modelIndexMapper.registerLocalModels( localModelNames );
+}
+
+void ProbeDatabase::clearAll() {
+	sampledModels.clear();
+	localModelNames.clear();
+	modelIndexMapper.resetLocalMaps();
+}
+
+void ProbeDatabase::clear( int sceneModelIndex ) {
+	const int localModelIndex = modelIndexMapper.getLocalModelIndex( sceneModelIndex );
+	if( localModelIndex != ModelIndexMapper::INVALID_INDEX ) {
+		sampledModels.erase( sampledModels.begin() + localModelIndex );
+	}
+	modelIndexMapper.registerLocalModels( localModelNames );
+}
+
+void ProbeDatabase::addInstanceProbes( int sceneModelIndex, const Obb &sampleSource, const RawProbes &untransformedProbes, const RawProbeContexts &probeContexts ) {
+	int localModelIndex = modelIndexMapper.getLocalModelIndex( sceneModelIndex );
+	if( localModelIndex == ModelIndexMapper::INVALID_INDEX ) {
+		localModelIndex = localModelNames.size();
+		localModelNames.push_back( modelIndexMapper.getSceneModelName( sceneModelIndex ) );
+		modelIndexMapper.registerLocalModel( localModelNames.back() );
+
+		sampledModels.emplace_back( SampledModel() );
+	}
+		
+	SampledModel &idDataset = sampledModels[ localModelIndex ];
+	idDataset.addInstances( untransformedProbes, sampleSource, transformContexts( probeContexts ) );
+}
+
+void ProbeDatabase::compile( int sceneModelIndex ) {
+	const int localModelIndex = modelIndexMapper.getLocalModelIndex( sceneModelIndex );
+	if( localModelIndex != ModelIndexMapper::INVALID_INDEX ) {
+		sampledModels[ localModelIndex ].mergeInstances();
 	}
 }

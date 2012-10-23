@@ -93,10 +93,11 @@ namespace aop {
 		void addAlreadySampledModels() {
 			std::vector< int > modelIndices;
 
-			const int numDatasets = application->probeDatabase.getNumIdDatasets();
-			for( int modelIndex = 0 ; modelIndex < numDatasets ; modelIndex++ ) {
-				if( !application->probeDatabase.isEmpty( modelIndex ) ) {
-					modelIndices.push_back( modelIndex );
+			const int numDatasets = application->probeDatabase.getNumSampledModels();
+			for( int localModelIndex = 0 ; localModelIndex < numDatasets ; localModelIndex++ ) {
+				const int sceneModelIndex = application->probeDatabase.getSceneModelIndex( localModelIndex );
+				if( !application->probeDatabase.getSampledModels()[ localModelIndex ].isEmpty() ) {
+					modelIndices.push_back( sceneModelIndex );
 				}
 			}
 

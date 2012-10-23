@@ -20,7 +20,7 @@ void visualizeProbes( float resolution, const std::vector< SGSInterface::Probe >
 
 void visualizeColorGrid( const VoxelizedModel::Voxels &grid, GridVisualizationMode gvm ) {
 	const float size = grid.getMapping().getResolution();
-	
+
 	DebugRender::begin();
 	for( auto iterator = grid.getIterator() ; iterator.hasMore() ; ++iterator ) {
 		const auto &normalHit = grid[ *iterator ];
@@ -35,35 +35,40 @@ void visualizeColorGrid( const VoxelizedModel::Voxels &grid, GridVisualizationMo
 				DebugRender::setColor( positionColor );
 				break;
 			case GVM_HITS:
-				DebugRender::setColor( Vector3f::UnitY() * (0.5 + normalHit.numSamples / 128.0) );
+				DebugRender::setColor( Vector3f::UnitY() * (0.5f + normalHit.numSamples / 128.0f) );
 				break;
 			case GVM_NORMAL:
 				glColor3ubv( &normalHit.nx );
 				break;
 			}
-			
+
 			DebugRender::drawBox( Vector3f::Constant( size ), false );
 		}
 	}
 	DebugRender::end();
 }
 
-void visualizeProbeDataset( const Eigen::Vector3f &skyColor, float maxDistance, float resolution, const std::vector< InstanceProbeDataset::Probe > &probes, const std::vector< InstanceProbeDataset::ProbeContext > &probeContexts, ProbeVisualizationMode pvm ) {
-	using namespace Eigen;
-
+void visualizeProbeDataset(
+	const Eigen::Vector3f &missColor,
+	float maxDistance,
+	float resolution,
+	const DBProbes &probes,
+	const DBProbeContexts &probeContexts,
+	ProbeVisualizationMode pvm
+) {
 	// sin and cos of 22.5°
-	const float directionDistance = 0.92387953251 * 0.5 * resolution;
-	const float radius = 0.38268343236 * 0.5 * resolution ;
+	const float directionDistance = 0.92387953251f * 0.5f * resolution;
+	const float radius = 0.38268343236f * 0.5f * resolution ;
 
 	DebugRender::begin();
 	for( auto probeContext = probeContexts.begin() ; probeContext != probeContexts.end() ; ++probeContext ) {
-		const InstanceProbeDataset::Probe &probe = probes[ probeContext->probeIndex ];
-		
+		const auto &probe = probes[ probeContext->probeIndex ];
+
 		const auto direction = map( probe.direction );
 
 		DebugRender::setPosition( map( probe.position ) + direction * directionDistance );
-		
-		// build the two axes		
+
+		// build the two axes
 		const Eigen::Vector3f axis1 = direction.unitOrthogonal();
 		const Eigen::Vector3f axis2 = direction.cross( axis1 );
 
@@ -71,45 +76,45 @@ void visualizeProbeDataset( const Eigen::Vector3f &skyColor, float maxDistance, 
 
 		switch( pvm ) {
 		case PVM_COLOR:
-// blend with skyColor depending on the occlusion factor
 #if 0
-			DebugRender::setColor( 
-						map( OptixProgramInterface::CIELAB::toRGB( 
+			// blend with missColor depending on the occlusion factor
+			DebugRender::setColor(
+						map( OptixProgramInterface::CIELAB::toRGB(
 								optix::make_float3( probeContext->Lab.x, probeContext->Lab.y, probeContext->Lab.z )
 						) )
 					*
 						occlusionFactor
 				+
-					(1.0 - occlusionFactor) * skyColor
+					(1.0f - occlusionFactor) * missColor
 			);
 #else
 			if( probeContext->hitCounter > 0 ) {
-				DebugRender::setColor( 
-					map( OptixProgramInterface::CIELAB::toRGB( 
+				DebugRender::setColor(
+					map( OptixProgramInterface::CIELAB::toRGB(
 						optix::make_float3( probeContext->Lab.x, probeContext->Lab.y, probeContext->Lab.z )
 					) )
 				);
 			}
 			else {
-				DebugRender::setColor( skyColor );
+				DebugRender::setColor( missColor );
 			}
 #endif
 			break;
 		case PVM_OCCLUSION:
-			DebugRender::setColor( 
-				(1.0 - occlusionFactor) * Vector3f::Constant( 1.0 )
+			DebugRender::setColor(
+				(1.0f - occlusionFactor) * Vector3f::Constant( 1.0f )
 			);
 			break;
 		case PVM_DISTANCE:
 			if( occlusionFactor > 0 ) {
-				DebugRender::setColor( probeContext->distance / maxDistance * Vector3f::Constant( 1.0 )	);
+				DebugRender::setColor( probeContext->distance / maxDistance * Vector3f::Constant( 1.0f )	);
 			}
 			else {
-				DebugRender::setColor( skyColor );
+				DebugRender::setColor( missColor );
 			}
 			break;
 		}
-		
+
 		// draw the probe
 		DebugRender::drawEllipse( radius, false, 20, axis1, axis2 );
 	}

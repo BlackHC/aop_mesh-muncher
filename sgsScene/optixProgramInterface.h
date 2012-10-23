@@ -4,8 +4,9 @@
 #include <optix_world.h>
 
 #if !defined(__CUDACC__)
-namespace OptixProgramInterface {
+#	include <vector>
 
+namespace OptixProgramInterface {
 #	define HOSTORDEVICE
 #else
 #	define HOSTORDEVICE __device__
@@ -229,6 +230,9 @@ const char * const entryPointNamespaces[] = {
 
 const int numProbeSamples = _numProbeSamples;
 #undef _numProbeSamples
+
+typedef std::vector< Probe > Probes;
+typedef std::vector< ProbeContext > ProbeContexts;
 
 #endif
 

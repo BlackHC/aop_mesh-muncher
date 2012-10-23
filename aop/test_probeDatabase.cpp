@@ -1,14 +1,14 @@
 #include "probeDatabase.h"
 #include "gtest.h"
 
-TEST( SortedProbeDataset_ProbeContext, lexicographicalLess ) {
-	InstanceProbeDataset::ProbeContext a, b;
+TEST( DBProbeContext, lexicographicalLess ) {
+	DBProbeContext a, b;
 	{
 		a.hitCounter = 10;
 		b.hitCounter = 20;
 
-		ASSERT_TRUE( InstanceProbeDataset::ProbeContext::lexicographicalLess( a, b ) );
-		ASSERT_FALSE( InstanceProbeDataset::ProbeContext::lexicographicalLess( b, a ) );
+		ASSERT_TRUE( DBProbeContext::lexicographicalLess( a, b ) );
+		ASSERT_FALSE( DBProbeContext::lexicographicalLess( b, a ) );
 	}
 	{
 		a.hitCounter = b.hitCounter = 10;
@@ -16,11 +16,11 @@ TEST( SortedProbeDataset_ProbeContext, lexicographicalLess ) {
 		a.distance = 10;
 		b.distance = 20;
 
-		ASSERT_TRUE( InstanceProbeDataset::ProbeContext::lexicographicalLess( a, b ) );
-		ASSERT_FALSE( InstanceProbeDataset::ProbeContext::lexicographicalLess( b, a ) );
+		ASSERT_TRUE( DBProbeContext::lexicographicalLess( a, b ) );
+		ASSERT_FALSE( DBProbeContext::lexicographicalLess( b, a ) );
 
-		ASSERT_TRUE( InstanceProbeDataset::ProbeContext::lexicographicalLess_startWithDistance( a, b ) );
-		ASSERT_FALSE( InstanceProbeDataset::ProbeContext::lexicographicalLess_startWithDistance( b, a ) );
+		ASSERT_TRUE( DBProbeContext::lexicographicalLess_startWithDistance( a, b ) );
+		ASSERT_FALSE( DBProbeContext::lexicographicalLess_startWithDistance( b, a ) );
 	}
 	{
 		a.hitCounter = b.hitCounter = 10;
@@ -29,11 +29,11 @@ TEST( SortedProbeDataset_ProbeContext, lexicographicalLess ) {
 		a.Lab.x = 10;
 		b.Lab.x = 20;
 
-		ASSERT_TRUE( InstanceProbeDataset::ProbeContext::lexicographicalLess( a, b ) );
-		ASSERT_FALSE( InstanceProbeDataset::ProbeContext::lexicographicalLess( b, a ) );
+		ASSERT_TRUE( DBProbeContext::lexicographicalLess( a, b ) );
+		ASSERT_FALSE( DBProbeContext::lexicographicalLess( b, a ) );
 
-		ASSERT_TRUE( InstanceProbeDataset::ProbeContext::lexicographicalLess_startWithDistance( a, b ) );
-		ASSERT_FALSE( InstanceProbeDataset::ProbeContext::lexicographicalLess_startWithDistance( b, a ) );
+		ASSERT_TRUE( DBProbeContext::lexicographicalLess_startWithDistance( a, b ) );
+		ASSERT_FALSE( DBProbeContext::lexicographicalLess_startWithDistance( b, a ) );
 	}
 	{
 		a.hitCounter = b.hitCounter = 10;
@@ -44,11 +44,11 @@ TEST( SortedProbeDataset_ProbeContext, lexicographicalLess ) {
 		a.Lab.y = 10;
 		b.Lab.y = 20;
 
-		ASSERT_TRUE( InstanceProbeDataset::ProbeContext::lexicographicalLess( a, b ) );
-		ASSERT_FALSE( InstanceProbeDataset::ProbeContext::lexicographicalLess( b, a ) );
+		ASSERT_TRUE( DBProbeContext::lexicographicalLess( a, b ) );
+		ASSERT_FALSE( DBProbeContext::lexicographicalLess( b, a ) );
 
-		ASSERT_TRUE( InstanceProbeDataset::ProbeContext::lexicographicalLess_startWithDistance( a, b ) );
-		ASSERT_FALSE( InstanceProbeDataset::ProbeContext::lexicographicalLess_startWithDistance( b, a ) );
+		ASSERT_TRUE( DBProbeContext::lexicographicalLess_startWithDistance( a, b ) );
+		ASSERT_FALSE( DBProbeContext::lexicographicalLess_startWithDistance( b, a ) );
 	}
 	{
 		a.hitCounter = b.hitCounter = 10;
@@ -60,25 +60,25 @@ TEST( SortedProbeDataset_ProbeContext, lexicographicalLess ) {
 		a.Lab.z = 10;
 		b.Lab.z = 20;
 
-		ASSERT_TRUE( InstanceProbeDataset::ProbeContext::lexicographicalLess( a, b ) );
-		ASSERT_FALSE( InstanceProbeDataset::ProbeContext::lexicographicalLess( b, a ) );
+		ASSERT_TRUE( DBProbeContext::lexicographicalLess( a, b ) );
+		ASSERT_FALSE( DBProbeContext::lexicographicalLess( b, a ) );
 
-		ASSERT_TRUE( InstanceProbeDataset::ProbeContext::lexicographicalLess_startWithDistance( a, b ) );
-		ASSERT_FALSE( InstanceProbeDataset::ProbeContext::lexicographicalLess_startWithDistance( b, a ) );
+		ASSERT_TRUE( DBProbeContext::lexicographicalLess_startWithDistance( a, b ) );
+		ASSERT_FALSE( DBProbeContext::lexicographicalLess_startWithDistance( b, a ) );
 	}
 }
 
 // ProbeDataset is covered by sort_permute_iter's tests
-InstanceProbeDataset::ProbeContext makeProbeContext( int hitCounter, float distance = 10 ) {
-	InstanceProbeDataset::ProbeContext probeContext;
+DBProbeContext makeProbeContext( int hitCounter, float distance = 10 ) {
+	DBProbeContext probeContext;
 	probeContext.hitCounter = hitCounter;
 	probeContext.distance = distance;
 	probeContext.Lab.x = probeContext.Lab.y = probeContext.Lab.z = 0;
 	return probeContext;
 }
 
-TEST( IndexedProbeDataset, idAndWeight ) {
-	RawProbeDataset rawDataset;
+TEST( ProbeDatabase_transformContexts, idAndWeight ) {
+	RawProbeContexts rawProbeContexts;
 
 	const int minHitCounter = 3;
 	const int maxHitCounter = OptixProgramInterface::numProbeSamples - 3;
@@ -87,20 +87,22 @@ TEST( IndexedProbeDataset, idAndWeight ) {
 
 	for( int i = minHitCounter ; i <= maxHitCounter ; i++ ) {
 		for( int j = 0 ; j < bucketSize ; j++ ) {
-			rawDataset.push_back( makeProbeContext( i, j ) );	
+			rawProbeContexts.push_back( makeProbeContext( i, j ) );
 		}
 	}
-	IndexedProbeDataset dataset = InstanceProbeDataset( rawDataset );
 
-	ASSERT_EQ( rawDataset.size(), dataset.size() );
-	for( int i = 0 ; i < dataset.size() ; i++ ) {
-		ASSERT_EQ( i, dataset.getProbeContexts()[ i ].probeIndex );
-		ASSERT_EQ( 1, dataset.getProbeContexts()[ i ].weight );
+	auto probeContexts = ProbeDatabase::transformContexts( rawProbeContexts );
+
+	ASSERT_EQ( rawProbeContexts.size(), probeContexts.size() );
+	for( int i = 0 ; i < probeContexts.size() ; i++ ) {
+		const auto &probeContext = probeContexts[ i ];
+		ASSERT_EQ( i, probeContext.probeIndex );
+		ASSERT_EQ( 1, probeContext.weight );
 	}
 }
 
-TEST( IndexedProbeDataset, setHitCounterLowerBounds ) {
-	RawProbeDataset rawDataset;
+TEST( IndexedProbeContexts, setHitCounterLowerBounds ) {
+	RawProbeContexts rawProbeContexts;
 
 	const int minHitCounter = 3;
 	const int maxHitCounter = OptixProgramInterface::numProbeSamples - 3;
@@ -109,12 +111,12 @@ TEST( IndexedProbeDataset, setHitCounterLowerBounds ) {
 
 	for( int i = minHitCounter ; i <= maxHitCounter ; i++ ) {
 		for( int j = bucketSize - 1 ; j >= 0 ; j-- ) {
-			rawDataset.push_back( makeProbeContext( i, j ) );
+			rawProbeContexts.push_back( makeProbeContext( i, j ) );
 		}
 	}
-	IndexedProbeDataset dataset = InstanceProbeDataset( rawDataset );
+	IndexedProbeContexts dataset( ProbeDatabase::transformContexts( rawProbeContexts ) );
 
-	ASSERT_EQ( rawDataset.size(), dataset.size() );
+	ASSERT_EQ( rawProbeContexts.size(), dataset.size() );
 
 	ASSERT_EQ( dataset.hitCounterLowerBounds.size(), OptixProgramInterface::numProbeSamples + 2 );
 	for( int i = 0 ; i < minHitCounter ; i++ ) {
@@ -128,9 +130,9 @@ TEST( IndexedProbeDataset, setHitCounterLowerBounds ) {
 		EXPECT_EQ( dataset.hitCounterLowerBounds[i], dataset.size() );
 	}
 }
-
+#if 0
 TEST( InstanceProbeDataset, subSet ) {
-	RawProbeDataset rawDataset;
+	OptixProbeContexts rawDataset;
 
 	for( int i = 0 ; i < 1000 ; i++ ) {
 		rawDataset.push_back( makeProbeContext( 1, 2 * i ) );
@@ -149,7 +151,7 @@ TEST( InstanceProbeDataset, subSet ) {
 }
 
 TEST( InstanceProbeDataset, merge ) {
-	RawProbeDataset first, second;
+	OptixProbeContexts first, second;
 
 	for( int i = 0 ; i < 1000 ; i++ ) {
 		first.push_back( makeProbeContext( 0, 2*i ) );
@@ -163,12 +165,12 @@ TEST( InstanceProbeDataset, merge ) {
 	}
 }
 
-TEST( IndexedProbeDataset, mergeMultiple ) {
+TEST( IndexedProbeContexts, mergeMultiple ) {
 	const int numDatasets = 10;
 	InstanceProbeDataset datasets[numDatasets];
 
 	for( int j = 0 ; j < numDatasets ; j++ ) {
-		RawProbeDataset rawDataset;
+		OptixProbeContexts rawDataset;
 		for( int i = 0 ; i < 1000 ; i++ ) {
 			rawDataset.push_back( makeProbeContext( 0, numDatasets * i + j ) );
 		}
@@ -187,7 +189,7 @@ TEST( IndexedProbeDataset, mergeMultiple ) {
 	}
 }
 
-TEST( IndexedProbeDataset, mergeMultiple_empty ) {
+TEST( IndexedProbeContexts, mergeMultiple_empty ) {
 	const int numDatasets = 10;
 	InstanceProbeDataset datasets[numDatasets];
 
@@ -200,10 +202,10 @@ TEST( IndexedProbeDataset, mergeMultiple_empty ) {
 
 	ASSERT_EQ( result.size(), 0 );
 }
-
+#endif
 TEST( ProbeDatabase, zeroTolerance ) {
 	// init the dataset
-	RawProbeDataset rawDataset, rawTestDataset;
+	RawProbeContexts rawDataset, rawTestDataset;
 	for( int i = 0 ; i < 1000 ; i++ ) {
 		for( int j = 0 ; j < 5 ; j++ ) {
 			rawDataset.push_back( makeProbeContext( j, i ) );
@@ -211,19 +213,21 @@ TEST( ProbeDatabase, zeroTolerance ) {
 		}
 	}
 
-	InstanceProbeDataset dataset = InstanceProbeDataset( rawDataset ), testDataset = InstanceProbeDataset( rawTestDataset );
-
 	auto probes = std::vector< ProbeDatabase::Probe >( 5*1000 );
 
-	ProbeDatabase candidateFinder;
-	candidateFinder.reserveIds( 0 );
-	candidateFinder.addDataset( 0, probes, dataset.clone() );
-	candidateFinder.integrateDatasets();
+	ProbeDatabase probeDatabase;
+
+	std::vector< std::string > modelNames;
+	modelNames.push_back( "test" );
+	probeDatabase.registerSceneModels( modelNames );
+
+	probeDatabase.addInstanceProbes( 0, Obb(), probes, rawDataset );
+	probeDatabase.compileAll();
 
 	{
-		ProbeDatabase::Query query( candidateFinder );
+		ProbeDatabase::Query query( probeDatabase );
 
-		query.setQueryDataset( dataset.clone() );
+		query.setQueryDataset( rawDataset );
 
 		ProbeContextTolerance pct;
 		pct.occusionTolerance = 0;
@@ -232,19 +236,25 @@ TEST( ProbeDatabase, zeroTolerance ) {
 
 		query.execute();
 
-		ProbeDatabase::Query::MatchInfos matchInfos = query.getCandidates();
+		ProbeDatabase::Query::DetailedQueryResults detailedQueryResults = query.getDetailedQueryResults();
 
-		ASSERT_EQ( matchInfos.size(), 1 );
-		EXPECT_EQ( matchInfos[0].numMatches, 5000 );
-		EXPECT_FLOAT_EQ( matchInfos[0].probeMatchPercentage, 1.0);
-		EXPECT_FLOAT_EQ( matchInfos[0].queryMatchPercentage, 1.0);
-		EXPECT_EQ( matchInfos[0].id, 0 );
+		ASSERT_EQ( detailedQueryResults.size(), 1 );
+		EXPECT_EQ( detailedQueryResults[0].numMatches, 5000 );
+		EXPECT_FLOAT_EQ( detailedQueryResults[0].probeMatchPercentage, 1.0);
+		EXPECT_FLOAT_EQ( detailedQueryResults[0].queryMatchPercentage, 1.0);
+		EXPECT_EQ( detailedQueryResults[0].sceneModelIndex, 0 );
+
+		auto queryResults = query.getQueryResults();
+
+		ASSERT_EQ( queryResults.size(), 1 );
+		EXPECT_FLOAT_EQ( queryResults[0].score, 1.0 );
+		EXPECT_EQ( queryResults[0].sceneModelIndex, 0 );
 	}
 
 	{
-		ProbeDatabase::Query query( candidateFinder );
+		ProbeDatabase::Query query( probeDatabase );
 
-		query.setQueryDataset( testDataset.clone() );
+		query.setQueryDataset( rawTestDataset );
 
 		ProbeContextTolerance pct;
 		pct.occusionTolerance = 0;
@@ -253,19 +263,25 @@ TEST( ProbeDatabase, zeroTolerance ) {
 
 		query.execute();
 
-		ProbeDatabase::Query::MatchInfos matchInfos = query.getCandidates();
+		ProbeDatabase::Query::DetailedQueryResults detailedQueryResults = query.getDetailedQueryResults();
 
-		ASSERT_EQ( matchInfos.size(), 1 );
-		EXPECT_EQ( matchInfos[0].numMatches, 2500 );
-		EXPECT_FLOAT_EQ( matchInfos[0].probeMatchPercentage, 0.5);
-		EXPECT_FLOAT_EQ( matchInfos[0].queryMatchPercentage, 0.5);
-		EXPECT_EQ( matchInfos[0].id, 0 );
+		ASSERT_EQ( detailedQueryResults.size(), 1 );
+		EXPECT_EQ( detailedQueryResults[0].numMatches, 2500 );
+		EXPECT_FLOAT_EQ( detailedQueryResults[0].probeMatchPercentage, 0.5);
+		EXPECT_FLOAT_EQ( detailedQueryResults[0].queryMatchPercentage, 0.5);
+		EXPECT_EQ( detailedQueryResults[0].sceneModelIndex, 0 );
+
+		auto queryResults = query.getQueryResults();
+
+		ASSERT_EQ( queryResults.size(), 1 );
+		EXPECT_FLOAT_EQ( queryResults[0].score, 0.25 );
+		EXPECT_EQ( queryResults[0].sceneModelIndex, 0 );
 	}
 }
 
 TEST( ProbeDatabase, zeroTolerance_biggerDB ) {
 	// init the dataset
-	RawProbeDataset rawDataset, rawTestDataset;
+	RawProbeContexts rawDataset, rawTestDataset;
 	for( int i = 0 ; i < 1500 ; i++ ) {
 		for( int j = 0 ; j < 5 ; j++ ) {
 			rawDataset.push_back( makeProbeContext( j, i ) );
@@ -277,19 +293,21 @@ TEST( ProbeDatabase, zeroTolerance_biggerDB ) {
 		}
 	}
 
-	InstanceProbeDataset dataset = InstanceProbeDataset( rawDataset ), testDataset = InstanceProbeDataset( rawTestDataset );
-
 	auto probes = std::vector< ProbeDatabase::Probe >( 5*1000 );
 
-	ProbeDatabase candidateFinder;
-	candidateFinder.reserveIds( 0 );
-	candidateFinder.addDataset( 0, probes, dataset.clone() );
-	candidateFinder.integrateDatasets();
+	ProbeDatabase probeDatabase;
+
+	std::vector< std::string > modelNames;
+	modelNames.push_back( "test" );
+	probeDatabase.registerSceneModels( modelNames );
+
+	probeDatabase.addInstanceProbes( 0, Obb(), probes, rawDataset );
+	probeDatabase.compileAll();
 
 	{
-		ProbeDatabase::Query query( candidateFinder );
+		ProbeDatabase::Query query( probeDatabase );
 
-		query.setQueryDataset( dataset.clone() );
+		query.setQueryDataset( rawDataset );
 
 		ProbeContextTolerance pct;
 		pct.occusionTolerance = 0;
@@ -298,19 +316,25 @@ TEST( ProbeDatabase, zeroTolerance_biggerDB ) {
 
 		query.execute();
 
-		ProbeDatabase::Query::MatchInfos matchInfos = query.getCandidates();
+		ProbeDatabase::Query::DetailedQueryResults detailedQueryResults = query.getDetailedQueryResults();
 
-		ASSERT_EQ( matchInfos.size(), 1 );
-		EXPECT_EQ( matchInfos[0].numMatches, 5*1500 );
-		EXPECT_FLOAT_EQ( matchInfos[0].probeMatchPercentage, 1.0);
-		EXPECT_FLOAT_EQ( matchInfos[0].queryMatchPercentage, 1.0);
-		EXPECT_EQ( matchInfos[0].id, 0 );
+		ASSERT_EQ( detailedQueryResults.size(), 1 );
+		EXPECT_EQ( detailedQueryResults[0].numMatches, 5*1500 );
+		EXPECT_FLOAT_EQ( detailedQueryResults[0].probeMatchPercentage, 1.0);
+		EXPECT_FLOAT_EQ( detailedQueryResults[0].queryMatchPercentage, 1.0);
+		EXPECT_EQ( detailedQueryResults[0].sceneModelIndex, 0 );
+
+		auto queryResults = query.getQueryResults();
+
+		ASSERT_EQ( queryResults.size(), 1 );
+		EXPECT_FLOAT_EQ( queryResults[0].score, 1.0 );
+		EXPECT_EQ( queryResults[0].sceneModelIndex, 0 );
 	}
 
 	{
-		ProbeDatabase::Query query( candidateFinder );
+		ProbeDatabase::Query query( probeDatabase );
 
-		query.setQueryDataset( testDataset.clone() );
+		query.setQueryDataset( rawTestDataset );
 
 		ProbeContextTolerance pct;
 		pct.occusionTolerance = 0;
@@ -319,19 +343,25 @@ TEST( ProbeDatabase, zeroTolerance_biggerDB ) {
 
 		query.execute();
 
-		ProbeDatabase::Query::MatchInfos matchInfos = query.getCandidates();
+		ProbeDatabase::Query::DetailedQueryResults detailedQueryResults = query.getDetailedQueryResults();
 
-		ASSERT_EQ( matchInfos.size(), 1 );
-		EXPECT_EQ( matchInfos[0].numMatches, 5*500 );
-		EXPECT_FLOAT_EQ( matchInfos[0].probeMatchPercentage, 500.0/1500.0);
-		EXPECT_FLOAT_EQ( matchInfos[0].queryMatchPercentage, 500.0/1000.0);
-		EXPECT_EQ( matchInfos[0].id, 0 );
+		ASSERT_EQ( detailedQueryResults.size(), 1 );
+		EXPECT_EQ( detailedQueryResults[0].numMatches, 5*500 );
+		EXPECT_FLOAT_EQ( detailedQueryResults[0].probeMatchPercentage, 500.0/1500.0);
+		EXPECT_FLOAT_EQ( detailedQueryResults[0].queryMatchPercentage, 500.0/1000.0);
+		EXPECT_EQ( detailedQueryResults[0].sceneModelIndex, 0 );
+
+		auto queryResults = query.getQueryResults();
+
+		ASSERT_EQ( queryResults.size(), 1 );
+		EXPECT_FLOAT_EQ( queryResults[0].score, 500.0/1500.0 * 500.0/1000.0 );
+		EXPECT_EQ( queryResults[0].sceneModelIndex, 0 );
 	}
 }
 
 TEST( ProbeDatabase, oneTolerance ) {
 	// init the dataset
-	RawProbeDataset rawDataset, rawTestDataset;
+	RawProbeContexts rawDataset, rawTestDataset;
 	for( int i = 0 ; i < 1000 ; i++ ) {
 		for( int j = 0 ; j < 5 ; j++ ) {
 			rawDataset.push_back( makeProbeContext( j, i ) );
@@ -339,58 +369,72 @@ TEST( ProbeDatabase, oneTolerance ) {
 		}
 	}
 
-	InstanceProbeDataset dataset = InstanceProbeDataset( rawDataset ), testDataset = InstanceProbeDataset( rawTestDataset );
-
 	auto probes = std::vector< ProbeDatabase::Probe >( 5*1000 );
 
-	ProbeDatabase candidateFinder;
-	candidateFinder.reserveIds( 0 );
-	candidateFinder.addDataset( 0, probes, dataset.clone() );
-	candidateFinder.integrateDatasets();
+	ProbeDatabase probeDatabase;
+
+	std::vector< std::string > modelNames;
+	modelNames.push_back( "test" );
+	probeDatabase.registerSceneModels( modelNames );
+
+	probeDatabase.addInstanceProbes( 0, Obb(), probes, rawDataset );
+	probeDatabase.compileAll();
 
 	ProbeContextTolerance pct;
 	pct.occusionTolerance = 1.0 / (OptixProgramInterface::numProbeSamples + 1);
 	pct.distanceTolerance = 0;
 
 	{
-		ProbeDatabase::Query query( candidateFinder );
+		ProbeDatabase::Query query( probeDatabase );
 
-		query.setQueryDataset( dataset.clone() );
+		query.setQueryDataset( rawDataset );
 		query.setProbeContextTolerance( pct );
 
 		query.execute();
 
-		ProbeDatabase::Query::MatchInfos matchInfos = query.getCandidates();
+		ProbeDatabase::Query::DetailedQueryResults detailedQueryResults = query.getDetailedQueryResults();
 
-		ASSERT_EQ( matchInfos.size(), 1 );
-		EXPECT_EQ( matchInfos[0].numMatches, 2*2*1000 + 3*3*1000 );
-		EXPECT_FLOAT_EQ( matchInfos[0].probeMatchPercentage, 1.0);
-		EXPECT_FLOAT_EQ( matchInfos[0].queryMatchPercentage, 1.0);
-		EXPECT_EQ( matchInfos[0].id, 0 );
+		ASSERT_EQ( detailedQueryResults.size(), 1 );
+		EXPECT_EQ( detailedQueryResults[0].numMatches, 2*2*1000 + 3*3*1000 );
+		EXPECT_FLOAT_EQ( detailedQueryResults[0].probeMatchPercentage, 1.0);
+		EXPECT_FLOAT_EQ( detailedQueryResults[0].queryMatchPercentage, 1.0);
+		EXPECT_EQ( detailedQueryResults[0].sceneModelIndex, 0 );
+
+		auto queryResults = query.getQueryResults();
+
+		ASSERT_EQ( queryResults.size(), 1 );
+		EXPECT_FLOAT_EQ( queryResults[0].score, 1.0 );
+		EXPECT_EQ( queryResults[0].sceneModelIndex, 0 );
 	}
 
 	{
-		ProbeDatabase::Query query( candidateFinder );
+		ProbeDatabase::Query query( probeDatabase );
 
-		query.setQueryDataset( testDataset.clone() );
+		query.setQueryDataset( rawTestDataset );
 		query.setProbeContextTolerance( pct );
 
 		query.execute();
 
-		ProbeDatabase::Query::MatchInfos matchInfos = query.getCandidates();
+		ProbeDatabase::Query::DetailedQueryResults detailedQueryResults = query.getDetailedQueryResults();
 
-		ASSERT_EQ( matchInfos.size(), 1 );
-		EXPECT_EQ( matchInfos[0].numMatches, 2*2*500 + 3*3*500 );
-		EXPECT_FLOAT_EQ( matchInfos[0].probeMatchPercentage, 0.5);
-		EXPECT_FLOAT_EQ( matchInfos[0].queryMatchPercentage, 0.5);
-		EXPECT_EQ( matchInfos[0].id, 0 );
+		ASSERT_EQ( detailedQueryResults.size(), 1 );
+		EXPECT_EQ( detailedQueryResults[0].numMatches, 2*2*500 + 3*3*500 );
+		EXPECT_FLOAT_EQ( detailedQueryResults[0].probeMatchPercentage, 0.5);
+		EXPECT_FLOAT_EQ( detailedQueryResults[0].queryMatchPercentage, 0.5);
+		EXPECT_EQ( detailedQueryResults[0].sceneModelIndex, 0 );
+
+		auto queryResults = query.getQueryResults();
+
+		ASSERT_EQ( queryResults.size(), 1 );
+		EXPECT_FLOAT_EQ( queryResults[0].score, 0.25 );
+		EXPECT_EQ( queryResults[0].sceneModelIndex, 0 );
 	}
 }
 
-#if 1
+#if 0
 TEST( ProbeDatabase, big ) {
 	// init the dataset
-	RawProbeDataset rawDataset, rawTestDataset;
+	RawProbeContexts rawDataset, rawTestDataset;
 	for( int i = 0 ; i < 20000 ; i++ ) {
 		for( int j = 0 ; j < 30 ; j++ ) {
 			rawDataset.push_back( makeProbeContext( j, i ) );
@@ -400,17 +444,19 @@ TEST( ProbeDatabase, big ) {
 
 	auto probes = std::vector< ProbeDatabase::Probe >( rawDataset.size() );
 
-	InstanceProbeDataset dataset = InstanceProbeDataset( rawDataset ), testDataset = InstanceProbeDataset( rawTestDataset );
+	ProbeDatabase probeDatabase;
 
-	ProbeDatabase candidateFinder;
-	candidateFinder.reserveIds( 0 );
-	candidateFinder.addDataset( 0, probes, dataset.clone() );
-	candidateFinder.integrateDatasets();
+	std::vector< std::string > modelNames;
+	modelNames.push_back( "test" );
+	probeDatabase.registerSceneModels( modelNames );
+
+	probeDatabase.addInstanceProbes( 0, Obb(), probes, rawDataset );
+	probeDatabase.compileAll();
 
 	{
-		ProbeDatabase::Query query( candidateFinder );
+		ProbeDatabase::Query query( probeDatabase );
 
-		query.setQueryDataset( dataset.clone() );
+		query.setQueryDataset( rawDataset );
 
 		ProbeContextTolerance pct;
 		pct.occusionTolerance = 0;
@@ -419,16 +465,16 @@ TEST( ProbeDatabase, big ) {
 
 		query.execute();
 
-		ProbeDatabase::Query::MatchInfos matchInfos = query.getCandidates();
+		ProbeDatabase::Query::DetailedQueryResults detailedQueryResults = query.getDetailedQueryResults();
 
-		ASSERT_EQ( matchInfos.size(), 1 );
-		EXPECT_EQ( matchInfos[0].numMatches, 600000 );
-		EXPECT_EQ( matchInfos[0].id, 0 );
+		ASSERT_EQ( detailedQueryResults.size(), 1 );
+		EXPECT_EQ( detailedQueryResults[0].numMatches, 600000 );
+		EXPECT_EQ( detailedQueryResults[0].sceneModelIndex, 0 );
 	}
 	{
-		ProbeDatabase::Query query( candidateFinder );
+		ProbeDatabase::Query query( probeDatabase );
 
-		query.setQueryDataset( testDataset.clone() );
+		query.setQueryDataset( rawTestDataset );
 
 		ProbeContextTolerance pct;
 		pct.occusionTolerance = 0;
@@ -437,11 +483,11 @@ TEST( ProbeDatabase, big ) {
 
 		query.execute();
 
-		ProbeDatabase::Query::MatchInfos matchInfos = query.getCandidates();
+		ProbeDatabase::Query::DetailedQueryResults detailedQueryResults = query.getDetailedQueryResults();
 
-		ASSERT_EQ( matchInfos.size(), 1 );
-		EXPECT_EQ( matchInfos[0].numMatches, 300000 );
-		EXPECT_EQ( matchInfos[0].id, 0 );
+		ASSERT_EQ( detailedQueryResults.size(), 1 );
+		EXPECT_EQ( detailedQueryResults[0].numMatches, 300000 );
+		EXPECT_EQ( detailedQueryResults[0].sceneModelIndex, 0 );
 	}
 }
 #endif
