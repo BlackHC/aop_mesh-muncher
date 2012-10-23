@@ -119,7 +119,7 @@ struct FloatVariableControl : NullEventHandler {
 	}
 
 	virtual void onKeyboard( EventState &eventState ) {
-		const float step = (variable - min) / 4 + 0.1;
+		const float step = (variable - min) * 0.25f + 0.1f;
 		switch( eventState.event.type ) {
 			// allow key repeat here
 		case sf::Event::KeyPressed:

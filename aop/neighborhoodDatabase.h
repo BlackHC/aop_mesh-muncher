@@ -24,6 +24,9 @@
 
 #include "modelDatabase.h"
 
+#pragma warning( push )
+#pragma warning( once: 4244 )
+
 using boost::math::normal_distribution; // typedef provides default type is double.
 
 struct NeighborhoodDatabase {
@@ -452,7 +455,7 @@ struct NeighborhoodDatabaseV2 {
 
 		struct DefaultPolicy {
 			static float getIdTolerance( Query *query, Id id ) {
-				return query->database.modelDatabase->informationById[id].diagonalLength * 0.5;
+				return query->database.modelDatabase->informationById[id].diagonalLength * 0.5f;
 			}
 
 			static float getIdWeight( Query *query, Id id ) {
@@ -464,7 +467,7 @@ struct NeighborhoodDatabaseV2 {
 			}*/
 
 			static float getDistanceToleranceScale( float distance ) {
-				return 1.0 + (distance - 1.0) * 0.5;
+				return 1.0f + (distance - 1.0f) * 0.5f;
 			}
 		};
 
@@ -699,7 +702,7 @@ struct NeighborhoodDatabaseV2 {
 								const float conditionalProbability = float( uniqueEntryElements ) / numInstances;
 
 								// mismatch, so we add the complement
-								idScore[ entryIndex ] += binWeight * (1.0 - conditionalProbability);
+								idScore[ entryIndex ] += binWeight * (1.0f - conditionalProbability);
 							}
 						}
 
@@ -740,3 +743,5 @@ struct NeighborhoodDatabaseV2 {
 		}
 	};
 };
+
+#pragma warning( pop )

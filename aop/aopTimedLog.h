@@ -55,11 +55,11 @@ namespace aop {
 		void renderEntries( const float maxHeightPercentage, bool drawBackground );
 
 		void renderAsNotifications() {
-			renderEntries( 0.3, true );
+			renderEntries( 0.3f, true );
 		}
 
 		void renderAsLog() {
-			renderEntries( 0.9, false );
+			renderEntries( 0.9f, false );
 		}
 	};
 }

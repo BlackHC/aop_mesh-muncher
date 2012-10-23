@@ -24,14 +24,14 @@ using namespace Eigen;
 void SGSSceneRenderer::bakeTerrainTexture( int detailFactor, float textureDetailFactor ) {
 	glPushAttrib( GL_ALL_ATTRIB_BITS );
 
-	int numLayers = scene->terrain.layers.size();
+	const size_t numLayers = scene->terrain.layers.size();
 
 	// create and load weight textures
 	ScopedTextures2D weightTextures( numLayers );
 
 	glPixelStorei( GL_UNPACK_ALIGNMENT, 1 );
 
-	for( int layer = 0 ; layer < numLayers ; ++layer ) {
+	for( size_t layer = 0 ; layer < numLayers ; ++layer ) {
 		auto weightTexture = weightTextures.get( layer );
 		weightTexture.load( 0, GL_INTENSITY, scene->terrain.layerSize[0], scene->terrain.layerSize[1], 0, GL_RED, GL_UNSIGNED_BYTE, &scene->terrain.layers[ layer ].weights.front() );
 		SimpleGL::setRepeatST( weightTexture );
@@ -338,7 +338,7 @@ void SGSSceneRenderer::prepareMaterialDisplayLists() {
 				glEnable( GL_BLEND );
 				glBlendFunc( GL_CONSTANT_ALPHA, GL_ONE_MINUS_CONSTANT_ALPHA );
 
-				glBlendColor( 1.0, 1.0, 1.0, material.alpha / 255.0 );
+				glBlendColor( 1.0f, 1.0f, 1.0f, material.alpha / 255.0f );
 			}
 			break;
 		case SGSScene::Material::AT_TEXTURE:
@@ -372,7 +372,7 @@ void SGSSceneRenderer::prepareMaterialDisplayLists() {
 			glEnable( GL_BLEND );
 			glBlendFunc( GL_ZERO, GL_CONSTANT_ALPHA );
 
-			glBlendColor( 1.0, 1.0, 1.0, material.alpha / 255.0 );
+			glBlendColor( 1.0f, 1.0f, 1.0f, material.alpha / 255.0f );
 
 			break;
 		case SGSScene::Material::AT_MULTIPLY_2:
@@ -382,7 +382,7 @@ void SGSSceneRenderer::prepareMaterialDisplayLists() {
 			glEnable( GL_BLEND );
 			glBlendFunc( GL_DST_COLOR, GL_CONSTANT_ALPHA );
 
-			glBlendColor( 1.0, 1.0, 1.0, material.alpha / 255.0 );
+			glBlendColor( 1.0f, 1.0f, 1.0f, material.alpha / 255.0f );
 
 			break;
 		}
@@ -428,7 +428,7 @@ void SGSSceneRenderer::prerenderDebugInfos() {
 			const SGSScene::BoundingSphere &boundingSphere = scene->terrain.tiles[tileIndex].bounding.sphere;
 
 			debug.boundingSpheres.setPosition( Vector3f::Map( boundingSphere.center ) );
-			glColor3f( 1.0, 1.0, 0.0 );
+			glColor3f( 1.0f, 1.0f, 0.0f );
 			debug.boundingSpheres.drawAbstractSphere( boundingSphere.radius, true, 5 );
 		}
 		debug.terrainBoundingSpheres.end();
@@ -744,12 +744,11 @@ void SGSSceneRenderer::drawScene( const Vector3f &worldViewerPosition, const Ren
 			debug.terrainBoundingSpheres.render();
 		}
 
-		DebugRender::ImmediateCalls lightFrustum;
-		lightFrustum.begin();
+		DebugRender::begin();
 		glMatrixMode( GL_MODELVIEW );
 		glMultMatrix( sunProjectionMatrix.inverse() );
-		lightFrustum.drawBox( Vector3f::Constant( 2.0 ), true, true );
-		lightFrustum.end();
+		DebugRender::drawBox( Vector3f::Constant( 2.0 ), true, true );
+		DebugRender::end();
 	}
 
 	glGetError();

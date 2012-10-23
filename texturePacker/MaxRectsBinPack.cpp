@@ -90,7 +90,8 @@ void MaxRectsBinPack::Insert(std::vector<RectSize> &rects, FreeRectChoiceHeurist
 		int bestRectIndex = -1;
 		Rect bestNode;
 
-		for(size_t i = 0; i < rects.size(); ++i)
+		const int numRects = (int) rects.size();
+		for( int i = 0; i < numRects ; ++i )
 		{
 			int score1;
 			int score2;

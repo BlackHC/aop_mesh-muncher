@@ -230,13 +230,12 @@ void Editor::TransformMode::onUpdate( EventSystem &eventSystem, const float fram
 	else {
 		const sf::Vector2i draggedDelta = popMouseDelta();
 
-		// TODO: get camera viewport size
-		Eigen::Vector3f relativeMovement( draggedDelta.x, -draggedDelta.y, 0.0 );
+		Eigen::Vector3f relativeMovement( (float) draggedDelta.x, (float) -draggedDelta.y, 0.0f );
 
 		if( sf::Keyboard::isKeyPressed( sf::Keyboard::LShift ) ) {
 			relativeMovement *= 4;
 		}
-		relativeMovement *= 0.01;
+		relativeMovement *= 0.01f;
 
 		transform( relativeMovement, worldMode );
 	}
@@ -648,7 +647,7 @@ bool Editor::Resizing::setCornerMasks( int x, int y ) {
 	invertedMask.setZero();
 
 	for( int i = 0 ; i < 3 ; i++ ) {
-		float value = (p[i] > 0.0) * 2 - 1;
+		float value = (p[i] > 0.0f) * 2.0f - 1.0f;
 		if( maskFlag & (1<<i) ) {
 			mask[i] = value;
 		}
@@ -723,7 +722,7 @@ void Editor::Resizing::onUpdate( EventSystem &eventSystem, const float frameDura
 		const sf::Vector2i draggedDelta = popMouseDelta();
 
 		// TODO: get camera viewport size
-		Eigen::Vector3f relativeMovement( draggedDelta.x, -draggedDelta.y, 0.0f );
+		Eigen::Vector3f relativeMovement( (float) draggedDelta.x, (float) -draggedDelta.y, 0.0f );
 		relativeMovement *= transformSpeed;
 
 		if( sf::Keyboard::isKeyPressed( sf::Keyboard::LShift ) ) {

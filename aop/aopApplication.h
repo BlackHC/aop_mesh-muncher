@@ -114,14 +114,15 @@ namespace aop {
 
 		void ModelDatabase_init();
 		void ModelDatabase_sampleAll();
-		int ModelDatabase_sampleModel( int modelId, float resolution );
+		// returns the number of non-empty voxels
+		int ModelDatabase_sampleModel( int sceneModelIndex, float resolution );
 
 		virtual void sampleModel( int modelId, float resolution, ModelDatabase::ImportInterface::Tag ) {
 			ModelDatabase_sampleModel( modelId, resolution );
 		}
 
-		ProbeDatabase::Query::MatchInfos queryVolume( const Obb &queryVolume );
-		ProbeDatabase::WeightedQuery::MatchInfos weightedQueryVolume( const Obb &queryVolume );
+		QueryResults queryVolume( const Obb &queryVolume );
+		QueryResults weightedQueryVolume( const Obb &queryVolume );
 
 		void ProbeDatabase_sampleInstances( int modelIndex );
 

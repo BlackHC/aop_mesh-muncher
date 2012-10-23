@@ -11,7 +11,8 @@ STRING (REGEX REPLACE "/RTC(su|[1su])" "" CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLA
 
 # windows.h sucks..
 # and turn on multiprocessor compilation
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /DNOMINMAX /MP")
+# and disable some warnings (size_t to int conversion, elements of array 'array' will be default initialized and the SCL_UNSECURE_WARNING)
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /DNOMINMAX /MP /wd4267 /wd4351 /wd4996")
 # this is needed because sfml graphics uses stbi, too
 SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /FORCE:MULTIPLE")
 
@@ -184,6 +185,10 @@ ADD_EXECUTABLE(Test_aop
 	neighborhoodDatabase.h
 	neighborhoodDatabase.cpp
 	neighborhoodDatabaseStorage.cpp
+
+	probeGenerator.h
+	probeGenerator.cpp
+
 	../framework/logger.h
 	../framework/logger.cpp
 
@@ -195,6 +200,7 @@ ADD_EXECUTABLE(Test_aop
 
 	test_probeDatabase.cpp
 	test_neighborhoodDatabase.cpp
+	test_probeGenerator.cpp
 
 	../gtest/gtest_main.cc
 	../gtest/gtest-all.cc

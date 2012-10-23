@@ -26,13 +26,12 @@ namespace Log {
 
 			std::string indentedString;
 
-			int lastIndex = 0;
+			size_t lastIndex = 0;
 			while( true ) {
-				int index = message.find( '\n', lastIndex );
+				size_t index = message.find( '\n', lastIndex );
 				if( index == std::string::npos ) {
 					break;
 				}
-
 				index += 1;
 
 				indentedString += indentation + message.substr( lastIndex, index - lastIndex );

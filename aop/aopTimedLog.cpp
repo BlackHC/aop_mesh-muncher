@@ -80,7 +80,7 @@ namespace aop {
 		if( drawBackground ) {
 			sf::RectangleShape background;
 			background.setPosition( 0.0, 0.0 );
-			background.setSize( sf::Vector2f( windowSize.x, height ) );
+			background.setSize( sf::Vector2f( (float) windowSize.x, height ) );
 			background.setFillColor( sf::Color( 20, 20, 20, 128 ) );
 			application->mainWindow.draw( background );
 		}

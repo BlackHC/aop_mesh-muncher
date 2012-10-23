@@ -16,8 +16,8 @@ void aop::LocalCandidateBarUI::init() {
 
 	const float totalEntryHeight = buttonHeight + barHeight + buttonVerticalPadding;
 
-	const int numModels = std::min<int>( 30, candidates.size() );
-	const int numDisplayedModels = std::min<int>( numModels, 1.0 / totalEntryHeight );
+	const int numModels = std::min<int>( 30, (int) candidates.size() );
+	const int numDisplayedModels = std::min<int>( numModels, static_cast< int >( 1.0f / totalEntryHeight ) );
 	const float totalHeight = totalEntryHeight * numDisplayedModels;
 
 	scroller.size[0] = buttonWidth;
@@ -74,10 +74,10 @@ void aop::LocalCandidateBarUI::refresh() {
 	Eigen::Vector2f offset = screenBox.corner( Eigen::AlignedBox3f::TopRightCeil ).head<2>();
 	offset.y() *= -1.0f;
 
-	const float scale = std::max<float>( 0.025f, screenBox.sizes().head<2>().norm() ) / 4.0; // 4.0 = screenWidth * screenHeight in -1..1x-1..1 coords
+	const float scale = std::max<float>( 0.025f, screenBox.sizes().head<2>().norm() ) / 4.0f; // 4.0 = screenWidth * screenHeight in -1..1x-1..1 coords
 
-	clipper.transformChain.setOffset( offset * 0.5 + Eigen::Vector2f::Constant( 0.5 ) );
-	clipper.transformChain.setScale( 2.0 * scale );
+	clipper.transformChain.setOffset( offset * 0.5f + Eigen::Vector2f::Constant( 0.5f ) );
+	clipper.transformChain.setScale( 2.0f * scale );
 }
 
 void aop::CandidateSidebarUI::setModels( std::vector<ScoreModelIndexPair> scoredModelIndices, const Eigen::Vector3f &position ) {

@@ -177,7 +177,7 @@ void ProgressBarWidget::doRender() {
 	// we blend between dark/bluish and light green
 	const Eigen::Vector3f zero( 0.0f, 0.5f, 0.3f );
 	const Eigen::Vector3f one( 0.3f, 1.0f, 0.3f );
-	DebugRender::setColor( one * percentage + (1.0 - percentage) * zero );
+	DebugRender::setColor( one * percentage + (1.0f - percentage) * zero );
 	DebugRender::drawQuad( Eigen::Vector2f::Zero(), size.cwiseProduct( Eigen::Vector2f( percentage, 1.0f ) ), false );
 
 	// render the border

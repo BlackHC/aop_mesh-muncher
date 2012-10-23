@@ -235,7 +235,7 @@ void SGSSceneRenderer::writeOptixCache() {
 	cache.magicStamp = getSceneHash();
 
 	int size;
-	size = optix.staticAcceleration->getDataSize();
+	size = (int) optix.staticAcceleration->getDataSize();
 	cache.staticSceneAccelerationCache.resize( size );
 	optix.staticAcceleration->getData( &cache.staticSceneAccelerationCache.front() );
 
@@ -468,8 +468,8 @@ void OptixRenderer::createHemisphereSamples( optix::float3 *hemisphereSamples ) 
 	// => fov: 45° => half is 22.5
 	// // sin(22.5°) = 0.38268343236
 	for( int i = 0 ; i < numHemisphereSamples ; ++i ) {
-		const float u1 = distribution(rng) * 0.38268343236 * 0.38268343236;
-		const float u2 = distribution(rng);
+		const float u1 = (float) distribution(rng) * 0.38268343236f * 0.38268343236f;
+		const float u2 = (float) distribution(rng);
 		optix::cosine_sample_hemisphere( u1, u2, hemisphereSamples[i] );
 	}
 }

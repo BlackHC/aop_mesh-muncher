@@ -110,6 +110,8 @@ namespace Serializer {
 		static const bool value = detail::has_serializer_use_raw_mode<X>::value;
 	};
 
+#pragma warning( push )
+#pragma warning( disable: 4996 )
 	struct BinaryWriter : boost::noncopyable {
 		FILE *handle;
 
@@ -202,6 +204,7 @@ namespace Serializer {
 			};
 		};
 	}
+#pragma warning( pop )
 
 	namespace detail {
 		struct TextConverterTag {};

@@ -126,5 +126,7 @@ namespace ProgressTracker {
 				return totalLocalProgress;
 			}
 		}
+
+		__assume( 0 );
 	}
 }
