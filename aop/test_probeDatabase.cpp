@@ -132,16 +132,16 @@ TEST( IndexedProbeContexts, setHitCounterLowerBounds ) {
 }
 #if 0
 TEST( InstanceProbeDataset, subSet ) {
-	OptixProbeContexts rawDataset;
+	OptixProbeContexts rawProbeContexts;
 
 	for( int i = 0 ; i < 1000 ; i++ ) {
-		rawDataset.push_back( makeProbeContext( 1, 2 * i ) );
+		rawProbeContexts.push_back( makeProbeContext( 1, 2 * i ) );
 	}
 	for( int i = 0 ; i < 1000 ; i++ ) {
-		rawDataset.push_back( makeProbeContext( 0, 2*i + 1 ) );
+		rawProbeContexts.push_back( makeProbeContext( 0, 2*i + 1 ) );
 	}
 
-	InstanceProbeDataset dataset = InstanceProbeDataset( rawDataset );
+	InstanceProbeDataset dataset = InstanceProbeDataset( rawProbeContexts );
 
 	InstanceProbeDataset scratch = dataset.subSet( std::make_pair( 0, 2000 ) );
 
@@ -170,11 +170,11 @@ TEST( IndexedProbeContexts, mergeMultiple ) {
 	InstanceProbeDataset datasets[numDatasets];
 
 	for( int j = 0 ; j < numDatasets ; j++ ) {
-		OptixProbeContexts rawDataset;
+		OptixProbeContexts rawProbeContexts;
 		for( int i = 0 ; i < 1000 ; i++ ) {
-			rawDataset.push_back( makeProbeContext( 0, numDatasets * i + j ) );
+			rawProbeContexts.push_back( makeProbeContext( 0, numDatasets * i + j ) );
 		}
-		datasets[j] = InstanceProbeDataset( rawDataset );
+		datasets[j] = InstanceProbeDataset( rawProbeContexts );
 	}
 
 	std::vector< const InstanceProbeDataset * > pDatasets;
@@ -203,17 +203,18 @@ TEST( IndexedProbeContexts, mergeMultiple_empty ) {
 	ASSERT_EQ( result.size(), 0 );
 }
 #endif
+
 TEST( ProbeDatabase, zeroTolerance ) {
 	// init the dataset
-	RawProbeContexts rawDataset, rawTestDataset;
+	RawProbeContexts rawProbeContexts, rawTestProbeContexts;
 	for( int i = 0 ; i < 1000 ; i++ ) {
 		for( int j = 0 ; j < 5 ; j++ ) {
-			rawDataset.push_back( makeProbeContext( j, i ) );
-			rawTestDataset.push_back( makeProbeContext( j, 500 + i ) );
+			rawProbeContexts.push_back( makeProbeContext( j, i ) );
+			rawTestProbeContexts.push_back( makeProbeContext( j, 500 + i ) );
 		}
 	}
 
-	auto probes = std::vector< ProbeDatabase::Probe >( 5*1000 );
+	auto probes = std::vector< DBProbe >( 5*1000 );
 
 	ProbeDatabase probeDatabase;
 
@@ -221,13 +222,13 @@ TEST( ProbeDatabase, zeroTolerance ) {
 	modelNames.push_back( "test" );
 	probeDatabase.registerSceneModels( modelNames );
 
-	probeDatabase.addInstanceProbes( 0, Obb(), probes, rawDataset );
+	probeDatabase.addInstanceProbes( 0, Obb(), probes, rawProbeContexts );
 	probeDatabase.compileAll();
 
 	{
 		ProbeDatabase::Query query( probeDatabase );
 
-		query.setQueryDataset( rawDataset );
+		query.setQueryDataset( rawProbeContexts );
 
 		ProbeContextTolerance pct;
 		pct.occusionTolerance = 0;
@@ -254,7 +255,7 @@ TEST( ProbeDatabase, zeroTolerance ) {
 	{
 		ProbeDatabase::Query query( probeDatabase );
 
-		query.setQueryDataset( rawTestDataset );
+		query.setQueryDataset( rawTestProbeContexts );
 
 		ProbeContextTolerance pct;
 		pct.occusionTolerance = 0;
@@ -281,19 +282,19 @@ TEST( ProbeDatabase, zeroTolerance ) {
 
 TEST( ProbeDatabase, zeroTolerance_biggerDB ) {
 	// init the dataset
-	RawProbeContexts rawDataset, rawTestDataset;
+	RawProbeContexts rawProbeContexts, rawTestProbeContexts;
 	for( int i = 0 ; i < 1500 ; i++ ) {
 		for( int j = 0 ; j < 5 ; j++ ) {
-			rawDataset.push_back( makeProbeContext( j, i ) );
+			rawProbeContexts.push_back( makeProbeContext( j, i ) );
 		}
 	}
 	for( int i = 0 ; i < 1000 ; i++ ) {
 		for( int j = 0 ; j < 5 ; j++ ) {
-			rawTestDataset.push_back( makeProbeContext( j, 1000 + i ) );
+			rawTestProbeContexts.push_back( makeProbeContext( j, 1000 + i ) );
 		}
 	}
 
-	auto probes = std::vector< ProbeDatabase::Probe >( 5*1000 );
+	auto probes = std::vector< DBProbe >( 5*1500 );
 
 	ProbeDatabase probeDatabase;
 
@@ -301,13 +302,13 @@ TEST( ProbeDatabase, zeroTolerance_biggerDB ) {
 	modelNames.push_back( "test" );
 	probeDatabase.registerSceneModels( modelNames );
 
-	probeDatabase.addInstanceProbes( 0, Obb(), probes, rawDataset );
+	probeDatabase.addInstanceProbes( 0, Obb(), probes, rawProbeContexts );
 	probeDatabase.compileAll();
 
 	{
 		ProbeDatabase::Query query( probeDatabase );
 
-		query.setQueryDataset( rawDataset );
+		query.setQueryDataset( rawProbeContexts );
 
 		ProbeContextTolerance pct;
 		pct.occusionTolerance = 0;
@@ -318,11 +319,11 @@ TEST( ProbeDatabase, zeroTolerance_biggerDB ) {
 
 		ProbeDatabase::Query::DetailedQueryResults detailedQueryResults = query.getDetailedQueryResults();
 
-		ASSERT_EQ( detailedQueryResults.size(), 1 );
-		EXPECT_EQ( detailedQueryResults[0].numMatches, 5*1500 );
-		EXPECT_FLOAT_EQ( detailedQueryResults[0].probeMatchPercentage, 1.0);
-		EXPECT_FLOAT_EQ( detailedQueryResults[0].queryMatchPercentage, 1.0);
-		EXPECT_EQ( detailedQueryResults[0].sceneModelIndex, 0 );
+		ASSERT_EQ( 1, detailedQueryResults.size() );
+		EXPECT_EQ( 5*1500, detailedQueryResults[0].numMatches );
+		EXPECT_FLOAT_EQ( 1.0, detailedQueryResults[0].probeMatchPercentage );
+		EXPECT_FLOAT_EQ( 1.0, detailedQueryResults[0].queryMatchPercentage );
+		EXPECT_EQ( 0, detailedQueryResults[0].sceneModelIndex );
 
 		auto queryResults = query.getQueryResults();
 
@@ -334,7 +335,7 @@ TEST( ProbeDatabase, zeroTolerance_biggerDB ) {
 	{
 		ProbeDatabase::Query query( probeDatabase );
 
-		query.setQueryDataset( rawTestDataset );
+		query.setQueryDataset( rawTestProbeContexts );
 
 		ProbeContextTolerance pct;
 		pct.occusionTolerance = 0;
@@ -361,15 +362,15 @@ TEST( ProbeDatabase, zeroTolerance_biggerDB ) {
 
 TEST( ProbeDatabase, oneTolerance ) {
 	// init the dataset
-	RawProbeContexts rawDataset, rawTestDataset;
+	RawProbeContexts rawProbeContexts, rawTestProbeContexts;
 	for( int i = 0 ; i < 1000 ; i++ ) {
 		for( int j = 0 ; j < 5 ; j++ ) {
-			rawDataset.push_back( makeProbeContext( j, i ) );
-			rawTestDataset.push_back( makeProbeContext( j, 500 + i ) );
+			rawProbeContexts.push_back( makeProbeContext( j, i ) );
+			rawTestProbeContexts.push_back( makeProbeContext( j, 500 + i ) );
 		}
 	}
 
-	auto probes = std::vector< ProbeDatabase::Probe >( 5*1000 );
+	auto probes = std::vector< DBProbe >( 5*1000 );
 
 	ProbeDatabase probeDatabase;
 
@@ -377,7 +378,7 @@ TEST( ProbeDatabase, oneTolerance ) {
 	modelNames.push_back( "test" );
 	probeDatabase.registerSceneModels( modelNames );
 
-	probeDatabase.addInstanceProbes( 0, Obb(), probes, rawDataset );
+	probeDatabase.addInstanceProbes( 0, Obb(), probes, rawProbeContexts );
 	probeDatabase.compileAll();
 
 	ProbeContextTolerance pct;
@@ -387,7 +388,7 @@ TEST( ProbeDatabase, oneTolerance ) {
 	{
 		ProbeDatabase::Query query( probeDatabase );
 
-		query.setQueryDataset( rawDataset );
+		query.setQueryDataset( rawProbeContexts );
 		query.setProbeContextTolerance( pct );
 
 		query.execute();
@@ -404,13 +405,12 @@ TEST( ProbeDatabase, oneTolerance ) {
 
 		ASSERT_EQ( queryResults.size(), 1 );
 		EXPECT_FLOAT_EQ( queryResults[0].score, 1.0 );
-		EXPECT_EQ( queryResults[0].sceneModelIndex, 0 );
 	}
 
 	{
 		ProbeDatabase::Query query( probeDatabase );
 
-		query.setQueryDataset( rawTestDataset );
+		query.setQueryDataset( rawTestProbeContexts );
 		query.setProbeContextTolerance( pct );
 
 		query.execute();
@@ -434,15 +434,15 @@ TEST( ProbeDatabase, oneTolerance ) {
 #if 0
 TEST( ProbeDatabase, big ) {
 	// init the dataset
-	RawProbeContexts rawDataset, rawTestDataset;
+	RawProbeContexts rawProbeContexts, rawTestProbeContexts;
 	for( int i = 0 ; i < 20000 ; i++ ) {
 		for( int j = 0 ; j < 30 ; j++ ) {
-			rawDataset.push_back( makeProbeContext( j, i ) );
-			rawTestDataset.push_back( makeProbeContext( j, 10000 + i ) );
+			rawProbeContexts.push_back( makeProbeContext( j, i ) );
+			rawTestProbeContexts.push_back( makeProbeContext( j, 10000 + i ) );
 		}
 	}
 
-	auto probes = std::vector< ProbeDatabase::Probe >( rawDataset.size() );
+	auto probes = std::vector< DBProbe >( rawProbeContexts.size() );
 
 	ProbeDatabase probeDatabase;
 
@@ -450,13 +450,13 @@ TEST( ProbeDatabase, big ) {
 	modelNames.push_back( "test" );
 	probeDatabase.registerSceneModels( modelNames );
 
-	probeDatabase.addInstanceProbes( 0, Obb(), probes, rawDataset );
+	probeDatabase.addInstanceProbes( 0, Obb(), probes, rawProbeContexts );
 	probeDatabase.compileAll();
 
 	{
 		ProbeDatabase::Query query( probeDatabase );
 
-		query.setQueryDataset( rawDataset );
+		query.setQueryDataset( rawProbeContexts );
 
 		ProbeContextTolerance pct;
 		pct.occusionTolerance = 0;
@@ -474,7 +474,7 @@ TEST( ProbeDatabase, big ) {
 	{
 		ProbeDatabase::Query query( probeDatabase );
 
-		query.setQueryDataset( rawTestDataset );
+		query.setQueryDataset( rawTestProbeContexts );
 
 		ProbeContextTolerance pct;
 		pct.occusionTolerance = 0;

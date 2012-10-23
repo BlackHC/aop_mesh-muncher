@@ -81,218 +81,85 @@ protected:
 	typedef std::pair< IntRange, IntRange > OverlappedRange;
 
 	DetailedQueryResult matchAgainst( int localSceneIndex, int sceneModelIndex ) {
-		// TODO: rename idDataset to idDatabase? [9/26/2012 kirschan2]
-		const IndexedProbeContexts &idDataset = database.sampledModels[ localSceneIndex ].getMergedInstances();
+		const auto &sampledModel = database.sampledModels[ localSceneIndex ];
 
-		if( idDataset.size() == 0 ) {
+		// TODO: rename idDataset to idDatabase? [9/26/2012 kirschan2]
+		const IndexedProbeContexts &sampledModelProbeContexts = sampledModel.getMergedInstances();
+
+		if( sampledModelProbeContexts.size() == 0 ) {
 			return DetailedQueryResult( sceneModelIndex );
 		}
 
-		AUTO_TIMER_FOR_FUNCTION( boost::format( "id = %i, %i ref probes (%i query probes)" ) % sceneModelIndex % idDataset.size() % indexedProbeContexts.size() );
-
-		// idea:
-		//	use a binary search approach to generate only needed subranges
-
-		// we can compare the different occlusion ranges against each other, after including the tolerance
-
-		// TODO: is it better to make both ranges about equally big or not?
-		// its better they are equal
-
-		// assuming that the query set is smaller, we enlarge it, to have less items to sort than vice-versa
-		// we could determine this at runtime...
-		// if( idDatasets.size() > indexedProbeContexts.size() ) {...} else {...}
-		const int occlusionTolerance = int( OptixProgramInterface::numProbeSamples * probeContextTolerance.occusionTolerance + 0.5 );
-
-		// TODO: use a stack allocated array here? [9/27/2012 kirschan2]
-
-		std::vector< OverlappedRange > overlappedRanges;
-		overlappedRanges.reserve( OptixProgramInterface::numProbeSamples );
-		for( int occulsionLevel = 0 ; occulsionLevel <= OptixProgramInterface::numProbeSamples ; occulsionLevel++ ) {
-			const IndexedProbeContexts::IntRange queryRange = indexedProbeContexts.getOcclusionRange( occulsionLevel );
-
-			if( queryRange.first == queryRange.second ) {
-				continue;
-			}
-
-			const int leftToleranceLevel = std::max( 0, occulsionLevel - occlusionTolerance );
-			const int rightToleranceLevel = std::min( occulsionLevel + occlusionTolerance, OptixProgramInterface::numProbeSamples );
-			for( int idToleranceLevel = leftToleranceLevel ; idToleranceLevel <= rightToleranceLevel ; idToleranceLevel++ ) {
-				const IndexedProbeContexts::IntRange idRange = idDataset.getOcclusionRange( idToleranceLevel );
-
-				// is one of the ranges empty? if so, we don't need to check it at all
-				if( idRange.first == idRange.second ) {
-					continue;
-				}
-
-				// store the range for later
-				overlappedRanges.push_back( std::make_pair( queryRange, idRange ) );
-			}
-		}
+		AUTO_TIMER_FOR_FUNCTION( boost::format( "id = %i, %i ref probes (%i query probes)" ) % sceneModelIndex % sampledModelProbeContexts.size() % indexedProbeContexts.size() );
 
 		using namespace Concurrency;
-		boost::dynamic_bitset<> mergedProbesMatchedInner( indexedProbeContexts.size() ), mergedProbesMatchedOuter( idDataset.size() );
-		combinable< int > numMatches;
 
-		{
-			combinable< boost::dynamic_bitset<> > probesMatchedInner, probesMatchedOuter;
+		struct MatchController {
+			combinable< int > numMatches;
+			combinable< boost::dynamic_bitset<> > probesMatchedQueryVolume, probesMatchedSampledModel;
 
-			AUTO_TIMER_BLOCK( "matching" ) {
-				parallel_for_each( overlappedRanges.begin(), overlappedRanges.end(),
-					[&] ( const OverlappedRange &rangePair ) {
-						probesMatchedInner.local().resize( indexedProbeContexts.size() );
-						probesMatchedOuter.local().resize( idDataset.size() );
+			int numProbeContextsSampledModel;
+			int numProbeContextsQueryVolume;
 
-						matchSortedRanges(
-							indexedProbeContexts.data,
-							rangePair.first,
-							probesMatchedInner.local(),
-
-							idDataset.data,
-							rangePair.second,
-							probesMatchedOuter.local(),
-
-							numMatches.local()
-						);
-					}
-				);
+			MatchController( int numProbeContextsSampledModel, int numProbeContextsQueryVolume )
+				: numProbeContextsSampledModel( numProbeContextsSampledModel )
+				, numProbeContextsQueryVolume( numProbeContextsQueryVolume )
+			{
 			}
-			AUTO_TIMER_BLOCK( "combining matches" ) {
-				probesMatchedInner.combine_each(
-					[&] ( const boost::dynamic_bitset<> &set ) {
-						mergedProbesMatchedInner |= set;
-					}
-				);
 
-				probesMatchedOuter.combine_each(
-					[&] ( const boost::dynamic_bitset<> &set ) {
-						mergedProbesMatchedOuter |= set;
-					}
-				);
+			void onNewThreadStarted() {
+				probesMatchedQueryVolume.local().resize( numProbeContextsQueryVolume );
+				probesMatchedSampledModel.local().resize( numProbeContextsSampledModel );
+			}
+
+			void onMatch( int sampledModelProbeContextIndex, int queryProbeContextIndex, const DBProbeContext &sampledModelProbeContext, const DBProbeContext &queryProbeContext ) {
+				numMatches.local() += sampledModelProbeContext.weight * queryProbeContext.weight;
+
+				probesMatchedSampledModel.local()[ sampledModelProbeContextIndex ] = true;
+				probesMatchedQueryVolume.local()[ queryProbeContextIndex ] = true;
+			}
+		};
+
+		IndexedProbeContexts::Matcher< MatchController > matcher( sampledModelProbeContexts, indexedProbeContexts, probeContextTolerance, MatchController( sampledModelProbeContexts.size(), indexedProbeContexts.size() ) );
+		AUTO_TIMER_BLOCK( "matching" ) {
+			matcher.match();
+		}
+
+		boost::dynamic_bitset<> mergedProbeContextsSampledModel( sampledModelProbeContexts.size() ), mergedProbeContextsQueryVolume( indexedProbeContexts.size() );
+		AUTO_TIMER_BLOCK( "combining matches" ) {
+			matcher.controller.probesMatchedQueryVolume.combine_each(
+				[&] ( const boost::dynamic_bitset<> &set ) {
+					mergedProbeContextsQueryVolume |= set;
+				}
+			);
+
+			matcher.controller.probesMatchedSampledModel.combine_each(
+				[&] ( const boost::dynamic_bitset<> &set ) {
+					mergedProbeContextsSampledModel |= set;
+				}
+			);
+		}
+
+		// query volumes are not compressed
+		int numProbeContextsMatchedSampledModel = 0;
+		for( int i = 0 ; i < mergedProbeContextsSampledModel.size() ; ++i ) {
+			if( mergedProbeContextsSampledModel[ i ] ) {
+				numProbeContextsMatchedSampledModel += sampledModelProbeContexts.getProbeContexts()[ i ].weight;
 			}
 		}
 
-		const auto numProbesMatchedInner = mergedProbesMatchedInner.count();
-		const auto numProbesMatchedOuter = mergedProbesMatchedOuter.count();
-		DetailedQueryResult detailedQueryResult( sceneModelIndex );
-		detailedQueryResult.numMatches = numMatches.combine( std::plus<int>() );
+		const int numProbeContextsMatchedQueryVolume = (int) mergedProbeContextsQueryVolume.count();
 
-		detailedQueryResult.probeMatchPercentage = float( numProbesMatchedOuter ) / idDataset.size();
-		detailedQueryResult.queryMatchPercentage = float( numProbesMatchedInner ) / indexedProbeContexts.size();
+		DetailedQueryResult detailedQueryResult( sceneModelIndex );
+		detailedQueryResult.numMatches = matcher.controller.numMatches.combine( std::plus<int>() );
+
+		detailedQueryResult.probeMatchPercentage = float( numProbeContextsMatchedSampledModel ) / sampledModel.uncompressedProbeContextCount();
+		// query volumes are not compressed
+		detailedQueryResult.queryMatchPercentage = float( numProbeContextsMatchedQueryVolume ) / indexedProbeContexts.size();
 
 		detailedQueryResult.score = detailedQueryResult.probeMatchPercentage * detailedQueryResult.queryMatchPercentage;
 
 		return detailedQueryResult;
-	}
-
-	void matchSortedRanges(
-		const DBProbeContexts &probeContextsInner,
-		const IntRange &rangeInner,
-		boost::dynamic_bitset<> &probesMatchedInner,
-
-		const DBProbeContexts &probeContextsOuter,
-		const IntRange &rangeOuter,
-		boost::dynamic_bitset<> &probesMatchedOuter,
-
-		int &numMatches
-	) {
-		const float squaredColorTolerance = probeContextTolerance.colorLabTolerance * probeContextTolerance.colorLabTolerance;
-		// assert: the range is not empty
-
-		// sort the ranges into two new vectors
-		// idea: use a global scratch space to avoid recurring allocations?
-
-		const int beginIndexInner = rangeInner.first;
-		const int endIndexInner = rangeInner.second;
-		int indexInner = beginIndexInner;
-
-		const int beginIndexOuter = rangeOuter.first;
-		const int endIndexOuter = rangeOuter.second;
-		int indexOuter = beginIndexOuter;
-
-		DBProbeContext probeContextOuter = probeContextsOuter[ indexOuter ];
-		for( ; indexOuter < endIndexOuter - 1 ; indexOuter++ ) {
-			const DBProbeContext nextContextOuter = probeContextsOuter[ indexOuter + 1 ];
-			int nextIndexInner = indexInner;
-
-			const float minDistance = probeContextOuter.distance - probeContextTolerance.distanceTolerance;
-			const float maxDistance = probeContextOuter.distance + probeContextTolerance.distanceTolerance;
-			const float minNextDistance = nextContextOuter.distance - probeContextTolerance.distanceTolerance;
-
-			bool probeMatchedOuter = false;
-
-			for( ; indexInner < endIndexInner ; indexInner++ ) {
-				const DBProbeContext probeContextInner = probeContextsInner[ indexInner ];
-
-				// distance too small?
-				if( probeContextInner.distance < minDistance ) {
-					// then the next one is too far away as well
-					nextIndexInner = indexInner + 1;
-					continue;
-				}
-
-				// if nextIndexInner can't use this probe, the next overlapped context might be the first one it likes
-				if( probeContextInner.distance < minNextDistance ) {
-					// set it to the next ref context
-					nextIndexInner = indexInner + 1;
-				}
-				// else:
-				//  nextIndexInner points to the first overlapped context the next pure context might match
-
-				// are we past our interval
-				if( probeContextInner.distance > maxDistance ) {
-					// enough for this probe, do the next
-					break;
-				}
-
-				if( DBProbeContext::matchColor( probeContextOuter, probeContextInner, squaredColorTolerance ) ) {
-					numMatches += probeContextOuter.weight * probeContextInner.weight;
-
-					probesMatchedInner[ indexInner ] = true;
-					probeMatchedOuter = true;
-				}
-			}
-
-			if( probeMatchedOuter ) {
-				probesMatchedOuter[ indexOuter ] = true;
-			}
-
-			probeContextOuter = nextContextOuter;
-			indexInner = nextIndexInner;
-		}
-
-		// process the last pure probe
-		{
-			const float minDistance = probeContextOuter.distance - probeContextTolerance.distanceTolerance;
-			const float maxDistance = probeContextOuter.distance + probeContextTolerance.distanceTolerance;
-
-			bool probeMatchedOuter = false;
-
-			for( ; indexInner < endIndexInner ; indexInner++ ) {
-				const DBProbeContext probeContextInner = probeContextsInner[ indexInner ];
-
-				// distance too small?
-				if( probeContextInner.distance < minDistance ) {
-					continue;
-				}
-
-				// are we past our interval
-				if( probeContextInner.distance > maxDistance ) {
-					// enough for this probe, we're done
-					break;
-				}
-
-				if( DBProbeContext::matchColor( probeContextOuter, probeContextInner, squaredColorTolerance ) ) {
-					numMatches += probeContextOuter.weight * probeContextInner.weight;
-
-					probesMatchedInner[ indexInner ] = true;
-					probeMatchedOuter = true;
-				}
-			}
-
-			if( probeMatchedOuter ) {
-				probesMatchedOuter[ indexOuter ] = true;
-			}
-		}
 	}
 
 protected:
@@ -383,135 +250,25 @@ struct ProbeDatabase::WeightedQuery {
 	}
 
 protected:
-	typedef IndexedProbeContexts::IntRange IntRange;
-	typedef std::pair< IntRange, IntRange > OverlappedRange;
+	static float getMatchScore( const DBProbe &sampledModelProbe, const DBProbe &queryProbe ) {
+		const auto queryProbeDirection = Eigen::map( queryProbe.direction );
+		const auto sampledModelProbeDirection = Eigen::map( sampledModelProbe.direction );
 
-	DetailedQueryResult matchAgainst( int localSceneIndex, int sceneModelIndex ) {
-		// TODO: rename idDataset to idDatabase? [9/26/2012 kirschan2]
-		const auto &idDatasets = database.sampledModels[ localSceneIndex ];
-		const IndexedProbeContexts &idDataset = idDatasets.getMergedInstances();
-
-		if( idDataset.size() == 0 ) {
-			return DetailedQueryResult( sceneModelIndex );
-		}
-
-		AUTO_TIMER_FOR_FUNCTION( boost::format( "id = %i, %i ref probes (%i query probes)" ) % database.modelIndexMapper.getSceneModelIndex( sceneModelIndex ) % idDataset.size() % indexedProbeContexts.size() );
-
-		// idea:
-		//	use a binary search approach to generate only needed subranges
-
-		// we can compare the different occlusion ranges against each other, after including the tolerance
-
-		// TODO: is it better to make both ranges about equally big or not?
-		// its better they are equal
-
-		// assuming that the query set is smaller, we enlarge it, to have less items to sort than vice-versa
-		// we could determine this at runtime...
-		// if( idDatasets.size() > indexedProbeContexts.size() ) {...} else {...}
-		const int occlusionTolerance = int( OptixProgramInterface::numProbeSamples * probeContextTolerance.occusionTolerance + 0.5 );
-
-		// TODO: use a stack allocated array here? [9/27/2012 kirschan2]
-
-		std::vector< OverlappedRange > overlappedRanges;
-		overlappedRanges.reserve( OptixProgramInterface::numProbeSamples );
-		for( int occulsionLevel = 0 ; occulsionLevel <= OptixProgramInterface::numProbeSamples ; occulsionLevel++ ) {
-			const IndexedProbeContexts::IntRange queryRange = indexedProbeContexts.getOcclusionRange( occulsionLevel );
-
-			if( queryRange.first == queryRange.second ) {
-				continue;
-			}
-
-			const int leftToleranceLevel = std::max( 0, occulsionLevel - occlusionTolerance );
-			const int rightToleranceLevel = std::min( occulsionLevel + occlusionTolerance, OptixProgramInterface::numProbeSamples );
-			for( int idToleranceLevel = leftToleranceLevel ; idToleranceLevel <= rightToleranceLevel ; idToleranceLevel++ ) {
-				const IndexedProbeContexts::IntRange idRange = idDataset.getOcclusionRange( idToleranceLevel );
-
-				// is one of the ranges empty? if so, we don't need to check it at all
-				if( idRange.first == idRange.second ) {
-					continue;
-				}
-
-				// store the range for later
-				overlappedRanges.push_back( std::make_pair( queryRange, idRange ) );
-			}
-		}
-
-		using namespace Concurrency;
-		std::vector< float > mergedProbesMatchedInner( indexedProbeContexts.size() ), mergedProbesMatchedOuter( idDataset.size() );
-		combinable< int > numMatches;
-
-		{
-			combinable< std::vector< float > > probesMatchedInner, probesMatchedOuter;
-
-			AUTO_TIMER_BLOCK( "matching" ) {
-				parallel_for_each( overlappedRanges.begin(), overlappedRanges.end(),
-					[&] ( const OverlappedRange &rangePair ) {
-						probesMatchedInner.local().resize( indexedProbeContexts.size() );
-						probesMatchedOuter.local().resize( idDataset.size() );
-
-						matchSortedRanges(
-							indexedProbeContexts.data,
-							rangePair.first,
-							probesMatchedInner.local(),
-
-							idDatasets,
-							rangePair.second,
-							probesMatchedOuter.local(),
-
-							numMatches.local()
-						);
-					}
-				);
-			}
-			AUTO_TIMER_BLOCK( "combining matches" ) {
-				probesMatchedInner.combine_each(
-					[&] ( const std::vector< float > &matches ) {
-						boost::transform( mergedProbesMatchedInner, matches, mergedProbesMatchedInner.begin(), std::max<float> );
-					}
-				);
-
-				probesMatchedOuter.combine_each(
-					[&] ( const std::vector< float > &matches ) {
-						boost::transform( mergedProbesMatchedOuter, matches, mergedProbesMatchedOuter.begin(), std::max<float> );
-					}
-				);
-			}
-		}
-
-		const float numProbesMatchedInner = boost::accumulate( mergedProbesMatchedInner, 0.0f, std::plus<float>() );
-		const float numProbesMatchedOuter = boost::accumulate( mergedProbesMatchedOuter, 0.0f, std::plus<float>() );
-		DetailedQueryResult detailedQueryResult( sceneModelIndex  );
-		detailedQueryResult.numMatches = numMatches.combine( std::plus<int>() );
-
-		const int numUncompressedModelProbeContexts = (int) idDatasets.getProbes().size() * (int) idDatasets.getInstances().size();
-		const int numUncompressedQueryProbeContexts = indexedProbeContexts.size();
-		detailedQueryResult.probeMatchPercentage = float( numProbesMatchedOuter ) / numUncompressedModelProbeContexts;
-		detailedQueryResult.queryMatchPercentage = float( numProbesMatchedInner ) / numUncompressedQueryProbeContexts;
-
-		detailedQueryResult.score = detailedQueryResult.probeMatchPercentage * detailedQueryResult.queryMatchPercentage;
-
-		return detailedQueryResult;
-	}
-
-	static float getMatchScore( const DBProbe &query, const DBProbe &ref ) {
-		const auto queryDirection = Eigen::map( query.direction );
-		const auto refDirection = Eigen::map( ref.direction );
-
-		//const float directionScore = (1.0 + queryDirection.dot( refDirection )) * 0.5;
-		const float directionScore = queryDirection.dot( refDirection );
+		//const float directionScore = (1.0 + queryProbeDirection.dot( sampledModelProbeDirection )) * 0.5;
+		const float directionScore = queryProbeDirection.dot( sampledModelProbeDirection );
 		if( directionScore <= 0.0 ) {
 			return 0.0;
 		}
 		return directionScore;
 		/*
-		const auto queryPosition = Eigen::map( query.position );
-		const auto refPosition = Eigen::map( ref.position );
+		const auto queryProbePosition = Eigen::map( queryProbe.position );
+		const auto sampledModelProbePosition = Eigen::map( sampledModelProbe.position );
 
 		const float alpha = 0.001;
 		const float beta = 0.00001;
 
-		const Eigen::Vector3f delta = queryPosition - refPosition;
-		const float deltaDot = delta.dot( refDirection );
+		const Eigen::Vector3f delta = queryProbePosition - sampledModelProbePosition;
+		const float deltaDot = delta.dot( sampledModelProbeDirection );
 		const float shiftScore =
 			std::max(
 				0.0,
@@ -520,121 +277,91 @@ protected:
 		return directionScore * shiftScore;*/
 	}
 
-	void matchSortedRanges(
-		// query
-		const DBProbeContexts &probeContextsInner,
-		const IntRange &rangeInner,
-		std::vector< float > &probesMatchedInner,
+	DetailedQueryResult matchAgainst( int localSceneIndex, int sceneModelIndex ) {
+		const auto &sampledModel = database.sampledModels[ localSceneIndex ];
 
-		// ref
-		const SampledModel &sampledModelOuter,
-		const IntRange &rangeOuter,
-		std::vector< float > &probesMatchedOuter,
+		// TODO: rename idDataset to idDatabase? [9/26/2012 kirschan2]
+		const IndexedProbeContexts &sampledModelProbeContexts = sampledModel.getMergedInstances();
 
-		int &numMatches
-	) {
-		const float squaredColorTolerance = probeContextTolerance.colorLabTolerance * probeContextTolerance.colorLabTolerance;
-
-		// assert: the range is not empty
-
-		// sort the ranges into two new vectors
-		// idea: use a global scratch space to avoid recurring allocations?
-
-		const int beginIndexInner = rangeInner.first;
-		const int endIndexInner = rangeInner.second;
-		int indexInner = beginIndexInner;
-
-		const int beginIndexOuter = rangeOuter.first;
-		const int endIndexOuter = rangeOuter.second;
-		int indexOuter = beginIndexOuter;
-
-		DBProbeContext probeContextOuter = sampledModelOuter.getMergedInstances().getProbeContexts()[ indexOuter ];
-		for( ; indexOuter < endIndexOuter - 1 ; indexOuter++ ) {
-			const DBProbeContext nextContextOuter = sampledModelOuter.getMergedInstances().getProbeContexts()[ indexOuter + 1 ];
-			int nextIndexInner = indexInner;
-
-			const float minDistance = probeContextOuter.distance - probeContextTolerance.distanceTolerance;
-			const float maxDistance = probeContextOuter.distance + probeContextTolerance.distanceTolerance;
-			const float minNextDistance = nextContextOuter.distance - probeContextTolerance.distanceTolerance;
-
-			float probeBestMatchOuter = 0.0f;
-
-			for( ; indexInner < endIndexInner ; indexInner++ ) {
-				const DBProbeContext probeContextInner = probeContextsInner[ indexInner ];
-
-				// distance too small?
-				if( probeContextInner.distance < minDistance ) {
-					// then the next one is too far away as well
-					nextIndexInner = indexInner + 1;
-					continue;
-				}
-
-				// if nextIndexInner can't use this probe, the next overlapped context might be the first one it likes
-				if( probeContextInner.distance < minNextDistance ) {
-					// set it to the next ref context
-					nextIndexInner = indexInner + 1;
-				}
-				// else:
-				//  nextIndexInner points to the first overlapped context the next pure context might match
-
-				// are we past our interval
-				if( probeContextInner.distance > maxDistance ) {
-					// enough for this probe, do the next
-					break;
-				}
-
-				if( DBProbeContext::matchColor( probeContextOuter, probeContextInner, squaredColorTolerance ) ) {
-					numMatches++;
-
-					const float matchScore = getMatchScore( probes[ probeContextInner.probeIndex ], sampledModelOuter.getProbes()[ probeContextOuter.probeIndex ] );
-
-					probesMatchedInner[ indexInner ] = std::max( probeContextInner.weight * matchScore, probesMatchedInner[ indexInner ] );
-					probeBestMatchOuter = std::max( probeBestMatchOuter, matchScore );
-				}
-			}
-
-			if( probeBestMatchOuter > 0.0f ) {
-				probesMatchedOuter[ indexOuter ] = std::max( probeContextOuter.weight * probeBestMatchOuter, probesMatchedOuter[ indexOuter ] );
-			}
-
-			probeContextOuter = nextContextOuter;
-			indexInner = nextIndexInner;
+		if( sampledModelProbeContexts.size() == 0 ) {
+			return DetailedQueryResult( sceneModelIndex );
 		}
 
-		// process the last pure probe
-		{
-			const float minDistance = probeContextOuter.distance - probeContextTolerance.distanceTolerance;
-			const float maxDistance = probeContextOuter.distance + probeContextTolerance.distanceTolerance;
+		AUTO_TIMER_FOR_FUNCTION( boost::format( "id = %i, %i ref probes (%i query probes)" ) % sceneModelIndex % sampledModelProbeContexts.size() % indexedProbeContexts.size() );
 
-			float probeBestMatchOuter = 0.0f;
+		using namespace Concurrency;
 
-			for( ; indexInner < endIndexInner ; indexInner++ ) {
-				const DBProbeContext probeContextInner = probeContextsInner[ indexInner ];
+		struct MatchController {
+			combinable< int > numMatches;
+			combinable< std::vector< float > > probesMatchedQueryVolume, probesMatchedSampledModel;
 
-				// distance too small?
-				if( probeContextInner.distance < minDistance ) {
-					continue;
-				}
+			const DBProbes &sampledModelProbes;
+			const DBProbes &queryProbes;
 
-				// are we past our interval
-				if( probeContextInner.distance > maxDistance ) {
-					// enough for this probe, we're done
-					break;
-				}
+			int numProbeContextsSampledModel;
+			int numProbeContextsQueryVolume;
 
-				if( DBProbeContext::matchColor( probeContextOuter, probeContextInner, squaredColorTolerance ) ) {
-					numMatches++;
-
-					const float matchScore = getMatchScore( probes[ probeContextInner.probeIndex ], sampledModelOuter.getProbes()[ probeContextOuter.probeIndex ] );
-					probesMatchedInner[ indexInner ] = std::max( probeContextInner.weight * matchScore, probesMatchedInner[ indexInner ] );
-					probeBestMatchOuter = matchScore;
-				}
+			MatchController( int numProbeContextsSampledModel, int numProbeContextsQueryVolume, const DBProbes &sampledModelProbes, const DBProbes &queryProbes )
+				: numProbeContextsSampledModel( numProbeContextsSampledModel )
+				, numProbeContextsQueryVolume( numProbeContextsQueryVolume )
+				, sampledModelProbes( sampledModelProbes )
+				, queryProbes( queryProbes )
+			{
 			}
 
-			if( probeBestMatchOuter > 0.0f ) {
-				probesMatchedOuter[ indexOuter ] = std::max( probeContextOuter.weight * probeBestMatchOuter, probesMatchedOuter[ indexOuter ] );
+			void onNewThreadStarted() {
+				probesMatchedQueryVolume.local().resize( numProbeContextsQueryVolume );
+				probesMatchedSampledModel.local().resize( numProbeContextsSampledModel );
 			}
+
+			void onMatch( int sampledModelProbeContextIndex, int queryProbeContextIndex, const DBProbeContext &sampledModelProbeContext, const DBProbeContext &queryProbeContext ) {
+				numMatches.local() = sampledModelProbeContext.weight * queryProbeContext.weight;
+
+				const float score = getMatchScore( sampledModelProbes[ sampledModelProbeContext.probeIndex ], queryProbes[ queryProbeContext.probeIndex ] );
+
+				probesMatchedSampledModel.local()[ sampledModelProbeContextIndex ] = std::max( probesMatchedSampledModel.local()[ sampledModelProbeContext.probeIndex ], score * sampledModelProbeContext.weight );
+				probesMatchedQueryVolume.local()[ queryProbeContextIndex ] = std::max( probesMatchedQueryVolume.local()[ queryProbeContextIndex ], score * queryProbeContext.weight );;
+			}
+		};
+
+		IndexedProbeContexts::Matcher< MatchController > matcher(
+			sampledModelProbeContexts,
+			indexedProbeContexts,
+			probeContextTolerance,
+			MatchController( sampledModelProbeContexts.size(), indexedProbeContexts.size(), sampledModel.getProbes(), probes )
+		);
+		AUTO_TIMER_BLOCK( "matching" ) {
+			matcher.match();
 		}
+
+		std::vector< float > mergedProbeContextsSampledModel( sampledModelProbeContexts.size() ), mergedProbeContextsQueryVolume( indexedProbeContexts.size() );
+		AUTO_TIMER_BLOCK( "combining matches" ) {
+			matcher.controller.probesMatchedQueryVolume.combine_each(
+				[&] ( const std::vector< float > &matches ) {
+					boost::transform( mergedProbeContextsQueryVolume, matches, mergedProbeContextsQueryVolume.begin(), std::max<float> );
+				}
+			);
+
+			matcher.controller.probesMatchedSampledModel.combine_each(
+				[&] ( const std::vector< float > &matches ) {
+					boost::transform( mergedProbeContextsSampledModel, matches, mergedProbeContextsSampledModel.begin(), std::max<float> );
+				}
+			);
+		}
+
+		// query volumes are not compressed
+		const float numProbeContextsMatchedSampledModel = boost::accumulate( mergedProbeContextsSampledModel, 0.0f, std::plus<float>() );
+		const float numProbeContextsMatchedQueryVolume = boost::accumulate( mergedProbeContextsQueryVolume, 0.0f, std::plus<float>() );
+		DetailedQueryResult detailedQueryResult( sceneModelIndex  );
+		detailedQueryResult.numMatches = matcher.controller.numMatches.combine( std::plus<int>() );
+
+		detailedQueryResult.probeMatchPercentage = float( numProbeContextsMatchedSampledModel ) / sampledModel.uncompressedProbeContextCount();
+		// query volumes are not compressed
+		detailedQueryResult.queryMatchPercentage = float( numProbeContextsMatchedQueryVolume ) / indexedProbeContexts.size();
+
+		detailedQueryResult.score = detailedQueryResult.probeMatchPercentage * detailedQueryResult.queryMatchPercentage;
+
+		return detailedQueryResult;
 	}
 
 protected:

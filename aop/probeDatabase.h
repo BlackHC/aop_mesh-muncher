@@ -430,6 +430,181 @@ struct IndexedProbeContexts {
 		return std::make_pair( hitCounterLowerBounds[leftLevel], hitCounterLowerBounds[ rightLevel + 1 ] );
 	}
 
+	struct MatcherController {
+		void onMatch( int outerProbeContextIndex, int innerProbeContextIndex, const DBProbeContext &outer, const DBProbeContext &inner ) {
+		}
+
+		void onNewThreadStarted() {
+		}
+	};
+
+	template< typename Controller = MatcherController >
+	struct Matcher {
+		const IndexedProbeContexts &probeContextsInner;
+		const IndexedProbeContexts &probeContextsOuter;
+		const ProbeContextTolerance &probeContextTolerance;
+		Controller controller;
+
+		Matcher( const IndexedProbeContexts &outer, const IndexedProbeContexts &inner, const ProbeContextTolerance &probeContextTolerance, Controller &&controller )
+			: probeContextsOuter( outer )
+			, probeContextsInner( inner )
+			, probeContextTolerance( probeContextTolerance )
+			, controller( controller )
+		{
+		}
+
+		Matcher( const IndexedProbeContexts &outer, const IndexedProbeContexts &inner )
+			: probeContextsOuter( outer )
+			, probeContextsInner( inner )
+			, probeContextTolerance( probeContextTolerance )
+			, controller()
+		{
+		}
+
+		void match() {
+			if( probeContextsOuter.size() == 0 || probeContextsInner.size() == 0 ) {
+				return;
+			}
+
+			// idea:
+			//	use a binary search approach to generate only needed subranges
+
+			// we can compare the different occlusion ranges against each other, after including the tolerance
+
+			// TODO: is it better to make both ranges about equally big or not?
+			// its better they are equal
+
+			// assuming that the query set is smaller, we enlarge it, to have less items to sort than vice-versa
+			// we could determine this at runtime...
+			// if( idDatasets.size() > indexedProbeContexts.size() ) {...} else {...}
+			const int occlusionTolerance = int( OptixProgramInterface::numProbeSamples * probeContextTolerance.occusionTolerance + 0.5 );
+
+			// TODO: use a stack allocated array here? [9/27/2012 kirschan2]
+
+			typedef std::pair< IntRange, IntRange > RangeJob;
+			std::vector< RangeJob > rangeJobs;
+			rangeJobs.reserve( OptixProgramInterface::numProbeSamples );
+			for( int occulsionLevel = 0 ; occulsionLevel <= OptixProgramInterface::numProbeSamples ; occulsionLevel++ ) {
+				const IntRange rangeOuter = probeContextsOuter.getOcclusionRange( occulsionLevel );
+
+				if( rangeOuter.first == rangeOuter.second ) {
+					continue;
+				}
+
+				const int leftToleranceLevel = std::max( 0, occulsionLevel - occlusionTolerance );
+				const int rightToleranceLevel = std::min( occulsionLevel + occlusionTolerance, OptixProgramInterface::numProbeSamples );
+				for( int toleranceLevel = leftToleranceLevel ; toleranceLevel <= rightToleranceLevel ; toleranceLevel++ ) {
+					const IntRange rangeInner = probeContextsInner.getOcclusionRange( toleranceLevel );
+
+					// is one of the ranges empty? if so, we don't need to check it at all
+					if( rangeInner.first == rangeInner.second ) {
+						continue;
+					}
+
+					// store the range for later
+					rangeJobs.push_back( std::make_pair( rangeOuter, rangeInner ) );
+				}
+			}
+
+			AUTO_TIMER_BLOCK( "matching" ) {
+				using namespace Concurrency;
+				parallel_for_each( rangeJobs.begin(), rangeJobs.end(),
+					[&] ( const RangeJob &rangeJob ) {
+						controller.onNewThreadStarted();
+
+						matchSortedRanges(
+							rangeJob.first,
+							rangeJob.second
+						);
+					}
+				);
+			}
+		}
+
+		void matchSortedRanges(
+			const IntRange &rangeOuter,
+			const IntRange &rangeInner
+		) {
+			const float squaredColorTolerance = probeContextTolerance.colorLabTolerance * probeContextTolerance.colorLabTolerance;
+
+			// assert: the range is not empty
+			const int beginIndexOuter = rangeOuter.first;
+			const int endIndexOuter = rangeOuter.second;
+			int indexOuter = beginIndexOuter;
+
+			const int beginIndexInner = rangeInner.first;
+			const int endIndexInner = rangeInner.second;
+			int indexInner = beginIndexInner;
+
+			DBProbeContext probeContextOuter = probeContextsOuter.getProbeContexts()[ indexOuter ];
+			for( ; indexOuter < endIndexOuter - 1 ; indexOuter++ ) {
+				const DBProbeContext nextContextOuter = probeContextsOuter.getProbeContexts()[ indexOuter + 1 ];
+				int nextIndexInner = indexInner;
+
+				const float minDistance = probeContextOuter.distance - probeContextTolerance.distanceTolerance;
+				const float maxDistance = probeContextOuter.distance + probeContextTolerance.distanceTolerance;
+				const float minNextDistance = nextContextOuter.distance - probeContextTolerance.distanceTolerance;
+
+				for( ; indexInner < endIndexInner ; indexInner++ ) {
+					const DBProbeContext probeContextInner = probeContextsInner.getProbeContexts()[ indexInner ];
+
+					// distance too small?
+					if( probeContextInner.distance < minDistance ) {
+						// then the next one is too far away as well
+						nextIndexInner = indexInner + 1;
+						continue;
+					}
+
+					// if nextIndexInner can't use this probe, the next overlapped context might be the first one it likes
+					if( probeContextInner.distance < minNextDistance ) {
+						// set it to the next ref context
+						nextIndexInner = indexInner + 1;
+					}
+					// else:
+					//  nextIndexInner points to the first overlapped context the next pure context might match
+
+					// are we past our interval
+					if( probeContextInner.distance > maxDistance ) {
+						// enough for this probe, do the next
+						break;
+					}
+
+					if( DBProbeContext::matchColor( probeContextOuter, probeContextInner, squaredColorTolerance ) ) {
+						controller.onMatch( indexOuter, indexInner, probeContextOuter, probeContextInner );
+					}
+				}
+
+				probeContextOuter = nextContextOuter;
+				indexInner = nextIndexInner;
+			}
+
+			// process the last pure probe
+			{
+				const float minDistance = probeContextOuter.distance - probeContextTolerance.distanceTolerance;
+				const float maxDistance = probeContextOuter.distance + probeContextTolerance.distanceTolerance;
+
+				for( ; indexInner < endIndexInner ; indexInner++ ) {
+					const DBProbeContext probeContextInner = probeContextsInner.getProbeContexts()[ indexInner ];
+
+					// distance too small?
+					if( probeContextInner.distance < minDistance ) {
+						continue;
+					}
+
+					// are we past our interval
+					if( probeContextInner.distance > maxDistance ) {
+						// enough for this probe, we're done
+						break;
+					}
+
+					if( DBProbeContext::matchColor( probeContextOuter, probeContextInner, squaredColorTolerance ) ) {
+						controller.onMatch( indexOuter, indexInner, probeContextOuter, probeContextInner );
+					}
+				}
+			}
+		}
+	};
+
 private:
 	void sort() {
 		AUTO_TIMER_FUNCTION();
@@ -555,7 +730,7 @@ struct SampledModel {
 			}
 
 			// TODO: magic constants!!! [10/17/2012 kirschan2]
-			CompressedDataset::compress( instances.size(), probes.size(), probeContexts, ProbeContextToleranceV2( int( 0.124f * OptixProgramInterface::numProbeSamples ), 1.0f, 0.25f * 0.95f ) );
+			//CompressedDataset::compress( instances.size(), probes.size(), probeContexts, ProbeContextToleranceV2( int( 0.124f * OptixProgramInterface::numProbeSamples ), 1.0f, 0.25f * 0.95f ) );
 
 			mergedInstances = IndexedProbeContexts( std::move( probeContexts ) );
 		}
@@ -563,6 +738,10 @@ struct SampledModel {
 
 	bool isEmpty() const {
 		return mergedInstances.size() == 0;
+	}
+
+	int uncompressedProbeContextCount() const {
+		return instances.size() * probes.size();
 	}
 
 	const SampledInstances & getInstances() const {
