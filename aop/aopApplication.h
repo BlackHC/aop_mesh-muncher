@@ -40,6 +40,15 @@ namespace aop {
 	
 	struct ModelDatabaseUI;
 	struct ProbeDatabaseUI;
+
+	namespace DebugObjects {
+		struct SceneDisplayListObject;
+
+		struct SGSRenderer;
+		struct OptixView;
+		struct ProbeDatabase;
+		struct ModelDatabase;
+	}
 	
 	struct Application : ModelDatabase::ImportInterface {
 		enum QueryType {
@@ -93,10 +102,11 @@ namespace aop {
 		std::vector< std::shared_ptr< LocalCandidateBarUI > > localCandidateBarUIs;
 		std::shared_ptr< ModelSelectionBarUI > modelSelectionBarUI;
 
-		std::shared_ptr< DebugUI > debugUI;
-
 		std::shared_ptr< ModelDatabaseUI > modelDatabaseUI;
 		std::shared_ptr<TimedLog> timedLog;
+
+		std::shared_ptr< DebugUI > debugUI;
+		std::shared_ptr< DebugObjects::ProbeDatabase > probeDatabase_debugUI;
 
 		void init();
 
@@ -126,7 +136,7 @@ namespace aop {
 			ModelDatabase_sampleModel( modelId, resolution );
 		}
 
-		QueryResults queryVolume( const Obb &queryVolume, QueryType queryType );
+		QueryResults queryVolume( const SceneSettings::NamedTargetVolume &queryVolume, QueryType queryType );
 		QueryResults normalQueryVolume( const Obb &queryVolume, const RawProbes &queryProbes, const RawProbeContexts &queryProbeContexts );
 		QueryResults weightedQueryVolume( const Obb &queryVolume, const RawProbes &queryProbes, const RawProbeContexts &queryProbeContexts );
 

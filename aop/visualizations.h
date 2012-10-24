@@ -13,7 +13,10 @@ enum GridVisualizationMode {
 	GVM_MAX
 };
 
-void visualizeColorGrid( const VoxelizedModel::Voxels &grid, GridVisualizationMode gvm = GVM_POSITION );
+void visualizeColorGrid(
+	const VoxelizedModel::Voxels &grid,
+	GridVisualizationMode gvm = GVM_POSITION
+);
 
 enum ProbeVisualizationMode {
 	PVM_COLOR,
@@ -28,5 +31,14 @@ void visualizeProbeDataset(
 	float resolution,
 	const DBProbes &probes,
 	const DBProbeContexts &probeContexts,
+	ProbeVisualizationMode pvm
+);
+
+void visualizeRawProbeContexts(
+	const Eigen::Vector3f &missColor,
+	float maxDistance,
+	float resolution,
+	const RawProbes &probes,
+	const RawProbeContexts &probeContexts,
 	ProbeVisualizationMode pvm
 );

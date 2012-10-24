@@ -405,6 +405,73 @@ namespace DebugObjects {
 			);
 		}
 
+		void addQueryVisualization( const std::string &name, const RawProbes &probes, const RawProbeContexts &probeContexts ) {
+			const float resolutionScale = 0.25f;
+			{
+				GL::ScopedDisplayList list;
+				list.begin();
+
+				visualizeRawProbeContexts(
+					missColor,
+					application->sceneSettings.probeGenerator_maxDistance,
+					application->sceneSettings.probeGenerator_resolution * resolutionScale,
+					probes,
+					probeContexts,
+					PVM_COLOR
+				);
+
+				list.end();
+				debugUI->add(
+					std::make_shared< DebugObjects::SceneDisplayListObject >( 
+						boost::str( boost::format( "Query '%s' color" ) % name ),
+						list.publish()
+					)
+				);
+			}
+			{
+				GL::ScopedDisplayList list;
+				list.begin();
+
+				visualizeRawProbeContexts(
+					missColor,
+					application->sceneSettings.probeGenerator_maxDistance,
+					application->sceneSettings.probeGenerator_resolution * resolutionScale,
+					probes,
+					probeContexts,
+					PVM_DISTANCE
+				);
+
+				list.end();
+				debugUI->add(
+					std::make_shared< DebugObjects::SceneDisplayListObject >( 
+						boost::str( boost::format( "Query '%s' distance" ) % name ),
+						list.publish()
+					)
+				);
+			}
+			{
+				GL::ScopedDisplayList list;
+				list.begin();
+
+				visualizeRawProbeContexts(
+					missColor,
+					application->sceneSettings.probeGenerator_maxDistance,
+					application->sceneSettings.probeGenerator_resolution * resolutionScale,
+					probes,
+					probeContexts,
+					PVM_OCCLUSION
+				);
+
+				list.end();
+				debugUI->add(
+					std::make_shared< DebugObjects::SceneDisplayListObject >( 
+						boost::str( boost::format( "Query '%s' occlusion" ) % name ),
+						list.publish()
+					)
+				);
+			}
+		}
+
 		void standaloneVisualization( const std::string &name ) {
 			auto window = std::make_shared< MultiDisplayListVisualizationWindow >();
 			// render the scene as wireframe
@@ -1005,7 +1072,7 @@ namespace aop {
 
 					void visit( Editor::ObbSelection *selection ) {
 						application->startLongOperation();
-						auto queryResults = application->queryVolume( selection->getObb(), queryType );
+						auto queryResults = application->queryVolume( application->sceneSettings.volumes[ selection->index ], queryType );
 						application->endLongOperation();
 
 						boost::sort(
@@ -1030,7 +1097,7 @@ namespace aop {
 				application->startLongOperation();
 				ProgressTracker::Context progressTracker( application->sceneSettings.volumes.size() );
 				for( auto queryVolume = application->sceneSettings.volumes.begin() ; queryVolume != application->sceneSettings.volumes.end() ; ++queryVolume ) {
-					auto queryResults = application->queryVolume( queryVolume->volume, queryType );
+					auto queryResults = application->queryVolume( *queryVolume, queryType );
 
 					boost::sort(
 						queryResults,
@@ -1121,7 +1188,7 @@ namespace aop {
 					}
 					void visit( Editor::ObbSelection *selection ) {
 						application->startLongOperation();
-						auto matchInfos = application->queryVolume( selection->getObb(), Application::QT_NORMAL );
+						auto matchInfos = application->queryVolume( application->sceneSettings.volumes[ selection->index ], Application::QT_NORMAL );
 						application->endLongOperation();
 
 						/*typedef ProbeDatabase::WeightedQuery::MatchInfo MatchInfo;
@@ -1203,7 +1270,9 @@ namespace aop {
 
 		// add some default objects to the debug ui
 		debugUI->add( std::make_shared< DebugObjects::SGSRenderer >( this ) );
-		debugUI->add( std::make_shared< DebugObjects::ProbeDatabase >( this ) );
+		probeDatabase_debugUI = std::make_shared< DebugObjects::ProbeDatabase >( this );
+		debugUI->add( probeDatabase_debugUI );
+
 		debugUI->add( std::make_shared< DebugObjects::OptixView >( this ) );
 	}
 
@@ -1414,7 +1483,7 @@ namespace aop {
 		return pct;
 	}
 
-	QueryResults Application::queryVolume( const Obb &queryVolume, QueryType queryType ) {
+	QueryResults Application::queryVolume( const SceneSettings::NamedTargetVolume &queryVolume, QueryType queryType ) {
 		ProgressTracker::Context progressTracker( 3 );
 
 		AUTO_TIMER_FOR_FUNCTION();
@@ -1423,7 +1492,7 @@ namespace aop {
 		renderContext.setDefault();
 
 		RawProbes queryProbes;
-		ProbeGenerator::generateQueryProbes( queryVolume, sceneSettings.probeGenerator_resolution, queryProbes );
+		ProbeGenerator::generateQueryProbes( queryVolume.volume, sceneSettings.probeGenerator_resolution, queryProbes );
 
 		progressTracker.markFinished();
 
@@ -1436,13 +1505,17 @@ namespace aop {
 		QueryResults queryResults;
 		switch( queryType ) {
 		case QT_NORMAL:
-			queryResults = normalQueryVolume( queryVolume, queryProbes, queryProbeContexts );
+			queryResults = normalQueryVolume( queryVolume.volume, queryProbes, queryProbeContexts );
 			break;
 		case QT_WEIGHTED:
-			queryResults = weightedQueryVolume( queryVolume, queryProbes, queryProbeContexts );
+			queryResults = weightedQueryVolume( queryVolume.volume, queryProbes, queryProbeContexts );
 			break;
 		}
 		progressTracker.markFinished();
+
+		if( DebugObjects::ProbeDatabase::automaticallyVisualizeQuery ) {
+			probeDatabase_debugUI->addQueryVisualization( queryVolume.name, queryProbes, queryProbeContexts );
+		}
 
 		return queryResults;
 	}

@@ -39,7 +39,7 @@ rtBuffer<ProbeContext> probeContexts;
 RT_PROGRAM void sampleProbes() {
 	Probe probe = probes[ probeIndex ];
 
-#if 1
+#if 0
 	Onb onb( probe.direction );
 
 	//rtPrintf( "%f", dot( onb.m_normal, cross( onb.m_tangent, onb.m_binormal ) ) );
