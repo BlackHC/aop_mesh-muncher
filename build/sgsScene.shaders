@@ -138,16 +138,28 @@ previewObject:
 		vertexColor		vec4
 
 	uniforms:
-		baseTetxture 'layout( binding = 0 ) sampler2D'
+		baseTexture 'layout( binding = 0 ) sampler2D'
 
 	code::
 		vec4 surfaceShader() {
 				//return vec4( worldNormal / 2 + 0.5, 1.0 );
-			vec4 baseColor = vertexColor * texture( baseTetxture, gl_TexCoord[0].st );
+			vec4 baseColor = vertexColor * texture( baseTexture, gl_TexCoord[0].st );
 
 			// add some very simple lighting
 			vec3 color = lightFragment( worldPosition, normalize( worldNormal ), baseColor.rgb );
 			return vec4( color, baseColor.a );
+		}
+
+previewObjectNormals:
+	surfaceShader
+
+	inputs:
+		worldPosition	vec3
+		worldNormal		vec3
+
+	code::
+		vec4 surfaceShader() {
+			return vec4( worldNormal / 2 + 0.5, 1.0 );
 		}
 
 sgsMesh:

@@ -80,7 +80,7 @@ namespace aop {
 						volume.volume.transformation =
 							Eigen::Translation3f( camera.getPosition() + 5.0 * camera.getDirection() ) *
 							camera.getViewRotation().transpose()
-							;
+						;
 
 						this->application->sceneSettings.volumes.push_back( volume );
 					}
