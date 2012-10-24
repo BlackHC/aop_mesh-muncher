@@ -430,6 +430,7 @@ struct IndexedProbeContexts {
 		return std::make_pair( hitCounterLowerBounds[leftLevel], hitCounterLowerBounds[ rightLevel + 1 ] );
 	}
 
+#if 0
 	struct MatcherController {
 		void onMatch( int outerProbeContextIndex, int innerProbeContextIndex, const DBProbeContext &outer, const DBProbeContext &inner ) {
 		}
@@ -437,8 +438,9 @@ struct IndexedProbeContexts {
 		void onNewThreadStarted() {
 		}
 	};
+#endif
 
-	template< typename Controller = MatcherController >
+	template< typename Controller >
 	struct Matcher {
 		const IndexedProbeContexts &probeContextsInner;
 		const IndexedProbeContexts &probeContextsOuter;
@@ -773,7 +775,6 @@ private:
 struct ProbeDatabase : IDatabase {
 	struct Query;
 	struct WeightedQuery;
-	struct FullQuery;
 
 	// TODO: fix the naming [10/15/2012 kirschan2]
 	typedef std::vector<SampledModel> SampledModels;

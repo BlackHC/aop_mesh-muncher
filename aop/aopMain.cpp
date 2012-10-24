@@ -74,15 +74,7 @@ using namespace Eigen;
 
 #pragma warning( once: 4244 )
 
-template<>
-struct AntTWBarUI::detail::TypeMap< Editor::ModeState > {
-	static int Type;
-};
-
-int AntTWBarUI::detail::TypeMap< Editor::ModeState >::Type = TW_TYPE_UNDEF;
-
 std::weak_ptr<AntTweakBarEventHandler::GlobalScope> AntTweakBarEventHandler::globalScope;
-
 
 //////////////////////////////////////////////////////////////////////////
 
@@ -356,12 +348,13 @@ namespace DebugObjects {
 
 		AntTWBarUI::SimpleContainer container;
 
-		Vector3f skyColor;
+		Vector3f missColor;
+		static bool automaticallyVisualizeQuery;
 
 		ProbeDatabase( Application *application )
 			: container( "Probe database" )
 			, application( application )
-			, skyColor( 0.5, 1.0, 0.5 )
+			, missColor( 0.5, 1.0, 0.5 )
 		{
 			init();
 		}
@@ -377,7 +370,7 @@ namespace DebugObjects {
 				DebugRender::setTransformation( sampledInstance->getSource().transformation );
 				DebugRender::startLocalTransform();
 				visualizeProbeDataset(
-					skyColor,
+					missColor,
 					application->sceneSettings.probeGenerator_maxDistance,
 					application->sceneSettings.probeGenerator_resolution,
 					sampledModel.getProbes(),
@@ -504,8 +497,9 @@ namespace DebugObjects {
 		}
 
 		void init() {
+			container.add( AntTWBarUI::makeSharedVariable( "Auto vis query", AntTWBarUI::makeReferenceAccessor( automaticallyVisualizeQuery ) ) );
 			container.add( AntTWBarUI::makeSharedButton(
-				"Max distance for all sampled instances",
+				"Vis max distance for all sampled instances",
 				[&] () {
 					visualizeMaxDistance();
 				}
@@ -516,32 +510,32 @@ namespace DebugObjects {
 				makeReferenceAccessor<float*>( &skyColor[0] )
 			) );*/
 			container.add( EigenColor3fUI().makeShared(
-				AntTWBarUI::makeReferenceAccessor( skyColor ),
+				AntTWBarUI::makeReferenceAccessor( missColor ),
 				AntTWBarUI::CT_GROUP,
 				"Sky color replacement"
 			) );
 
 			container.add( AntTWBarUI::makeSharedButton(
-				"color for all sampled instances",
+				"Vis color for all sampled instances",
 				[&] () {
 					addVisualization( PVM_COLOR, "Probe database (Color)" );
 				}
 			) );
 			container.add( AntTWBarUI::makeSharedButton(
-				"occlusion for all sampled instances",
+				"Vis occlusion for all sampled instances",
 				[&] () {
 					addVisualization( PVM_OCCLUSION, "Probe database (Occlusion)" );
 				}
 			) );
 			container.add( AntTWBarUI::makeSharedButton(
-				"distance for all sampled instances",
+				"Vis distance for all sampled instances",
 				[&] () {
 					addVisualization( PVM_DISTANCE, "Probe database (Distance)" );
 				}
 			) );
 			container.add( AntTWBarUI::makeSharedSeparator() );
 			container.add( AntTWBarUI::makeSharedButton(
-				"standalone visualization",
+				"Vis standalone visualization",
 				[&] () {
 					standaloneVisualization( "Probe database" );
 				}
@@ -560,6 +554,8 @@ namespace DebugObjects {
 		virtual void renderScene( Tag ) {
 		}
 	};
+
+	bool ProbeDatabase::automaticallyVisualizeQuery = false;
 
 	struct OptixView : IDebugObject {
 		Application *application;
@@ -868,21 +864,27 @@ namespace aop {
 	struct Application::MainUI {
 		Application *application;
 		AntTWBarUI::SimpleContainer ui;
+		QueryType queryType;
 
-		MainUI( Application *application ) : application( application ) {
+		MainUI( Application *application ) : application( application ), queryType( QT_NORMAL ) {
 			init();
 		}
 
 		void init() {
-			AntTWBarUI::detail::TypeMap< Editor::ModeState >::Type =
-				AntTWBarUI::TypeBuilder::Enum<Editor::ModeState>( "EditorStateEnum" )
-					.add( "Freelook", Editor::M_FREELOOK )
-					.add( "Selecting", Editor::M_SELECTING )
-					.add( "Placing", Editor::M_PLACING )
-					.add( "Moving", Editor::M_MOVING )
-					.add( "Rotating", Editor::M_ROTATING )
-					.add( "Resizing", Editor::M_RESIZING )
-					.define();
+			AntTWBarUI::TypeBuilder::Enum<Editor::ModeState>( "EditorStateEnum" )
+				.add( "Freelook", Editor::M_FREELOOK )
+				.add( "Selecting", Editor::M_SELECTING )
+				.add( "Placing", Editor::M_PLACING )
+				.add( "Moving", Editor::M_MOVING )
+				.add( "Rotating", Editor::M_ROTATING )
+				.add( "Resizing", Editor::M_RESIZING )
+				.define();
+			;
+			
+			AntTWBarUI::TypeBuilder::Enum< QueryType >( "QueryType" )
+				.add( "Normal", QT_NORMAL )
+				.add( "Weighted", QT_WEIGHTED )
+				.define()
 			;
 
 			ui.setName( "aop" );
@@ -986,18 +988,24 @@ namespace aop {
 				AntTWBarUI::makeReferenceAccessor( application->sceneSettings.probeQuery_colorTolerance )
 			) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
-			ui.add( AntTWBarUI::makeSharedButton( "Query volume", [this] () {
+			ui.add( AntTWBarUI::makeSharedVariable( "Query type", AntTWBarUI::makeReferenceAccessor( queryType ) ) );
+			ui.add( AntTWBarUI::makeSharedButton( "Query selected volume", [this] () {
 				struct QueryVolumeVisitor : Editor::SelectionVisitor {
 					Application *application;
+					Application::QueryType queryType;
 
-					QueryVolumeVisitor( Application *application ) : application( application ) {}
+					QueryVolumeVisitor( Application *application, Application::QueryType queryType )
+						: application( application )
+						, queryType( queryType )
+					{}
 
 					void visit() {
 						std::cerr << "No volume selected!\n";
 					}
+
 					void visit( Editor::ObbSelection *selection ) {
 						application->startLongOperation();
-						auto queryResults = application->queryVolume( selection->getObb() );
+						auto queryResults = application->queryVolume( selection->getObb(), queryType );
 						application->endLongOperation();
 
 						boost::sort(
@@ -1016,39 +1024,31 @@ namespace aop {
 						);
 					}
 				};
-				QueryVolumeVisitor( application ).dispatch( application->editor.selection );
+				QueryVolumeVisitor( application, queryType ).dispatch( application->editor.selection );
 			} ) );
-			ui.add( AntTWBarUI::makeSharedButton( "Query volume (weighted)", [this] () {
-				struct QueryVolumeVisitor : Editor::SelectionVisitor {
-					Application *application;
+			ui.add( AntTWBarUI::makeSharedButton( "Query all volumes", [this] () {
+				application->startLongOperation();
+				ProgressTracker::Context progressTracker( application->sceneSettings.volumes.size() );
+				for( auto queryVolume = application->sceneSettings.volumes.begin() ; queryVolume != application->sceneSettings.volumes.end() ; ++queryVolume ) {
+					auto queryResults = application->queryVolume( queryVolume->volume, queryType );
 
-					QueryVolumeVisitor( Application *application ) : application( application ) {}
+					boost::sort(
+						queryResults,
+						QueryResult::greaterByScoreAndModelIndex
+					);
 
-					void visit() {
-						std::cerr << "No volume selected!\n";
+					std::vector<CandidateSidebarUI::ScoreModelIndexPair> scoredModelIndices;
+					for( auto queryResult = queryResults.begin() ; queryResult != queryResults.end() ; ++queryResult ) {
+						scoredModelIndices.push_back( std::make_pair( queryResult->score, queryResult->sceneModelIndex ) );
 					}
-					void visit( Editor::ObbSelection *selection ) {
-						application->startLongOperation();
-						auto queryResults = application->weightedQueryVolume( selection->getObb() );
-						application->endLongOperation();
 
-						boost::sort(
-							queryResults,
-							QueryResult::greaterByScoreAndModelIndex
-						);
+					application->localCandidateBarUIs.emplace_back(
+						std::make_shared<LocalCandidateBarUI>( application, scoredModelIndices, queryVolume->volume )
+					);
 
-						std::vector<CandidateSidebarUI::ScoreModelIndexPair> scoredModelIndices;
-						for( auto queryResult = queryResults.begin() ; queryResult != queryResults.end() ; ++queryResult ) {
-							scoredModelIndices.push_back( std::make_pair( queryResult->score, queryResult->sceneModelIndex ) );
-						}
-
-						application->candidateSidebarUI->setModels( scoredModelIndices, selection->getObb().transformation.translation() );
-						application->localCandidateBarUIs.emplace_back(
-							std::make_shared<LocalCandidateBarUI>( application, scoredModelIndices, selection->getObb() )
-						);
-					}
-				};
-				QueryVolumeVisitor( application ).dispatch( application->editor.selection );
+					progressTracker.markFinished();
+				}
+				application->endLongOperation();
 			} ) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
 			ui.add( AntTWBarUI::makeSharedVariable(
@@ -1121,7 +1121,7 @@ namespace aop {
 					}
 					void visit( Editor::ObbSelection *selection ) {
 						application->startLongOperation();
-						auto matchInfos = application->queryVolume( selection->getObb() );
+						auto matchInfos = application->queryVolume( selection->getObb(), Application::QT_NORMAL );
 						application->endLongOperation();
 
 						/*typedef ProbeDatabase::WeightedQuery::MatchInfo MatchInfo;
@@ -1414,35 +1414,49 @@ namespace aop {
 		return pct;
 	}
 
-	QueryResults Application::queryVolume( const Obb &queryVolume ) {
-		ProgressTracker::Context progressTracker(4);
+	QueryResults Application::queryVolume( const Obb &queryVolume, QueryType queryType ) {
+		ProgressTracker::Context progressTracker( 3 );
 
 		AUTO_TIMER_FOR_FUNCTION();
 
 		RenderContext renderContext;
 		renderContext.setDefault();
 
-		RawProbes rawProbes;
-		ProbeGenerator::generateQueryProbes( queryVolume, sceneSettings.probeGenerator_resolution, rawProbes );
+		RawProbes queryProbes;
+		ProbeGenerator::generateQueryProbes( queryVolume, sceneSettings.probeGenerator_resolution, queryProbes );
 
 		progressTracker.markFinished();
 
-		RawProbeContexts rawProbeContexts;
+		RawProbeContexts queryProbeContexts;
 		AUTO_TIMER_BLOCK( "sampling scene") {
-			world->optixRenderer.sampleProbes( rawProbes, rawProbeContexts, renderContext, sceneSettings.probeGenerator_maxDistance );
+			world->optixRenderer.sampleProbes( queryProbes, queryProbeContexts, renderContext, sceneSettings.probeGenerator_maxDistance );
 		}
 		progressTracker.markFinished();
 
+		QueryResults queryResults;
+		switch( queryType ) {
+		case QT_NORMAL:
+			queryResults = normalQueryVolume( queryVolume, queryProbes, queryProbeContexts );
+			break;
+		case QT_WEIGHTED:
+			queryResults = weightedQueryVolume( queryVolume, queryProbes, queryProbeContexts );
+			break;
+		}
+		progressTracker.markFinished();
+
+		return queryResults;
+	}
+
+	QueryResults Application::normalQueryVolume( const Obb &queryVolume, const RawProbes &queryProbes, const RawProbeContexts &queryProbeContexts ) {
 		ProbeDatabase::Query query( probeDatabase );
 		{
-			query.setQueryDataset( rawProbeContexts );
+			query.setQueryDataset( queryProbeContexts );
 
 			query.setProbeContextTolerance( getPCTFromSettings() );
 
 			query.execute();
 		}
-		progressTracker.markFinished();
-
+		
 		const auto &detailedQueryResults = query.getDetailedQueryResults();
 		for( auto detailedQueryResult = detailedQueryResults.begin() ; detailedQueryResult != detailedQueryResults.end() ; ++detailedQueryResult ) {
 			log(
@@ -1460,38 +1474,19 @@ namespace aop {
 				% detailedQueryResult->score
 			);
 		}
-		progressTracker.markFinished();
 
 		return query.getQueryResults();
 	}
 
-	QueryResults Application::weightedQueryVolume( const Obb &queryVolume ) {
-		ProgressTracker::Context progressTracker(4);
-
-		AUTO_TIMER_FOR_FUNCTION();
-
-		RenderContext renderContext;
-		renderContext.setDefault();
-
-		RawProbes rawProbes;
-		ProbeGenerator::generateQueryProbes( queryVolume, sceneSettings.probeGenerator_resolution, rawProbes );
-
-		progressTracker.markFinished();
-
-		RawProbeContexts rawProbeContexts;
-		{
-			AUTO_TIMER_FOR_FUNCTION( "sampling scene");
-			world->optixRenderer.sampleProbes( rawProbes, rawProbeContexts, renderContext, sceneSettings.probeGenerator_maxDistance );
-		}
-		progressTracker.markFinished();
-
+	QueryResults Application::weightedQueryVolume( const Obb &queryVolume, const RawProbes &queryProbes, const RawProbeContexts &queryProbeContexts ) {
 		ProbeDatabase::WeightedQuery query( probeDatabase );
-		query.setQueryDataset( rawProbes, rawProbeContexts );
+		{
+			query.setQueryDataset( queryProbes, queryProbeContexts );
 
-		query.setProbeContextTolerance( getPCTFromSettings() );
+			query.setProbeContextTolerance( getPCTFromSettings() );
 
-		query.execute();
-		progressTracker.markFinished();
+			query.execute();
+		}
 
 		auto detailedQueryResults = query.getDetailedQueryResults();
 		for( auto detailedQueryResult = detailedQueryResults.begin() ; detailedQueryResult != detailedQueryResults.end() ; ++detailedQueryResult ) {
@@ -1510,7 +1505,6 @@ namespace aop {
 				% detailedQueryResult->score
 			);
 		}
-		progressTracker.markFinished();
 
 		return query.getQueryResults();
 	}

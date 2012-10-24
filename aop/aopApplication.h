@@ -42,6 +42,11 @@ namespace aop {
 	struct ProbeDatabaseUI;
 	
 	struct Application : ModelDatabase::ImportInterface {
+		enum QueryType {
+			QT_NORMAL,
+			QT_WEIGHTED
+		};
+
 		sf::Clock frameClock, clock;
 
 		sf::RenderWindow mainWindow;
@@ -121,13 +126,15 @@ namespace aop {
 			ModelDatabase_sampleModel( modelId, resolution );
 		}
 
-		QueryResults queryVolume( const Obb &queryVolume );
-		QueryResults weightedQueryVolume( const Obb &queryVolume );
+		QueryResults queryVolume( const Obb &queryVolume, QueryType queryType );
+		QueryResults normalQueryVolume( const Obb &queryVolume, const RawProbes &queryProbes, const RawProbeContexts &queryProbeContexts );
+		QueryResults weightedQueryVolume( const Obb &queryVolume, const RawProbes &queryProbes, const RawProbeContexts &queryProbeContexts );
 
 		void ProbeDatabase_sampleInstances( int modelIndex );
 
 		ProbeContextTolerance getPCTFromSettings();
 
 		void NeighborhoodDatabase_sampleScene();
+		
 	};
 }
