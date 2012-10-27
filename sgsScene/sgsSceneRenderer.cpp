@@ -951,7 +951,6 @@ int SGSSceneRenderer::addInstance( const Instance &instance ) {
 	refillDynamicOptixBuffers();
 	updateSceneBoundingBox();
 	
-
 	return instanceIndex;
 }
 

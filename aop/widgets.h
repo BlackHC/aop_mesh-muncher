@@ -58,7 +58,7 @@ struct IWidget : virtual ITransformChain, virtual EventHandler::WithParentDecl< 
 
 	// return true if anything has changed
 	// update layout should be called for every (visible) child ) (no early out on the first true!)
-	virtual bool updateLayout() = 0;
+	//virtual bool updateLayout() = 0;
 };
 
 // TODO: this is a huge cluster fuck (together with WidgetRoot) and way too dependent on implementation details.. [10/4/2012 kirschan2]
@@ -98,11 +98,13 @@ struct WidgetContainer : TemplateEventDispatcher< IWidget, EventHandler::WithSim
 		return getLocalChildArea();
 	}
 
-	bool updateLayout() {
+	/*bool updateLayout() {
 		bool needsUpdate = false;
 		for( auto eventHandler = eventHandlers.rbegin() ; eventHandler != eventHandlers.rend() ; ++eventHandler ) {
-
-	}
+			needsUpdate = needsUpdate || eventHandler->updateLayout();
+		}
+		return needsUpdate;
+	}*/
 };
 
 struct WidgetRoot : TemplateEventDispatcher< IWidget, EventHandler::WithSimpleParentImpl<EventHandler, ITransformChain> > {

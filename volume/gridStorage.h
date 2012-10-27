@@ -1,6 +1,8 @@
 #pragma once
 #include "grid.h"
 
+#include <vector>
+
 template< typename Data, typename IndexMapping3 = SimpleIndexMapping3 >
 class GridStorage {
 public:
@@ -8,7 +10,9 @@ public:
 
 	// GridStorage will 'own' the data memory (and delete it on destruction)
 	GridStorage( const IndexMapping3 &mapping, Data *data ) : mapping( mapping ) {
-		this->data.reset( data );
+		this->data.resize( mapping.count );
+		this->data.assign( data, data + mapping.count );
+		delete [] data;
 	}
 
 	// move constructor

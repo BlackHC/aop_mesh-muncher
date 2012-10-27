@@ -363,6 +363,8 @@ struct SGSSceneRenderer {
 	void setInstanceTransformation( int instanceIndex, const Eigen::Affine3f &transformation ) {
 		instances[ instanceIndex - scene->objects.size() ].transformation = transformation;
 
+		updateSceneBoundingBox();
+
 		optix.dynamicBufferDirty = true;
 	}
 
