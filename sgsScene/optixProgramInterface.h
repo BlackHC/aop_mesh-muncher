@@ -50,7 +50,7 @@ struct Probe {
 	int directionIndex;
 };
 
-struct ProbeContext {
+struct ProbeSample {
 	// in CIELAB space
 	// http://robotics.stanford.edu/~ruzon/software/rgblab.html
 	// CIELAB values range as follows: L lies between 0 and 100, and a and b lie between -110 and 110
@@ -232,7 +232,7 @@ const int numProbeSamples = _numProbeSamples;
 #undef _numProbeSamples
 
 typedef std::vector< Probe > Probes;
-typedef std::vector< ProbeContext > ProbeContexts;
+typedef std::vector< ProbeSample > ProbeSamples;
 
 #endif
 

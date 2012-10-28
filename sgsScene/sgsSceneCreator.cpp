@@ -451,9 +451,9 @@ void real_main( int argc, const char **argv ) {
 	for( int i = 1 ; i < argc ; i++ ) {
 		args.push_back( argv[ i ] );
 	}
-	
+
 	string modelDeclFilename, targetSceneFilename;
-	
+
 	po::options_description desc( "Program options" );
 	desc.add_options()
 		( "help,?", "produce this help message" )
@@ -582,12 +582,12 @@ void real_main( int argc, const char **argv ) {
 		const int sphereIndex = runtime.addSphereModel( 5.0, runtime.createMaterial( 128, 128, 255 ) );
 
 #if 1
-		runtime.addInstance( 
+		runtime.addInstance(
 			boxIndex,
 			transformation
 		);
 
-		runtime.addInstance( 
+		runtime.addInstance(
 			sphereIndex,
 			Eigen::Affine3f( Eigen::Translation3f( Eigen::Vector3f::Constant( -10.0 ) ) )
 		);
@@ -645,7 +645,7 @@ void real_main( int argc, const char **argv ) {
 		const Eigen::Vector3f direction = camera.getDirection();
 
 		std::vector< OptixRenderer::Probe > probes;
-		std::vector< OptixRenderer::ProbeContext > probeContexts;
+		std::vector< OptixRenderer::ProbeSample > probeSamples;
 
 		OptixRenderer::Probe probe;
 		Eigen::Vector3f::Map( &probe.position.x ) = position;
@@ -653,12 +653,12 @@ void real_main( int argc, const char **argv ) {
 
 		probes.push_back( probe );
 
-		optixRenderer.sampleProbes( probes, probeContexts, renderContext );
+		optixRenderer.sampleProbes( probes, probeSamples, renderSample );
 
 		probeDumps.append();
 		probeDumps.setPosition( position );
-		//glColor4ubv( &probeContexts.front().color.x );
-		probeDumps.drawVectorCone( probeContexts.front().distance * direction, probeContexts.front().distance * 0.25, 1 + probeContexts.front().hitCounter );
+		//glColor4ubv( &probeSamples.front().color.x );
+		probeDumps.drawVectorCone( probeSamples.front().distance * direction, probeSamples.front().distance * 0.25, 1 + probeSamples.front().hitCounter );
 		probeDumps.end();
 	} );
 	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( dumpProbeAction ) );

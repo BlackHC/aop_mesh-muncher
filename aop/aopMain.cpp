@@ -374,7 +374,7 @@ namespace DebugObjects {
 					application->sceneSettings.probeGenerator_maxDistance,
 					application->sceneSettings.probeGenerator_resolution,
 					sampledModel.getProbes(),
-					sampledInstance->getProbeContexts(),
+					sampledInstance->getProbeSamples(),
 					pvm
 				);
 				DebugRender::endLocalTransform();
@@ -405,24 +405,24 @@ namespace DebugObjects {
 			);
 		}
 
-		void addQueryVisualization( const std::string &name, const RawProbes &probes, const RawProbeContexts &probeContexts ) {
+		void addQueryVisualization( const std::string &name, const RawProbes &probes, const RawProbeSamples &probeSamples ) {
 			const float resolutionScale = 0.25f;
 			{
 				GL::ScopedDisplayList list;
 				list.begin();
 
-				visualizeRawProbeContexts(
+				visualizeRawProbeSamples(
 					missColor,
 					application->sceneSettings.probeGenerator_maxDistance,
 					application->sceneSettings.probeGenerator_resolution * resolutionScale,
 					probes,
-					probeContexts,
+					probeSamples,
 					PVM_COLOR
 				);
 
 				list.end();
 				debugUI->add(
-					std::make_shared< DebugObjects::SceneDisplayListObject >( 
+					std::make_shared< DebugObjects::SceneDisplayListObject >(
 						boost::str( boost::format( "Query '%s' color" ) % name ),
 						list.publish()
 					)
@@ -432,18 +432,18 @@ namespace DebugObjects {
 				GL::ScopedDisplayList list;
 				list.begin();
 
-				visualizeRawProbeContexts(
+				visualizeRawProbeSamples(
 					missColor,
 					application->sceneSettings.probeGenerator_maxDistance,
 					application->sceneSettings.probeGenerator_resolution * resolutionScale,
 					probes,
-					probeContexts,
+					probeSamples,
 					PVM_DISTANCE
 				);
 
 				list.end();
 				debugUI->add(
-					std::make_shared< DebugObjects::SceneDisplayListObject >( 
+					std::make_shared< DebugObjects::SceneDisplayListObject >(
 						boost::str( boost::format( "Query '%s' distance" ) % name ),
 						list.publish()
 					)
@@ -453,18 +453,18 @@ namespace DebugObjects {
 				GL::ScopedDisplayList list;
 				list.begin();
 
-				visualizeRawProbeContexts(
+				visualizeRawProbeSamples(
 					missColor,
 					application->sceneSettings.probeGenerator_maxDistance,
 					application->sceneSettings.probeGenerator_resolution * resolutionScale,
 					probes,
-					probeContexts,
+					probeSamples,
 					PVM_OCCLUSION
 				);
 
 				list.end();
 				debugUI->add(
-					std::make_shared< DebugObjects::SceneDisplayListObject >( 
+					std::make_shared< DebugObjects::SceneDisplayListObject >(
 						boost::str( boost::format( "Query '%s' occlusion" ) % name ),
 						list.publish()
 					)
@@ -947,7 +947,7 @@ namespace aop {
 				.add( "Resizing", Editor::M_RESIZING )
 				.define();
 			;
-			
+
 			AntTWBarUI::TypeBuilder::Enum< QueryType >( "QueryType" )
 				.add( "Normal", QT_NORMAL )
 				.add( "Weighted", QT_WEIGHTED )
@@ -1454,19 +1454,19 @@ namespace aop {
 				ProbeGenerator::transformProbes( probes, transformation, transformedProbes );
 			}
 
-			// TODO: rename RawProbeData to Optix...::ProbeContexts! [10/21/2012 kirschan2]
-			RawProbeContexts rawProbeContexts;
+			// TODO: rename RawProbeData to Optix...::ProbeSamples! [10/21/2012 kirschan2]
+			RawProbeSamples rawProbeSamples;
 
 			progressTracker.markFinished();
 
 			AUTO_TIMER_BLOCK( boost::str( boost::format( "sampling probe batch with %i probes for instance %i" ) % probes.size() % instanceIndex ) ) {
 				renderContext.disabledInstanceIndex = instanceIndex;
-				world->optixRenderer.sampleProbes( transformedProbes, rawProbeContexts, renderContext, sceneSettings.probeGenerator_maxDistance, instanceIndex + rand() );
+				world->optixRenderer.sampleProbes( transformedProbes, rawProbeSamples, renderContext, sceneSettings.probeGenerator_maxDistance, instanceIndex + rand() );
 			}
 			progressTracker.markFinished();
 
 			Obb modelObb = makeOBB( world->sceneRenderer.getInstanceTransformation( instanceIndex ), world->sceneRenderer.getModelBoundingBox( modelIndex ) );
-			probeDatabase.addInstanceProbes( modelIndex, modelObb, probes, rawProbeContexts );
+			probeDatabase.addInstanceProbes( modelIndex, modelObb, probes, rawProbeSamples );
 			progressTracker.markFinished();
 
 			totalCount += (int) transformedProbes.size();
@@ -1496,40 +1496,40 @@ namespace aop {
 
 		progressTracker.markFinished();
 
-		RawProbeContexts queryProbeContexts;
+		RawProbeSamples queryProbeSamples;
 		AUTO_TIMER_BLOCK( "sampling scene") {
-			world->optixRenderer.sampleProbes( queryProbes, queryProbeContexts, renderContext, sceneSettings.probeGenerator_maxDistance );
+			world->optixRenderer.sampleProbes( queryProbes, queryProbeSamples, renderContext, sceneSettings.probeGenerator_maxDistance );
 		}
 		progressTracker.markFinished();
 
 		QueryResults queryResults;
 		switch( queryType ) {
 		case QT_NORMAL:
-			queryResults = normalQueryVolume( queryVolume.volume, queryProbes, queryProbeContexts );
+			queryResults = normalQueryVolume( queryVolume.volume, queryProbes, queryProbeSamples );
 			break;
 		case QT_WEIGHTED:
-			queryResults = weightedQueryVolume( queryVolume.volume, queryProbes, queryProbeContexts );
+			queryResults = weightedQueryVolume( queryVolume.volume, queryProbes, queryProbeSamples );
 			break;
 		}
 		progressTracker.markFinished();
 
 		if( DebugObjects::ProbeDatabase::automaticallyVisualizeQuery ) {
-			probeDatabase_debugUI->addQueryVisualization( queryVolume.name, queryProbes, queryProbeContexts );
+			probeDatabase_debugUI->addQueryVisualization( queryVolume.name, queryProbes, queryProbeSamples );
 		}
 
 		return queryResults;
 	}
 
-	QueryResults Application::normalQueryVolume( const Obb &queryVolume, const RawProbes &queryProbes, const RawProbeContexts &queryProbeContexts ) {
+	QueryResults Application::normalQueryVolume( const Obb &queryVolume, const RawProbes &queryProbes, const RawProbeSamples &queryProbeSamples ) {
 		ProbeDatabase::Query query( probeDatabase );
 		{
-			query.setQueryDataset( queryProbeContexts );
+			query.setQueryDataset( queryProbeSamples );
 
 			query.setProbeContextTolerance( getPCTFromSettings() );
 
 			query.execute();
 		}
-		
+
 		const auto &detailedQueryResults = query.getDetailedQueryResults();
 		for( auto detailedQueryResult = detailedQueryResults.begin() ; detailedQueryResult != detailedQueryResults.end() ; ++detailedQueryResult ) {
 			log(
@@ -1551,10 +1551,10 @@ namespace aop {
 		return query.getQueryResults();
 	}
 
-	QueryResults Application::weightedQueryVolume( const Obb &queryVolume, const RawProbes &queryProbes, const RawProbeContexts &queryProbeContexts ) {
+	QueryResults Application::weightedQueryVolume( const Obb &queryVolume, const RawProbes &queryProbes, const RawProbeSamples &queryProbeSamples ) {
 		ProbeDatabase::WeightedQuery query( probeDatabase );
 		{
-			query.setQueryDataset( queryProbes, queryProbeContexts );
+			query.setQueryDataset( queryProbes, queryProbeSamples );
 
 			query.setProbeContextTolerance( getPCTFromSettings() );
 

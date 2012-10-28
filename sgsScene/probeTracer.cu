@@ -34,7 +34,7 @@ rtDeclareVariable( uint, sampleOffset, , );
 rtBuffer<float3> hemisphereSamples;
 
 rtBuffer<Probe> probes;
-rtBuffer<ProbeContext> probeContexts;
+rtBuffer<ProbeSample> probeSamples;
 
 RT_PROGRAM void sampleProbes() {
 	Probe probe = probes[ probeIndex ];
@@ -44,11 +44,11 @@ RT_PROGRAM void sampleProbes() {
 
 	//rtPrintf( "%f", dot( onb.m_normal, cross( onb.m_tangent, onb.m_binormal ) ) );
 
-	uint sampleStartIndex = 
-			sampleOffset * numProbes * numProbeSamples 
-		+ 
-			numProbeSamples * probeIndex 
-		+ 
+	uint sampleStartIndex =
+			sampleOffset * numProbes * numProbeSamples
+		+
+			numProbeSamples * probeIndex
+		+
 			numProbes * 1979
 	;
 
@@ -58,7 +58,7 @@ RT_PROGRAM void sampleProbes() {
 	for( int rayIndex = 0 ; rayIndex < numProbeSamples ; ++rayIndex ) {
 		const float3 sample = hemisphereSamples[ (sampleStartIndex + rayIndex) % numHemisphereSamples ];
 		const float3 rayDirection = onb.m_normal * sample.z + onb.m_tangent * sample.x + onb.m_binormal * sample.y;
-		
+
 		Ray ray( probe.position, rayDirection, RT_EYE, sceneEpsilon, maxDistance );
 
 		Ray_Eye ray_eye;
@@ -90,7 +90,7 @@ RT_PROGRAM void sampleProbes() {
 	}
 #endif
 
-	ProbeContext &context = probeContexts[ probeIndex ];
+	ProbeSample &sample = probeSamples[ probeIndex ];
 	if( numHits ) {
 		avgDistance = avgDistance / numHits;
 		avgColor = avgColor / numHits;
@@ -98,17 +98,17 @@ RT_PROGRAM void sampleProbes() {
 
 	// convert to cielab
 	const float3 Lab = CIELAB::fromRGB( avgColor );
-	context.Lab = make_Lab( Lab );
-	context.distance = avgDistance;
-	context.hitCounter = numHits;
+	sample.Lab = make_Lab( Lab );
+	sample.distance = avgDistance;
+	sample.hitCounter = numHits;
 }
 
 RT_PROGRAM void sampleProbes_exception() {
 	unsigned int const error_code = rtGetExceptionCode();
 	if(RT_EXCEPTION_STACK_OVERFLOW == error_code) {
-		probeContexts[ probeIndex ].Lab = make_char3( -127, -127, -127 );
-		probeContexts[ probeIndex ].hitCounter = 0;
-		probeContexts[ probeIndex ].distance = 1.0f;
+		probeSamples[ probeIndex ].Lab = make_char3( -127, -127, -127 );
+		probeSamples[ probeIndex ].hitCounter = 0;
+		probeSamples[ probeIndex ].distance = 1.0f;
 	} else {
 		rtPrintExceptionDetails();
 	}

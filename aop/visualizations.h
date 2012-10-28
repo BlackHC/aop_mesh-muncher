@@ -30,15 +30,15 @@ void visualizeProbeDataset(
 	float maxResolution,
 	float resolution,
 	const DBProbes &probes,
-	const DBProbeContexts &probeContexts,
+	const DBProbeSamples &probeSamples,
 	ProbeVisualizationMode pvm
 );
 
-void visualizeRawProbeContexts(
+void visualizeRawProbeSamples(
 	const Eigen::Vector3f &missColor,
 	float maxDistance,
 	float resolution,
 	const RawProbes &probes,
-	const RawProbeContexts &probeContexts,
+	const RawProbeSamples &probeSamples,
 	ProbeVisualizationMode pvm
 );

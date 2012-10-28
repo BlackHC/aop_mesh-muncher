@@ -155,8 +155,8 @@ struct ModelIndexMapper {
 
 typedef OptixProgramInterface::Probe RawProbe;
 typedef OptixProgramInterface::Probes RawProbes;
-typedef OptixProgramInterface::ProbeContext RawProbeContext;
-typedef OptixProgramInterface::ProbeContexts RawProbeContexts;
+typedef OptixProgramInterface::ProbeSample RawProbeSample;
+typedef OptixProgramInterface::ProbeSamples RawProbeSamples;
 
 struct IDatabase {
 	virtual void registerSceneModels( const std::vector< std::string > &modelNames ) = 0;
@@ -172,7 +172,7 @@ struct IDatabase {
 		int sceneModelIndex,
 		const Obb &sampleSource,
 		const RawProbes &untransformedProbes,
-		const RawProbeContexts &probeContexts
+		const RawProbeSamples &probeSamples
 	) = 0;
 	// compile the database in any way that is necessary before we can execute queries
 	virtual void compile( int sceneModelIndex ) = 0;
@@ -182,11 +182,11 @@ struct IDatabase {
 };
 
 struct InstanceProbeDataset;
-struct IndexedProbeContexts;
+struct IndexedProbeSamples;
 struct SampledModel;
 
 SERIALIZER_FWD_EXTERN_DECL( InstanceProbeDataset )
-SERIALIZER_FWD_EXTERN_DECL( IndexedProbeContexts )
+SERIALIZER_FWD_EXTERN_DECL( IndexedProbeSamples )
 SERIALIZER_FWD_EXTERN_DECL( SampledModel )
 
 #include <autoTimer.h>
@@ -249,21 +249,21 @@ struct ProbeContextToleranceV2 {
 
 typedef OptixProgramInterface::Probe DBProbe;
 
-struct DBProbeContext : OptixProgramInterface::ProbeContext {
+struct DBProbeSample : OptixProgramInterface::ProbeSample {
 	// sometimes we're lucky and we can compress probes
 	int weight;
 	int probeIndex;
 
-	DBProbeContext() {}
+	DBProbeSample() {}
 
-	DBProbeContext( int probeIndex, const OptixProgramInterface::ProbeContext &context )
-		: OptixProgramInterface::ProbeContext( context )
+	DBProbeSample( int probeIndex, const OptixProgramInterface::ProbeSample &sample )
+		: OptixProgramInterface::ProbeSample( sample )
 		, probeIndex( probeIndex )
 		, weight( 1 )
 	{
 	}
 
-	static __forceinline__ bool lexicographicalLess( const DBProbeContext &a, const DBProbeContext &b ) {
+	static __forceinline__ bool lexicographicalLess( const DBProbeSample &a, const DBProbeSample &b ) {
 		return
 			boost::make_tuple( a.hitCounter, a.distance, a.Lab.x, a.Lab.y, a.Lab.z )
 			<
@@ -271,11 +271,11 @@ struct DBProbeContext : OptixProgramInterface::ProbeContext {
 		;
 	}
 
-	static __forceinline__ bool less_byId( const DBProbeContext &a, const DBProbeContext &b ) {
+	static __forceinline__ bool less_byId( const DBProbeSample &a, const DBProbeSample &b ) {
 		return a.probeIndex < b.probeIndex;
 	}
 
-	static __forceinline__ bool lexicographicalLess_startWithDistance( const DBProbeContext &a, const DBProbeContext &b ) {
+	static __forceinline__ bool lexicographicalLess_startWithDistance( const DBProbeSample &a, const DBProbeSample &b ) {
 		return
 			boost::make_tuple( a.distance, a.Lab.x, a.Lab.y, a.Lab.z )
 			<
@@ -283,7 +283,7 @@ struct DBProbeContext : OptixProgramInterface::ProbeContext {
 		;
 	}
 
-	static __forceinline__ bool matchColor( const DBProbeContext &a, const DBProbeContext &b, const float squaredTolerance ) {
+	static __forceinline__ bool matchColor( const DBProbeSample &a, const DBProbeSample &b, const float squaredTolerance ) {
 		Eigen::Vector3i colorDistance(
 			a.Lab.x - b.Lab.x,
 			a.Lab.y - b.Lab.y,
@@ -296,11 +296,11 @@ struct DBProbeContext : OptixProgramInterface::ProbeContext {
 		return true;
 	}
 
-	static __forceinline__ bool matchDistance( const DBProbeContext &a, const DBProbeContext &b, const float tolerance ) {
+	static __forceinline__ bool matchDistance( const DBProbeSample &a, const DBProbeSample &b, const float tolerance ) {
 		return fabs( a.distance - b.distance ) <= tolerance;
 	}
 
-	static __forceinline__ bool matchOcclusion( const DBProbeContext &a, const DBProbeContext &b, const int integerTolerance) {
+	static __forceinline__ bool matchOcclusion( const DBProbeSample &a, const DBProbeSample &b, const int integerTolerance) {
 		int absDelta = a.hitCounter - b.hitCounter;
 		if( absDelta < 0 ) {
 			absDelta = -absDelta;
@@ -309,8 +309,8 @@ struct DBProbeContext : OptixProgramInterface::ProbeContext {
 	}
 
 	static __forceinline__ bool matchOcclusionDistanceColor(
-		const DBProbeContext &a,
-		const DBProbeContext &b,
+		const DBProbeSample &a,
+		const DBProbeSample &b,
 		const int occlusion_integerTolerance,
 		const float distance_tolerance,
 		const float color_squaredTolerance
@@ -326,21 +326,21 @@ struct DBProbeContext : OptixProgramInterface::ProbeContext {
 };
 
 typedef std::vector< DBProbe > DBProbes;
-typedef std::vector< DBProbeContext > DBProbeContexts;
+typedef std::vector< DBProbeSample > DBProbeSamples;
 
 // TODO: use this [10/27/2012 Andreas]
-namespace ProbeContextTransformation {
-	inline DBProbeContexts transformContexts( const RawProbeContexts &rawProbeContexts ) {
-		DBProbeContexts probeContexts;
-		probeContexts.reserve( rawProbeContexts.size() );
+namespace ProbeSampleTransformation {
+	inline DBProbeSamples transformSamples( const RawProbeSamples &rawProbeSamples ) {
+		DBProbeSamples probeSamples;
+		probeSamples.reserve( rawProbeSamples.size() );
 
-		for( int probeIndex = 0 ; probeIndex < rawProbeContexts.size() ; ++probeIndex ) {
-			const auto &rawProbeContext = rawProbeContexts[ probeIndex ];
+		for( int probeIndex = 0 ; probeIndex < rawProbeSamples.size() ; ++probeIndex ) {
+			const auto &rawProbeSample = rawProbeSamples[ probeIndex ];
 
-			probeContexts.emplace_back( DBProbeContext( probeIndex, rawProbeContext ) );
+			probeSamples.emplace_back( DBProbeSample( probeIndex, rawProbeSample ) );
 		}
 
-		return probeContexts;
+		return probeSamples;
 	}
 }
 
@@ -356,27 +356,27 @@ namespace ProbeHelpers {
 }
 
 namespace CompressedDataset {
-	inline void compress( size_t numInstances, size_t numProbes, DBProbeContexts &data, const ProbeContextToleranceV2 &pct ) {
+	inline void compress( size_t numInstances, size_t numProbes, DBProbeSamples &data, const ProbeContextToleranceV2 &pct ) {
 		AUTO_TIMER_FUNCTION();
 
 		AUTO_TIMER_BLOCK( "presorting" ) {
 			// TODO: we know how the probe contests are interleaved, so we can just permute them
-			boost::sort( data, DBProbeContext::less_byId );
+			boost::sort( data, DBProbeSample::less_byId );
 		}
 
 		AUTO_TIMER_BLOCK( "compressing" ) {
-			DBProbeContexts compressedData;
+			DBProbeSamples compressedData;
 			compressedData.reserve( data.size() );
 
 			for( size_t probeIndex = 0 ; probeIndex < numProbes ; ++probeIndex ) {
-				const auto probeContext_end = data.begin() + (probeIndex + 1) * numInstances;
-				auto probeContext_mergeBegin = data.begin() + probeIndex * numInstances;
-				while( probeContext_mergeBegin != probeContext_end ) {
-					auto probeContext_mergeEnd = std::partition( probeContext_mergeBegin, probeContext_end,
-						[probeContext_mergeBegin, pct] ( const DBProbeContext &context ) {
-							return DBProbeContext::matchOcclusionDistanceColor(
-								*probeContext_mergeBegin,
-								context,
+				const auto probeSample_end = data.begin() + (probeIndex + 1) * numInstances;
+				auto probeSample_mergeBegin = data.begin() + probeIndex * numInstances;
+				while( probeSample_mergeBegin != probeSample_end ) {
+					auto probeSample_mergeEnd = std::partition( probeSample_mergeBegin, probeSample_end,
+						[probeSample_mergeBegin, pct] ( const DBProbeSample &sample ) {
+							return DBProbeSample::matchOcclusionDistanceColor(
+								*probeSample_mergeBegin,
+								sample,
 								pct.occlusion_integerTolerance,
 								pct.distance_tolerance,
 								pct.colorLab_squaredTolerance
@@ -384,12 +384,12 @@ namespace CompressedDataset {
 						}
 					);
 
-					auto probeContext_median = probeContext_mergeBegin + (probeContext_mergeEnd - probeContext_mergeBegin) / 2;
+					auto probeSample_median = probeSample_mergeBegin + (probeSample_mergeEnd - probeSample_mergeBegin) / 2;
 					// TODO: we can do this in place without a second vector [10/17/2012 kirschan2]
-					compressedData.push_back( *probeContext_median );
-					compressedData.back().weight = int( probeContext_mergeEnd - probeContext_mergeBegin );
+					compressedData.push_back( *probeSample_median );
+					compressedData.back().weight = int( probeSample_mergeEnd - probeSample_mergeBegin );
 
-					probeContext_mergeBegin = probeContext_mergeEnd;
+					probeSample_mergeBegin = probeSample_mergeEnd;
 				}
 			}
 
@@ -407,17 +407,17 @@ namespace CompressedDataset {
 
 // this dataset creates auxiliary structures automatically
 // invariant: sorted and hitCounterLowerBounds is correctly set
-struct IndexedProbeContexts {
-	DBProbeContexts data;
+struct IndexedProbeSamples {
+	DBProbeSamples data;
 	std::vector<int> hitCounterLowerBounds;
 
-	const DBProbeContexts &getProbeContexts() const {
+	const DBProbeSamples &getProbeSamples() const {
 		return data;
 	}
 
-	IndexedProbeContexts() {}
+	IndexedProbeSamples() {}
 
-	IndexedProbeContexts( DBProbeContexts &&other ) :
+	IndexedProbeSamples( DBProbeSamples &&other ) :
 		data( std::move( other ) ),
 		hitCounterLowerBounds()
 	{
@@ -425,21 +425,21 @@ struct IndexedProbeContexts {
 		setHitCounterLowerBounds();
 	}
 
-	IndexedProbeContexts( IndexedProbeContexts &&other ) :
+	IndexedProbeSamples( IndexedProbeSamples &&other ) :
 		data( std::move( other.data ) ),
 		hitCounterLowerBounds( std::move( other.hitCounterLowerBounds ) )
 	{
 	}
 
-	IndexedProbeContexts & operator = ( IndexedProbeContexts && other ) {
+	IndexedProbeSamples & operator = ( IndexedProbeSamples && other ) {
 		data = std::move( other.data );
 		hitCounterLowerBounds = std::move( other.hitCounterLowerBounds );
 
 		return *this;
 	}
 
-	IndexedProbeContexts clone() const {
-		IndexedProbeContexts cloned;
+	IndexedProbeSamples clone() const {
+		IndexedProbeSamples cloned;
 		cloned.data = data;
 		cloned.hitCounterLowerBounds = hitCounterLowerBounds;
 		return cloned;
@@ -461,7 +461,7 @@ struct IndexedProbeContexts {
 
 #if 0
 	struct MatcherController {
-		void onMatch( int outerProbeContextIndex, int innerProbeContextIndex, const DBProbeContext &outer, const DBProbeContext &inner ) {
+		void onMatch( int outerProbeSampleIndex, int innerProbeSampleIndex, const DBProbeSample &outer, const DBProbeSample &inner ) {
 		}
 
 		void onNewThreadStarted() {
@@ -471,29 +471,29 @@ struct IndexedProbeContexts {
 
 	template< typename Controller >
 	struct Matcher {
-		const IndexedProbeContexts &probeContextsInner;
-		const IndexedProbeContexts &probeContextsOuter;
+		const IndexedProbeSamples &probeSamplesInner;
+		const IndexedProbeSamples &probeSamplesOuter;
 		const ProbeContextTolerance &probeContextTolerance;
 		Controller controller;
 
-		Matcher( const IndexedProbeContexts &outer, const IndexedProbeContexts &inner, const ProbeContextTolerance &probeContextTolerance, Controller &&controller )
-			: probeContextsOuter( outer )
-			, probeContextsInner( inner )
+		Matcher( const IndexedProbeSamples &outer, const IndexedProbeSamples &inner, const ProbeContextTolerance &probeContextTolerance, Controller &&controller )
+			: probeSamplesOuter( outer )
+			, probeSamplesInner( inner )
 			, probeContextTolerance( probeContextTolerance )
 			, controller( controller )
 		{
 		}
 
-		Matcher( const IndexedProbeContexts &outer, const IndexedProbeContexts &inner )
-			: probeContextsOuter( outer )
-			, probeContextsInner( inner )
+		Matcher( const IndexedProbeSamples &outer, const IndexedProbeSamples &inner )
+			: probeSamplesOuter( outer )
+			, probeSamplesInner( inner )
 			, probeContextTolerance( probeContextTolerance )
 			, controller()
 		{
 		}
 
 		void match() {
-			if( probeContextsOuter.size() == 0 || probeContextsInner.size() == 0 ) {
+			if( probeSamplesOuter.size() == 0 || probeSamplesInner.size() == 0 ) {
 				return;
 			}
 
@@ -507,7 +507,7 @@ struct IndexedProbeContexts {
 
 			// assuming that the query set is smaller, we enlarge it, to have less items to sort than vice-versa
 			// we could determine this at runtime...
-			// if( idDatasets.size() > indexedProbeContexts.size() ) {...} else {...}
+			// if( idDatasets.size() > indexedProbeSamples.size() ) {...} else {...}
 			const int occlusionTolerance = int( OptixProgramInterface::numProbeSamples * probeContextTolerance.occusionTolerance + 0.5 );
 
 			// TODO: use a stack allocated array here? [9/27/2012 kirschan2]
@@ -516,7 +516,7 @@ struct IndexedProbeContexts {
 			std::vector< RangeJob > rangeJobs;
 			rangeJobs.reserve( OptixProgramInterface::numProbeSamples );
 			for( int occulsionLevel = 0 ; occulsionLevel <= OptixProgramInterface::numProbeSamples ; occulsionLevel++ ) {
-				const IntRange rangeOuter = probeContextsOuter.getOcclusionRange( occulsionLevel );
+				const IntRange rangeOuter = probeSamplesOuter.getOcclusionRange( occulsionLevel );
 
 				if( rangeOuter.first == rangeOuter.second ) {
 					continue;
@@ -525,7 +525,7 @@ struct IndexedProbeContexts {
 				const int leftToleranceLevel = std::max( 0, occulsionLevel - occlusionTolerance );
 				const int rightToleranceLevel = std::min( occulsionLevel + occlusionTolerance, OptixProgramInterface::numProbeSamples );
 				for( int toleranceLevel = leftToleranceLevel ; toleranceLevel <= rightToleranceLevel ; toleranceLevel++ ) {
-					const IntRange rangeInner = probeContextsInner.getOcclusionRange( toleranceLevel );
+					const IntRange rangeInner = probeSamplesInner.getOcclusionRange( toleranceLevel );
 
 					// is one of the ranges empty? if so, we don't need to check it at all
 					if( rangeInner.first == rangeInner.second ) {
@@ -567,69 +567,69 @@ struct IndexedProbeContexts {
 			const int endIndexInner = rangeInner.second;
 			int indexInner = beginIndexInner;
 
-			DBProbeContext probeContextOuter = probeContextsOuter.getProbeContexts()[ indexOuter ];
+			DBProbeSample probeSampleOuter = probeSamplesOuter.getProbeSamples()[ indexOuter ];
 			for( ; indexOuter < endIndexOuter - 1 ; indexOuter++ ) {
-				const DBProbeContext nextContextOuter = probeContextsOuter.getProbeContexts()[ indexOuter + 1 ];
+				const DBProbeSample nextSampleOuter = probeSamplesOuter.getProbeSamples()[ indexOuter + 1 ];
 				int nextIndexInner = indexInner;
 
-				const float minDistance = probeContextOuter.distance - probeContextTolerance.distanceTolerance;
-				const float maxDistance = probeContextOuter.distance + probeContextTolerance.distanceTolerance;
-				const float minNextDistance = nextContextOuter.distance - probeContextTolerance.distanceTolerance;
+				const float minDistance = probeSampleOuter.distance - probeContextTolerance.distanceTolerance;
+				const float maxDistance = probeSampleOuter.distance + probeContextTolerance.distanceTolerance;
+				const float minNextDistance = nextSampleOuter.distance - probeContextTolerance.distanceTolerance;
 
 				for( ; indexInner < endIndexInner ; indexInner++ ) {
-					const DBProbeContext probeContextInner = probeContextsInner.getProbeContexts()[ indexInner ];
+					const DBProbeSample probeSampleInner = probeSamplesInner.getProbeSamples()[ indexInner ];
 
 					// distance too small?
-					if( probeContextInner.distance < minDistance ) {
+					if( probeSampleInner.distance < minDistance ) {
 						// then the next one is too far away as well
 						nextIndexInner = indexInner + 1;
 						continue;
 					}
 
-					// if nextIndexInner can't use this probe, the next overlapped context might be the first one it likes
-					if( probeContextInner.distance < minNextDistance ) {
-						// set it to the next ref context
+					// if nextIndexInner can't use this probe, the next overlapped sample might be the first one it likes
+					if( probeSampleInner.distance < minNextDistance ) {
+						// set it to the next ref sample
 						nextIndexInner = indexInner + 1;
 					}
 					// else:
-					//  nextIndexInner points to the first overlapped context the next pure context might match
+					//  nextIndexInner points to the first overlapped sample the next pure sample might match
 
 					// are we past our interval
-					if( probeContextInner.distance > maxDistance ) {
+					if( probeSampleInner.distance > maxDistance ) {
 						// enough for this probe, do the next
 						break;
 					}
 
-					if( DBProbeContext::matchColor( probeContextOuter, probeContextInner, squaredColorTolerance ) ) {
-						controller.onMatch( indexOuter, indexInner, probeContextOuter, probeContextInner );
+					if( DBProbeSample::matchColor( probeSampleOuter, probeSampleInner, squaredColorTolerance ) ) {
+						controller.onMatch( indexOuter, indexInner, probeSampleOuter, probeSampleInner );
 					}
 				}
 
-				probeContextOuter = nextContextOuter;
+				probeSampleOuter = nextSampleOuter;
 				indexInner = nextIndexInner;
 			}
 
 			// process the last pure probe
 			{
-				const float minDistance = probeContextOuter.distance - probeContextTolerance.distanceTolerance;
-				const float maxDistance = probeContextOuter.distance + probeContextTolerance.distanceTolerance;
+				const float minDistance = probeSampleOuter.distance - probeContextTolerance.distanceTolerance;
+				const float maxDistance = probeSampleOuter.distance + probeContextTolerance.distanceTolerance;
 
 				for( ; indexInner < endIndexInner ; indexInner++ ) {
-					const DBProbeContext probeContextInner = probeContextsInner.getProbeContexts()[ indexInner ];
+					const DBProbeSample probeSampleInner = probeSamplesInner.getProbeSamples()[ indexInner ];
 
 					// distance too small?
-					if( probeContextInner.distance < minDistance ) {
+					if( probeSampleInner.distance < minDistance ) {
 						continue;
 					}
 
 					// are we past our interval
-					if( probeContextInner.distance > maxDistance ) {
+					if( probeSampleInner.distance > maxDistance ) {
 						// enough for this probe, we're done
 						break;
 					}
 
-					if( DBProbeContext::matchColor( probeContextOuter, probeContextInner, squaredColorTolerance ) ) {
-						controller.onMatch( indexOuter, indexInner, probeContextOuter, probeContextInner );
+					if( DBProbeSample::matchColor( probeSampleOuter, probeSampleInner, squaredColorTolerance ) ) {
+						controller.onMatch( indexOuter, indexInner, probeSampleOuter, probeSampleInner );
 					}
 				}
 			}
@@ -640,25 +640,25 @@ private:
 	void sort() {
 		AUTO_TIMER_FUNCTION();
 
-		boost::sort( data, DBProbeContext::lexicographicalLess );
+		boost::sort( data, DBProbeSample::lexicographicalLess );
 	}
 
 	void setHitCounterLowerBounds();
 
-	SERIALIZER_FWD_FRIEND_EXTERN( IndexedProbeContexts )
+	SERIALIZER_FWD_FRIEND_EXTERN( IndexedProbeSamples )
 private:
 	// better error messages than with boost::noncopyable
-	IndexedProbeContexts( const IndexedProbeContexts &other );
-	IndexedProbeContexts & operator = ( const IndexedProbeContexts &other );
+	IndexedProbeSamples( const IndexedProbeSamples &other );
+	IndexedProbeSamples & operator = ( const IndexedProbeSamples &other );
 };
 
 struct SampledModel {
 	struct SampledInstance {
 		Obb source;
-		DBProbeContexts probeContexts;
+		DBProbeSamples probeSamples;
 
-		const DBProbeContexts &getProbeContexts() const {
-			return probeContexts;
+		const DBProbeSamples &getProbeSamples() const {
+			return probeSamples;
 		}
 
 		const Obb &getSource() const {
@@ -669,26 +669,26 @@ struct SampledModel {
 
 		SampledInstance( SampledInstance &&other )
 			: source( std::move( other.source ) )
-			, probeContexts( std::move( other.probeContexts ) )
+			, probeSamples( std::move( other.probeSamples ) )
 		{
 		}
 
-		SampledInstance( Obb source, DBProbeContexts &&probeContexts )
+		SampledInstance( Obb source, DBProbeSamples &&probeSamples )
 			: source( std::move( source ) )
-			, probeContexts( std::move( probeContexts ) )
+			, probeSamples( std::move( probeSamples ) )
 		{
 		}
 
 		SampledInstance & operator = ( SampledInstance &&other ) {
 			source = std::move( other.source );
-			probeContexts = std::move( other.probeContexts );
+			probeSamples = std::move( other.probeSamples );
 
 			return *this;
 		}
 	};
 	typedef std::vector<SampledInstance> SampledInstances;
 
-	void addInstances( const DBProbes &datasetProbes, const Obb &source, DBProbeContexts &&probeContexts ) {
+	void addInstances( const DBProbes &datasetProbes, const Obb &source, DBProbeSamples &&probeSamples ) {
 		if( probes.size() != datasetProbes.size() ) {
 			if( !probes.empty() ) {
 				logError(
@@ -707,13 +707,13 @@ struct SampledModel {
 			probes = datasetProbes;
 		}
 
-		instances.emplace_back( SampledInstance( source, std::move( probeContexts ) ) );
+		instances.emplace_back( SampledInstance( source, std::move( probeSamples ) ) );
 	}
 
 	void clear() {
 		instances.clear();
 
-		mergedInstances = IndexedProbeContexts();
+		mergedInstances = IndexedProbeSamples();
 
 		mergedInstancesByDirectionIndex.clear();
 		mergedInstancesByDirectionIndex.resize( ProbeGenerator::getNumDirections() );
@@ -748,33 +748,33 @@ struct SampledModel {
 			return;
 		}
 		else if( instances.size() == 1 ) {
-			mergedInstances = IndexedProbeContexts( DBProbeContexts( instances.front().getProbeContexts() ) );
+			mergedInstances = IndexedProbeSamples( DBProbeSamples( instances.front().getProbeSamples() ) );
 		}
 		else {
 			const int totalSize =  boost::accumulate(
 				instances,
 				0,
 				[] ( int totalLength, const SampledInstance &instance) {
-					return totalLength + int( instance.getProbeContexts().size() );
+					return totalLength + int( instance.getProbeSamples().size() );
 				}
 			);
 
-			DBProbeContexts mergedProbeContexts;
-			mergedProbeContexts.reserve( totalSize );
+			DBProbeSamples mergedProbeSamples;
+			mergedProbeSamples.reserve( totalSize );
 
 			AUTO_TIMER_BLOCK( "push back all instances" ) {
 				for( auto instance = instances.begin() ; instance != instances.end() ; ++instance ) {
-					boost::push_back( mergedProbeContexts, instance->getProbeContexts() );
+					boost::push_back( mergedProbeSamples, instance->getProbeSamples() );
 				}
 			}
 
 			// now count the different directions
 			AUTO_TIMER_BLOCK( "push back all instances sorted by direction index" ) {
 				auto directionCounts = ProbeHelpers::countProbeDirections( probes );
-			
-				std::vector< DBProbeContexts > probeContextsByDirectionIndex( ProbeGenerator::getNumDirections() );
+
+				std::vector< DBProbeSamples > probeSamplesByDirectionIndex( ProbeGenerator::getNumDirections() );
 				for( int directionIndex = 0 ; directionIndex < ProbeGenerator::getNumDirections() ; directionIndex++ ) {
-					probeContextsByDirectionIndex[ directionIndex ].reserve( directionCounts[ directionIndex ] );
+					probeSamplesByDirectionIndex[ directionIndex ].reserve( directionCounts[ directionIndex ] );
 				}
 
 				const int probesCount = probes.size();
@@ -782,20 +782,20 @@ struct SampledModel {
 					const auto & probe = probes[ probeIndex ];
 					const auto directionIndex = probe.directionIndex;
 
-					auto &probeContexts = probeContextsByDirectionIndex[ directionIndex ];
+					auto &probeSamples = probeSamplesByDirectionIndex[ directionIndex ];
 					for( int instanceIndex = 0 ; instanceIndex < instances.size() ; instanceIndex++ ) {
-						probeContexts.push_back( instances[ instanceIndex ].getProbeContexts()[ probeIndex ] );
-					}	
-				}				
+						probeSamples.push_back( instances[ instanceIndex ].getProbeSamples()[ probeIndex ] );
+					}
+				}
 
 				for( int directionIndex = 0 ; directionIndex < ProbeGenerator::getNumDirections() ; directionIndex++ ) {
-					mergedInstancesByDirectionIndex[ directionIndex ] = std::move( probeContextsByDirectionIndex[ directionIndex ] );
+					mergedInstancesByDirectionIndex[ directionIndex ] = std::move( probeSamplesByDirectionIndex[ directionIndex ] );
 				}
 			}
 
 			// TODO: magic constants!!! [10/17/2012 kirschan2]
-			//CompressedDataset::compress( instances.size(), probes.size(), probeContexts, ProbeContextToleranceV2( int( 0.124f * OptixProgramInterface::numProbeSamples ), 1.0f, 0.25f * 0.95f ) );
-			mergedInstances = IndexedProbeContexts( std::move( mergedProbeContexts ) );
+			//CompressedDataset::compress( instances.size(), probes.size(), probeSamples, ProbeContextToleranceV2( int( 0.124f * OptixProgramInterface::numProbeSamples ), 1.0f, 0.25f * 0.95f ) );
+			mergedInstances = IndexedProbeSamples( std::move( mergedProbeSamples ) );
 		}
 	}
 
@@ -803,7 +803,7 @@ struct SampledModel {
 		return mergedInstances.size() == 0;
 	}
 
-	int uncompressedProbeContextCount() const {
+	int uncompressedProbeSampleCount() const {
 		return instances.size() * probes.size();
 	}
 
@@ -811,11 +811,11 @@ struct SampledModel {
 		return instances;
 	}
 
-	const IndexedProbeContexts & getMergedInstances() const {
+	const IndexedProbeSamples & getMergedInstances() const {
 		return mergedInstances;
 	}
 
-	const IndexedProbeContexts & getMergedInstancesByDirectionIndex( int directionIndex ) const {
+	const IndexedProbeSamples & getMergedInstancesByDirectionIndex( int directionIndex ) const {
 		return mergedInstancesByDirectionIndex[ directionIndex ];
 	}
 
@@ -825,9 +825,9 @@ struct SampledModel {
 
 private:
 	SampledInstances instances;
-	IndexedProbeContexts mergedInstances;
-	
-	std::vector< IndexedProbeContexts > mergedInstancesByDirectionIndex;
+	IndexedProbeSamples mergedInstances;
+
+	std::vector< IndexedProbeSamples > mergedInstancesByDirectionIndex;
 
 	DBProbes probes;
 
@@ -863,7 +863,7 @@ struct ProbeDatabase : IDatabase {
 		int sceneModelIndex,
 		const Obb &sampleSource,
 		const RawProbes &untransformedProbes,
-		const RawProbeContexts &probeContexts
+		const RawProbeSamples &probeSamples
 	);
 
 	virtual void compile( int sceneModelIndex );

@@ -37,7 +37,7 @@ namespace aop {
 	struct CameraViewsUI;
 	struct ModelTypesUI;
 	struct TimedLog;
-	
+
 	struct ModelDatabaseUI;
 	struct ProbeDatabaseUI;
 
@@ -49,7 +49,7 @@ namespace aop {
 		struct ProbeDatabase;
 		struct ModelDatabase;
 	}
-	
+
 	struct Application : ModelDatabase::ImportInterface {
 		enum QueryType {
 			QT_NORMAL,
@@ -137,14 +137,14 @@ namespace aop {
 		}
 
 		QueryResults queryVolume( const SceneSettings::NamedTargetVolume &queryVolume, QueryType queryType );
-		QueryResults normalQueryVolume( const Obb &queryVolume, const RawProbes &queryProbes, const RawProbeContexts &queryProbeContexts );
-		QueryResults weightedQueryVolume( const Obb &queryVolume, const RawProbes &queryProbes, const RawProbeContexts &queryProbeContexts );
+		QueryResults normalQueryVolume( const Obb &queryVolume, const RawProbes &queryProbes, const RawProbeSamples &queryProbeSamples );
+		QueryResults weightedQueryVolume( const Obb &queryVolume, const RawProbes &queryProbes, const RawProbeSamples &queryProbeSamples );
 
 		void ProbeDatabase_sampleInstances( int modelIndex );
 
 		ProbeContextTolerance getPCTFromSettings();
 
 		void NeighborhoodDatabase_sampleScene();
-		
+
 	};
 }

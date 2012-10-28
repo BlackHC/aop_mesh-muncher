@@ -41,7 +41,7 @@ void selectObjectsByModelID( SGSSceneRenderer &renderer, int modelIndex ) {
 		auto transformation = renderer.getInstanceTransformation( *instanceIndex );
 		auto boundingBox = renderer.getUntransformedInstanceBoundingBox( *instanceIndex );
 
-		selectionDR.setTransformation( transformation.matrix() );	
+		selectionDR.setTransformation( transformation.matrix() );
 		selectionDR.drawAABB( boundingBox.min(), boundingBox.max() );
 	}
 
@@ -90,7 +90,7 @@ void real_main() {
 			Serializer::BinaryReader reader( scenePath );
 			Serializer::read( reader, sgsScene );
 		}
-		
+
 		const char *cachePath = "scene.sgsRendererCache";
 		sgsSceneRenderer.processScene( make_nonallocated_shared( sgsScene ), cachePath );
 	}
@@ -129,33 +129,33 @@ void real_main() {
 	IntVariableControl disabledInstanceIndexControl( "disabledInstanceIndex",renderContext.disabledInstanceIndex, -1, sgsScene.objects.size(), sf::Keyboard::Numpad9, sf::Keyboard::Numpad3 );
 	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( disabledInstanceIndexControl ) );
 
-	
+
 	DebugRender::CombinedCalls probeDumps;
-	KeyAction dumpProbeAction( "dump probe", sf::Keyboard::P, [&] () { 
+	KeyAction dumpProbeAction( "dump probe", sf::Keyboard::P, [&] () {
 		// dump a probe at the current position and view direction
 		const Eigen::Vector3f position = camera.getPosition();
 		const Eigen::Vector3f direction = camera.getDirection();
 
 		std::vector< OptixRenderer::Probe > probes;
-		std::vector< OptixRenderer::ProbeContext > probeContexts;
-		
+		std::vector< OptixRenderer::ProbeSample > probeSamples;
+
 		OptixRenderer::Probe probe;
 		Eigen::Vector3f::Map( &probe.position.x ) = position;
 		Eigen::Vector3f::Map( &probe.direction.x ) = direction;
-		
+
 		probes.push_back( probe );
 
-		optixRenderer.sampleProbes( probes, probeContexts, renderContext );
+		optixRenderer.sampleProbes( probes, probeSamples, renderContext );
 
 		probeDumps.append();
 		probeDumps.setPosition( position );
-		//glColor4ubv( &probeContexts.front().color.x );
-		probeDumps.drawVectorCone( probeContexts.front().distance * direction, probeContexts.front().distance * 0.25, 1 + probeContexts.front().hitCounter );
+		//glColor4ubv( &probeSamples.front().color.x );
+		probeDumps.drawVectorCone( probeSamples.front().distance * direction, probeSamples.front().distance * 0.25, 1 + probeSamples.front().hitCounter );
 		probeDumps.end();
 	} );
 	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( dumpProbeAction ) );
 
-	KeyAction disableObjectAction( "disable models shot", sf::Keyboard::Numpad4, [&] () { 
+	KeyAction disableObjectAction( "disable models shot", sf::Keyboard::Numpad4, [&] () {
 		// dump a probe at the current position and view direction
 		const ViewerContext viewerContext = { camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() };
 
@@ -164,13 +164,13 @@ void real_main() {
 
 		OptixRenderer::SelectionResults selectionResults;
 		optixRenderer.selectFromPinholeCamera( selectionRays, selectionResults, viewerContext, renderContext );
-	
+
 		renderContext.disabledModelIndex = selectionResults.front().modelIndex;
 		std::cout << "object: " << selectionResults.front().modelIndex << "\n";
 	} );
 	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( disableObjectAction ) );
 
-	KeyAction disableInstanceAction( "disable instance shot", sf::Keyboard::Numpad6, [&] () { 
+	KeyAction disableInstanceAction( "disable instance shot", sf::Keyboard::Numpad6, [&] () {
 		// dump a probe at the current position and view direction
 		const ViewerContext viewerContext = { camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() };
 
@@ -186,7 +186,7 @@ void real_main() {
 	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( disableInstanceAction ) );
 
 	DebugWindowManager debugWindowManager;
-	
+
 #if 1
 	TextureVisualizationWindow optixWindow;
 	optixWindow.init( "Optix Version" );
@@ -237,7 +237,7 @@ void real_main() {
 		}
 
 		eventSystem.update( frameClock.restart().asSeconds(), clock.getElapsedTime().asSeconds() );
-		
+
 		{
 			boost::timer::cpu_timer renderTimer;
 			sgsSceneRenderer.renderShadowmap( renderContext );
@@ -255,13 +255,13 @@ void real_main() {
 
 			sgsSceneRenderer.renderSceneView( camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition(), renderContext );
 
-			probeDumps.render();		
+			probeDumps.render();
 
 			selectObjectsByModelID( sgsSceneRenderer, renderContext.disabledModelIndex );
 			glDisable( GL_DEPTH_TEST );
 			selectionDR.render();
 			glEnable( GL_DEPTH_TEST );
-			
+
 			const ViewerContext viewerContext = { camera.getProjectionMatrix() * camera.getViewTransformation().matrix(), camera.getPosition() };
 			//optixRenderer.renderPinholeCamera( viewerContext, renderContext );
 
@@ -275,7 +275,7 @@ void real_main() {
 
 			debugWindowManager.update();
 		}
-		
+
 	}
 };
 

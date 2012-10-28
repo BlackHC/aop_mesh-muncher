@@ -51,7 +51,7 @@ void visualizeColorGrid( const VoxelizedModel::Voxels &grid, GridVisualizationMo
 void visualizeProbe(
 	const Eigen::Vector3f &missColor,
 	const RawProbe &probe,
-	const RawProbeContext &probeContext,
+	const RawProbeSample &probeSample,
 	float maxDistance,
 	float resolution,
 	ProbeVisualizationMode pvm
@@ -68,7 +68,7 @@ void visualizeProbe(
 	const Eigen::Vector3f axis1 = direction.unitOrthogonal();
 	const Eigen::Vector3f axis2 = direction.cross( axis1 );
 
-	const float occlusionFactor = float( probeContext.hitCounter ) / OptixProgramInterface::numProbeSamples;
+	const float occlusionFactor = float( probeSample.hitCounter ) / OptixProgramInterface::numProbeSamples;
 
 	switch( pvm ) {
 	case PVM_COLOR:
@@ -76,7 +76,7 @@ void visualizeProbe(
 		// blend with missColor depending on the occlusion factor
 		DebugRender::setColor(
 					map( OptixProgramInterface::CIELAB::toRGB(
-							optix::make_float3( probeContext->Lab.x, probeContext->Lab.y, probeContext->Lab.z )
+							optix::make_float3( probeSample->Lab.x, probeSample->Lab.y, probeSample->Lab.z )
 					) )
 				*
 					occlusionFactor
@@ -84,10 +84,10 @@ void visualizeProbe(
 				(1.0f - occlusionFactor) * missColor
 		);
 #else
-		if( probeContext.hitCounter > 0 ) {
+		if( probeSample.hitCounter > 0 ) {
 			DebugRender::setColor(
 				map( OptixProgramInterface::CIELAB::toRGB(
-					optix::make_float3( probeContext.Lab.x, probeContext.Lab.y, probeContext.Lab.z )
+					optix::make_float3( probeSample.Lab.x, probeSample.Lab.y, probeSample.Lab.z )
 				) )
 			);
 		}
@@ -103,7 +103,7 @@ void visualizeProbe(
 		break;
 	case PVM_DISTANCE:
 		if( occlusionFactor > 0 ) {
-			DebugRender::setColor( probeContext.distance / maxDistance * Vector3f::Constant( 1.0f )	);
+			DebugRender::setColor( probeSample.distance / maxDistance * Vector3f::Constant( 1.0f )	);
 		}
 		else {
 			DebugRender::setColor( missColor );
@@ -115,16 +115,16 @@ void visualizeProbe(
 	DebugRender::drawEllipse( radius, false, 20, axis1, axis2 );
 }
 
-void visualizeRawProbeContexts(
+void visualizeRawProbeSamples(
 	const Eigen::Vector3f &missColor,
 	float maxDistance,
 	float resolution,
 	const RawProbes &probes,
-	const RawProbeContexts &probeContexts,
+	const RawProbeSamples &probeSamples,
 	ProbeVisualizationMode pvm
 ) {
-	if( probes.size() != probeContexts.size() ) {
-		throw std::invalid_argument( "probes.size() != probeContexts.size()" );
+	if( probes.size() != probeSamples.size() ) {
+		throw std::invalid_argument( "probes.size() != probeSamples.size()" );
 	}
 	DebugRender::begin();
 	const int numProbes = (int) probes.size();
@@ -132,7 +132,7 @@ void visualizeRawProbeContexts(
 		visualizeProbe(
 			missColor,
 			probes[ probeIndex ],
-			probeContexts[ probeIndex ],
+			probeSamples[ probeIndex ],
 			maxDistance,
 			resolution,
 			pvm
@@ -146,17 +146,17 @@ void visualizeProbeDataset(
 	float maxDistance,
 	float resolution,
 	const DBProbes &probes,
-	const DBProbeContexts &probeContexts,
+	const DBProbeSamples &probeSamples,
 	ProbeVisualizationMode pvm
 ) {
 	DebugRender::begin();
-	for( auto probeContext = probeContexts.begin() ; probeContext != probeContexts.end() ; ++probeContext ) {
-		const auto &probe = probes[ probeContext->probeIndex ];
+	for( auto probeSample = probeSamples.begin() ; probeSample != probeSamples.end() ; ++probeSample ) {
+		const auto &probe = probes[ probeSample->probeIndex ];
 
 		visualizeProbe(
 			missColor,
 		 	probe,
-			*probeContext,
+			*probeSample,
 			maxDistance,
 			resolution,
 			pvm

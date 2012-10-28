@@ -34,8 +34,8 @@ struct ProbeDatabase::Query {
 		probeContextTolerance = pct;
 	}
 
-	void setQueryDataset( const RawProbeContexts &rawProbeContexts ) {
-		this->indexedProbeContexts = IndexedProbeContexts( ProbeContextTransformation::transformContexts( rawProbeContexts ) );
+	void setQueryDataset( const RawProbeSamples &rawProbeSamples ) {
+		this->indexedProbeSamples = IndexedProbeSamples( ProbeSampleTransformation::transformSamples( rawProbeSamples ) );
 	}
 
 	void execute() {
@@ -77,20 +77,20 @@ struct ProbeDatabase::Query {
 	}
 
 protected:
-	typedef IndexedProbeContexts::IntRange IntRange;
+	typedef IndexedProbeSamples::IntRange IntRange;
 	typedef std::pair< IntRange, IntRange > OverlappedRange;
 
 	DetailedQueryResult matchAgainst( int localSceneIndex, int sceneModelIndex ) {
 		const auto &sampledModel = database.sampledModels[ localSceneIndex ];
 
 		// TODO: rename idDataset to idDatabase? [9/26/2012 kirschan2]
-		const IndexedProbeContexts &sampledModelProbeContexts = sampledModel.getMergedInstances();
+		const IndexedProbeSamples &sampledModelProbeSamples = sampledModel.getMergedInstances();
 
-		if( sampledModelProbeContexts.size() == 0 ) {
+		if( sampledModelProbeSamples.size() == 0 ) {
 			return DetailedQueryResult( sceneModelIndex );
 		}
 
-		AUTO_TIMER_FOR_FUNCTION( boost::format( "id = %i, %i ref probes (%i query probes)" ) % sceneModelIndex % sampledModelProbeContexts.size() % indexedProbeContexts.size() );
+		AUTO_TIMER_FOR_FUNCTION( boost::format( "id = %i, %i ref probes (%i query probes)" ) % sceneModelIndex % sampledModelProbeSamples.size() % indexedProbeSamples.size() );
 
 		using namespace Concurrency;
 
@@ -98,64 +98,64 @@ protected:
 			combinable< int > numMatches;
 			combinable< boost::dynamic_bitset<> > probesMatchedQueryVolume, probesMatchedSampledModel;
 
-			int numProbeContextsSampledModel;
-			int numProbeContextsQueryVolume;
+			int numProbeSamplesSampledModel;
+			int numProbeSamplesQueryVolume;
 
-			MatchController( int numProbeContextsSampledModel, int numProbeContextsQueryVolume )
-				: numProbeContextsSampledModel( numProbeContextsSampledModel )
-				, numProbeContextsQueryVolume( numProbeContextsQueryVolume )
+			MatchController( int numProbeSamplesSampledModel, int numProbeSamplesQueryVolume )
+				: numProbeSamplesSampledModel( numProbeSamplesSampledModel )
+				, numProbeSamplesQueryVolume( numProbeSamplesQueryVolume )
 			{
 			}
 
 			void onNewThreadStarted() {
-				probesMatchedQueryVolume.local().resize( numProbeContextsQueryVolume );
-				probesMatchedSampledModel.local().resize( numProbeContextsSampledModel );
+				probesMatchedQueryVolume.local().resize( numProbeSamplesQueryVolume );
+				probesMatchedSampledModel.local().resize( numProbeSamplesSampledModel );
 			}
 
-			void onMatch( int sampledModelProbeContextIndex, int queryProbeContextIndex, const DBProbeContext &sampledModelProbeContext, const DBProbeContext &queryProbeContext ) {
-				numMatches.local() += sampledModelProbeContext.weight * queryProbeContext.weight;
+			void onMatch( int sampledModelProbeSampleIndex, int queryProbeSampleIndex, const DBProbeSample &sampledModelProbeSample, const DBProbeSample &queryProbeSample ) {
+				numMatches.local() += sampledModelProbeSample.weight * queryProbeSample.weight;
 
-				probesMatchedSampledModel.local()[ sampledModelProbeContextIndex ] = true;
-				probesMatchedQueryVolume.local()[ queryProbeContextIndex ] = true;
+				probesMatchedSampledModel.local()[ sampledModelProbeSampleIndex ] = true;
+				probesMatchedQueryVolume.local()[ queryProbeSampleIndex ] = true;
 			}
 		};
 
-		IndexedProbeContexts::Matcher< MatchController > matcher( sampledModelProbeContexts, indexedProbeContexts, probeContextTolerance, MatchController( sampledModelProbeContexts.size(), indexedProbeContexts.size() ) );
+		IndexedProbeSamples::Matcher< MatchController > matcher( sampledModelProbeSamples, indexedProbeSamples, probeContextTolerance, MatchController( sampledModelProbeSamples.size(), indexedProbeSamples.size() ) );
 		AUTO_TIMER_BLOCK( "matching" ) {
 			matcher.match();
 		}
 
-		boost::dynamic_bitset<> mergedProbeContextsSampledModel( sampledModelProbeContexts.size() ), mergedProbeContextsQueryVolume( indexedProbeContexts.size() );
+		boost::dynamic_bitset<> mergedProbeSamplesSampledModel( sampledModelProbeSamples.size() ), mergedProbeSamplesQueryVolume( indexedProbeSamples.size() );
 		AUTO_TIMER_BLOCK( "combining matches" ) {
 			matcher.controller.probesMatchedQueryVolume.combine_each(
 				[&] ( const boost::dynamic_bitset<> &set ) {
-					mergedProbeContextsQueryVolume |= set;
+					mergedProbeSamplesQueryVolume |= set;
 				}
 			);
 
 			matcher.controller.probesMatchedSampledModel.combine_each(
 				[&] ( const boost::dynamic_bitset<> &set ) {
-					mergedProbeContextsSampledModel |= set;
+					mergedProbeSamplesSampledModel |= set;
 				}
 			);
 		}
 
 		// query volumes are not compressed
-		int numProbeContextsMatchedSampledModel = 0;
-		for( int i = 0 ; i < mergedProbeContextsSampledModel.size() ; ++i ) {
-			if( mergedProbeContextsSampledModel[ i ] ) {
-				numProbeContextsMatchedSampledModel += sampledModelProbeContexts.getProbeContexts()[ i ].weight;
+		int numProbeSamplesMatchedSampledModel = 0;
+		for( int i = 0 ; i < mergedProbeSamplesSampledModel.size() ; ++i ) {
+			if( mergedProbeSamplesSampledModel[ i ] ) {
+				numProbeSamplesMatchedSampledModel += sampledModelProbeSamples.getProbeSamples()[ i ].weight;
 			}
 		}
 
-		const int numProbeContextsMatchedQueryVolume = (int) mergedProbeContextsQueryVolume.count();
+		const int numProbeSamplesMatchedQueryVolume = (int) mergedProbeSamplesQueryVolume.count();
 
 		DetailedQueryResult detailedQueryResult( sceneModelIndex );
 		detailedQueryResult.numMatches = matcher.controller.numMatches.combine( std::plus<int>() );
 
-		detailedQueryResult.probeMatchPercentage = float( numProbeContextsMatchedSampledModel ) / sampledModel.uncompressedProbeContextCount();
+		detailedQueryResult.probeMatchPercentage = float( numProbeSamplesMatchedSampledModel ) / sampledModel.uncompressedProbeSampleCount();
 		// query volumes are not compressed
-		detailedQueryResult.queryMatchPercentage = float( numProbeContextsMatchedQueryVolume ) / indexedProbeContexts.size();
+		detailedQueryResult.queryMatchPercentage = float( numProbeSamplesMatchedQueryVolume ) / indexedProbeSamples.size();
 
 		detailedQueryResult.score = detailedQueryResult.probeMatchPercentage * detailedQueryResult.queryMatchPercentage;
 
@@ -165,7 +165,7 @@ protected:
 protected:
 	const ProbeDatabase &database;
 
-	IndexedProbeContexts indexedProbeContexts;
+	IndexedProbeSamples indexedProbeSamples;
 
 	ProbeContextTolerance probeContextTolerance;
 
@@ -206,9 +206,9 @@ struct ProbeDatabase::WeightedQuery {
 		probeContextTolerance = pct;
 	}
 
-	void setQueryDataset( const DBProbes &probes, const RawProbeContexts &rawProbeContexts ) {
+	void setQueryDataset( const DBProbes &probes, const RawProbeSamples &rawProbeSamples ) {
 		this->probes = probes;
-		this->indexedProbeContexts = IndexedProbeContexts( ProbeContextTransformation::transformContexts( rawProbeContexts ) );
+		this->indexedProbeSamples = IndexedProbeSamples( ProbeSampleTransformation::transformSamples( rawProbeSamples ) );
 	}
 
 	void execute() {
@@ -281,13 +281,13 @@ protected:
 		const auto &sampledModel = database.sampledModels[ localSceneIndex ];
 
 		// TODO: rename idDataset to idDatabase? [9/26/2012 kirschan2]
-		const IndexedProbeContexts &sampledModelProbeContexts = sampledModel.getMergedInstances();
+		const IndexedProbeSamples &sampledModelProbeSamples = sampledModel.getMergedInstances();
 
-		if( sampledModelProbeContexts.size() == 0 ) {
+		if( sampledModelProbeSamples.size() == 0 ) {
 			return DetailedQueryResult( sceneModelIndex );
 		}
 
-		AUTO_TIMER_FOR_FUNCTION( boost::format( "id = %i, %i ref probes (%i query probes)" ) % sceneModelIndex % sampledModelProbeContexts.size() % indexedProbeContexts.size() );
+		AUTO_TIMER_FOR_FUNCTION( boost::format( "id = %i, %i ref probes (%i query probes)" ) % sceneModelIndex % sampledModelProbeSamples.size() % indexedProbeSamples.size() );
 
 		using namespace Concurrency;
 
@@ -298,66 +298,66 @@ protected:
 			const DBProbes &sampledModelProbes;
 			const DBProbes &queryProbes;
 
-			int numProbeContextsSampledModel;
-			int numProbeContextsQueryVolume;
+			int numProbeSamplesSampledModel;
+			int numProbeSamplesQueryVolume;
 
-			MatchController( int numProbeContextsSampledModel, int numProbeContextsQueryVolume, const DBProbes &sampledModelProbes, const DBProbes &queryProbes )
-				: numProbeContextsSampledModel( numProbeContextsSampledModel )
-				, numProbeContextsQueryVolume( numProbeContextsQueryVolume )
+			MatchController( int numProbeSamplesSampledModel, int numProbeSamplesQueryVolume, const DBProbes &sampledModelProbes, const DBProbes &queryProbes )
+				: numProbeSamplesSampledModel( numProbeSamplesSampledModel )
+				, numProbeSamplesQueryVolume( numProbeSamplesQueryVolume )
 				, sampledModelProbes( sampledModelProbes )
 				, queryProbes( queryProbes )
 			{
 			}
 
 			void onNewThreadStarted() {
-				probesMatchedQueryVolume.local().resize( numProbeContextsQueryVolume );
-				probesMatchedSampledModel.local().resize( numProbeContextsSampledModel );
+				probesMatchedQueryVolume.local().resize( numProbeSamplesQueryVolume );
+				probesMatchedSampledModel.local().resize( numProbeSamplesSampledModel );
 			}
 
-			void onMatch( int sampledModelProbeContextIndex, int queryProbeContextIndex, const DBProbeContext &sampledModelProbeContext, const DBProbeContext &queryProbeContext ) {
-				numMatches.local() = sampledModelProbeContext.weight * queryProbeContext.weight;
+			void onMatch( int sampledModelProbeSampleIndex, int queryProbeSampleIndex, const DBProbeSample &sampledModelProbeSample, const DBProbeSample &queryProbeSample ) {
+				numMatches.local() = sampledModelProbeSample.weight * queryProbeSample.weight;
 
-				const float score = getMatchScore( sampledModelProbes[ sampledModelProbeContext.probeIndex ], queryProbes[ queryProbeContext.probeIndex ] );
+				const float score = getMatchScore( sampledModelProbes[ sampledModelProbeSample.probeIndex ], queryProbes[ queryProbeSample.probeIndex ] );
 
-				probesMatchedSampledModel.local()[ sampledModelProbeContextIndex ] = std::max( probesMatchedSampledModel.local()[ sampledModelProbeContext.probeIndex ], score * sampledModelProbeContext.weight );
-				probesMatchedQueryVolume.local()[ queryProbeContextIndex ] = std::max( probesMatchedQueryVolume.local()[ queryProbeContextIndex ], score * queryProbeContext.weight );;
+				probesMatchedSampledModel.local()[ sampledModelProbeSampleIndex ] = std::max( probesMatchedSampledModel.local()[ sampledModelProbeSample.probeIndex ], score * sampledModelProbeSample.weight );
+				probesMatchedQueryVolume.local()[ queryProbeSampleIndex ] = std::max( probesMatchedQueryVolume.local()[ queryProbeSampleIndex ], score * queryProbeSample.weight );;
 			}
 		};
 
-		IndexedProbeContexts::Matcher< MatchController > matcher(
-			sampledModelProbeContexts,
-			indexedProbeContexts,
+		IndexedProbeSamples::Matcher< MatchController > matcher(
+			sampledModelProbeSamples,
+			indexedProbeSamples,
 			probeContextTolerance,
-			MatchController( sampledModelProbeContexts.size(), indexedProbeContexts.size(), sampledModel.getProbes(), probes )
+			MatchController( sampledModelProbeSamples.size(), indexedProbeSamples.size(), sampledModel.getProbes(), probes )
 		);
 		AUTO_TIMER_BLOCK( "matching" ) {
 			matcher.match();
 		}
 
-		std::vector< float > mergedProbeContextsSampledModel( sampledModelProbeContexts.size() ), mergedProbeContextsQueryVolume( indexedProbeContexts.size() );
+		std::vector< float > mergedProbeSamplesSampledModel( sampledModelProbeSamples.size() ), mergedProbeSamplesQueryVolume( indexedProbeSamples.size() );
 		AUTO_TIMER_BLOCK( "combining matches" ) {
 			matcher.controller.probesMatchedQueryVolume.combine_each(
 				[&] ( const std::vector< float > &matches ) {
-					boost::transform( mergedProbeContextsQueryVolume, matches, mergedProbeContextsQueryVolume.begin(), std::max<float> );
+					boost::transform( mergedProbeSamplesQueryVolume, matches, mergedProbeSamplesQueryVolume.begin(), std::max<float> );
 				}
 			);
 
 			matcher.controller.probesMatchedSampledModel.combine_each(
 				[&] ( const std::vector< float > &matches ) {
-					boost::transform( mergedProbeContextsSampledModel, matches, mergedProbeContextsSampledModel.begin(), std::max<float> );
+					boost::transform( mergedProbeSamplesSampledModel, matches, mergedProbeSamplesSampledModel.begin(), std::max<float> );
 				}
 			);
 		}
 
 		// query volumes are not compressed
-		const float numProbeContextsMatchedSampledModel = boost::accumulate( mergedProbeContextsSampledModel, 0.0f, std::plus<float>() );
-		const float numProbeContextsMatchedQueryVolume = boost::accumulate( mergedProbeContextsQueryVolume, 0.0f, std::plus<float>() );
+		const float numProbeSamplesMatchedSampledModel = boost::accumulate( mergedProbeSamplesSampledModel, 0.0f, std::plus<float>() );
+		const float numProbeSamplesMatchedQueryVolume = boost::accumulate( mergedProbeSamplesQueryVolume, 0.0f, std::plus<float>() );
 		DetailedQueryResult detailedQueryResult( sceneModelIndex  );
 		detailedQueryResult.numMatches = matcher.controller.numMatches.combine( std::plus<int>() );
 
-		detailedQueryResult.probeMatchPercentage = float( numProbeContextsMatchedSampledModel ) / sampledModel.uncompressedProbeContextCount();
+		detailedQueryResult.probeMatchPercentage = float( numProbeSamplesMatchedSampledModel ) / sampledModel.uncompressedProbeSampleCount();
 		// query volumes are not compressed
-		detailedQueryResult.queryMatchPercentage = float( numProbeContextsMatchedQueryVolume ) / indexedProbeContexts.size();
+		detailedQueryResult.queryMatchPercentage = float( numProbeSamplesMatchedQueryVolume ) / indexedProbeSamples.size();
 
 		detailedQueryResult.score = detailedQueryResult.probeMatchPercentage * detailedQueryResult.queryMatchPercentage;
 
@@ -367,7 +367,7 @@ protected:
 protected:
 	const ProbeDatabase &database;
 
-	IndexedProbeContexts indexedProbeContexts;
+	IndexedProbeSamples indexedProbeSamples;
 	DBProbes probes;
 
 	ProbeContextTolerance probeContextTolerance;

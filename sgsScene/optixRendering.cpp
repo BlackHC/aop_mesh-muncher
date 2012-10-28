@@ -176,7 +176,7 @@ void SGSSceneRenderer::initOptix( OptixRenderer *optixRenderer ) {
 
 	optix.staticScene = optixRenderer->context->createGeometryGroup();
 	optix.staticScene->setAcceleration (optix.staticAcceleration);
-	
+
 	{
 		int numChildren = 1;
 		if( hasTerrain ) {
@@ -192,7 +192,7 @@ void SGSSceneRenderer::initOptix( OptixRenderer *optixRenderer ) {
 
 		optixRenderer->addSceneChild( optix.staticScene );
 	}
-	
+
 
 	optix.dynamicScene = optixRenderer->context->createGeometryGroup();
 	optix.dynamicScene->setAcceleration( optix.dynamicAcceleration );
@@ -315,11 +315,11 @@ void OptixRenderer::init( const std::shared_ptr< SGSSceneRenderer > &sgsSceneRen
 
 	context[ "probes" ]->set( probes );
 
-	probeContexts = context->createBuffer( RT_BUFFER_OUTPUT, RT_FORMAT_USER, maxNumProbes );
-	probeContexts->setElementSize( sizeof OptixProgramInterface::ProbeContext );
-	probeContexts->validate();
+	probeSamples = context->createBuffer( RT_BUFFER_OUTPUT, RT_FORMAT_USER, maxNumProbes );
+	probeSamples->setElementSize( sizeof OptixProgramInterface::ProbeSample );
+	probeSamples->validate();
 
-	context[ "probeContexts" ]->set( probeContexts );
+	context[ "probeSamples" ]->set( probeSamples );
 
 	// init and set the selection buffers
 	selectionRays = context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_FLOAT2, maxNumSelectionRays );
@@ -412,7 +412,7 @@ void OptixRenderer::selectFromPinholeCamera( const std::vector< optix::float2 > 
 	OptixHelpers::Buffer::copyToHost( this->selectionResults, selectionResults.front(), selectionResults.size() );
 }
 
-void OptixRenderer::sampleProbes( const std::vector< Probe > &probes, std::vector< ProbeContext > &probeContexts, const RenderContext &renderContext, float maxDistance, int sampleOffset ) {
+void OptixRenderer::sampleProbes( const std::vector< Probe > &probes, std::vector< ProbeSample > &probeSamples, const RenderContext &renderContext, float maxDistance, int sampleOffset ) {
 	prepareLaunch();
 
 	// check bounds
@@ -432,8 +432,8 @@ void OptixRenderer::sampleProbes( const std::vector< Probe > &probes, std::vecto
 
 	context->launch( OptixProgramInterface::sampleProbes, probes.size() );
 
-	probeContexts.resize( probes.size() );
-	OptixHelpers::Buffer::copyToHost( this->probeContexts, probeContexts.front(), probeContexts.size() );
+	probeSamples.resize( probes.size() );
+	OptixHelpers::Buffer::copyToHost( this->probeSamples, probeSamples.front(), probeSamples.size() );
 }
 
 void OptixRenderer::compileContext()  {
