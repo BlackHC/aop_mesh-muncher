@@ -18,7 +18,7 @@ namespace Serializer {
 
 SERIALIZER_DEFAULT_EXTERN_IMPL( SampledModel::SampledInstance, (source)(probeContexts) )
 SERIALIZER_DEFAULT_EXTERN_IMPL( IndexedProbeContexts, (data)(hitCounterLowerBounds) )
-SERIALIZER_DEFAULT_EXTERN_IMPL( SampledModel, (instances)(mergedInstances)(probes) )
+SERIALIZER_DEFAULT_EXTERN_IMPL( SampledModel, (instances)(mergedInstances)(mergedInstancesByDirectionIndex)(probes) )
 
 SERIALIZER_ENABLE_RAW_MODE_EXTERN( OptixProgramInterface::ProbeContext );
 SERIALIZER_ENABLE_RAW_MODE_EXTERN( OptixProgramInterface::Probe );
@@ -27,7 +27,7 @@ SERIALIZER_ENABLE_RAW_MODE_EXTERN( DBProbeContext );
 // TODO: this is a duplicate from aopSettingsStorage.cpp---add a storage header instead? [10/22/2012 kirschan2]
 SERIALIZER_DEFAULT_EXTERN_IMPL( Obb, (transformation)(size) );
 
-const int CACHE_FORMAT_VERSION = 3;
+const int CACHE_FORMAT_VERSION = 4;
 
 bool ProbeDatabase::load( const std::string &filename ) {
 	Serializer::BinaryReader reader( filename.c_str(), CACHE_FORMAT_VERSION );

@@ -35,7 +35,7 @@ struct ProbeDatabase::Query {
 	}
 
 	void setQueryDataset( const RawProbeContexts &rawProbeContexts ) {
-		this->indexedProbeContexts = IndexedProbeContexts( ProbeDatabase::transformContexts( rawProbeContexts ) );
+		this->indexedProbeContexts = IndexedProbeContexts( ProbeContextTransformation::transformContexts( rawProbeContexts ) );
 	}
 
 	void execute() {
@@ -208,7 +208,7 @@ struct ProbeDatabase::WeightedQuery {
 
 	void setQueryDataset( const DBProbes &probes, const RawProbeContexts &rawProbeContexts ) {
 		this->probes = probes;
-		this->indexedProbeContexts = IndexedProbeContexts( ProbeDatabase::transformContexts( rawProbeContexts ) );
+		this->indexedProbeContexts = IndexedProbeContexts( ProbeContextTransformation::transformContexts( rawProbeContexts ) );
 	}
 
 	void execute() {

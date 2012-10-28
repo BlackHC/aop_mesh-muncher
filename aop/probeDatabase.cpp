@@ -132,7 +132,7 @@ void ProbeDatabase::addInstanceProbes( int sceneModelIndex, const Obb &sampleSou
 	}
 		
 	SampledModel &idDataset = sampledModels[ localModelIndex ];
-	idDataset.addInstances( untransformedProbes, sampleSource, transformContexts( probeContexts ) );
+	idDataset.addInstances( untransformedProbes, sampleSource, ProbeContextTransformation::transformContexts( probeContexts ) );
 }
 
 void ProbeDatabase::compile( int sceneModelIndex ) {

@@ -5,6 +5,7 @@
 #include "optixEigenInterop.h"
 #include "boost/type_traits/extent.hpp"
 #include "boost/format.hpp"
+#include <mathUtility.h>
 
 using namespace Eigen;
 

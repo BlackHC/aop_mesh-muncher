@@ -28,6 +28,8 @@
 
 #include "mathUtility.h"
 
+#include "probeGenerator.h"
+
 struct QueryResult {
 	float score;
 	int sceneModelIndex;
@@ -325,6 +327,33 @@ struct DBProbeContext : OptixProgramInterface::ProbeContext {
 
 typedef std::vector< DBProbe > DBProbes;
 typedef std::vector< DBProbeContext > DBProbeContexts;
+
+// TODO: use this [10/27/2012 Andreas]
+namespace ProbeContextTransformation {
+	inline DBProbeContexts transformContexts( const RawProbeContexts &rawProbeContexts ) {
+		DBProbeContexts probeContexts;
+		probeContexts.reserve( rawProbeContexts.size() );
+
+		for( int probeIndex = 0 ; probeIndex < rawProbeContexts.size() ; ++probeIndex ) {
+			const auto &rawProbeContext = rawProbeContexts[ probeIndex ];
+
+			probeContexts.emplace_back( DBProbeContext( probeIndex, rawProbeContext ) );
+		}
+
+		return probeContexts;
+	}
+}
+
+namespace ProbeHelpers {
+	typedef std::vector< int > DirectionCounts;
+	inline DirectionCounts countProbeDirections( const DBProbes &probes ) {
+		DirectionCounts directionCounts( ProbeGenerator::getNumDirections() );
+		for (auto probe = probes.begin() ; probe != probes.end() ; ++probe ) {
+			directionCounts[ probe->directionIndex ]++;
+		}
+		return directionCounts;
+	}
+}
 
 namespace CompressedDataset {
 	inline void compress( size_t numInstances, size_t numProbes, DBProbeContexts &data, const ProbeContextToleranceV2 &pct ) {
@@ -671,9 +700,8 @@ struct SampledModel {
 					% instances.size()
 					% mergedInstances.size()
 				);
-				// reset the dataset
-				instances.clear();
-				mergedInstances = IndexedProbeContexts();
+
+				clear();
 			}
 
 			probes = datasetProbes;
@@ -684,22 +712,31 @@ struct SampledModel {
 
 	void clear() {
 		instances.clear();
+
 		mergedInstances = IndexedProbeContexts();
+
+		mergedInstancesByDirectionIndex.clear();
+		mergedInstancesByDirectionIndex.resize( ProbeGenerator::getNumDirections() );
+
 		probes.clear();
 	}
 
 	SampledModel()
-	{}
+	{
+		mergedInstancesByDirectionIndex.resize( ProbeGenerator::getNumDirections() );
+	}
 
 	SampledModel( SampledModel &&other )
 		: instances( std::move( other.instances ) )
 		, mergedInstances( std::move( other.mergedInstances ) )
+		, mergedInstancesByDirectionIndex( std::move( other.mergedInstancesByDirectionIndex ) )
 		, probes( std::move( other.probes ) )
 	{}
 
 	SampledModel & operator = ( SampledModel &&other ) {
 		instances = std::move( other.instances );
 		mergedInstances = std::move( other.mergedInstances );
+		mergedInstancesByDirectionIndex = std::move( other.mergedInstancesByDirectionIndex );
 		probes = std::move( other.probes );
 
 		return *this;
@@ -722,19 +759,43 @@ struct SampledModel {
 				}
 			);
 
-			DBProbeContexts probeContexts;
-			probeContexts.reserve( totalSize );
+			DBProbeContexts mergedProbeContexts;
+			mergedProbeContexts.reserve( totalSize );
 
 			AUTO_TIMER_BLOCK( "push back all instances" ) {
 				for( auto instance = instances.begin() ; instance != instances.end() ; ++instance ) {
-					boost::push_back( probeContexts, instance->getProbeContexts() );
+					boost::push_back( mergedProbeContexts, instance->getProbeContexts() );
+				}
+			}
+
+			// now count the different directions
+			AUTO_TIMER_BLOCK( "push back all instances sorted by direction index" ) {
+				auto directionCounts = ProbeHelpers::countProbeDirections( probes );
+			
+				std::vector< DBProbeContexts > probeContextsByDirectionIndex( ProbeGenerator::getNumDirections() );
+				for( int directionIndex = 0 ; directionIndex < ProbeGenerator::getNumDirections() ; directionIndex++ ) {
+					probeContextsByDirectionIndex[ directionIndex ].reserve( directionCounts[ directionIndex ] );
+				}
+
+				const int probesCount = probes.size();
+				for( int probeIndex = 0 ; probeIndex < probesCount ; probeIndex++ ) {
+					const auto & probe = probes[ probeIndex ];
+					const auto directionIndex = probe.directionIndex;
+
+					auto &probeContexts = probeContextsByDirectionIndex[ directionIndex ];
+					for( int instanceIndex = 0 ; instanceIndex < instances.size() ; instanceIndex++ ) {
+						probeContexts.push_back( instances[ instanceIndex ].getProbeContexts()[ probeIndex ] );
+					}	
+				}				
+
+				for( int directionIndex = 0 ; directionIndex < ProbeGenerator::getNumDirections() ; directionIndex++ ) {
+					mergedInstancesByDirectionIndex[ directionIndex ] = std::move( probeContextsByDirectionIndex[ directionIndex ] );
 				}
 			}
 
 			// TODO: magic constants!!! [10/17/2012 kirschan2]
 			//CompressedDataset::compress( instances.size(), probes.size(), probeContexts, ProbeContextToleranceV2( int( 0.124f * OptixProgramInterface::numProbeSamples ), 1.0f, 0.25f * 0.95f ) );
-
-			mergedInstances = IndexedProbeContexts( std::move( probeContexts ) );
+			mergedInstances = IndexedProbeContexts( std::move( mergedProbeContexts ) );
 		}
 	}
 
@@ -754,6 +815,10 @@ struct SampledModel {
 		return mergedInstances;
 	}
 
+	const IndexedProbeContexts & getMergedInstancesByDirectionIndex( int directionIndex ) const {
+		return mergedInstancesByDirectionIndex[ directionIndex ];
+	}
+
 	const DBProbes &getProbes() const {
 		return probes;
 	}
@@ -761,6 +826,8 @@ struct SampledModel {
 private:
 	SampledInstances instances;
 	IndexedProbeContexts mergedInstances;
+	
+	std::vector< IndexedProbeContexts > mergedInstancesByDirectionIndex;
 
 	DBProbes probes;
 
@@ -775,6 +842,7 @@ private:
 struct ProbeDatabase : IDatabase {
 	struct Query;
 	struct WeightedQuery;
+	//struct OrientationQuery;
 
 	// TODO: fix the naming [10/15/2012 kirschan2]
 	typedef std::vector<SampledModel> SampledModels;
@@ -826,19 +894,6 @@ struct ProbeDatabase : IDatabase {
 	}
 
 	ProbeDatabase() {}
-
-	static DBProbeContexts transformContexts( const RawProbeContexts &rawProbeContexts ) {
-		DBProbeContexts probeContexts;
-		probeContexts.reserve( rawProbeContexts.size() );
-
-		for( int probeIndex = 0 ; probeIndex < rawProbeContexts.size() ; ++probeIndex ) {
-			const auto &rawProbeContext = rawProbeContexts[ probeIndex ];
-
-			probeContexts.emplace_back( DBProbeContext( probeIndex, rawProbeContext ) );
-		}
-
-		return probeContexts;
-	}
 
 private:
 	// TODO: rename [10/22/2012 kirschan2]

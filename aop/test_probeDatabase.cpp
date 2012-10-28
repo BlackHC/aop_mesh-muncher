@@ -91,7 +91,7 @@ TEST( ProbeDatabase_transformContexts, idAndWeight ) {
 		}
 	}
 
-	auto probeContexts = ProbeDatabase::transformContexts( rawProbeContexts );
+	auto probeContexts = ProbeContextTransformation::transformContexts( rawProbeContexts );
 
 	ASSERT_EQ( rawProbeContexts.size(), probeContexts.size() );
 	for( int i = 0 ; i < probeContexts.size() ; i++ ) {
@@ -114,7 +114,7 @@ TEST( IndexedProbeContexts, setHitCounterLowerBounds ) {
 			rawProbeContexts.push_back( makeProbeContext( i, j ) );
 		}
 	}
-	IndexedProbeContexts dataset( ProbeDatabase::transformContexts( rawProbeContexts ) );
+	IndexedProbeContexts dataset( ProbeContextTransformation::transformContexts( rawProbeContexts ) );
 
 	ASSERT_EQ( rawProbeContexts.size(), dataset.size() );
 
