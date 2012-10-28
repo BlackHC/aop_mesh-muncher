@@ -10,7 +10,6 @@
 using namespace Eigen;
 
 namespace {
-	// 11 main axes
 	const Eigen::Vector3i rotationAxes[] = {
 		Eigen::Vector3i( 1, 0, 0 ), Eigen::Vector3i( 0, 1, 0 ), Eigen::Vector3i( 0, 0, 1 ),
 		Eigen::Vector3i( 1, 1, 0 ), Eigen::Vector3i( 1, -1, 0 ),
@@ -171,8 +170,6 @@ namespace ProbeGenerator {
 
 		Probe probe;
 		for( int directionIndex = 0 ; directionIndex < boost::size( directions ) ; directionIndex++ ) {
-			const auto direction = directions[ directionIndex ];
-
 			for( int z = -halfProbeExtent.z() ; z <= halfProbeExtent.z() ; z++ ) {
 				probe.position.z() = z;
 
@@ -182,10 +179,8 @@ namespace ProbeGenerator {
 					for( int x = -halfProbeExtent.x() ; x <= halfProbeExtent.x() ; x++ ) {
 						probe.position.x() = x;
 
-						if( direction.dot( probe.position.cast<float>() ) >= 0.0f ) {
-							probe.directionIndex = directionIndex;
-							probes.push_back( probe );
-						}
+						probe.directionIndex = directionIndex;
+						probes.push_back( probe );
 					}
 				}
 			}
@@ -212,5 +207,22 @@ namespace ProbeGenerator {
 				probes.push_back( probe );
 			}
 		}
+	}
+
+	ProbePositions rotateProbePositions( const Probes &probes, int orientationIndex ) {
+		const Matrix3f rotation = getRotation( orientationIndex );
+
+		ProbePositions probePositions;
+		probePositions.reserve( probes.size() );
+
+		const int probesCount = (int) probes.size();
+		for( int probeIndex = 0 ; probeIndex < probesCount ; probeIndex++ ) {
+			const auto &probe = probes[ probeIndex ];
+		
+			const Vector3f rotatedPosition = rotation * probe.position.cast<float>();
+			probePositions.push_back( (rotatedPosition + Vector3f::Constant( 0.5f )).cast<signed char>() );
+		}
+
+		return probePositions;
 	}
 }

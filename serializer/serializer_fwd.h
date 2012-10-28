@@ -16,4 +16,4 @@ struct IndexedProbeDataset;
 	template< typename Reader > \
 	friend void Serializer::read( Reader &reader, type &value ); \
 	template< typename Writer > \
-	friend void Serializer::write( Writer &writer, const type &value );
+	friend void Serializer::write( Writer &writer, const type &value )

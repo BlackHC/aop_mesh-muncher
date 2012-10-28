@@ -18,7 +18,14 @@ namespace Serializer {
 
 SERIALIZER_DEFAULT_EXTERN_IMPL( SampledModel::SampledInstance, (source)(probeSamples) )
 SERIALIZER_DEFAULT_EXTERN_IMPL( IndexedProbeSamples, (data)(occlusionLowerBounds) )
-SERIALIZER_DEFAULT_EXTERN_IMPL( SampledModel, (instances)(mergedInstances)(mergedInstancesByDirectionIndex)(probes)(resolution) )
+SERIALIZER_DEFAULT_EXTERN_IMPL( SampledModel,
+	(instances)
+	(mergedInstances)
+	(mergedInstancesByDirectionIndex)
+	(probes)
+	(rotatedProbePositions)
+	(resolution)
+)
 
 SERIALIZER_ENABLE_RAW_MODE_EXTERN( OptixProgramInterface::ProbeSample );
 SERIALIZER_ENABLE_RAW_MODE_EXTERN( RawProbe );

@@ -373,6 +373,7 @@ namespace DebugObjects {
 					missColor,
 					application->sceneSettings.probeGenerator_maxDistance,
 					application->sceneSettings.probeGenerator_resolution,
+					1.0,
 					sampledModel.getProbes(),
 					sampledInstance->getProbeSamples(),
 					pvm
@@ -405,25 +406,31 @@ namespace DebugObjects {
 			);
 		}
 
-		void addQueryVisualization( const std::string &name, const RawProbes &probes, const RawProbeSamples &probeSamples ) {
-			const float resolutionScale = 0.25f;
+		void addQueryVisualization( const SceneSettings::NamedTargetVolume &queryVolume, const RawProbes &probes, const RawProbeSamples &probeSamples ) {
+			const float scaleFactor = 0.25f;
 			{
 				GL::ScopedDisplayList list;
 				list.begin();
 
+				DebugRender::begin();
+				DebugRender::setTransformation( queryVolume.volume.transformation );
+
 				visualizeRawProbeSamples(
 					missColor,
 					application->sceneSettings.probeGenerator_maxDistance,
-					application->sceneSettings.probeGenerator_resolution * resolutionScale,
+					application->sceneSettings.probeGenerator_resolution,
+					scaleFactor,
 					probes,
 					probeSamples,
 					PVM_COLOR
 				);
 
+				DebugRender::end();
+
 				list.end();
 				debugUI->add(
 					std::make_shared< DebugObjects::SceneDisplayListObject >(
-						boost::str( boost::format( "Query '%s' color" ) % name ),
+						boost::str( boost::format( "Query '%s' color" ) % queryVolume.name ),
 						list.publish()
 					)
 				);
@@ -432,19 +439,25 @@ namespace DebugObjects {
 				GL::ScopedDisplayList list;
 				list.begin();
 
+				DebugRender::begin();
+				DebugRender::setTransformation( queryVolume.volume.transformation );
+
 				visualizeRawProbeSamples(
 					missColor,
 					application->sceneSettings.probeGenerator_maxDistance,
-					application->sceneSettings.probeGenerator_resolution * resolutionScale,
+					application->sceneSettings.probeGenerator_resolution,
+					scaleFactor,
 					probes,
 					probeSamples,
 					PVM_DISTANCE
 				);
 
+				DebugRender::end();
+
 				list.end();
 				debugUI->add(
 					std::make_shared< DebugObjects::SceneDisplayListObject >(
-						boost::str( boost::format( "Query '%s' distance" ) % name ),
+						boost::str( boost::format( "Query '%s' distance" ) % queryVolume.name ),
 						list.publish()
 					)
 				);
@@ -453,19 +466,25 @@ namespace DebugObjects {
 				GL::ScopedDisplayList list;
 				list.begin();
 
+				DebugRender::begin();
+				DebugRender::setTransformation( queryVolume.volume.transformation );
+
 				visualizeRawProbeSamples(
 					missColor,
 					application->sceneSettings.probeGenerator_maxDistance,
-					application->sceneSettings.probeGenerator_resolution * resolutionScale,
+					application->sceneSettings.probeGenerator_resolution,
+					scaleFactor,
 					probes,
 					probeSamples,
 					PVM_OCCLUSION
 				);
 
+				DebugRender::end();
+
 				list.end();
 				debugUI->add(
 					std::make_shared< DebugObjects::SceneDisplayListObject >(
-						boost::str( boost::format( "Query '%s' occlusion" ) % name ),
+						boost::str( boost::format( "Query '%s' occlusion" ) % queryVolume.name ),
 						list.publish()
 					)
 				);
@@ -1516,7 +1535,7 @@ namespace aop {
 		progressTracker.markFinished();
 
 		if( DebugObjects::ProbeDatabase::automaticallyVisualizeQuery ) {
-			probeDatabase_debugUI->addQueryVisualization( queryVolume.name, queryProbes, queryProbeSamples );
+			probeDatabase_debugUI->addQueryVisualization( queryVolume, queryProbes, queryProbeSamples );
 		}
 
 		return queryResults;

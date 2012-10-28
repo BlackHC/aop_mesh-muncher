@@ -54,14 +54,16 @@ void visualizeProbe(
 	const RawProbe &probe,
 	const RawProbeSample &probeSample,
 	float maxDistance,
-	float resolution,
+	float gridResolution,
+	float scaleFactor,
 	ProbeVisualizationMode pvm
 ) {
 	// sin and cos of 22.5°
-	const float directionDistance = 0.92387953251f * 0.5f * resolution;
-	const float radius = 0.38268343236f * 0.5f * resolution ;
+	const float sphereRadius = scaleFactor * gridResolution;
+	const float directionDistance = 0.92387953251f * 0.5f * sphereRadius;
+	const float radius = 0.38268343236f * 0.5f * sphereRadius;
 
-	const Vector3f position = probe.position.cast<float>() * resolution;
+	const Vector3f position = probe.position.cast<float>() * gridResolution;
 	const auto direction = ProbeGenerator::getDirection( probe.directionIndex );
 
 	DebugRender::setPosition( position + direction * directionDistance );
@@ -120,7 +122,8 @@ void visualizeProbe(
 void visualizeRawProbeSamples(
 	const Eigen::Vector3f &missColor,
 	float maxDistance,
-	float resolution,
+	float gridResolution,
+	float scaleFactor,
 	const RawProbes &probes,
 	const RawProbeSamples &probeSamples,
 	ProbeVisualizationMode pvm
@@ -136,7 +139,8 @@ void visualizeRawProbeSamples(
 			probes[ probeIndex ],
 			probeSamples[ probeIndex ],
 			maxDistance,
-			resolution,
+			gridResolution,
+			scaleFactor,
 			pvm
 		);
 	}
@@ -146,7 +150,8 @@ void visualizeRawProbeSamples(
 void visualizeProbeDataset(
 	const Eigen::Vector3f &missColor,
 	float maxDistance,
-	float resolution,
+	float gridResolution,
+	float scaleFactor,
 	const DBProbes &probes,
 	const DBProbeSamples &probeSamples,
 	ProbeVisualizationMode pvm
@@ -160,7 +165,8 @@ void visualizeProbeDataset(
 		 	probe,
 			*probeSample,
 			maxDistance,
-			resolution,
+			gridResolution,
+			scaleFactor,
 			pvm
 		 );
 	}

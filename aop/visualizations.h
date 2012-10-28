@@ -28,7 +28,8 @@ enum ProbeVisualizationMode {
 void visualizeProbeDataset(
 	const Eigen::Vector3f &skyColor,
 	float maxResolution,
-	float resolution,
+	float gridResolution,
+	float scaleFactor,
 	const DBProbes &probes,
 	const DBProbeSamples &probeSamples,
 	ProbeVisualizationMode pvm
@@ -37,7 +38,8 @@ void visualizeProbeDataset(
 void visualizeRawProbeSamples(
 	const Eigen::Vector3f &missColor,
 	float maxDistance,
-	float resolution,
+	float gridResolution,
+	float scaleFactor,
 	const RawProbes &probes,
 	const RawProbeSamples &probeSamples,
 	ProbeVisualizationMode pvm

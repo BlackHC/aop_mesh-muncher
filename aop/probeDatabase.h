@@ -481,7 +481,7 @@ struct IndexedProbeSamples {
 			: probeSamplesOuter( outer )
 			, probeSamplesInner( inner )
 			, probeContextTolerance( probeContextTolerance )
-			, controller( controller )
+			, controller( std::forward<Controller>( controller ) )
 		{
 		}
 
@@ -646,12 +646,43 @@ private:
 
 	void setOcclusionLowerBounds();
 
-	SERIALIZER_FWD_FRIEND_EXTERN( IndexedProbeSamples )
+	SERIALIZER_FWD_FRIEND_EXTERN( IndexedProbeSamples );
+
 private:
 	// better error messages than with boost::noncopyable
 	IndexedProbeSamples( const IndexedProbeSamples &other );
 	IndexedProbeSamples & operator = ( const IndexedProbeSamples &other );
 };
+
+namespace IndexedProbeSamplesHelper {
+	inline std::vector< IndexedProbeSamples > createIndexedProbeSamplesByDirectionIndices(
+		const DBProbes &probes,
+		const DBProbeSamples &probeSamples
+	) {
+		std::vector< IndexedProbeSamples > indexedProbeSamplesByDirectionIndices( ProbeGenerator::getNumDirections() );
+
+		const auto directionCounts = ProbeHelpers::countProbeDirections( probes );
+
+		std::vector< DBProbeSamples > probeSamplesByDirectionIndices( ProbeGenerator::getNumDirections() );
+		for( int directionIndex = 0 ; directionIndex < ProbeGenerator::getNumDirections() ; directionIndex++ ) {
+			probeSamplesByDirectionIndices[ directionIndex ].reserve( directionCounts[ directionIndex ] );
+		}
+
+		const int probesCount = probes.size();
+		for( int probeIndex = 0 ; probeIndex < probesCount ; probeIndex++ ) {
+			const auto & probe = probes[ probeIndex ];
+			const auto directionIndex = probe.directionIndex;
+
+			probeSamplesByDirectionIndices[ directionIndex ].push_back( probeSamples[ probeIndex ] );
+		}
+
+		for( int directionIndex = 0 ; directionIndex < ProbeGenerator::getNumDirections() ; directionIndex++ ) {
+			indexedProbeSamplesByDirectionIndices[ directionIndex ] = std::move( probeSamplesByDirectionIndices[ directionIndex ] );
+		}
+
+		return indexedProbeSamplesByDirectionIndices;
+	}
+}
 
 struct SampledModel {
 	struct SampledInstance {
@@ -711,6 +742,14 @@ struct SampledModel {
 			}
 
 			probes = datasetProbes;
+
+			// rotate probe positions
+			AUTO_TIMER_BLOCK( "rotate probe postions for full queries" ) {
+				for( int orientationIndex = 0 ; orientationIndex < ProbeGenerator::getNumOrientations() ; ++orientationIndex ) {
+					rotatedProbePositions[ orientationIndex ] = ProbeGenerator::rotateProbePositions( probes, orientationIndex );
+				}
+			}
+
 			resolution = datasetResolution;
 		}
 
@@ -726,6 +765,10 @@ struct SampledModel {
 		mergedInstancesByDirectionIndex.resize( ProbeGenerator::getNumDirections() );
 
 		probes.clear();
+
+		rotatedProbePositions.clear();
+		rotatedProbePositions.resize( ProbeGenerator::getNumOrientations() );
+		
 		resolution = 0.f;
 	}
 
@@ -733,6 +776,7 @@ struct SampledModel {
 		: resolution( 0.f )
 	{
 		mergedInstancesByDirectionIndex.resize( ProbeGenerator::getNumDirections() );
+		rotatedProbePositions.resize( ProbeGenerator::getNumOrientations() );
 	}
 
 	SampledModel( SampledModel &&other )
@@ -740,14 +784,19 @@ struct SampledModel {
 		, mergedInstances( std::move( other.mergedInstances ) )
 		, mergedInstancesByDirectionIndex( std::move( other.mergedInstancesByDirectionIndex ) )
 		, probes( std::move( other.probes ) )
+		, rotatedProbePositions( std::move( other.rotatedProbePositions ) )
 		, resolution( other.resolution )
 	{}
 
 	SampledModel & operator = ( SampledModel &&other ) {
 		instances = std::move( other.instances );
+		
 		mergedInstances = std::move( other.mergedInstances );
 		mergedInstancesByDirectionIndex = std::move( other.mergedInstancesByDirectionIndex );
+		
 		probes = std::move( other.probes );
+		rotatedProbePositions = std::move( other.rotatedProbePositions );
+
 		resolution = other.resolution;
 
 		return *this;
@@ -779,13 +828,13 @@ struct SampledModel {
 				}
 			}
 
-			// now count the different directions
 			AUTO_TIMER_BLOCK( "push back all instances sorted by direction index" ) {
-				auto directionCounts = ProbeHelpers::countProbeDirections( probes );
+				const auto directionCounts = ProbeHelpers::countProbeDirections( probes );
 
 				std::vector< DBProbeSamples > probeSamplesByDirectionIndex( ProbeGenerator::getNumDirections() );
 				for( int directionIndex = 0 ; directionIndex < ProbeGenerator::getNumDirections() ; directionIndex++ ) {
-					probeSamplesByDirectionIndex[ directionIndex ].reserve( directionCounts[ directionIndex ] );
+					const int numProbesWithDirectionIndex = directionCounts[ directionIndex ] * (int) instances.size();
+					probeSamplesByDirectionIndex[ directionIndex ].reserve( numProbesWithDirectionIndex );
 				}
 
 				const int probesCount = probes.size();
@@ -805,7 +854,7 @@ struct SampledModel {
 			}
 
 			// TODO: magic constants!!! [10/17/2012 kirschan2]
-			//CompressedDataset::compress( instances.size(), probes.size(), probeSamples, ProbeContextToleranceV2( int( 0.124f * OptixProgramInterface::numProbeSamples ), 1.0f, 0.25f * 0.95f ) );
+			CompressedDataset::compress( instances.size(), probes.size(), mergedProbeSamples, ProbeContextToleranceV2( int( 0.124f * OptixProgramInterface::numProbeSamples ), 1.0f, 0.25f * 0.95f ) );
 			mergedInstances = IndexedProbeSamples( std::move( mergedProbeSamples ) );
 		}
 	}
@@ -830,6 +879,10 @@ struct SampledModel {
 		return mergedInstancesByDirectionIndex[ directionIndex ];
 	}
 
+	const ProbeGenerator::ProbePositions getRotatedProbePositions( int orientationIndex ) const {
+		return rotatedProbePositions[ orientationIndex ];
+	}
+
 	const DBProbes &getProbes() const {
 		return probes;
 	}
@@ -841,9 +894,10 @@ private:
 	std::vector< IndexedProbeSamples > mergedInstancesByDirectionIndex;
 
 	DBProbes probes;
+	std::vector< ProbeGenerator::ProbePositions > rotatedProbePositions;
 	float resolution;
 
-	SERIALIZER_FWD_FRIEND_EXTERN( SampledModel )
+	SERIALIZER_FWD_FRIEND_EXTERN( SampledModel );
 
 private:
 	// better error messages than with boost::noncopyable
@@ -854,6 +908,7 @@ private:
 struct ProbeDatabase : IDatabase {
 	struct Query;
 	struct WeightedQuery;
+	struct FullQuery;
 	//struct OrientationQuery;
 
 	// TODO: fix the naming [10/15/2012 kirschan2]

@@ -36,6 +36,9 @@ namespace ProbeGenerator {
 
 	Eigen::Vector3i getGridHalfExtent( const Eigen::Vector3f &size, const float resolution );
 
+	typedef std::vector< char3 > ProbePositions;
+	ProbePositions rotateProbePositions( const Probes &probes, int orientationIndex );
+
 	void transformProbe(
 		const Probe &probe,
 		const Obb::Transformation &transformation,

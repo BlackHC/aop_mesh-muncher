@@ -15,7 +15,7 @@ INCLUDE_DIRECTORIES(
 	${EIGEN3_INCLUDE_DIR}
 	${OPENGL_INCLUDE_DIR}
 	${Boost_INCLUDE_DIR}
-	${GLEW_INCLUDE_DIR} 
+	${GLEW_INCLUDE_DIR}
 	../volume/
 	../positionSolver/
 	../glVoxelVolumePlacerUI/
@@ -37,8 +37,7 @@ ADD_EXECUTABLE(glVoxelizer
 	../wml/wml.h
 	voxelizer.h
 	voxelizer.cpp
-	glVoxelizer.cpp 
-	eigenProjectionMatrices.h
+	glVoxelizer.cpp
 	../gtest/gtest-all.cc
 	../build/voxelizer.glsl
 	../glutil/Debug.cpp
