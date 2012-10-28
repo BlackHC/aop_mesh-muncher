@@ -1371,7 +1371,7 @@ namespace aop {
 					// we dont use the weighted and averaged normal for now
 					const Vector3f normal = (position - bbox.center()).normalized();
 #endif
-					ProbeGenerator::appendProbesFromSample( position, normal, probes );
+					ProbeGenerator::appendProbesFromSample( resolution, position, normal, probes );
 				}
 			}
 		}
@@ -1448,10 +1448,10 @@ namespace aop {
 		for( int i = 0 ; i < instanceIndices.size() ; i++ ) {
 			const int instanceIndex = instanceIndices[ i ];
 
-			std::vector<SGSInterface::Probe> transformedProbes;
+			OptixProgramInterface::TransformedProbes transformedProbes;
 			{
 				const auto &transformation = world->sceneRenderer.getInstanceTransformation( instanceIndex );
-				ProbeGenerator::transformProbes( probes, transformation, transformedProbes );
+				ProbeGenerator::transformProbes( probes, transformation, sceneSettings.probeGenerator_resolution, transformedProbes );
 			}
 
 			// TODO: rename RawProbeData to Optix...::ProbeSamples! [10/21/2012 kirschan2]
@@ -1466,7 +1466,7 @@ namespace aop {
 			progressTracker.markFinished();
 
 			Obb modelObb = makeOBB( world->sceneRenderer.getInstanceTransformation( instanceIndex ), world->sceneRenderer.getModelBoundingBox( modelIndex ) );
-			probeDatabase.addInstanceProbes( modelIndex, modelObb, probes, rawProbeSamples );
+			probeDatabase.addInstanceProbes( modelIndex, modelObb, sceneSettings.probeGenerator_resolution, probes, rawProbeSamples );
 			progressTracker.markFinished();
 
 			totalCount += (int) transformedProbes.size();
@@ -1492,13 +1492,15 @@ namespace aop {
 		renderContext.setDefault();
 
 		RawProbes queryProbes;
-		ProbeGenerator::generateQueryProbes( queryVolume.volume, sceneSettings.probeGenerator_resolution, queryProbes );
+		ProbeGenerator::generateQueryProbes( queryVolume.volume.size, sceneSettings.probeGenerator_resolution, queryProbes );
 
 		progressTracker.markFinished();
 
 		RawProbeSamples queryProbeSamples;
 		AUTO_TIMER_BLOCK( "sampling scene") {
-			world->optixRenderer.sampleProbes( queryProbes, queryProbeSamples, renderContext, sceneSettings.probeGenerator_maxDistance );
+			OptixRenderer::TransformedProbes transformedQueryProbes;
+			ProbeGenerator::transformProbes( queryProbes, queryVolume.volume.transformation, sceneSettings.probeGenerator_resolution, transformedQueryProbes );
+			world->optixRenderer.sampleProbes( transformedQueryProbes, queryProbeSamples, renderContext, sceneSettings.probeGenerator_maxDistance );
 		}
 		progressTracker.markFinished();
 

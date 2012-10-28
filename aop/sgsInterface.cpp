@@ -7,13 +7,19 @@
 using namespace Eigen;
 
 namespace SGSInterface {
-	void generateProbes( int instanceIndex, float resolution, SGSSceneRenderer &renderer, std::vector<Probe> &probes, std::vector<Probe> &transformedProbes ) {
+	void generateProbes(
+		int instanceIndex,
+		float resolution,
+		SGSSceneRenderer &renderer,
+		ProbeGenerator::Probes &probes,
+		TransformedProbes &transformedProbes
+	) {
 		const auto &sgsBoundingBox = renderer.getUntransformedInstanceBoundingBox( instanceIndex );
 		const auto &sgsTransformation = renderer.getInstanceTransformation( instanceIndex );
 
 		const Obb obb = makeOBB( sgsTransformation, sgsBoundingBox );
 		ProbeGenerator::generateRegularInstanceProbes( obb.size, resolution, probes );
-		ProbeGenerator::transformProbes( probes, obb.transformation, transformedProbes );
+		ProbeGenerator::transformProbes( probes, obb.transformation, resolution, transformedProbes );
 	}
 
 	void World::init( const char *scenePath ) {
@@ -63,7 +69,12 @@ namespace SGSInterface {
 		optixRenderer.renderPinholeCamera( view.viewerContext, view.renderContext );
 	}
 
-	void World::generateProbes( int instanceIndex, float resolution, std::vector<Probe> &probes, std::vector<Probe> &transformedProbes ) {
+	void World::generateProbes(
+		int instanceIndex,
+		float resolution,
+		ProbeGenerator::Probes &probes,
+		TransformedProbes &transformedProbes
+	) {
 		SGSInterface::generateProbes( instanceIndex, resolution, sceneRenderer, probes, transformedProbes );
 	}
 

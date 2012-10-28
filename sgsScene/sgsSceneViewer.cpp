@@ -150,7 +150,7 @@ void real_main() {
 		probeDumps.append();
 		probeDumps.setPosition( position );
 		//glColor4ubv( &probeSamples.front().color.x );
-		probeDumps.drawVectorCone( probeSamples.front().distance * direction, probeSamples.front().distance * 0.25, 1 + probeSamples.front().hitCounter );
+		probeDumps.drawVectorCone( probeSamples.front().distance * direction, probeSamples.front().distance * 0.25, 1 + probeSamples.front().occlusion );
 		probeDumps.end();
 	} );
 	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( dumpProbeAction ) );

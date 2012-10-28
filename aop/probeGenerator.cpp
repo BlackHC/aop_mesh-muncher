@@ -12,9 +12,9 @@ using namespace Eigen;
 namespace {
 	// 11 main axes
 	const Eigen::Vector3i rotationAxes[] = {
-		Eigen::Vector3i( 1, 0, 0 ), Eigen::Vector3i( 0, 1, 0 ), Eigen::Vector3i( 0, 0, 1 ), 
+		Eigen::Vector3i( 1, 0, 0 ), Eigen::Vector3i( 0, 1, 0 ), Eigen::Vector3i( 0, 0, 1 ),
 		Eigen::Vector3i( 1, 1, 0 ), Eigen::Vector3i( 1, -1, 0 ),
-		Eigen::Vector3i( 1, 0, 1 ), Eigen::Vector3i( 1, 0, -1 ), 
+		Eigen::Vector3i( 1, 0, 1 ), Eigen::Vector3i( 1, 0, -1 ),
 		Eigen::Vector3i( 0, 1, -1 ), Eigen::Vector3i( 0, 1, 1 )
 		//Eigen::Vector3i( 1, -1, 1 ), Eigen::Vector3i( 1, 1, -1 ),
 		//Eigen::Vector3i( 1, 1, 1 ), Eigen::Vector3i( 1, -1, -1 ),
@@ -79,7 +79,7 @@ namespace ProbeGenerator {
 			}
 		}
 	}
-	
+
 	int getNumOrientations() {
 		return (int) boost::size( orientations );
 	}
@@ -92,74 +92,123 @@ namespace ProbeGenerator {
 		return orientations[ orientationIndex ];
 	}
 
-	static void transformProbe( const Probe &probe, const Obb::Transformation &transformation, Probe &transformedProbe ) {
-		map( transformedProbe.direction ) = transformation.linear() * map( probe.direction );
-		map( transformedProbe.position ) = transformation * map( probe.position );
+	void transformProbe(
+		const Probe &probe,
+		const Obb::Transformation &transformation,
+		const float resolution,
+		TransformedProbe &transformedProbe
+	) {
+		map( transformedProbe.direction ) = transformation.linear() * getDirection( probe.directionIndex );
+		map( transformedProbe.position ) = transformation * (probe.position.cast<float>() * resolution);
 	}
 
-	void transformProbes( const std::vector<Probe> &probes,const Obb::Transformation &transformation,  std::vector<Probe> &transformedProbes ) {
+	void transformProbes(
+		const std::vector<Probe> &probes,
+		const Obb::Transformation &transformation,
+		const float resolution,
+		TransformedProbes &transformedProbes
+	) {
 		transformedProbes.resize( probes.size() );
 		for( int probeIndex = 0 ; probeIndex < probes.size() ; probeIndex++ ) {
-			transformProbe( probes[ probeIndex ], transformation, transformedProbes[ probeIndex ] );
+			transformProbe( probes[ probeIndex ], transformation, resolution, transformedProbes[ probeIndex ] );
 		}
 	}
 
-	void generateRegularInstanceProbes( const Eigen::Vector3f &size, const float resolution, std::vector<Probe> &probes ) {
-		const Vector3i probeCount3 = ceil( size / resolution + Eigen::Vector3f::Constant( 1.0f ) );
+	Eigen::Vector3i getGridHalfExtent( const Eigen::Vector3f &size, const float resolution ) {
+		return ceil( size / (2.f * resolution) - Vector3f::Constant( 0.5f ) );
+	}
 
-		// create the index<->position mapping
-		// TODO: use createCenteredIndexMapping [9/26/2012 kirschan2]
-		const auto indexMapping3 = createIndexMapping( probeCount3, -probeCount3.cast<float>() * resolution / 2, resolution );
+	void generateRegularInstanceProbes(
+		const Eigen::Vector3f &size,
+		const float resolution,
+		Probes &probes
+	) {
+		const Vector3i halfProbeExtent = getGridHalfExtent( size, resolution );
 
-		for( auto iterator3 = indexMapping3.getIterator() ; iterator3.hasMore() ; ++iterator3 ) {
-			const Vector3f position = indexMapping3.getPosition( iterator3.getIndex3() );
+		if( halfProbeExtent.maxCoeff() > 127 ) {
+			throw std::logic_error( "grid is too big, use a coarser resolution!" );
+		}
 
-			Probe probe;
-			map( probe.position ) = position;
+		const Vector3i probeCount3 = 2 * halfProbeExtent + Vector3i::Constant( 1 );
+		probes.reserve( probeCount3.prod() );
 
-			for( int i = 0 ; i < boost::size( directions ) ; i++ ) {
-				if( position.dot( directions[i] ) >= 0 ) {
-					map( probe.direction ) = directions[i];
-					probe.directionIndex = i;
-					probes.push_back( probe );
+		Probe probe;
+		for( int directionIndex = 0 ; directionIndex < boost::size( directions ) ; directionIndex++ ) {
+			const auto direction = directions[ directionIndex ];
+
+			for( int z = -halfProbeExtent.z() ; z <= halfProbeExtent.z() ; z++ ) {
+				probe.position.z() = z;
+
+				for( int y = -halfProbeExtent.y() ; y <= halfProbeExtent.y() ; y++ ) {
+					probe.position.y() = y;
+
+					for( int x = -halfProbeExtent.x() ; x <= halfProbeExtent.x() ; x++ ) {
+						probe.position.x() = x;
+
+						if( direction.dot( probe.position.cast<float>() ) >= 0.0f ) {
+							probe.directionIndex = directionIndex;
+							probes.push_back( probe );
+						}
+					}
 				}
 			}
 		}
 	}
 
-	void generateQueryProbes( const Obb &obb, const float resolution, std::vector<Probe> &transformedProbes ) {
-		const Vector3i probeCount3 = ceil( obb.size / resolution );
+	void generateQueryProbes(
+		const Eigen::Vector3f &size,
+		const float resolution,
+		Probes &probes
+	) {
+		const Vector3i halfProbeExtent = getGridHalfExtent( size, resolution );
 
-		// create the index<->position mapping
-		const auto indexMapping3 = createIndexMapping( probeCount3, -probeCount3.cast<float>() * resolution / 2, resolution );
+		if( halfProbeExtent.maxCoeff() > 127 ) {
+			throw std::logic_error( "grid is too big, use a coarser resolution!" );
+		}
 
-		transformedProbes.reserve( boost::size( directions ) * indexMapping3.count );
+		const Vector3i probeCount3 = 2 * halfProbeExtent + Vector3i::Constant( 1 );
+		probes.reserve( probeCount3.prod() );
 
-		for( auto iterator3 = indexMapping3.getIterator() ; iterator3.hasMore() ; ++iterator3 ) {
-			const Vector3f position = indexMapping3.getPosition( iterator3.getIndex3() );
+		Probe probe;
+		for( int directionIndex = 0 ; directionIndex < boost::size( directions ) ; directionIndex++ ) {
+			const auto direction = directions[ directionIndex ];
 
-			Probe probe;
-			map( probe.position ) = obb.transformation * position;
+			for( int z = -halfProbeExtent.z() ; z <= halfProbeExtent.z() ; z++ ) {
+				probe.position.z() = z;
 
-			for( int i = 0 ; i < boost::size( directions ) ; i++ ) {
-				map( probe.direction ) = obb.transformation.linear() * directions[i];
-				probe.directionIndex = i;
-				transformedProbes.push_back( probe );
+				for( int y = -halfProbeExtent.y() ; y <= halfProbeExtent.y() ; y++ ) {
+					probe.position.y() = y;
+
+					for( int x = -halfProbeExtent.x() ; x <= halfProbeExtent.x() ; x++ ) {
+						probe.position.x() = x;
+
+						if( direction.dot( probe.position.cast<float>() ) >= 0.0f ) {
+							probe.directionIndex = directionIndex;
+							probes.push_back( probe );
+						}
+					}
+				}
 			}
 		}
 	}
 
-	void appendProbesFromSample( const Eigen::Vector3f &position, const Eigen::Vector3f &averagedNormal, std::vector< Probe > &probes ) {
+	void appendProbesFromSample(
+		const float resolution,
+		const Eigen::Vector3f &position,
+		const Eigen::Vector3f &averagedNormal,
+		Probes &probes
+	) {
 		Probe probe;
-		map( probe.position ) = position;
 
+		const Vector3i cellPosition = floor( position / resolution + Vector3f::Constant( 0.5f ) );		
+		probe.position = cellPosition.cast< signed char >(); 
+		
 		const float averagedNormalLength = averagedNormal.norm();
 		const float threshold = averagedNormalLength * (averagedNormalLength - 1.0f);
 
-		for( int i = 0 ; i < boost::size( directions ) ; i++ ) {
-			if( averagedNormal.dot( directions[i] ) >= threshold ) {
-				map( probe.direction ) = directions[i];
-				probe.directionIndex = i;
+		for( int directionIndex = 0 ; directionIndex< boost::size( directions ) ; directionIndex++ ) {
+			if( averagedNormal.dot( directions[ directionIndex ] ) >= threshold ) {
+				probe.directionIndex = directionIndex;
 				probes.push_back( probe );
 			}
 		}

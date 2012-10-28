@@ -17,11 +17,11 @@ namespace Serializer {
 	}*/
 
 SERIALIZER_DEFAULT_EXTERN_IMPL( SampledModel::SampledInstance, (source)(probeSamples) )
-SERIALIZER_DEFAULT_EXTERN_IMPL( IndexedProbeSamples, (data)(hitCounterLowerBounds) )
-SERIALIZER_DEFAULT_EXTERN_IMPL( SampledModel, (instances)(mergedInstances)(mergedInstancesByDirectionIndex)(probes) )
+SERIALIZER_DEFAULT_EXTERN_IMPL( IndexedProbeSamples, (data)(occlusionLowerBounds) )
+SERIALIZER_DEFAULT_EXTERN_IMPL( SampledModel, (instances)(mergedInstances)(mergedInstancesByDirectionIndex)(probes)(resolution) )
 
 SERIALIZER_ENABLE_RAW_MODE_EXTERN( OptixProgramInterface::ProbeSample );
-SERIALIZER_ENABLE_RAW_MODE_EXTERN( OptixProgramInterface::Probe );
+SERIALIZER_ENABLE_RAW_MODE_EXTERN( RawProbe );
 SERIALIZER_ENABLE_RAW_MODE_EXTERN( DBProbeSample );
 
 // TODO: this is a duplicate from aopSettingsStorage.cpp---add a storage header instead? [10/22/2012 kirschan2]

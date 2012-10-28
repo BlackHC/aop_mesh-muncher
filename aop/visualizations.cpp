@@ -6,13 +6,14 @@
 
 using namespace Eigen;
 
-void visualizeProbes( float resolution, const std::vector< SGSInterface::Probe > &probes ) {
+void visualizeProbes( float resolution, const RawProbes &probes ) {
 	DebugRender::begin();
 	glColor3f( 0.0, 1.0, 1.0 );
 	glBegin( GL_LINES );
 	for( auto probe = probes.begin() ; probe != probes.end() ; ++probe ) {
-		glVertex( map( probe->position ) );
-		glVertex( map( probe->position ) + map( probe->direction ) * resolution / 3 );
+		const Vector3f position = probe->position.cast<float>() * resolution;
+		glVertex( position );
+		glVertex( position + ProbeGenerator::getDirection( probe->directionIndex ) * resolution / 3 );
 	}
 	glEnd();
 	DebugRender::end();
@@ -60,15 +61,16 @@ void visualizeProbe(
 	const float directionDistance = 0.92387953251f * 0.5f * resolution;
 	const float radius = 0.38268343236f * 0.5f * resolution ;
 
-	const auto direction = map( probe.direction );
+	const Vector3f position = probe.position.cast<float>() * resolution;
+	const auto direction = ProbeGenerator::getDirection( probe.directionIndex );
 
-	DebugRender::setPosition( map( probe.position ) + direction * directionDistance );
+	DebugRender::setPosition( position + direction * directionDistance );
 
 	// build the two axes
 	const Eigen::Vector3f axis1 = direction.unitOrthogonal();
 	const Eigen::Vector3f axis2 = direction.cross( axis1 );
 
-	const float occlusionFactor = float( probeSample.hitCounter ) / OptixProgramInterface::numProbeSamples;
+	const float occlusionFactor = float( probeSample.occlusion ) / OptixProgramInterface::numProbeSamples;
 
 	switch( pvm ) {
 	case PVM_COLOR:
@@ -84,7 +86,7 @@ void visualizeProbe(
 				(1.0f - occlusionFactor) * missColor
 		);
 #else
-		if( probeSample.hitCounter > 0 ) {
+		if( probeSample.occlusion > 0 ) {
 			DebugRender::setColor(
 				map( OptixProgramInterface::CIELAB::toRGB(
 					optix::make_float3( probeSample.Lab.x, probeSample.Lab.y, probeSample.Lab.z )

@@ -263,217 +263,6 @@ void SGSSceneRenderer::refillDynamicOptixBuffers() {
 	optix.dynamicBufferDirty = false;
 }
 
-void OptixRenderer::init( const std::shared_ptr< SGSSceneRenderer > &sgsSceneRenderer ) {
-	this->sgsSceneRenderer = sgsSceneRenderer;
-
-	context = optix::Context::create();
-
-	// initialize the context
-	context->setRayTypeCount( OptixProgramInterface::RT_COUNT );
-	context->setEntryPointCount( OptixProgramInterface::EP_COUNT );
-	context->setCPUNumThreads( 12 );
-	context->setStackSize(8000);
-	context->setPrintBufferSize(65536);
-	context->setPrintEnabled(true);
-
-	// create the rt programs
-	static const char *raytracerPtxFilename = "cuda_compile_ptx_generated_raytracer.cu.ptx";
-	static const char *probeSamplerPtxFilename = "cuda_compile_ptx_generated_probeTracer.cu.ptx";
-	static const char *pinholeSelectionPtxFilename = "cuda_compile_ptx_generated_pinholeSelection.cu.ptx";
-
-	OptixHelpers::Namespace::Modules modules = OptixHelpers::Namespace::makeModules( raytracerPtxFilename, probeSamplerPtxFilename, pinholeSelectionPtxFilename );
-
-	OptixHelpers::Namespace::setRayGenerationPrograms( context, modules );
-	OptixHelpers::Namespace::setMissPrograms( context, modules );
-	OptixHelpers::Namespace::setExceptionPrograms( context, modules );
-
-	// create the acceleration structure
-	acceleration = context->createAcceleration ("NoAccel", "NoAccel");
-
-	// create the scene node
-	scene = context->createGroup ();
-	scene->setAcceleration (acceleration);
-
-	context["rootObject"]->set(scene);
-
-	// create and set the output buffer
-	outputBuffer = context->createBuffer( RT_BUFFER_OUTPUT,  RT_FORMAT_UNSIGNED_BYTE4, width = 640, height = 480 );
-	context["outputBuffer"]->set(outputBuffer);
-
-	// create and set the hemisphere sample buffer
-	hemisphereSamples = context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_FLOAT3, numHemisphereSamples );
-	createHemisphereSamples( (optix::float3*) hemisphereSamples->map() );
-	hemisphereSamples->unmap();
-	hemisphereSamples->validate();
-
-	context[ "hemisphereSamples" ]->set( hemisphereSamples );
-
-	// create and set the probe buffers
-	probes = context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_USER, maxNumProbes );
-	probes->setElementSize( sizeof OptixProgramInterface::Probe );
-	probes->validate();
-
-	context[ "probes" ]->set( probes );
-
-	probeSamples = context->createBuffer( RT_BUFFER_OUTPUT, RT_FORMAT_USER, maxNumProbes );
-	probeSamples->setElementSize( sizeof OptixProgramInterface::ProbeSample );
-	probeSamples->validate();
-
-	context[ "probeSamples" ]->set( probeSamples );
-
-	// init and set the selection buffers
-	selectionRays = context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_FLOAT2, maxNumSelectionRays );
-	selectionRays->validate();
-
-	context[ "selectionRays" ]->set( selectionRays );
-
-	selectionResults = context->createBuffer( RT_BUFFER_OUTPUT, RT_FORMAT_USER, maxNumSelectionRays );
-	selectionResults->setElementSize( sizeof OptixProgramInterface::SelectionResult );
-	selectionResults->validate();
-
-	context[ "selectionResults" ]->set( selectionResults );
-
-	// init the output texture
-	SimpleGL::setLinearMinMag( debugTexture );
-
-	// validate all objects
-	scene->validate ();
-	acceleration->validate();
-	context->validate();
-
-	// init our main object source
-	sgsSceneRenderer->initOptix( this );
-
-	bool cacheLoaded = sgsSceneRenderer->loadOptixCache();
-
-	compileContext();
-
-	if( !cacheLoaded ) {
-		sgsSceneRenderer->writeOptixCache();
-	}
-}
-
-void OptixRenderer::setRenderContext( const RenderContext &renderContext ) {
-	context[ "disabledModelIndex" ]->setInt( renderContext.disabledModelIndex );
-	context[ "disabledObjectIndex" ]->setInt( renderContext.disabledInstanceIndex );
-}
-
-void OptixRenderer::setPinholeCameraViewerContext( const ViewerContext &viewerContext ) {
-	context[ "eyePosition" ]->set3fv( viewerContext.worldViewerPosition.data() );
-
-	// this works with all usual projection matrices (where x and y don't have any effect on z and w in clip space)
-	// determine u, v, and w by unprojecting (x,y,-1,1) from clip space to world space
-	Eigen::Matrix4f inverseProjectionView = viewerContext.projectionView.inverse();
-	// this is the w coordinate of the unprojected coordinates
-	const float unprojectedW = inverseProjectionView(3,3) - inverseProjectionView(3,2);
-
-	// divide the homogeneous affine matrix by the projected w
-	// see R1 page for deduction
-	Eigen::Matrix< float, 3, 4> inverseProjectionView34 = viewerContext.projectionView.inverse().topLeftCorner<3,4>() / unprojectedW;
-	const Eigen::Vector3f u = inverseProjectionView34.col(0);
-	const Eigen::Vector3f v = inverseProjectionView34.col(1);
-	const Eigen::Vector3f w = inverseProjectionView34.col(3) - inverseProjectionView34.col(2) - viewerContext.worldViewerPosition;
-
-	context[ "U" ]->set3fv( u.data() );
-	context[ "V" ]->set3fv( v.data() );
-	context[ "W" ]->set3fv( w.data() );
-}
-
-void OptixRenderer::renderPinholeCamera( const ViewerContext &viewerContext, const RenderContext &renderContext ) {
-	prepareLaunch();
-
-	setRenderContext( renderContext );
-	setPinholeCameraViewerContext( viewerContext );
-
-	context->launch( OptixProgramInterface::renderPinholeCameraView, width, height );
-
-	void *data = outputBuffer->map();
-	debugTexture.load( 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data );
-	//SOIL_save_image( "frame.bmp", SOIL_SAVE_TYPE_BMP, 640, 480, 4, (unsigned char*) data );
-	outputBuffer->unmap();
-}
-
-void OptixRenderer::selectFromPinholeCamera( const std::vector< optix::float2 > &selectionRays, std::vector< OptixProgramInterface::SelectionResult > &selectionResults, const ViewerContext &viewerContext, const RenderContext &renderContext ) {
-	prepareLaunch();
-
-	// check bounds
-	if( selectionRays.size() > maxNumSelectionRays ) {
-		throw std::invalid_argument( "too many selection rays!" );
-	}
-
-	setRenderContext( renderContext );
-	setPinholeCameraViewerContext( viewerContext );
-
-	OptixHelpers::Buffer::copyToDevice( this->selectionRays, selectionRays );
-
-	context->launch( OptixProgramInterface::selectFromPinholeCamera, selectionRays.size() );
-
-	selectionResults.resize( selectionRays.size() );
-	OptixHelpers::Buffer::copyToHost( this->selectionResults, selectionResults.front(), selectionResults.size() );
-}
-
-void OptixRenderer::sampleProbes( const std::vector< Probe > &probes, std::vector< ProbeSample > &probeSamples, const RenderContext &renderContext, float maxDistance, int sampleOffset ) {
-	prepareLaunch();
-
-	// check bounds
-	if( probes.size() > maxNumProbes ) {
-		throw std::invalid_argument( "too many probes!" );
-	}
-	if( probes.size() == 0 ) {
-		throw std::invalid_argument( "no probes!" );
-	}
-
-	setRenderContext( renderContext );
-
-	context[ "maxDistance" ]->setFloat( maxDistance );
-	context[ "sampleOffset" ]->setUint( sampleOffset );
-
-	OptixHelpers::Buffer::copyToDevice( this->probes, probes );
-
-	context->launch( OptixProgramInterface::sampleProbes, probes.size() );
-
-	probeSamples.resize( probes.size() );
-	OptixHelpers::Buffer::copyToHost( this->probeSamples, probeSamples.front(), probeSamples.size() );
-}
-
-void OptixRenderer::compileContext()  {
-	auto r = rtContextCompile (context->get());
-	const char* e;
-	rtContextGetErrorString (context->get(), r, &e);
-	std::cout << e;
-
-	{
-		boost::timer::auto_cpu_timer timer( "compileContext; test launch all entry points: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
-
-		// build the static scene acceleration tree
-		context->launch( OptixProgramInterface::renderPinholeCameraView, 0, 0 );
-		context->launch( OptixProgramInterface::sampleProbes, 0 );
-		context->launch( OptixProgramInterface::selectFromPinholeCamera, 0 );
-	}
-}
-
-void OptixRenderer::createHemisphereSamples( optix::float3 *hemisphereSamples ) {
-	// produces randomness out of thin air
-	boost::random::mt19937 rng;
-	// see pseudo-random number generators
-	boost::random::uniform_01<> distribution;
-
-
-	// info about how cosine_sample_hemisphere's parameters work
-	// we sample a disk and project it up onto the hemisphere
-	//
-	// u1 is the squared radius and u2 the angle
-
-	// we have 8 sample directions in every unit circle slice
-	// => fov: 45° => half is 22.5
-	// // sin(22.5°) = 0.38268343236
-	for( int i = 0 ; i < numHemisphereSamples ; ++i ) {
-		const float u1 = (float) distribution(rng) * 0.38268343236f * 0.38268343236f;
-		const float u2 = (float) distribution(rng);
-		optix::cosine_sample_hemisphere( u1, u2, hemisphereSamples[i] );
-	}
-}
-
 void SGSSceneRenderer::initObjectMeshData( OptixRenderer *optixRenderer, const OptixHelpers::Namespace::Modules &modules, Optix::ObjectMeshData &meshData ) {
 	meshData.indexBuffer = optixRenderer->context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_UNSIGNED_INT3, 1 );
 	meshData.indexBuffer->validate();
@@ -604,9 +393,218 @@ void SGSSceneRenderer::refillOptixBuffer( const int beginInstanceIndex, const in
 	meshData.indexBuffer->unmap();
 }
 
+void OptixRenderer::init( const std::shared_ptr< SGSSceneRenderer > &sgsSceneRenderer ) {
+	this->sgsSceneRenderer = sgsSceneRenderer;
+
+	context = optix::Context::create();
+
+	// initialize the context
+	context->setRayTypeCount( OptixProgramInterface::RT_COUNT );
+	context->setEntryPointCount( OptixProgramInterface::EP_COUNT );
+	context->setCPUNumThreads( 12 );
+	context->setStackSize(8000);
+	context->setPrintBufferSize(65536);
+	context->setPrintEnabled(true);
+
+	// create the rt programs
+	static const char *raytracerPtxFilename = "cuda_compile_ptx_generated_raytracer.cu.ptx";
+	static const char *probeSamplerPtxFilename = "cuda_compile_ptx_generated_probeTracer.cu.ptx";
+	static const char *pinholeSelectionPtxFilename = "cuda_compile_ptx_generated_pinholeSelection.cu.ptx";
+
+	OptixHelpers::Namespace::Modules modules = OptixHelpers::Namespace::makeModules( raytracerPtxFilename, probeSamplerPtxFilename, pinholeSelectionPtxFilename );
+
+	OptixHelpers::Namespace::setRayGenerationPrograms( context, modules );
+	OptixHelpers::Namespace::setMissPrograms( context, modules );
+	OptixHelpers::Namespace::setExceptionPrograms( context, modules );
+
+	// create the acceleration structure
+	acceleration = context->createAcceleration ("NoAccel", "NoAccel");
+
+	// create the scene node
+	scene = context->createGroup ();
+	scene->setAcceleration (acceleration);
+
+	context["rootObject"]->set(scene);
+
+	// create and set the output buffer
+	outputBuffer = context->createBuffer( RT_BUFFER_OUTPUT,  RT_FORMAT_UNSIGNED_BYTE4, width = 640, height = 480 );
+	context["outputBuffer"]->set(outputBuffer);
+
+	// create and set the hemisphere sample buffer
+	hemisphereSamplesBuffer = context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_FLOAT3, numHemisphereSamples );
+	createHemisphereSamples( (optix::float3*) hemisphereSamplesBuffer->map() );
+	hemisphereSamplesBuffer->unmap();
+	hemisphereSamplesBuffer->validate();
+
+	context[ "hemisphereSamples" ]->set( hemisphereSamplesBuffer );
+
+	// create and set the probe buffers
+	transformedProbesBuffer = context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_USER, maxNumProbes );
+	transformedProbesBuffer->setElementSize( sizeof TransformedProbe );
+	transformedProbesBuffer->validate();
+
+	context[ "transformedProbes" ]->set( transformedProbesBuffer );
+
+	probeSamplesBuffer = context->createBuffer( RT_BUFFER_OUTPUT, RT_FORMAT_USER, maxNumProbes );
+	probeSamplesBuffer->setElementSize( sizeof ProbeSample );
+	probeSamplesBuffer->validate();
+
+	context[ "probeSamples" ]->set( probeSamplesBuffer );
+
+	// init and set the selection buffers
+	selectionRaysBuffer = context->createBuffer( RT_BUFFER_INPUT, RT_FORMAT_FLOAT2, maxNumSelectionRays );
+	selectionRaysBuffer->validate();
+
+	context[ "selectionRays" ]->set( selectionRaysBuffer );
+
+	selectionResultsBuffer = context->createBuffer( RT_BUFFER_OUTPUT, RT_FORMAT_USER, maxNumSelectionRays );
+	selectionResultsBuffer->setElementSize( sizeof OptixProgramInterface::SelectionResult );
+	selectionResultsBuffer->validate();
+
+	context[ "selectionResults" ]->set( selectionResultsBuffer );
+
+	// init the output texture
+	SimpleGL::setLinearMinMag( debugTexture );
+
+	// validate all objects
+	scene->validate ();
+	acceleration->validate();
+	context->validate();
+
+	// init our main object source
+	sgsSceneRenderer->initOptix( this );
+
+	bool cacheLoaded = sgsSceneRenderer->loadOptixCache();
+
+	compileContext();
+
+	if( !cacheLoaded ) {
+		sgsSceneRenderer->writeOptixCache();
+	}
+}
+
+void OptixRenderer::setRenderContext( const RenderContext &renderContext ) {
+	context[ "disabledModelIndex" ]->setInt( renderContext.disabledModelIndex );
+	context[ "disabledObjectIndex" ]->setInt( renderContext.disabledInstanceIndex );
+}
+
+void OptixRenderer::setPinholeCameraViewerContext( const ViewerContext &viewerContext ) {
+	context[ "eyePosition" ]->set3fv( viewerContext.worldViewerPosition.data() );
+
+	// this works with all usual projection matrices (where x and y don't have any effect on z and w in clip space)
+	// determine u, v, and w by unprojecting (x,y,-1,1) from clip space to world space
+	Eigen::Matrix4f inverseProjectionView = viewerContext.projectionView.inverse();
+	// this is the w coordinate of the unprojected coordinates
+	const float unprojectedW = inverseProjectionView(3,3) - inverseProjectionView(3,2);
+
+	// divide the homogeneous affine matrix by the projected w
+	// see R1 page for deduction
+	Eigen::Matrix< float, 3, 4> inverseProjectionView34 = viewerContext.projectionView.inverse().topLeftCorner<3,4>() / unprojectedW;
+	const Eigen::Vector3f u = inverseProjectionView34.col(0);
+	const Eigen::Vector3f v = inverseProjectionView34.col(1);
+	const Eigen::Vector3f w = inverseProjectionView34.col(3) - inverseProjectionView34.col(2) - viewerContext.worldViewerPosition;
+
+	context[ "U" ]->set3fv( u.data() );
+	context[ "V" ]->set3fv( v.data() );
+	context[ "W" ]->set3fv( w.data() );
+}
+
+void OptixRenderer::renderPinholeCamera( const ViewerContext &viewerContext, const RenderContext &renderContext ) {
+	prepareLaunch();
+
+	setRenderContext( renderContext );
+	setPinholeCameraViewerContext( viewerContext );
+
+	context->launch( OptixProgramInterface::renderPinholeCameraView, width, height );
+
+	void *data = outputBuffer->map();
+	debugTexture.load( 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data );
+	//SOIL_save_image( "frame.bmp", SOIL_SAVE_TYPE_BMP, 640, 480, 4, (unsigned char*) data );
+	outputBuffer->unmap();
+}
+
+void OptixRenderer::selectFromPinholeCamera( const std::vector< optix::float2 > &selectionRays, std::vector< OptixProgramInterface::SelectionResult > &selectionResults, const ViewerContext &viewerContext, const RenderContext &renderContext ) {
+	prepareLaunch();
+
+	// check bounds
+	if( selectionRays.size() > maxNumSelectionRays ) {
+		throw std::invalid_argument( "too many selection rays!" );
+	}
+
+	setRenderContext( renderContext );
+	setPinholeCameraViewerContext( viewerContext );
+
+	OptixHelpers::Buffer::copyToDevice( selectionRaysBuffer, selectionRays );
+
+	context->launch( OptixProgramInterface::selectFromPinholeCamera, selectionRays.size() );
+
+	selectionResults.resize( selectionRays.size() );
+	OptixHelpers::Buffer::copyToHost( selectionResultsBuffer, selectionResults.front(), selectionResults.size() );
+}
+
+void OptixRenderer::sampleProbes( const TransformedProbes &transformedProbes, ProbeSamples &probeSamples, const RenderContext &renderContext, float maxDistance, int sampleOffset ) {
+	prepareLaunch();
+
+	// check bounds
+	if( transformedProbes.size() > maxNumProbes ) {
+		throw std::invalid_argument( "too many probes!" );
+	}
+	if( transformedProbes.size() == 0 ) {
+		throw std::invalid_argument( "no probes!" );
+	}
+
+	setRenderContext( renderContext );
+
+	context[ "maxDistance" ]->setFloat( maxDistance );
+	context[ "sampleOffset" ]->setUint( sampleOffset );
+
+	OptixHelpers::Buffer::copyToDevice( transformedProbesBuffer, transformedProbes);
+
+	context->launch( OptixProgramInterface::sampleProbes, transformedProbes.size() );
+
+	probeSamples.resize( transformedProbes.size() );
+	OptixHelpers::Buffer::copyToHost( probeSamplesBuffer, probeSamples.front(), probeSamples.size() );
+}
+
+void OptixRenderer::compileContext()  {
+	auto r = rtContextCompile (context->get());
+	const char* e;
+	rtContextGetErrorString (context->get(), r, &e);
+	std::cout << e;
+
+	{
+		boost::timer::auto_cpu_timer timer( "compileContext; test launch all entry points: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
+
+		// build the static scene acceleration tree
+		context->launch( OptixProgramInterface::renderPinholeCameraView, 0, 0 );
+		context->launch( OptixProgramInterface::sampleProbes, 0 );
+		context->launch( OptixProgramInterface::selectFromPinholeCamera, 0 );
+	}
+}
+
 void OptixRenderer::prepareLaunch() {
 	if( sgsSceneRenderer->optix.dynamicBufferDirty ) {
 		sgsSceneRenderer->refillDynamicOptixBuffers();
 		acceleration->markDirty();
+	}
+}
+void OptixRenderer::createHemisphereSamples( optix::float3 *hemisphereSamples ) {
+	// produces randomness out of thin air
+	boost::random::mt19937 rng;
+	// see pseudo-random number generators
+	boost::random::uniform_01<> distribution;
+
+	// info about how cosine_sample_hemisphere's parameters work
+	// we sample a disk and project it up onto the hemisphere
+	//
+	// u1 is the squared radius and u2 the angle
+
+	// we have 8 sample directions in every unit circle slice
+	// => fov: 45° => half is 22.5
+	// // sin(22.5°) = 0.38268343236
+	for( int i = 0 ; i < numHemisphereSamples ; ++i ) {
+		const float u1 = (float) distribution(rng) * 0.38268343236f * 0.38268343236f;
+		const float u2 = (float) distribution(rng);
+		optix::cosine_sample_hemisphere( u1, u2, hemisphereSamples[i] );
 	}
 }

@@ -251,8 +251,8 @@ struct ProbeDatabase::WeightedQuery {
 
 protected:
 	static float getMatchScore( const DBProbe &sampledModelProbe, const DBProbe &queryProbe ) {
-		const auto queryProbeDirection = Eigen::map( queryProbe.direction );
-		const auto sampledModelProbeDirection = Eigen::map( sampledModelProbe.direction );
+		const auto queryProbeDirection = ProbeGenerator::getDirection( queryProbe.directionIndex );
+		const auto sampledModelProbeDirection = ProbeGenerator::getDirection( sampledModelProbe.directionIndex );
 
 		//const float directionScore = (1.0 + queryProbeDirection.dot( sampledModelProbeDirection )) * 0.5;
 		const float directionScore = queryProbeDirection.dot( sampledModelProbeDirection );

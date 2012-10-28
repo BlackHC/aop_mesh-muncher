@@ -73,32 +73,32 @@ InstanceProbeDataset InstanceProbeDataset::subSet( const std::pair< int, int > &
 }
 #endif
 
-void IndexedProbeSamples::setHitCounterLowerBounds() {
+void IndexedProbeSamples::setOcclusionLowerBounds() {
 	AUTO_TIMER_FOR_FUNCTION();
 
 	// improvement idea: use a binary search like algorithm
 
-	// 0..numProbeSamples are valid hitCounter values
+	// 0..numProbeSamples are valid occlusion values
 	// we store one additional end() lower bound for simple interval calculations
-	hitCounterLowerBounds.reserve( OptixProgramInterface::numProbeSamples + 2 );
-	hitCounterLowerBounds.clear();
+	occlusionLowerBounds.reserve( OptixProgramInterface::numProbeSamples + 2 );
+	occlusionLowerBounds.clear();
 
 	int level  = 0;
 
 	// begin with level 0
-	hitCounterLowerBounds.push_back( 0 );
+	occlusionLowerBounds.push_back( 0 );
 
 	for( int probeIndex = 0 ; probeIndex < size() ; ++probeIndex ) {
-		const auto current = getProbeSamples()[probeIndex].hitCounter;
+		const auto current = getProbeSamples()[probeIndex].occlusion;
 		for( ; level < current ; level++ ) {
-			hitCounterLowerBounds.push_back( probeIndex );
+			occlusionLowerBounds.push_back( probeIndex );
 		}
 	}
 
 	// TODO: store min and max level for simpler early out?
 	// fill the remaining levels
 	for( ; level <= OptixProgramInterface::numProbeSamples ; level++ ) {
-		hitCounterLowerBounds.push_back( size() );
+		occlusionLowerBounds.push_back( size() );
 	}
 }
 
@@ -121,7 +121,13 @@ void ProbeDatabase::clear( int sceneModelIndex ) {
 	modelIndexMapper.registerLocalModels( localModelNames );
 }
 
-void ProbeDatabase::addInstanceProbes( int sceneModelIndex, const Obb &sampleSource, const RawProbes &untransformedProbes, const RawProbeSamples &probeSamples ) {
+void ProbeDatabase::addInstanceProbes(
+	int sceneModelIndex,
+	const Obb &sampleSource,
+	const float resolution,
+	const RawProbes &probes,
+	const RawProbeSamples &probeSamples
+) {
 	int localModelIndex = modelIndexMapper.getLocalModelIndex( sceneModelIndex );
 	if( localModelIndex == ModelIndexMapper::INVALID_INDEX ) {
 		localModelIndex = localModelNames.size();
@@ -131,8 +137,8 @@ void ProbeDatabase::addInstanceProbes( int sceneModelIndex, const Obb &sampleSou
 		sampledModels.emplace_back( SampledModel() );
 	}
 
-	SampledModel &idDataset = sampledModels[ localModelIndex ];
-	idDataset.addInstances( untransformedProbes, sampleSource, ProbeSampleTransformation::transformSamples( probeSamples ) );
+	SampledModel &sampledModel = sampledModels[ localModelIndex ];
+	sampledModel.addInstanceProbes( sampleSource, resolution, probes, ProbeSampleTransformation::transformSamples( probeSamples ) );
 }
 
 void ProbeDatabase::compile( int sceneModelIndex ) {

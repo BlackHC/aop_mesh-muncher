@@ -44,10 +44,9 @@ struct MaterialInfo {
 	optix::float3 diffuse;
 };
 
-struct Probe {
+struct TransformedProbe {
 	optix::float3 position;
 	optix::float3 direction;
-	int directionIndex;
 };
 
 struct ProbeSample {
@@ -55,7 +54,7 @@ struct ProbeSample {
 	// http://robotics.stanford.edu/~ruzon/software/rgblab.html
 	// CIELAB values range as follows: L lies between 0 and 100, and a and b lie between -110 and 110
 	optix::char3 Lab;
-	unsigned char hitCounter;
+	unsigned char occlusion;
 	float distance;
 };
 
@@ -143,6 +142,22 @@ namespace CIELAB {
 // CUDA specific declarations/definitions
 #if defined(__CUDACC__)
 
+// TODO: merge this somehow back into mathUtility.h [10/28/2012 Andreas]
+const optix::char3 neighborOffsets[] = {
+	// first z, then x, then y
+	// z
+	{ 0, 0, 1 }, { 0, 0, -1 }, { -1, 0, -1 },
+	{ 1, 0, -1 }, { -1, 0, 1 }, { 1, 0, 1 },
+	{ 0, 1, -1 }, { 0, -1, -1 }, { -1, 1, -1 },
+	// x
+	{ 1, 0, 0 }, { -1, 0, 0 }, { 1, 1, -1 },
+	{ 1, -1, 1 }, { 1, 1, 1 }, { 1, -1, -1 },
+	{ -1, 1, 0 }, { 1, 1, 0 }, { -1, -1, -1 },
+	// y
+	{ 0, 1, 0 }, { 0, -1, 0 }, { -1, -1, 0 }, { 1, -1, 0 },
+	{ -1, -1, 1 }, { 0, -1, 1 }, { -1, 1, 1 }, { 0, 1, 1 }
+};
+
 struct MergedTextureInfo {
 	int2 offset;
 	int2 size;
@@ -156,7 +171,6 @@ struct Ray_Eye {
 struct Ray_Shadow {
 	float transmittance;
 };
-
 
 typedef SelectionResult Ray_Selection;
 
@@ -231,7 +245,7 @@ const char * const entryPointNamespaces[] = {
 const int numProbeSamples = _numProbeSamples;
 #undef _numProbeSamples
 
-typedef std::vector< Probe > Probes;
+typedef std::vector< TransformedProbe > TransformedProbes;
 typedef std::vector< ProbeSample > ProbeSamples;
 
 #endif

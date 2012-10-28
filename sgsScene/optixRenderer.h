@@ -7,10 +7,10 @@
 struct SGSSceneRenderer;
 
 struct OptixRenderer {
-	typedef OptixProgramInterface::Probe Probe;
+	typedef OptixProgramInterface::TransformedProbe TransformedProbe;
 	typedef OptixProgramInterface::ProbeSample ProbeSample;
 
-	typedef OptixProgramInterface::Probes Probes;
+	typedef OptixProgramInterface::TransformedProbes TransformedProbes;
 	typedef OptixProgramInterface::ProbeSamples ProbeSamples;
 
 	typedef std::vector< optix::float2 > SelectionRays;
@@ -30,9 +30,9 @@ struct OptixRenderer {
 	int width, height;
 	ScopedTexture2D debugTexture;
 
-	optix::Buffer probes, probeSamples, hemisphereSamples;
+	optix::Buffer transformedProbesBuffer, probeSamplesBuffer, hemisphereSamplesBuffer;
 
-	optix::Buffer selectionRays, selectionResults;
+	optix::Buffer selectionRaysBuffer, selectionResultsBuffer;
 
 	std::shared_ptr< SGSSceneRenderer > sgsSceneRenderer;
 
@@ -55,7 +55,7 @@ struct OptixRenderer {
 		const RenderContext &renderContext
 	);
 	void sampleProbes(
-		const Probes &probes,
+		const TransformedProbes &probes,
 		ProbeSamples &probeSamples,
 		const RenderContext &renderContext,
 		float maxDistance = RT_DEFAULT_MAX,

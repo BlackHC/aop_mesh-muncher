@@ -5,6 +5,7 @@
 #include <map>
 
 #include "sgsInterface.h"
+#include "probeGenerator.h"
 
 struct ModelDatabase {
 	typedef int ModelIndex;
@@ -28,7 +29,7 @@ struct ModelDatabase {
 
 		float voxelResolution;
 
-		typedef std::vector< SGSInterface::Probe > Probes;
+		typedef ProbeGenerator::Probes Probes;
 		Probes probes;
 		VoxelizedModel::Voxels voxels;
 

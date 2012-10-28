@@ -153,8 +153,8 @@ struct ModelIndexMapper {
 	}
 };
 
-typedef OptixProgramInterface::Probe RawProbe;
-typedef OptixProgramInterface::Probes RawProbes;
+typedef ProbeGenerator::Probe RawProbe;
+typedef ProbeGenerator::Probes RawProbes;
 typedef OptixProgramInterface::ProbeSample RawProbeSample;
 typedef OptixProgramInterface::ProbeSamples RawProbeSamples;
 
@@ -171,7 +171,8 @@ struct IDatabase {
 	virtual void addInstanceProbes(
 		int sceneModelIndex,
 		const Obb &sampleSource,
-		const RawProbes &untransformedProbes,
+		const float resolution,
+		const RawProbes &probes,
 		const RawProbeSamples &probeSamples
 	) = 0;
 	// compile the database in any way that is necessary before we can execute queries
@@ -247,17 +248,17 @@ struct ProbeContextToleranceV2 {
 	}
 };
 
-typedef OptixProgramInterface::Probe DBProbe;
+typedef RawProbe DBProbe;
 
-struct DBProbeSample : OptixProgramInterface::ProbeSample {
+struct DBProbeSample : RawProbeSample {
 	// sometimes we're lucky and we can compress probes
 	int weight;
 	int probeIndex;
 
 	DBProbeSample() {}
 
-	DBProbeSample( int probeIndex, const OptixProgramInterface::ProbeSample &sample )
-		: OptixProgramInterface::ProbeSample( sample )
+	DBProbeSample( int probeIndex, const RawProbeSample &sample )
+		: RawProbeSample( sample )
 		, probeIndex( probeIndex )
 		, weight( 1 )
 	{
@@ -265,9 +266,9 @@ struct DBProbeSample : OptixProgramInterface::ProbeSample {
 
 	static __forceinline__ bool lexicographicalLess( const DBProbeSample &a, const DBProbeSample &b ) {
 		return
-			boost::make_tuple( a.hitCounter, a.distance, a.Lab.x, a.Lab.y, a.Lab.z )
+			boost::make_tuple( a.occlusion, a.distance, a.Lab.x, a.Lab.y, a.Lab.z )
 			<
-			boost::make_tuple( b.hitCounter, b.distance, b.Lab.x, a.Lab.y, a.Lab.z )
+			boost::make_tuple( b.occlusion, b.distance, b.Lab.x, a.Lab.y, a.Lab.z )
 		;
 	}
 
@@ -301,7 +302,7 @@ struct DBProbeSample : OptixProgramInterface::ProbeSample {
 	}
 
 	static __forceinline__ bool matchOcclusion( const DBProbeSample &a, const DBProbeSample &b, const int integerTolerance) {
-		int absDelta = a.hitCounter - b.hitCounter;
+		int absDelta = a.occlusion - b.occlusion;
 		if( absDelta < 0 ) {
 			absDelta = -absDelta;
 		}
@@ -406,10 +407,10 @@ namespace CompressedDataset {
 }
 
 // this dataset creates auxiliary structures automatically
-// invariant: sorted and hitCounterLowerBounds is correctly set
+// invariant: sorted and occlusionLowerBounds is correctly set
 struct IndexedProbeSamples {
 	DBProbeSamples data;
-	std::vector<int> hitCounterLowerBounds;
+	std::vector<int> occlusionLowerBounds;
 
 	const DBProbeSamples &getProbeSamples() const {
 		return data;
@@ -419,21 +420,21 @@ struct IndexedProbeSamples {
 
 	IndexedProbeSamples( DBProbeSamples &&other ) :
 		data( std::move( other ) ),
-		hitCounterLowerBounds()
+		occlusionLowerBounds()
 	{
 		sort();
-		setHitCounterLowerBounds();
+		setOcclusionLowerBounds();
 	}
 
 	IndexedProbeSamples( IndexedProbeSamples &&other ) :
 		data( std::move( other.data ) ),
-		hitCounterLowerBounds( std::move( other.hitCounterLowerBounds ) )
+		occlusionLowerBounds( std::move( other.occlusionLowerBounds ) )
 	{
 	}
 
 	IndexedProbeSamples & operator = ( IndexedProbeSamples && other ) {
 		data = std::move( other.data );
-		hitCounterLowerBounds = std::move( other.hitCounterLowerBounds );
+		occlusionLowerBounds = std::move( other.occlusionLowerBounds );
 
 		return *this;
 	}
@@ -441,7 +442,7 @@ struct IndexedProbeSamples {
 	IndexedProbeSamples clone() const {
 		IndexedProbeSamples cloned;
 		cloned.data = data;
-		cloned.hitCounterLowerBounds = hitCounterLowerBounds;
+		cloned.occlusionLowerBounds = occlusionLowerBounds;
 		return cloned;
 	}
 
@@ -451,12 +452,12 @@ struct IndexedProbeSamples {
 
 	typedef std::pair< int, int > IntRange;
 	IntRange getOcclusionRange( int level ) const {
-		return std::make_pair( hitCounterLowerBounds[level], hitCounterLowerBounds[ level + 1 ] );
+		return std::make_pair( occlusionLowerBounds[level], occlusionLowerBounds[ level + 1 ] );
 	}
 
 	// [leftLevel, rightLevel] (ie inclusive!)
 	IntRange getOcclusionRange( int leftLevel, int rightLevel ) const {
-		return std::make_pair( hitCounterLowerBounds[leftLevel], hitCounterLowerBounds[ rightLevel + 1 ] );
+		return std::make_pair( occlusionLowerBounds[leftLevel], occlusionLowerBounds[ rightLevel + 1 ] );
 	}
 
 #if 0
@@ -507,7 +508,7 @@ struct IndexedProbeSamples {
 
 			// assuming that the query set is smaller, we enlarge it, to have less items to sort than vice-versa
 			// we could determine this at runtime...
-			// if( idDatasets.size() > indexedProbeSamples.size() ) {...} else {...}
+			// if( sampledModels.size() > indexedProbeSamples.size() ) {...} else {...}
 			const int occlusionTolerance = int( OptixProgramInterface::numProbeSamples * probeContextTolerance.occusionTolerance + 0.5 );
 
 			// TODO: use a stack allocated array here? [9/27/2012 kirschan2]
@@ -643,7 +644,7 @@ private:
 		boost::sort( data, DBProbeSample::lexicographicalLess );
 	}
 
-	void setHitCounterLowerBounds();
+	void setOcclusionLowerBounds();
 
 	SERIALIZER_FWD_FRIEND_EXTERN( IndexedProbeSamples )
 private:
@@ -688,8 +689,13 @@ struct SampledModel {
 	};
 	typedef std::vector<SampledInstance> SampledInstances;
 
-	void addInstances( const DBProbes &datasetProbes, const Obb &source, DBProbeSamples &&probeSamples ) {
-		if( probes.size() != datasetProbes.size() ) {
+	void addInstanceProbes(
+		const Obb &source,
+		float datasetResolution,
+		const DBProbes &datasetProbes,
+		DBProbeSamples &&probeSamples
+	) {
+		if( probes.size() != datasetProbes.size() || resolution != datasetResolution ) {
 			if( !probes.empty() ) {
 				logError(
 					boost::format(
@@ -705,6 +711,7 @@ struct SampledModel {
 			}
 
 			probes = datasetProbes;
+			resolution = datasetResolution;
 		}
 
 		instances.emplace_back( SampledInstance( source, std::move( probeSamples ) ) );
@@ -719,9 +726,11 @@ struct SampledModel {
 		mergedInstancesByDirectionIndex.resize( ProbeGenerator::getNumDirections() );
 
 		probes.clear();
+		resolution = 0.f;
 	}
 
 	SampledModel()
+		: resolution( 0.f )
 	{
 		mergedInstancesByDirectionIndex.resize( ProbeGenerator::getNumDirections() );
 	}
@@ -731,6 +740,7 @@ struct SampledModel {
 		, mergedInstances( std::move( other.mergedInstances ) )
 		, mergedInstancesByDirectionIndex( std::move( other.mergedInstancesByDirectionIndex ) )
 		, probes( std::move( other.probes ) )
+		, resolution( other.resolution )
 	{}
 
 	SampledModel & operator = ( SampledModel &&other ) {
@@ -738,6 +748,7 @@ struct SampledModel {
 		mergedInstances = std::move( other.mergedInstances );
 		mergedInstancesByDirectionIndex = std::move( other.mergedInstancesByDirectionIndex );
 		probes = std::move( other.probes );
+		resolution = other.resolution;
 
 		return *this;
 	}
@@ -830,6 +841,7 @@ private:
 	std::vector< IndexedProbeSamples > mergedInstancesByDirectionIndex;
 
 	DBProbes probes;
+	float resolution;
 
 	SERIALIZER_FWD_FRIEND_EXTERN( SampledModel )
 
@@ -862,14 +874,15 @@ struct ProbeDatabase : IDatabase {
 	virtual void addInstanceProbes(
 		int sceneModelIndex,
 		const Obb &sampleSource,
+		const float resolution,
 		const RawProbes &untransformedProbes,
 		const RawProbeSamples &probeSamples
 	);
 
 	virtual void compile( int sceneModelIndex );
 	virtual void compileAll() {
-		for( auto idDataset = sampledModels.begin() ; idDataset != sampledModels.end() ; ++idDataset ) {
-			idDataset->mergeInstances();
+		for( auto sampledModel = sampledModels.begin() ; sampledModel != sampledModels.end() ; ++sampledModel ) {
+			sampledModel->mergeInstances();
 		}
 	}
 
@@ -896,7 +909,6 @@ struct ProbeDatabase : IDatabase {
 	ProbeDatabase() {}
 
 private:
-	// TODO: rename [10/22/2012 kirschan2]
 	SampledModels sampledModels;
 };
 

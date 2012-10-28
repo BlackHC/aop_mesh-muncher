@@ -5,15 +5,22 @@
 #include "camera.h"
 #include "optixRenderer.h"
 #include "grid.h"
+#include "probeGenerator.h"
 
 #include "make_nonallocated_shared.h"
 
 namespace SGSInterface {
-	typedef OptixProgramInterface::Probe Probe;
+	typedef OptixProgramInterface::TransformedProbes TransformedProbes;
 	typedef OptixProgramInterface::SelectionResult SelectionResult;
 
-	void generateProbes( int instanceIndex, float resolution, SGSSceneRenderer &renderer, std::vector<Probe> &probes, std::vector<Probe> &transformedProbes );
-	
+	void generateProbes(
+		int instanceIndex,
+		float resolution,
+		SGSSceneRenderer &renderer,
+		ProbeGenerator::Probes &probes,
+		TransformedProbes &transformedProbes
+	);
+
 	struct View {
 		ViewerContext viewerContext;
 		RenderContext renderContext;
@@ -67,8 +74,20 @@ namespace SGSInterface {
 		void renderStandaloneFrame( const View &view, bool wireframe );
 		void renderOptixViewFrame( const View &view );
 		// TODO: remove this function again [10/14/2012 kirschan2]
-		void generateProbes( int instanceIndex, float resolution, std::vector<Probe> &probes, std::vector<Probe> &transformedProbes );
-		bool selectFromView( const View &view, float xh, float yh, SelectionResult *result, int forceDisabledInstanceIndex = -1 );
+		void generateProbes(
+			int instanceIndex,
+			float resolution,
+			ProbeGenerator::Probes &probes,
+			TransformedProbes &transformedProbes
+		);
+
+		bool selectFromView(
+			const View &view,
+			float xh,
+			float yh,
+			SelectionResult *result,
+			int forceDisabledInstanceIndex = -1
+		);
 
 		int addInstance( int modelIndex, const Eigen::Vector3f &center );
 		void removeInstance( int instanceIndex );

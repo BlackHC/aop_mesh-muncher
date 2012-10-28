@@ -4,7 +4,7 @@
 #include "sgsInterface.h"
 #include "probeDatabase.h"
 
-void visualizeProbes( float resolution, const std::vector< SGSInterface::Probe > &probes );
+void visualizeProbes( float resolution, const RawProbes &probes );
 
 enum GridVisualizationMode {
 	GVM_POSITION,

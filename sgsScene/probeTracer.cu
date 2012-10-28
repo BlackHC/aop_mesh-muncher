@@ -33,14 +33,14 @@ rtDeclareVariable( uint, sampleOffset, , );
 #define numHemisphereSamples 39939
 rtBuffer<float3> hemisphereSamples;
 
-rtBuffer<Probe> probes;
+rtBuffer<TransformedProbe> transformedProbes;
 rtBuffer<ProbeSample> probeSamples;
 
 RT_PROGRAM void sampleProbes() {
-	Probe probe = probes[ probeIndex ];
+	TransformedProbe transformedProbe = transformedProbes[ probeIndex ];
 
 #if 0
-	Onb onb( probe.direction );
+	Onb onb( transformedProbe.direction );
 
 	//rtPrintf( "%f", dot( onb.m_normal, cross( onb.m_tangent, onb.m_binormal ) ) );
 
@@ -59,7 +59,7 @@ RT_PROGRAM void sampleProbes() {
 		const float3 sample = hemisphereSamples[ (sampleStartIndex + rayIndex) % numHemisphereSamples ];
 		const float3 rayDirection = onb.m_normal * sample.z + onb.m_tangent * sample.x + onb.m_binormal * sample.y;
 
-		Ray ray( probe.position, rayDirection, RT_EYE, sceneEpsilon, maxDistance );
+		Ray ray( transformedProbe.position, rayDirection, RT_EYE, sceneEpsilon, maxDistance );
 
 		Ray_Eye ray_eye;
 		rtTrace( rootObject, ray, ray_eye );
@@ -77,7 +77,7 @@ RT_PROGRAM void sampleProbes() {
 	int numHits = 0;
 
 	{
-		Ray ray( probe.position, probe.direction, RT_EYE, sceneEpsilon, maxDistance );
+		Ray ray( transformedProbe.position, transformedProbe.direction, RT_EYE, sceneEpsilon, maxDistance );
 
 		Ray_Eye ray_eye;
 		rtTrace( rootObject, ray, ray_eye );
@@ -100,14 +100,14 @@ RT_PROGRAM void sampleProbes() {
 	const float3 Lab = CIELAB::fromRGB( avgColor );
 	sample.Lab = make_Lab( Lab );
 	sample.distance = avgDistance;
-	sample.hitCounter = numHits;
+	sample.occlusion = numHits;
 }
 
 RT_PROGRAM void sampleProbes_exception() {
 	unsigned int const error_code = rtGetExceptionCode();
 	if(RT_EXCEPTION_STACK_OVERFLOW == error_code) {
 		probeSamples[ probeIndex ].Lab = make_char3( -127, -127, -127 );
-		probeSamples[ probeIndex ].hitCounter = 0;
+		probeSamples[ probeIndex ].occlusion = 0;
 		probeSamples[ probeIndex ].distance = 1.0f;
 	} else {
 		rtPrintExceptionDetails();

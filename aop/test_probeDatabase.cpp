@@ -4,14 +4,14 @@
 TEST( DBProbeSample, lexicographicalLess ) {
 	DBProbeSample a, b;
 	{
-		a.hitCounter = 10;
-		b.hitCounter = 20;
+		a.occlusion = 10;
+		b.occlusion = 20;
 
 		ASSERT_TRUE( DBProbeSample::lexicographicalLess( a, b ) );
 		ASSERT_FALSE( DBProbeSample::lexicographicalLess( b, a ) );
 	}
 	{
-		a.hitCounter = b.hitCounter = 10;
+		a.occlusion = b.occlusion = 10;
 
 		a.distance = 10;
 		b.distance = 20;
@@ -23,7 +23,7 @@ TEST( DBProbeSample, lexicographicalLess ) {
 		ASSERT_FALSE( DBProbeSample::lexicographicalLess_startWithDistance( b, a ) );
 	}
 	{
-		a.hitCounter = b.hitCounter = 10;
+		a.occlusion = b.occlusion = 10;
 
 		a.distance = b.distance = 10;
 		a.Lab.x = 10;
@@ -36,7 +36,7 @@ TEST( DBProbeSample, lexicographicalLess ) {
 		ASSERT_FALSE( DBProbeSample::lexicographicalLess_startWithDistance( b, a ) );
 	}
 	{
-		a.hitCounter = b.hitCounter = 10;
+		a.occlusion = b.occlusion = 10;
 
 		a.distance = b.distance = 10;
 		a.Lab.x = a.Lab.x = 10;
@@ -51,7 +51,7 @@ TEST( DBProbeSample, lexicographicalLess ) {
 		ASSERT_FALSE( DBProbeSample::lexicographicalLess_startWithDistance( b, a ) );
 	}
 	{
-		a.hitCounter = b.hitCounter = 10;
+		a.occlusion = b.occlusion = 10;
 
 		a.distance = b.distance = 10;
 		a.Lab.x = a.Lab.x = 10;
@@ -69,9 +69,9 @@ TEST( DBProbeSample, lexicographicalLess ) {
 }
 
 // ProbeDataset is covered by sort_permute_iter's tests
-DBProbeSample makeProbeSample( int hitCounter, float distance = 10 ) {
+DBProbeSample makeProbeSample( int occlusion, float distance = 10 ) {
 	DBProbeSample probeSample;
-	probeSample.hitCounter = hitCounter;
+	probeSample.occlusion = occlusion;
 	probeSample.distance = distance;
 	probeSample.Lab.x = probeSample.Lab.y = probeSample.Lab.z = 0;
 	return probeSample;
@@ -80,12 +80,12 @@ DBProbeSample makeProbeSample( int hitCounter, float distance = 10 ) {
 TEST( ProbeDatabase_transformSamples, idAndWeight ) {
 	RawProbeSamples rawProbeSamples;
 
-	const int minHitCounter = 3;
-	const int maxHitCounter = OptixProgramInterface::numProbeSamples - 3;
+	const int minOcclusion = 3;
+	const int maxOcclusion = OptixProgramInterface::numProbeSamples - 3;
 
 	const int bucketSize = 5;
 
-	for( int i = minHitCounter ; i <= maxHitCounter ; i++ ) {
+	for( int i = minOcclusion ; i <= maxOcclusion ; i++ ) {
 		for( int j = 0 ; j < bucketSize ; j++ ) {
 			rawProbeSamples.push_back( makeProbeSample( i, j ) );
 		}
@@ -101,15 +101,15 @@ TEST( ProbeDatabase_transformSamples, idAndWeight ) {
 	}
 }
 
-TEST( IndexedProbeSamples, setHitCounterLowerBounds ) {
+TEST( IndexedProbeSamples, setOcclusionLowerBounds ) {
 	RawProbeSamples rawProbeSamples;
 
-	const int minHitCounter = 3;
-	const int maxHitCounter = OptixProgramInterface::numProbeSamples - 3;
+	const int minOcclusion = 3;
+	const int maxOcclusion = OptixProgramInterface::numProbeSamples - 3;
 
 	const int bucketSize = 5;
 
-	for( int i = minHitCounter ; i <= maxHitCounter ; i++ ) {
+	for( int i = minOcclusion ; i <= maxOcclusion ; i++ ) {
 		for( int j = bucketSize - 1 ; j >= 0 ; j-- ) {
 			rawProbeSamples.push_back( makeProbeSample( i, j ) );
 		}
@@ -118,16 +118,16 @@ TEST( IndexedProbeSamples, setHitCounterLowerBounds ) {
 
 	ASSERT_EQ( rawProbeSamples.size(), dataset.size() );
 
-	ASSERT_EQ( dataset.hitCounterLowerBounds.size(), OptixProgramInterface::numProbeSamples + 2 );
-	for( int i = 0 ; i < minHitCounter ; i++ ) {
-		EXPECT_EQ( dataset.hitCounterLowerBounds[i], 0 );
+	ASSERT_EQ( dataset.occlusionLowerBounds.size(), OptixProgramInterface::numProbeSamples + 2 );
+	for( int i = 0 ; i < minOcclusion ; i++ ) {
+		EXPECT_EQ( dataset.occlusionLowerBounds[i], 0 );
 	}
 	int lowerBound = 0;
-	for( int i = minHitCounter ; i <= maxHitCounter; i++, lowerBound += bucketSize ) {
-		EXPECT_EQ( dataset.hitCounterLowerBounds[i], lowerBound );
+	for( int i = minOcclusion ; i <= maxOcclusion; i++, lowerBound += bucketSize ) {
+		EXPECT_EQ( dataset.occlusionLowerBounds[i], lowerBound );
 	}
-	for( int i = maxHitCounter + 1 ; i <= OptixProgramInterface::numProbeSamples + 1 ; ++i ) {
-		EXPECT_EQ( dataset.hitCounterLowerBounds[i], dataset.size() );
+	for( int i = maxOcclusion + 1 ; i <= OptixProgramInterface::numProbeSamples + 1 ; ++i ) {
+		EXPECT_EQ( dataset.occlusionLowerBounds[i], dataset.size() );
 	}
 }
 #if 0
