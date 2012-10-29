@@ -292,6 +292,11 @@ void Editor::Selecting::onKeyboard( EventState &eventState ) {
 					editor->world->removeInstance( instanceSelection->instanceIndex );
 					editor->deselect();
 				}
+
+				void visit( ObbSelection *selection ) {
+					editor->application->sceneSettings.volumes.erase( editor->application->sceneSettings.volumes.begin() + selection->index );
+					editor->deselect();
+				}
 			};
 			DeleteVisitor( editor ).dispatch( editor->selection );
 		}

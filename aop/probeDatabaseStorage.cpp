@@ -16,6 +16,10 @@ namespace Serializer {
 		}
 	}*/
 
+BOOST_STATIC_ASSERT( sizeof( RawProbe ) == 4 );
+BOOST_STATIC_ASSERT( sizeof( RawProbeSample ) == 8 );
+BOOST_STATIC_ASSERT( sizeof( DBProbeSample ) == 8 + 8 );
+
 SERIALIZER_DEFAULT_EXTERN_IMPL( SampledModel::SampledInstance, (source)(probeSamples) )
 SERIALIZER_DEFAULT_EXTERN_IMPL( IndexedProbeSamples, (data)(occlusionLowerBounds) )
 SERIALIZER_DEFAULT_EXTERN_IMPL( SampledModel,

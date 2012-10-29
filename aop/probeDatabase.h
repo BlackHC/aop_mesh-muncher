@@ -231,7 +231,7 @@ struct ProbeContextToleranceV2 {
 	}
 
 	ProbeContextToleranceV2(
-		int occusion_integerTolerance,
+		int occlusion_integerTolerance,
 		float colorLab_squaredTolerance,
 		float distance_tolerance
 	)
@@ -266,9 +266,9 @@ struct DBProbeSample : RawProbeSample {
 
 	static __forceinline__ bool lexicographicalLess( const DBProbeSample &a, const DBProbeSample &b ) {
 		return
-			boost::make_tuple( a.occlusion, a.distance, a.Lab.x, a.Lab.y, a.Lab.z )
+				boost::make_tuple( a.occlusion, a.distance, a.Lab.x, a.Lab.y, a.Lab.z )
 			<
-			boost::make_tuple( b.occlusion, b.distance, b.Lab.x, a.Lab.y, a.Lab.z )
+				boost::make_tuple( b.occlusion, b.distance, b.Lab.x, a.Lab.y, a.Lab.z )
 		;
 	}
 
@@ -278,9 +278,9 @@ struct DBProbeSample : RawProbeSample {
 
 	static __forceinline__ bool lexicographicalLess_startWithDistance( const DBProbeSample &a, const DBProbeSample &b ) {
 		return
-			boost::make_tuple( a.distance, a.Lab.x, a.Lab.y, a.Lab.z )
+				boost::make_tuple( a.distance, a.Lab.x, a.Lab.y, a.Lab.z )
 			<
-			boost::make_tuple( b.distance, b.Lab.x, a.Lab.y, a.Lab.z )
+				boost::make_tuple( b.distance, b.Lab.x, a.Lab.y, a.Lab.z )
 		;
 	}
 
@@ -538,7 +538,8 @@ struct IndexedProbeSamples {
 				}
 			}
 
-			AUTO_TIMER_BLOCK( "matching" ) {
+			//AUTO_TIMER_BLOCK( "matching" )
+			{
 				using namespace Concurrency;
 				parallel_for_each( rangeJobs.begin(), rangeJobs.end(),
 					[&] ( const RangeJob &rangeJob ) {
@@ -828,34 +829,36 @@ struct SampledModel {
 				}
 			}
 
-			AUTO_TIMER_BLOCK( "push back all instances sorted by direction index" ) {
-				const auto directionCounts = ProbeHelpers::countProbeDirections( probes );
+			// TODO: magic constants!!! [10/17/2012 kirschan2]
+			//std::cout << OptixProgramInterface::numProbeSamples << "\n";
+			ProbeContextToleranceV2 pctv2( int( 0.124f * OptixProgramInterface::numProbeSamples ), 1.0f, 0.25f * 0.95f );
+			CompressedDataset::compress( instances.size(), probes.size(), mergedProbeSamples, pctv2 );
+			mergedInstances = IndexedProbeSamples( std::move( mergedProbeSamples ) );
+		}
 
-				std::vector< DBProbeSamples > probeSamplesByDirectionIndex( ProbeGenerator::getNumDirections() );
-				for( int directionIndex = 0 ; directionIndex < ProbeGenerator::getNumDirections() ; directionIndex++ ) {
-					const int numProbesWithDirectionIndex = directionCounts[ directionIndex ] * (int) instances.size();
-					probeSamplesByDirectionIndex[ directionIndex ].reserve( numProbesWithDirectionIndex );
-				}
+		AUTO_TIMER_BLOCK( "push back all instances sorted by direction index" ) {
+			const auto directionCounts = ProbeHelpers::countProbeDirections( probes );
 
-				const int probesCount = probes.size();
-				for( int probeIndex = 0 ; probeIndex < probesCount ; probeIndex++ ) {
-					const auto & probe = probes[ probeIndex ];
-					const auto directionIndex = probe.directionIndex;
+			std::vector< DBProbeSamples > probeSamplesByDirectionIndex( ProbeGenerator::getNumDirections() );
+			for( int directionIndex = 0 ; directionIndex < ProbeGenerator::getNumDirections() ; directionIndex++ ) {
+				const int numProbesWithDirectionIndex = directionCounts[ directionIndex ] * (int) instances.size();
+				probeSamplesByDirectionIndex[ directionIndex ].reserve( numProbesWithDirectionIndex );
+			}
 
-					auto &probeSamples = probeSamplesByDirectionIndex[ directionIndex ];
-					for( int instanceIndex = 0 ; instanceIndex < instances.size() ; instanceIndex++ ) {
-						probeSamples.push_back( instances[ instanceIndex ].getProbeSamples()[ probeIndex ] );
-					}
-				}
+			const int probesCount = probes.size();
+			for( int probeIndex = 0 ; probeIndex < probesCount ; probeIndex++ ) {
+				const auto & probe = probes[ probeIndex ];
+				const auto directionIndex = probe.directionIndex;
 
-				for( int directionIndex = 0 ; directionIndex < ProbeGenerator::getNumDirections() ; directionIndex++ ) {
-					mergedInstancesByDirectionIndex[ directionIndex ] = std::move( probeSamplesByDirectionIndex[ directionIndex ] );
+				auto &probeSamples = probeSamplesByDirectionIndex[ directionIndex ];
+				for( int instanceIndex = 0 ; instanceIndex < instances.size() ; instanceIndex++ ) {
+					probeSamples.push_back( instances[ instanceIndex ].getProbeSamples()[ probeIndex ] );
 				}
 			}
 
-			// TODO: magic constants!!! [10/17/2012 kirschan2]
-			CompressedDataset::compress( instances.size(), probes.size(), mergedProbeSamples, ProbeContextToleranceV2( int( 0.124f * OptixProgramInterface::numProbeSamples ), 1.0f, 0.25f * 0.95f ) );
-			mergedInstances = IndexedProbeSamples( std::move( mergedProbeSamples ) );
+			for( int directionIndex = 0 ; directionIndex < ProbeGenerator::getNumDirections() ; directionIndex++ ) {
+				mergedInstancesByDirectionIndex[ directionIndex ] = std::move( probeSamplesByDirectionIndex[ directionIndex ] );
+			}
 		}
 	}
 
@@ -879,7 +882,7 @@ struct SampledModel {
 		return mergedInstancesByDirectionIndex[ directionIndex ];
 	}
 
-	const ProbeGenerator::ProbePositions getRotatedProbePositions( int orientationIndex ) const {
+	const ProbeGenerator::ProbePositions & getRotatedProbePositions( int orientationIndex ) const {
 		return rotatedProbePositions[ orientationIndex ];
 	}
 

@@ -970,6 +970,7 @@ namespace aop {
 			AntTWBarUI::TypeBuilder::Enum< QueryType >( "QueryType" )
 				.add( "Normal", QT_NORMAL )
 				.add( "Weighted", QT_WEIGHTED )
+				.add( "Full", QT_FULL )
 				.define()
 			;
 
@@ -1531,6 +1532,9 @@ namespace aop {
 		case QT_WEIGHTED:
 			queryResults = weightedQueryVolume( queryVolume.volume, queryProbes, queryProbeSamples );
 			break;
+		case QT_FULL:
+			queryResults = fullQueryVolume( queryVolume.volume, queryProbes, queryProbeSamples );
+			break;
 		}
 		progressTracker.markFinished();
 
@@ -1566,6 +1570,32 @@ namespace aop {
 				% detailedQueryResult->probeMatchPercentage
 				% detailedQueryResult->queryMatchPercentage
 				% detailedQueryResult->score
+			);
+		}
+
+		return query.getQueryResults();
+	}
+
+	QueryResults Application::fullQueryVolume( const Obb &queryVolume, const RawProbes &queryProbes, const RawProbeSamples &queryProbeSamples ) {
+		ProbeDatabase::FullQuery query( probeDatabase );
+		{
+			query.setQueryVolume( queryVolume, sceneSettings.probeGenerator_resolution );
+			query.setQueryDataset( queryProbes, queryProbeSamples );
+
+			query.setProbeContextTolerance( getPCTFromSettings() );
+
+			query.execute();
+		}
+
+		const auto &queryResults = query.getQueryResults();
+		for( auto queryResult = queryResults.begin() ; queryResult != queryResults.end() ; ++queryResult ) {
+			log(
+				boost::format(
+					"%i:\n"
+					"\tscore %f\n"
+				)
+				% queryResult->sceneModelIndex
+				% queryResult->score
 			);
 		}
 
@@ -1630,6 +1660,7 @@ namespace aop {
 		timedLog.reset( new TimedLog( this ) );
 
 		ProbeGenerator::initDirections();
+		ProbeGenerator::initOrientations();
 
 		settings.load();
 

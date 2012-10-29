@@ -220,7 +220,7 @@ namespace ProbeGenerator {
 			const auto &probe = probes[ probeIndex ];
 		
 			const Vector3f rotatedPosition = rotation * probe.position.cast<float>();
-			probePositions.push_back( (rotatedPosition + Vector3f::Constant( 0.5f )).cast<signed char>() );
+			probePositions.push_back( floor(rotatedPosition + Vector3f::Constant( 0.5f )).cast<signed char>() );
 		}
 
 		return probePositions;

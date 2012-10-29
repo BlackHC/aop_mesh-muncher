@@ -53,7 +53,8 @@ namespace aop {
 	struct Application : ModelDatabase::ImportInterface {
 		enum QueryType {
 			QT_NORMAL,
-			QT_WEIGHTED
+			QT_WEIGHTED,
+			QT_FULL
 		};
 
 		sf::Clock frameClock, clock;
@@ -146,5 +147,6 @@ namespace aop {
 
 		void NeighborhoodDatabase_sampleScene();
 
+		QueryResults fullQueryVolume( const Obb &queryVolume, const RawProbes &queryProbes, const RawProbeSamples &queryProbeSamples );
 	};
 }

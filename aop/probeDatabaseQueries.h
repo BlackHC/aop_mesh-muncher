@@ -385,7 +385,7 @@ struct ProbeDatabase::FullQuery {
 		probeContextTolerance = pct;
 	}
 
-	void setQueryVolume( Obb &queryVolume, float resolution ) {
+	void setQueryVolume( const Obb &queryVolume, float resolution ) {
 		// TODO: I should wrap this in a new Grid structure [10/28/2012 Andreas]
 		queryVolumeOffset = ProbeGenerator::getGridHalfExtent( queryVolume.size, resolution );
 		queryVolumeSize = 2 * queryVolumeOffset + Eigen::Vector3i::Constant( 1 );
@@ -424,7 +424,6 @@ struct ProbeDatabase::FullQuery {
 			);
 		}
 
-		QueryResults queryResults;
 		for( auto subQueryResults = multiQueryResults.begin() ; subQueryResults != multiQueryResults.end() ; ++subQueryResults ) {
 			boost::push_back( queryResults, *subQueryResults );
 		}
@@ -445,6 +444,7 @@ protected:
 			% queryProbes.size()
 		);
 
+		float bestScore = 0.0;
 		for( int orientationIndex = 0 ; orientationIndex < ProbeGenerator::getNumOrientations() ; ++orientationIndex ) {
 			using namespace Concurrency;
 
@@ -496,8 +496,8 @@ protected:
 				const int *rotatedDirections = ProbeGenerator::getRotatedDirections( orientationIndex );
 				for( int directionIndex = 0 ; directionIndex < ProbeGenerator::getNumDirections() ; directionIndex++ ) {
 					IndexedProbeSamples::Matcher< MatchController& > matcher(
-						sampledModel.getMergedInstancesByDirectionIndex( rotatedDirections[ directionIndex ] ),
-						indexedProbeSamplesByDirectionIndices[ directionIndex ],
+						sampledModel.getMergedInstancesByDirectionIndex( directionIndex ),
+						indexedProbeSamplesByDirectionIndices[ rotatedDirections[ directionIndex ] ],
 						probeContextTolerance,
 						matchController
 					);	
@@ -515,12 +515,15 @@ protected:
 			}
 
 			auto maxElement = boost::max_element( mergedQueryVolumeMatches );
-			const float score = float( *maxElement ) / sampledModel.getProbes().size();
+			const float score = float( *maxElement ) / sampledModel.getProbes().size();		
+			bestScore = std::max( bestScore, score );
 
-			QueryResults modelQueryResults;
-			modelQueryResults.push_back( QueryResult( score, sceneModelIndex, Eigen::Vector3f(), Eigen::Quaternionf() ) );
-			return modelQueryResults;
-		}		
+			std::cout << "orientation:" << orientationIndex << " best score:" << score << "\n";
+		}
+
+		QueryResults modelQueryResults;
+		modelQueryResults.push_back( QueryResult( bestScore, sceneModelIndex, Eigen::Vector3f(), Eigen::Quaternionf() ) );
+		return modelQueryResults;
 	}
 
 protected:

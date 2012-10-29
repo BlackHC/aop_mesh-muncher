@@ -178,7 +178,7 @@ void ProgressBarWidget::doRender() {
 	const Eigen::Vector3f zero( 0.0f, 0.5f, 0.3f );
 	const Eigen::Vector3f one( 0.3f, 1.0f, 0.3f );
 	DebugRender::setColor( one * percentage + (1.0f - percentage) * zero );
-	DebugRender::drawQuad( Eigen::Vector2f::Zero(), size.cwiseProduct( Eigen::Vector2f( percentage, 1.0f ) ), false );
+	DebugRender::drawQuad( Eigen::Vector2f::Zero(), size.cwiseProduct( Eigen::Vector2f( clamp( percentage, 0.0f, 1.0f ), 1.0f ) ), false );
 
 	// render the border
 	DebugRender::setColor( Eigen::Vector3f::Constant( 0.5f ) );
