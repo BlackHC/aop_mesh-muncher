@@ -97,8 +97,8 @@ RT_PROGRAM void sampleProbes() {
 	}
 
 	// convert to cielab
-	const float3 Lab = CIELAB::fromRGB( avgColor );
-	sample.Lab = make_Lab( Lab );
+	const float3 colorLab = CIELAB::fromRGB( avgColor );
+	sample.colorLab = make_Lab( colorLab );
 	sample.distance = avgDistance;
 	sample.occlusion = numHits;
 }
@@ -106,7 +106,7 @@ RT_PROGRAM void sampleProbes() {
 RT_PROGRAM void sampleProbes_exception() {
 	unsigned int const error_code = rtGetExceptionCode();
 	if(RT_EXCEPTION_STACK_OVERFLOW == error_code) {
-		probeSamples[ probeIndex ].Lab = make_char3( -127, -127, -127 );
+		probeSamples[ probeIndex ].colorLab = make_char3( -127, -127, -127 );
 		probeSamples[ probeIndex ].occlusion = 0;
 		probeSamples[ probeIndex ].distance = 1.0f;
 	} else {

@@ -26,8 +26,8 @@ TEST( DBProbeSample, lexicographicalLess ) {
 		a.occlusion = b.occlusion = 10;
 
 		a.distance = b.distance = 10;
-		a.Lab.x = 10;
-		b.Lab.x = 20;
+		a.colorLab.x = 10;
+		b.colorLab.x = 20;
 
 		ASSERT_TRUE( DBProbeSample::lexicographicalLess( a, b ) );
 		ASSERT_FALSE( DBProbeSample::lexicographicalLess( b, a ) );
@@ -39,10 +39,10 @@ TEST( DBProbeSample, lexicographicalLess ) {
 		a.occlusion = b.occlusion = 10;
 
 		a.distance = b.distance = 10;
-		a.Lab.x = a.Lab.x = 10;
+		a.colorLab.x = a.colorLab.x = 10;
 
-		a.Lab.y = 10;
-		b.Lab.y = 20;
+		a.colorLab.y = 10;
+		b.colorLab.y = 20;
 
 		ASSERT_TRUE( DBProbeSample::lexicographicalLess( a, b ) );
 		ASSERT_FALSE( DBProbeSample::lexicographicalLess( b, a ) );
@@ -54,11 +54,11 @@ TEST( DBProbeSample, lexicographicalLess ) {
 		a.occlusion = b.occlusion = 10;
 
 		a.distance = b.distance = 10;
-		a.Lab.x = a.Lab.x = 10;
-		a.Lab.y = a.Lab.y = 10;
+		a.colorLab.x = a.colorLab.x = 10;
+		a.colorLab.y = a.colorLab.y = 10;
 
-		a.Lab.z = 10;
-		b.Lab.z = 20;
+		a.colorLab.z = 10;
+		b.colorLab.z = 20;
 
 		ASSERT_TRUE( DBProbeSample::lexicographicalLess( a, b ) );
 		ASSERT_FALSE( DBProbeSample::lexicographicalLess( b, a ) );
@@ -73,7 +73,7 @@ DBProbeSample makeProbeSample( int occlusion, float distance = 10 ) {
 	DBProbeSample probeSample;
 	probeSample.occlusion = occlusion;
 	probeSample.distance = distance;
-	probeSample.Lab.x = probeSample.Lab.y = probeSample.Lab.z = 0;
+	probeSample.colorLab.x = probeSample.colorLab.y = probeSample.colorLab.z = 0;
 	return probeSample;
 }
 

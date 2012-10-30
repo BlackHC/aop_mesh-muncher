@@ -53,7 +53,7 @@ struct ProbeSample {
 	// in CIELAB space
 	// http://robotics.stanford.edu/~ruzon/software/rgblab.html
 	// CIELAB values range as follows: L lies between 0 and 100, and a and b lie between -110 and 110
-	optix::char3 Lab;
+	optix::char3 colorLab;
 	unsigned char occlusion;
 	float distance;
 };

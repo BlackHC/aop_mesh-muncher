@@ -94,7 +94,7 @@ void sampleAllNeighbors( float maxDistance, NeighborhoodDatabase &database, SGSI
 
 		const int modelIndex = world.sceneRenderer.getModelIndex( instanceIndex );
 
-		database.getEntryById( modelIndex ).addInstance( std::move( queryResults ) );
+		database.getSampledModel( modelIndex ).addInstance( std::move( queryResults ) );
 	}
 }
 

@@ -266,9 +266,9 @@ struct DBProbeSample : RawProbeSample {
 
 	static __forceinline__ bool lexicographicalLess( const DBProbeSample &a, const DBProbeSample &b ) {
 		return
-				boost::make_tuple( a.occlusion, a.distance, a.Lab.x, a.Lab.y, a.Lab.z )
+				boost::make_tuple( a.occlusion, a.distance, a.colorLab.x, a.colorLab.y, a.colorLab.z )
 			<
-				boost::make_tuple( b.occlusion, b.distance, b.Lab.x, a.Lab.y, a.Lab.z )
+				boost::make_tuple( b.occlusion, b.distance, b.colorLab.x, a.colorLab.y, a.colorLab.z )
 		;
 	}
 
@@ -278,17 +278,17 @@ struct DBProbeSample : RawProbeSample {
 
 	static __forceinline__ bool lexicographicalLess_startWithDistance( const DBProbeSample &a, const DBProbeSample &b ) {
 		return
-				boost::make_tuple( a.distance, a.Lab.x, a.Lab.y, a.Lab.z )
+				boost::make_tuple( a.distance, a.colorLab.x, a.colorLab.y, a.colorLab.z )
 			<
-				boost::make_tuple( b.distance, b.Lab.x, a.Lab.y, a.Lab.z )
+				boost::make_tuple( b.distance, b.colorLab.x, a.colorLab.y, a.colorLab.z )
 		;
 	}
 
 	static __forceinline__ bool matchColor( const DBProbeSample &a, const DBProbeSample &b, const float squaredTolerance ) {
 		Eigen::Vector3i colorDistance(
-			a.Lab.x - b.Lab.x,
-			a.Lab.y - b.Lab.y,
-			a.Lab.z - b.Lab.z
+			a.colorLab.x - b.colorLab.x,
+			a.colorLab.y - b.colorLab.y,
+			a.colorLab.z - b.colorLab.z
 			);
 		// TODO: cache the squared? [10/1/2012 kirschan2]
 		if( colorDistance.squaredNorm() > squaredTolerance ) {

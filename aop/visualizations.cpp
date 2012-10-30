@@ -91,7 +91,7 @@ void visualizeProbe(
 		if( probeSample.occlusion > 0 ) {
 			DebugRender::setColor(
 				map( OptixProgramInterface::CIELAB::toRGB(
-					optix::make_float3( probeSample.Lab.x, probeSample.Lab.y, probeSample.Lab.z )
+					optix::make_float3( probeSample.colorLab.x, probeSample.colorLab.y, probeSample.colorLab.z )
 				) )
 			);
 		}

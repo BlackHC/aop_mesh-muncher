@@ -3,7 +3,7 @@
 #include "gtest.h"
 
 TEST( NeighborhoodDatabase_SortedDataset, all ) {
-	NeighborhoodDatabase::RawDataset rawDataset;
+	NeighborhoodDatabase::RawIdDistances rawDataset;
 
 	for( int id = 100 - 1 ; id >= 0 ; id-- ) {
 		for( int distance = 10 - 1 ; distance >= 0 ; distance-- ) {
@@ -11,11 +11,11 @@ TEST( NeighborhoodDatabase_SortedDataset, all ) {
 		}
 	}
 
-	NeighborhoodDatabase::SortedDataset sortedDataset( std::move( rawDataset ) );
+	NeighborhoodDatabase::NeighborhoodContext sortedDataset( std::move( rawDataset ) );
 	
-	ASSERT_EQ( 100, sortedDataset.getDistancesById().size() );
+	ASSERT_EQ( 100, sortedDataset.getNumIds() );
 	for( int id = 0 ; id < 100 ; id++ ) {
-		const auto &idDistancesPair = sortedDataset.getDistancesById()[id];
+		const auto &idDistancesPair = sortedDataset.getDistances( id );
 		
 		EXPECT_EQ( id, idDistancesPair.first );
 
@@ -42,7 +42,7 @@ TEST( NeighborhoodDatabase_Dataset, getNumBins ) {
 }
 
 TEST( NeighborhoodDatabase_Dataset, construction ) {
-	NeighborhoodDatabase::RawDataset rawDataset;
+	NeighborhoodDatabase::RawIdDistances rawDataset;
 
 	for( int id = 100 - 1 ; id >= 0 ; id-- ) {
 		for( int distance = 10 - 1 ; distance >= 0 ; distance-- ) {
@@ -50,7 +50,7 @@ TEST( NeighborhoodDatabase_Dataset, construction ) {
 		}
 	}
 
-	NeighborhoodDatabase::SortedDataset sortedDataset( std::move( rawDataset ) );
+	NeighborhoodDatabase::NeighborhoodContext sortedDataset( std::move( rawDataset ) );
 
 	NeighborhoodDatabase::Dataset dataset( 2.0, 10.0, sortedDataset );
 
@@ -71,11 +71,11 @@ TEST( NeighborhoodDatabase_Dataset, construction ) {
 }
 
 TEST( NeighborhoodDatabase_Dataset, construction_maxDistance ) {
-	NeighborhoodDatabase::RawDataset rawDataset;
+	NeighborhoodDatabase::RawIdDistances rawDataset;
 
 	rawDataset.push_back( std::make_pair( 0, 10.0 ) );
 
-	NeighborhoodDatabase::SortedDataset sortedDataset( std::move( rawDataset ) );
+	NeighborhoodDatabase::NeighborhoodContext sortedDataset( std::move( rawDataset ) );
 
 	NeighborhoodDatabase::Dataset dataset( 2.0, 10.0, sortedDataset );
 
@@ -107,9 +107,9 @@ TEST( NeighborhoodDatabase, getEntryById ) {
 TEST( NeighborhoodDatabase_Entry, addInstance ) {
 	NeighborhoodDatabase db;
 
-	auto &entry = db.getEntryById( 1 );
+	auto &entry = db.getSampledModel( 1 );
 
-	NeighborhoodDatabase::RawDataset rawDataset;
+	NeighborhoodDatabase::RawIdDistances rawDataset;
 
 	for( int id = 100 - 1 ; id >= 0 ; id-- ) {
 		for( int distance = 10 - 1 ; distance >= 0 ; distance-- ) {
@@ -127,9 +127,9 @@ TEST( NeighborhoodDatabase_Entry, addInstance ) {
 TEST( NeighborhoodDatabase_Query, all ) {
 	NeighborhoodDatabase db;
 
-	auto &entry = db.getEntryById( 1 );
+	auto &entry = db.getSampledModel( 1 );
 
-	NeighborhoodDatabase::RawDataset rawDataset;
+	NeighborhoodDatabase::RawIdDistances rawDataset;
 
 	for( int id = 100 - 1 ; id >= 0 ; id-- ) {
 		for( int distance = 10 - 1 ; distance >= 0 ; distance-- ) {
@@ -137,7 +137,7 @@ TEST( NeighborhoodDatabase_Query, all ) {
 		}
 	}
 
-	entry.addInstance( std::move( NeighborhoodDatabase::RawDataset( rawDataset ) ) );
+	entry.addInstance( std::move( NeighborhoodDatabase::RawIdDistances( rawDataset ) ) );
 
 	NeighborhoodDatabase::Query query( db, 2.0, 20.0, std::move( rawDataset ) );
 
