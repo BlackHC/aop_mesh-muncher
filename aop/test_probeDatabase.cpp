@@ -222,7 +222,7 @@ TEST( ProbeDatabase, zeroTolerance ) {
 	modelNames.push_back( "test" );
 	probeDatabase.registerSceneModels( modelNames );
 
-	probeDatabase.addInstanceProbes( 0, Obb(), probes, rawProbeSamples );
+	probeDatabase.addInstanceProbes( 0, Obb(), 1.0, probes, rawProbeSamples );
 	probeDatabase.compileAll();
 
 	{
@@ -302,7 +302,7 @@ TEST( ProbeDatabase, zeroTolerance_biggerDB ) {
 	modelNames.push_back( "test" );
 	probeDatabase.registerSceneModels( modelNames );
 
-	probeDatabase.addInstanceProbes( 0, Obb(), probes, rawProbeSamples );
+	probeDatabase.addInstanceProbes( 0, Obb(), 1.0, probes, rawProbeSamples );
 	probeDatabase.compileAll();
 
 	{
@@ -378,7 +378,7 @@ TEST( ProbeDatabase, oneTolerance ) {
 	modelNames.push_back( "test" );
 	probeDatabase.registerSceneModels( modelNames );
 
-	probeDatabase.addInstanceProbes( 0, Obb(), probes, rawProbeSamples );
+	probeDatabase.addInstanceProbes( 0, Obb(), 1.0, probes, rawProbeSamples );
 	probeDatabase.compileAll();
 
 	ProbeContextTolerance pct;
