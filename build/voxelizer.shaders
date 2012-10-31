@@ -41,20 +41,20 @@ splatterUtility:
 			return a * dot( b, b ) / dot( a, b );
 		}
 
-		vec3 expandCorner( const vec3 corner, const vec3 faceNormal, const vec2 edgeNext, const vec2 edgePrev, const vec2 halfPixelSize ) {	
-			const vec2 edgeNormalNext = normalize( getOuterNormal2( edgeNext, faceNormal ) );
+		vec3 expandCorner( const vec3 corner, const vec3 faceNormal, const vec2 edgePrev, const vec2 edgeNext, const vec2 halfPixelSize ) {
 			const vec2 edgeNormalPrev = normalize( getOuterNormal2( edgePrev, faceNormal ) );
- 
-			const vec2 shiftedNext = edgeNormalNext * dot( abs( edgeNormalNext ), halfPixelSize ); 
+			const vec2 edgeNormalNext = normalize( getOuterNormal2( edgeNext, faceNormal ) );
+
 			const vec2 shiftedPrev = edgeNormalPrev * dot( abs( edgeNormalPrev ), halfPixelSize );
- 
+			const vec2 shiftedNext = edgeNormalNext * dot( abs( edgeNormalNext ), halfPixelSize );
+
 			const vec2 deltaXY = backProjection( edgePrev, shiftedNext ) + backProjection( edgeNext, shiftedPrev );
- 
+
 			// solve for z
 			const float triangle_d = dot( corner, faceNormal );
 			// we have: faceNormal . newCorner - d = 0 <=> newCorner.z = (d - faceNormal.xy . newCorner.xy) / faceNormal.z
 			const float deltaZ = -dot( faceNormal.xy, deltaXY ) / faceNormal.z;
- 
+
 			return corner + vec3( deltaXY, deltaZ );
 		}
 
@@ -64,7 +64,7 @@ splatterVertexShader:
 	code::
 		void vertexShader() {
 			gl_FrontColor = vec4( mat3(gl_ModelViewMatrix) * gl_Normal * 0.5 + 0.5, 1.0 ); // 0..1
-			gl_Position = gl_ModelViewMatrix * gl_Vertex; 
+			gl_Position = gl_ModelViewMatrix * gl_Vertex;
 		}
 
 splatterGeometryShader:
@@ -116,7 +116,7 @@ splatterGeometryShader:
 				// permute the corners
 				vec3 corners[3];
 				for( int i = 0 ; i < 3 ; i++ ) {
-					corners[i] = permutationMatrix * gl_in[i].gl_Position.xyz;		
+					corners[i] = permutationMatrix * gl_in[i].gl_Position.xyz;
 				}
 
 		#ifdef CONSERVATIVE
@@ -131,15 +131,15 @@ splatterGeometryShader:
 				const vec2 planeEdges[3] = { corners[1].xy - corners[0].xy, corners[2].xy - corners[1].xy, corners[0].xy - corners[2].xy };
 
 				// expand the corners
-				corners[0] = expandCorner( corners[0], permutedFaceNormal, planeEdges[0], planeEdges[2], halfPixelSize );
-				corners[1] = expandCorner( corners[1], permutedFaceNormal, planeEdges[1], planeEdges[0], halfPixelSize );
-				corners[2] = expandCorner( corners[2], permutedFaceNormal, planeEdges[2], planeEdges[1], halfPixelSize );
-		#endif 
+				corners[0] = expandCorner( corners[0], permutedFaceNormal, planeEdges[2], planeEdges[0], halfPixelSize );
+				corners[1] = expandCorner( corners[1], permutedFaceNormal, planeEdges[0], planeEdges[1], halfPixelSize );
+				corners[2] = expandCorner( corners[2], permutedFaceNormal, planeEdges[1], planeEdges[2], halfPixelSize );
+		#endif
 
 				for( int i = 0 ; i < gl_in.length() ; i++ )
 				{
 					gl_FrontColor = gl_in[i].gl_FrontColor;
-	
+
 					// store the expanded corners in the original world coords (multiply with the transposed permutation matrix)
 					viewPosition = corners[i];
 
@@ -197,7 +197,7 @@ splatterFragmentShader:
 		#endif
 
 				VoxelInfo voxelInfo = processFragment();
-		
+
 				float deltaZ = 0.5 * fwidth( viewPosition.z );
 				int minZ = int( viewPosition.z - deltaZ );
 				int maxZ = int( ceil( viewPosition.z + deltaZ ) );
@@ -229,7 +229,7 @@ muxer:
 			index3.x = gl_InstanceID % sizeHelper.x;
 			index3.y = (gl_InstanceID / sizeHelper.x) % sizeHelper.y;
 			index3.z = (gl_InstanceID / sizeHelper.z);
-		
+
 			uvec4 packed_normalHit;
 			for( int i = 0 ; i < 4 ; ++i ) {
 				packed_normalHit[i] = imageLoad( volumeChannels[i], index3 )[0];
