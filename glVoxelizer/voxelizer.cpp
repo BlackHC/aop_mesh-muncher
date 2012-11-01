@@ -248,7 +248,7 @@ void voxelizeScene( const SimpleIndexMapping3 &indexMapping3, ColorGrid &grid, s
 	for( int i = 0 ; i < 3 ; ++i ) {
 		int *permutation = permutations[i];
 		const Vector3i permutedSize = permute( indexMapping3.getSize(), permutation );
-		auto projection = Eigen::createOrthoProjectionMatrixLH( Vector2f::Zero(), permutedSize.head<2>().cast<float>(), 0.0f, (float) permutedSize.z() ); 
+		auto projection = Eigen::createOrthoProjectionMatrixLH( Vector3f::Zero(), permutedSize.cast<float>() ); 
 		glUniform( splatShader.mainAxisProjection[i], projection );
 		glUniform( splatShader.mainAxisPermutation[i], unpermutedToPermutedMatrix( permutation ).topLeftCorner<3,3>().matrix() );
 

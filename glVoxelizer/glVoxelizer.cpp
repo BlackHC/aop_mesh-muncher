@@ -242,6 +242,7 @@ void main() {
 	glEnable(GL_DEPTH_TEST);
 	glDepthMask(GL_TRUE);
 	glClearDepth(1.f);
+	glClearColor( 0.2, 0.3, 0.4, 1.0 );
 
 	debugScene.begin();
 	//debugScene.drawBox( Vector3f( 8, 8, 8 ), false, true );

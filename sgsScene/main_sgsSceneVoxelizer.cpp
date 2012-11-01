@@ -115,7 +115,7 @@ void real_main() {
 		const char *cachePath = "scene.sgsRendererCache";
 		sgsSceneRenderer.processScene( make_nonallocated_shared( sgsScene ), cachePath );
 	}
-	{
+	if( false ) {
 		boost::timer::auto_cpu_timer timer( "OptixRenderer: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
 
 		optixRenderer.init( make_nonallocated_shared( sgsSceneRenderer ) );
@@ -192,6 +192,8 @@ void real_main() {
 	KeyAction cycleModesAction( "cycle voxel/rasterization", sf::Keyboard::B, [&] () { renderModel = renderVoxels; renderVoxels = !renderVoxels; } );
 	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( cycleModesAction ) );
 
+
+	glClearColor( 0.2, 0.3, 0.4, 1.0 );
 	while (true)
 	{
 		// Activate the window for OpenGL rendering

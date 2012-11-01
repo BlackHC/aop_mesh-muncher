@@ -44,19 +44,19 @@ splatterUtility:
 
 		vec3 getCornerShift(
 			const vec3 faceNormal,
-			const vec3 prevEdge,
-			const vec3 nextEdge,
-			const vec3 shiftPrevEdge,
-			const vec3 shiftNextEdge
+			const vec2 prevEdge,
+			const vec2 nextEdge,
+			const vec2 shiftPrevEdge,
+			const vec2 shiftNextEdge
 		) {
 			vec3 cornerShift;
-			cornerShift.xy = unproject( edgePrev, shiftNextEdge ) + unproject( edgeNext, shiftPrevEdge );
+			cornerShift.xy = unproject( prevEdge, shiftNextEdge ) + unproject( nextEdge, shiftPrevEdge );
 
 			// solve for z
-			// we have: faceNormal . corner = faceNormal . (corner + cornerShift) <=> cornerShift.z = - faceNormal.xy . newCorner.xy / faceNormal.z
-			const float deltaZ = -dot( faceNormal.xy, deltaXY ) / faceNormal.z;
+			// we have: faceNormal . corner = faceNormal . (corner + cornerShift) <=> cornerShift.z = - faceNormal.xy . cornerShift.xy / faceNormal.z
+			cornerShift.z = -dot( faceNormal.xy, cornerShift.xy ) / faceNormal.z;
 
-			return vec3( deltaXY, deltaZ );
+			return cornerShift;
 		}
 
 splatterVertexShader:
@@ -223,7 +223,6 @@ splatterFragmentShader:
 
 				for( int z = minZ; z <= maxZ; ++z ) {
 					// this is identical to multiplying with the inverse
-
 					// wtf @ +0.5
 					ivec3 voxelPosition = ivec3( (vec3( viewPosition.xy, z ) + 0.5) * mainAxisPermutation[ mainAxis ] );
 
