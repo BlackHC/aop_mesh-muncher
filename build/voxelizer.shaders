@@ -30,32 +30,33 @@ splatterUtility:
 		}
 
 		// outer normal for a CCW edge orientation with y up
-		vec2 getOuterNormal2( const vec2 edge, const vec3 faceNormal ) {
-			return cross( vec3( edge, 0.0 ), vec3( 0.0, 0.0, sign( faceNormal.z ) ) ).xy;
+		vec2 getOutwardNormal( const vec2 edge, const vec3 faceNormal ) {
+			return normalize( cross( vec3( edge, 0.0 ), vec3( 0.0, 0.0, sign( faceNormal.z ) ) ).xy );
 		}
-		// return lamda * a, such that lambda * a perp projected onto b is b
-		vec2 backProjection( const vec2 a, const vec2 b ) {
-			if( dot( b, b ) == 0 ) {
+
+		// return lamda * direction, such that lambda * direction perp projected onto v is v
+		vec2 unproject( const vec2 direction, const vec2 v ) {
+			if( dot( direction, v ) == 0 ) {
 				return vec2( 0 );
 			}
-			return a * dot( b, b ) / dot( a, b );
+			return direction * dot( v, v ) / dot( direction, v );
 		}
 
-		vec3 expandCorner( const vec3 corner, const vec3 faceNormal, const vec2 edgePrev, const vec2 edgeNext, const vec2 halfPixelSize ) {
-			const vec2 edgeNormalPrev = normalize( getOuterNormal2( edgePrev, faceNormal ) );
-			const vec2 edgeNormalNext = normalize( getOuterNormal2( edgeNext, faceNormal ) );
-
-			const vec2 shiftedPrev = edgeNormalPrev * dot( abs( edgeNormalPrev ), halfPixelSize );
-			const vec2 shiftedNext = edgeNormalNext * dot( abs( edgeNormalNext ), halfPixelSize );
-
-			const vec2 deltaXY = backProjection( edgePrev, shiftedNext ) + backProjection( edgeNext, shiftedPrev );
+		vec3 getCornerShift(
+			const vec3 faceNormal,
+			const vec3 prevEdge,
+			const vec3 nextEdge,
+			const vec3 shiftPrevEdge,
+			const vec3 shiftNextEdge
+		) {
+			vec3 cornerShift;
+			cornerShift.xy = unproject( edgePrev, shiftNextEdge ) + unproject( edgeNext, shiftPrevEdge );
 
 			// solve for z
-			const float triangle_d = dot( corner, faceNormal );
-			// we have: faceNormal . newCorner - d = 0 <=> newCorner.z = (d - faceNormal.xy . newCorner.xy) / faceNormal.z
+			// we have: faceNormal . corner = faceNormal . (corner + cornerShift) <=> cornerShift.z = - faceNormal.xy . newCorner.xy / faceNormal.z
 			const float deltaZ = -dot( faceNormal.xy, deltaXY ) / faceNormal.z;
 
-			return corner + vec3( deltaXY, deltaZ );
+			return vec3( deltaXY, deltaZ );
 		}
 
 splatterVertexShader:
@@ -99,10 +100,10 @@ splatterGeometryShader:
 				const vec3 edgeB = vec3( gl_in[2].gl_Position - gl_in[0].gl_Position );
 
 				// calculate the face normal
-				const vec3 faceNormal = cross( edgeA, edgeB );
+				const vec3 unpermutedFaceNormal = cross( edgeA, edgeB );
 
 				// set the main axis
-				mainAxis = determineMainAxis( faceNormal );
+				mainAxis = determineMainAxis( unpermutedFaceNormal );
 
 				// we use different viewports depending on the main axis, because the grid volume doesn't have to be a unit cube
 				gl_ViewportIndex = mainAxis;
@@ -110,8 +111,6 @@ splatterGeometryShader:
 				// grab the projection and permutation matrix for this axis
 				const mat4 projectionMatrix = mainAxisProjection[ mainAxis ];
 				const mat3 permutationMatrix = mainAxisPermutation[ mainAxis ];
-
-				const vec2 halfPixelSize = vec2( 0.5 );
 
 				// permute the corners
 				vec3 corners[3];
@@ -121,19 +120,39 @@ splatterGeometryShader:
 
 		#ifdef CONSERVATIVE
 				// permute the face normal
-				const vec3 permutedFaceNormal = permutationMatrix * faceNormal;
+				const vec3 faceNormal = permutationMatrix * unpermutedFaceNormal;
+
+				const vec2 halfPixelSize = vec2( 0.5 );
 
 				// set the bounding box
 				boundingBox.min = min( corners[0].xy, min( corners[1].xy, corners[2].xy ) ) - halfPixelSize;
 				boundingBox.max = max( corners[0].xy, max( corners[1].xy, corners[2].xy ) ) + halfPixelSize;
 
-				// calculate the planeEdges
-				const vec2 planeEdges[3] = { corners[1].xy - corners[0].xy, corners[2].xy - corners[1].xy, corners[0].xy - corners[2].xy };
+				// calculate the screen edges
+				const vec2 screenEdges[3] = {
+					corners[1].xy - corners[0].xy,
+					corners[2].xy - corners[1].xy,
+					corners[0].xy - corners[2].xy
+				};
+
+				// determine the outer normals
+				const vec2 screenOutwardNormals[3] = {
+					getOutwardNormal( screenEdges[0], faceNormal ),
+					getOutwardNormal( screenEdges[1], faceNormal ),
+					getOutwardNormal( screenEdges[2], faceNormal )
+				};
+
+				// determine the shift by which we move the edges
+				const vec2 edgeShift[3] = {
+					screenOutwardNormals[0] * dot( abs( screenOutwardNormals[0] ), halfPixelSize ),
+					screenOutwardNormals[1] * dot( abs( screenOutwardNormals[1] ), halfPixelSize ),
+					screenOutwardNormals[2] * dot( abs( screenOutwardNormals[2] ), halfPixelSize )
+				};
 
 				// expand the corners
-				corners[0] = expandCorner( corners[0], permutedFaceNormal, planeEdges[2], planeEdges[0], halfPixelSize );
-				corners[1] = expandCorner( corners[1], permutedFaceNormal, planeEdges[0], planeEdges[1], halfPixelSize );
-				corners[2] = expandCorner( corners[2], permutedFaceNormal, planeEdges[1], planeEdges[2], halfPixelSize );
+				corners[0] += getCornerShift( faceNormal, screenEdges[2], screenEdges[0], edgeShift[2], edgeShift[0] );
+				corners[1] += getCornerShift( faceNormal, screenEdges[0], screenEdges[1], edgeShift[0], edgeShift[1] );
+				corners[2] += getCornerShift( faceNormal, screenEdges[1], screenEdges[2], edgeShift[1], edgeShift[2] );
 		#endif
 
 				for( int i = 0 ; i < gl_in.length() ; i++ )
