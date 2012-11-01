@@ -14,7 +14,6 @@ namespace aop {
 		std::string sceneSettingsPath;
 		std::string probeDatabasePath;
 		std::string modelDatabasePath;
-		std::string neighborhoodDatabasePath;
 		std::string neighborhoodDatabaseV2Path;
 
 		Settings();
@@ -33,7 +32,7 @@ namespace aop {
 				camera.lookAt( direction, Eigen::Vector3f::UnitY() );
 			}
 
-			void pullFrom( const Camera &camera ) { 
+			void pullFrom( const Camera &camera ) {
 				position = camera.getPosition();
 				direction = camera.getDirection();
 			}
@@ -69,11 +68,11 @@ namespace aop {
 		float probeQuery_distanceTolerance;
 		float probeQuery_colorTolerance;
 
-		SceneSettings() 
+		SceneSettings()
 			: neighborhoodDatabase_queryTolerance( 1.0 )
 			, neighborhoodDatabase_maxDistance( 150.0 )
 			, probeGenerator_maxDistance( 5.0 )
-			, probeGenerator_resolution( 0.25 ) 
+			, probeGenerator_resolution( 0.25 )
 			, probeQuery_occlusionTolerance( 0.125 )
 			, probeQuery_distanceTolerance( 0.25 )
 			, probeQuery_colorTolerance( 1.0 )

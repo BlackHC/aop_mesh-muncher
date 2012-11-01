@@ -25,13 +25,12 @@ SERIALIZER_DEFAULT_EXTERN_IMPL( aop::Settings,
 	(sceneSettingsPath)
 	(probeDatabasePath)
 	(modelDatabasePath)
-	(neighborhoodDatabasePath)
 	(neighborhoodDatabaseV2Path)
 );
 
 namespace aop {
 	static const char *settingsFilename = "aopSettings.wml";
-	
+
 	void Settings::load() {
 		Serializer::TextReader reader( settingsFilename );
 		Serializer::read( reader, *this );
@@ -52,11 +51,12 @@ namespace aop {
 		Serializer::put( writer, *this );
 	}
 
-	Settings::Settings() : scenePath( "P:\\sgs\\sg_and_sgs_source\\survivor\\__GameData\\Editor\\Save\\Survivor_original_mission_editorfiles\\test\\scene.glscene" )
+	Settings::Settings()
+		: scenePath( "P:\\sgs\\sg_and_sgs_source\\survivor\\__GameData\\Editor\\Save\\Survivor_original_mission_editorfiles\\test\\scene.glscene" )
 		, sceneSettingsPath( "aopSceneSettings.wml" )
 		, probeDatabasePath( "probeDatabase" )
 		, modelDatabasePath( "modelDatabase" )
-		, neighborhoodDatabasePath( "neighborhoodDatabase" )
-		, neighborhoodDatabaseV2Path( "neighborhoodDatabaseV2" ) {
+		, neighborhoodDatabaseV2Path( "neighborhoodDatabaseV2" )
+	{
 	}
 }

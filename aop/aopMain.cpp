@@ -77,47 +77,10 @@ using namespace Eigen;
 std::weak_ptr<AntTweakBarEventHandler::GlobalScope> AntTweakBarEventHandler::globalScope;
 
 //////////////////////////////////////////////////////////////////////////
-
-// TODO: reorder the parameters in some consistent way! [10/10/2012 kirschan2]
-void sampleAllNeighbors( float maxDistance, NeighborhoodDatabase &database, SGSInterface::World &world ) {
-	AUTO_TIMER_FOR_FUNCTION();
-
-	const int numInstances = world.sceneRenderer.getNumInstances();
-
-	for( int instanceIndex = 0 ; instanceIndex < numInstances ; instanceIndex++ ) {
-		auto queryResults = world.sceneGrid.query(
-			-1,
-			instanceIndex,
-			world.sceneRenderer.getInstanceTransformation( instanceIndex ).translation(),
-			maxDistance
-		);
-
-		const int modelIndex = world.sceneRenderer.getModelIndex( instanceIndex );
-
-		database.getSampledModel( modelIndex ).addInstance( std::move( queryResults ) );
-	}
-}
-
-NeighborhoodDatabase::Query::Results queryVolumeNeighbors( SGSInterface::World *world, NeighborhoodDatabase &database, const Vector3f &position, float maxDistance, float tolerance ) {
-	AUTO_TIMER_FOR_FUNCTION();
-
-	auto sceneQueryResults = world->sceneGrid.query( -1, -1, position, maxDistance );
-
-	NeighborhoodDatabase::Query query( database, tolerance, maxDistance, std::move( sceneQueryResults ) );
-	auto results = query.execute();
-
-	for( auto result = results.begin() ; result != results.end() ; ++result ) {
-		log( boost::format( "%i: %f" ) % result->second % result->first );
-	}
-
-	return results;
-}
-
-//////////////////////////////////////////////////////////////////////////
 // V2
 //
 
-void sampleAllNeighborsV2( float maxDistance, NeighborhoodDatabaseV2 &database, SGSInterface::World &world ) {
+void sampleAllNeighborsV2( float maxDistance, Neighborhood::NeighborhoodDatabaseV2 &database, SGSInterface::World &world ) {
 	AUTO_TIMER_FOR_FUNCTION();
 
 	database.numIds = world.scene.models.size();
@@ -138,12 +101,12 @@ void sampleAllNeighborsV2( float maxDistance, NeighborhoodDatabaseV2 &database, 
 	}
 }
 
-NeighborhoodDatabaseV2::Query::Results queryVolumeNeighborsV2( SGSInterface::World *world, NeighborhoodDatabaseV2 &database, const Vector3f &position, float maxDistance, float tolerance ) {
+Neighborhood::NeighborhoodDatabaseV2::Query::Results queryVolumeNeighborsV2( SGSInterface::World *world, Neighborhood::NeighborhoodDatabaseV2 &database, const Vector3f &position, float maxDistance, float tolerance ) {
 	AUTO_TIMER_FOR_FUNCTION();
 
 	auto sceneQueryResults = world->sceneGrid.query( -1, -1, position, maxDistance );
 
-	NeighborhoodDatabaseV2::Query query( database, tolerance, std::move( sceneQueryResults ) );
+	Neighborhood::NeighborhoodDatabaseV2::Query query( database, tolerance, std::move( sceneQueryResults ) );
 	auto results = query.execute();
 
 	for( auto result = results.begin() ; result != results.end() ; ++result ) {
@@ -1146,31 +1109,6 @@ namespace aop {
 				"Neighborhood query tolerance",
 				AntTWBarUI::makeReferenceAccessor( application->sceneSettings.neighborhoodDatabase_queryTolerance )
 			) );
-			ui.add( AntTWBarUI::makeSharedButton( "Query neighbors", [this] () {
-				struct QueryNeighborsVisitor : Editor::SelectionVisitor {
-					Application *application;
-
-					QueryNeighborsVisitor( Application *application ) : application( application ) {}
-
-					void visit() {
-						logError( "No volume selected!\n" );
-					}
-					void visit( Editor::ObbSelection *selection ) {
-						application->startLongOperation();
-						auto queryResults = queryVolumeNeighbors(
-							application->world.get(),
-							application->neighborDatabase,
-							selection->getObb().transformation.translation(),
-							application->sceneSettings.neighborhoodDatabase_maxDistance,
-							application->sceneSettings.neighborhoodDatabase_queryTolerance
-						);
-						application->endLongOperation();
-
-						application->candidateSidebarUI->setModels( queryResults, selection->getObb().transformation.translation() );
-					}
-				};
-				QueryNeighborsVisitor( application ).dispatch( application->editor.selection );
-			} ) );
 			ui.add( AntTWBarUI::makeSharedButton( "Query neighbors V2", [this] () {
 				struct QueryNeighborsVisitor : Editor::SelectionVisitor {
 					Application *application;
@@ -1253,9 +1191,26 @@ namespace aop {
 				QueryVolumeVisitor( application ).dispatch( application->editor.selection );
 			} ) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
-			ui.add( AntTWBarUI::makeSharedButton( "Load probe database", [this] { application->probeDatabase.load( application->settings.probeDatabasePath ); } ) );
-			ui.add( AntTWBarUI::makeSharedButton( "Reset probe database", [this] { application->probeDatabase.clearAll(); } ) );
-			ui.add( AntTWBarUI::makeSharedButton( "Store probe database", [this] { application->probeDatabase.store( application->settings.probeDatabasePath ); } ) );
+			ui.add( AntTWBarUI::makeSharedButton( "Load probe database", [this] {
+				application->probeDatabase.load( application->settings.probeDatabasePath );
+			} ) );
+			ui.add( AntTWBarUI::makeSharedButton( "Reset probe database", [this] {
+				application->probeDatabase.clearAll();
+			} ) );
+			ui.add( AntTWBarUI::makeSharedButton( "Store probe database", [this] {
+				application->probeDatabase.store( application->settings.probeDatabasePath );
+			} ) );
+			ui.add( AntTWBarUI::makeSharedSeparator() );
+			ui.add( AntTWBarUI::makeSharedButton( "Load neighborhood database", [this] {
+				application->neighborDatabaseV2.load( application->settings.neighborhoodDatabaseV2Path );
+			} ) );
+			ui.add( AntTWBarUI::makeSharedButton( "Sample neighborhood database", [this] {
+				application->neighborDatabaseV2.clear();
+				sampleAllNeighborsV2( application->sceneSettings.neighborhoodDatabase_maxDistance, application->neighborDatabaseV2, *application->world );
+			} ) );
+			ui.add( AntTWBarUI::makeSharedButton( "Store neighborhood database", [this] {
+				application->neighborDatabaseV2.store( application->settings.neighborhoodDatabaseV2Path );
+			} ) );
 			ui.link();
 		}
 
@@ -1672,8 +1627,7 @@ namespace aop {
 
 		// TODO: fix parameter order [10/10/2012 kirschan2]
 #if 0
-		sampleAllNeighbors( sceneSettings.neighborhoodDatabase_maxDistance, neighborDatabase, *world );
-		sampleAllNeighborsV2( sceneSettings.neighborhoodDatabase_maxDistance, neighborDatabaseV2, *world );
+
 #endif
 
 		probeDatabase.registerSceneModels( world->scene.modelNames );

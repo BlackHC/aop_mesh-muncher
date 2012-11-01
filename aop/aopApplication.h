@@ -82,8 +82,7 @@ namespace aop {
 		bool hideScene;
 
 		ProbeDatabase probeDatabase;
-		NeighborhoodDatabase neighborDatabase;
-		NeighborhoodDatabaseV2 neighborDatabaseV2;
+		Neighborhood::NeighborhoodDatabaseV2 neighborDatabaseV2;
 		ModelDatabase modelDatabase;
 
 		bool renderOptixView;

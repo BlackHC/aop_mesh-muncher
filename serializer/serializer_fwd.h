@@ -14,6 +14,6 @@ struct IndexedProbeDataset;
 
 #define SERIALIZER_FWD_FRIEND_EXTERN( type ) \
 	template< typename Reader > \
-	friend void Serializer::read( Reader &reader, type &value ); \
+	friend void ::Serializer::read( Reader &reader, type &value ); \
 	template< typename Writer > \
-	friend void Serializer::write( Writer &writer, const type &value )
+	friend void ::Serializer::write( Writer &writer, const type &value )
