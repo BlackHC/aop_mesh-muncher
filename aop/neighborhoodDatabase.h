@@ -14,7 +14,7 @@
 #include <boost/accumulators/statistics/variance.hpp>
 #include <map>
 
-#include <boost/multi_array.hpp>
+#include <boost/dynamic_bitset.hpp>
 
 #include "boost/tuple/tuple.hpp"
 #include "boost/tuple/tuple_comparison.hpp"
@@ -93,8 +93,8 @@ namespace Neighborhood {
 		SERIALIZER_FWD_FRIEND_EXTERN( Neighborhood::NeighborhoodContext );
 	};
 
-	inline float getEntropy( float certainty, float probability, float alpha = 0.1 ) {
-		const float safeProbability = probability * (1.0 - alpha) + alpha * 0.5;
+	inline float getEntropy( float certainty, float probability, float alpha = 0.1f ) {
+		const float safeProbability = probability * (1.0f - alpha) + alpha * 0.5f;
 		const float positiveEntropy = -logf( safeProbability );
 		const float negativeEntropy = -logf( 1.0 - safeProbability );
 
@@ -137,6 +137,10 @@ namespace Neighborhood {
 
 		int getNumSampledModels() const {
 			return sampledModelsById.size();
+		}
+
+		int getTotalNumInstances() const {
+			return totalNumInstances;
 		}
 
 		const SampledModel &getSampledModel( Id id ) {
@@ -195,7 +199,7 @@ namespace Neighborhood {
 				}
 			};
 
-			// this structure holds information a distance that has not been matched
+			// this structure holds information about a distance that has not been matched
 			struct UnmatchedDistance {
 				float distance;
 				int candidateModelIndex;
@@ -218,14 +222,102 @@ namespace Neighborhood {
 			};
 			typedef std::vector< UnmatchedDistance > UnmatchedDistances;
 
+			struct MatchedDistances {
+				// counts all matches for a certain query distance and candidateModel
+				std::vector< boost::dynamic_bitset<> > matchedQueryDistancesByGlobalInstance;
+				// counts all matches for a certain query distance
+				std::vector<int> matchedQueryDistanceCounters;
+
+				MatchedDistances( int totalNumInstances, int numQueryDistances )
+					: matchedQueryDistancesByGlobalInstance( totalNumInstances, boost::dynamic_bitset<>( numQueryDistances ) )
+					, matchedQueryDistanceCounters( numQueryDistances )
+				{}
+
+				void match( int globalInstanceIndex, int queryDistanceIndex ) {
+					matchedQueryDistancesByGlobalInstance[ globalInstanceIndex ][ queryDistanceIndex ] = true;
+					++matchedQueryDistanceCounters[ queryDistanceIndex ];
+				}
+
+				int getTotalNumInstances() {
+					return matchedQueryDistancesByGlobalInstance.size();
+				}
+
+				int getNumQueryDistances() {
+					return matchedQueryDistanceCounters.size();
+				}
+			};
+
+			struct Scores {
+				std::vector<float> candidateInstanceScores;
+				float totalImportanceWeight;
+
+				float scoreOffset;
+
+				Scores( int totalNumInstances )
+					: candidateInstanceScores( totalNumInstances )
+					, totalImportanceWeight()
+					, scoreOffset()
+				{}
+
+				void integrateNeighborModelCandidateScores( float neighborModelWeight, const Scores &neighborModelCandidateScores ) {
+					const int totalNumInstances = candidateInstanceScores.size();
+					// update the total score
+					for( int globalInstanceIndex = 0 ; globalInstanceIndex < totalNumInstances ; globalInstanceIndex++ ) {
+						candidateInstanceScores[ globalInstanceIndex ] +=
+								neighborModelWeight
+							*
+								(neighborModelCandidateScores.scoreOffset + neighborModelCandidateScores.candidateInstanceScores[ globalInstanceIndex ])
+						;
+					}
+					totalImportanceWeight += neighborModelWeight * neighborModelCandidateScores.totalImportanceWeight;
+				}
+
+
+				void integrateMatchedDistances( MatchedDistances &matchedDistances ) {
+					const int numQueryDistances = matchedDistances.getNumQueryDistances();
+					const int totalNumInstances = matchedDistances.getTotalNumInstances();
+
+					std::vector<float> neighborModelImportanceWeights( numQueryDistances, 1.0 );
+					const float totalNeighborModelImportanceWeight = numQueryDistances;
+
+					totalImportanceWeight += totalNeighborModelImportanceWeight;
+
+					for( int globalInstanceIndex = 0 ; globalInstanceIndex < totalNumInstances ; ++globalInstanceIndex ) {
+						candidateInstanceScores[ globalInstanceIndex ] +=
+							matchedDistances.matchedQueryDistancesByGlobalInstance[ globalInstanceIndex ].count()
+						;
+					}
+				}
+
+				void integrateCorrelatedUnmatchedDistances( std::vector< int > &correlatedGlobalInstanceIndices ) {
+					// not using any atm
+					const float importanceWeight = 1.0;
+
+					totalImportanceWeight += importanceWeight;
+					scoreOffset += importanceWeight;
+
+					for(
+						auto correlatedGlobalInstanceIndex = correlatedGlobalInstanceIndices.begin() ;
+						correlatedGlobalInstanceIndex != correlatedGlobalInstanceIndices.end() ;
+						++correlatedGlobalInstanceIndex
+					) {
+						candidateInstanceScores[ *correlatedGlobalInstanceIndex ] -= importanceWeight;
+					}
+				}
+
+				float getInstanceScore( int globalInstanceIndex ) const {
+					return (candidateInstanceScores[ globalInstanceIndex ] + scoreOffset) / totalImportanceWeight;
+				}
+			};
+
+			// TODO: remove numMatchedDistances
 			template< class Policy >
 			UnmatchedDistances matchDistances(
 				Id sceneNeighborModelId,
-				int &numMatchedDistances,
-				std::vector<float> &neighborModelCandidateScores,
-				std::vector<float> &totalImportanceWeights
+				Scores &neighborModelCandidateScores
 			) {
 				const int numSampledModels = database.sampledModelsById.size();
+				const int totalNumInstances = database.getTotalNumInstances();
 
 				// get the query volume's distances for the current neighbor model
 				const Distances &queryDistances = queryDataset.getDistances( sceneNeighborModelId );
@@ -233,12 +325,8 @@ namespace Neighborhood {
 
 				const float neighborModelTolerance = Policy::getNeighborModelTolerance( this, sceneNeighborModelId );
 
-				// counts all matches for a certain query distance and candidateModel
-				boost::multi_array<int, 2> candidateMatchedDistancesCounters( boost::extents[numSampledModels][numQueryDistances] );
-				// counts all matches for a certain query distance
-				std::vector<int> matchedDistancesCounters( numQueryDistances );
-
 				UnmatchedDistances unmatchedDistances;
+				MatchedDistances matchedDistances( totalNumInstances, numQueryDistances );
 
 				int globalInstanceIndex = 0;
 				for( int candidateModelIndex = 0 ; candidateModelIndex < numSampledModels ; ++candidateModelIndex ) {
@@ -269,9 +357,7 @@ namespace Neighborhood {
 							// can this instance distance be matched by this query?
 							if( *instanceDistance <= endQueryDistanceInterval ) {
 								// match
-								++matchedDistancesCounters[ queryDistanceIndex ];
-								++candidateMatchedDistancesCounters[ candidateModelIndex ][ queryDistanceIndex ];
-								++numMatchedDistances;
+								matchedDistances.match( globalInstanceIndex, queryDistanceIndex );
 
 								// we're done with this instance distance
 								++instanceDistance;
@@ -285,44 +371,7 @@ namespace Neighborhood {
 					}
 				}
 
-				const int numUnmatchedDistances = unmatchedDistances.size();
-
-				const int totalNumDistances = numMatchedDistances + numUnmatchedDistances + numQueryDistances;
-
-				//const int numTotalInstances = globalInstanceIndex;
-				if( database.totalNumInstances > 0 && numQueryDistances > 0 ) {
-					// calculate the match probabilities
-					for( int queryDistanceIndex = 0 ; queryDistanceIndex < numQueryDistances ; ++queryDistanceIndex ) {
-						if( matchedDistancesCounters[ queryDistanceIndex ] == 0 ) {
-							continue;
-						}
-
-						// binWeight = #bin distances / #all distances
-						// = P( D | N )
-						const float binWeight = float(matchedDistancesCounters[queryDistanceIndex] + 1) / totalNumDistances;
-						
-						for( int candidateModelIndex = 0 ; candidateModelIndex < numSampledModels ; ++candidateModelIndex ) {
-							const SampledModel &candidateModel = database.sampledModelsById[ candidateModelIndex ].second;
-							const int numCandidateModelInstances = candidateModel.instances.size();
-							if( numCandidateModelInstances == 0 ) {
-								continue;
-							}
-
-							// = P( M | N, D )
-							const float candidateModelWeight = float( numCandidateModelInstances ) / database.totalNumInstances;
-							// = P( V = 1 | M, N, D )
-							const float conditionalProbability = float( candidateMatchedDistancesCounters[ candidateModelIndex ][ queryDistanceIndex ] ) / numCandidateModelInstances;
-							const float certainty = conditionalProbability;
-
-							const float averageProbability = float(matchedDistancesCounters[queryDistanceIndex] + 1) / database.totalNumInstances;
-							const float importanceWeight = getEntropy( certainty, averageProbability );
-							neighborModelCandidateScores[ candidateModelIndex ] += candidateModelWeight * conditionalProbability * importanceWeight;
-							totalImportanceWeights[ candidateModelIndex ] += importanceWeight;
-						}
-					}
-				}
-
-				log( boost::format( "%i: %i + %i" ) % sceneNeighborModelId % numQueryDistances % numUnmatchedDistances );
+				neighborModelCandidateScores.integrateMatchedDistances( matchedDistances );
 
 				return unmatchedDistances;
 			}
@@ -331,20 +380,11 @@ namespace Neighborhood {
 			void processUnmatchedDistances(
 				Id sceneNeighborModelId,
 				UnmatchedDistances &&unmatchedDistances,
-				const int numMatchedDistances,
-				std::vector<float> &neighborModelCandidateScores,
-				std::vector<float> &totalImportanceWeights
+				Scores &neighborModelCandidateScores
 			) {
-				const int numUnmatchedDistances = unmatchedDistances.size();
-
 				// initialize short-hand references
-				const int numSampledModels = database.sampledModelsById.size();
+				const int totalNumInstances = database.getTotalNumInstances();
 				const float neighborModelTolerance = Policy::getNeighborModelTolerance( this, sceneNeighborModelId );
-
-				const auto &queryData = queryDataset.getDistances( sceneNeighborModelId );
-				const int numQueryDistances = queryData.size();
-
-				const int numTotalMatches = numMatchedDistances + numQueryDistances + numUnmatchedDistances;
 
 				// we need another vector to hold the mismatches we cant process
 				UnmatchedDistances deferredUnmatchedDistances;
@@ -378,9 +418,12 @@ namespace Neighborhood {
 						std::sort( binBegin, binEnd, UnmatchedDistance::less_by_globalInstanceIndex );
 
 						// count the instances in this bin
+						std::vector<int> correlatedGlobalInstanceIndices;
+						correlatedGlobalInstanceIndices.reserve( binEnd - binBegin );
 						int numInstancesInBin = 0;
 						for( auto binElement = binBegin ; binElement != binEnd ; ) {
 							const int globalInstanceIndex = binElement->globalInstanceIndex;
+							correlatedGlobalInstanceIndices.push_back( globalInstanceIndex );
 							++binElement;
 							++numInstancesInBin;
 
@@ -396,50 +439,8 @@ namespace Neighborhood {
 							}
 						}
 
-						// count the entry elements in this bin and calculate the probability of the mismatch
-						for( auto binElement = binBegin ; binElement != binEnd ; ) {
-							const int candidateModelIndex = binElement->candidateModelIndex;
 
-							// count the models in this bin
-							int numCandidateModelInstancesInBin = 0;
-							do {
-								const int globalInstanceIndex = binElement->globalInstanceIndex;
-								do {
-									binElement++;
-								}
-								while(
-										binElement != binEnd
-									&&
-										binElement->globalInstanceIndex == globalInstanceIndex
-								);
-
-								numCandidateModelInstancesInBin++;
-							}
-							while(
-									binElement != binEnd
-								&&
-									binElement->candidateModelIndex == candidateModelIndex
-							);
-
-							// calculate the conditional probability that we have a mismatch
-							const SampledModel &candidateModel = database.sampledModelsById[ candidateModelIndex ].second;
-							const int numCandidateModelInstances = candidateModel.instances.size();
-
-							// TODO: verify that numCandidateModelInstances == 0 is impossible because there would be no mismatch otherwise.. [10/11/2012 kirschan2]
-							/*if( numCandidateModelInstances == 0 ) {
-								continue;
-							}*/
-							
-							//const float candidateModelWeight = numCandidateModelInstances / database.totalNumInstances;										
-							// candidateProbability = 0 here, because there is no match
-							
-							const float certainty = float( numCandidateModelInstancesInBin ) / numCandidateModelInstances;
-							const float averageProbability = float( numInstancesInBin ) / database.totalNumInstances;
-
-							const float importanceWeight = getEntropy( certainty, averageProbability );
-
-							totalImportanceWeights[ candidateModelIndex ] += importanceWeight;
-						}
+						neighborModelCandidateScores.integrateCorrelatedUnmatchedDistances( correlatedGlobalInstanceIndices );
 					}
 
 					// use the left over mismatches for the next round until we're done with everything
@@ -449,44 +450,34 @@ namespace Neighborhood {
 			}
 
 			template< class Policy >
-			std::vector<float> matchAgainstNeighborModel( Id sceneNeighborModelId ) {
-				const int numSampledModels = database.sampledModelsById.size();
+			Scores matchAgainstNeighborModel( Id sceneNeighborModelId ) {
+				const int totalNumInstances = database.getTotalNumInstances();
 
 				// scores for the current neighborModelIndex
-				std::vector<float> neighborModelCandidateScores( numSampledModels );
-				std::vector<float> totalImportanceWeights( numSampledModels );
-
-				int numMatchedDistances = 0;
+				Scores neighborModelCandidateScores( totalNumInstances );
 
 				// first phase: matches + query mismatches
-				std::vector< UnmatchedDistance > unmatchedDistances = matchDistances<Policy>( sceneNeighborModelId, numMatchedDistances, neighborModelCandidateScores, totalImportanceWeights );
+				std::vector< UnmatchedDistance > unmatchedDistances = matchDistances<Policy>(
+					sceneNeighborModelId,
+					neighborModelCandidateScores
+				);
 
 				// this is the number of merged mismatched distances
 				processUnmatchedDistances<Policy>(
 					sceneNeighborModelId,
 					std::move( unmatchedDistances ),
-					numMatchedDistances,
-					neighborModelCandidateScores,
-					totalImportanceWeights
+					neighborModelCandidateScores
 				);
-
-				for( int candidateModelIndex = 0 ; candidateModelIndex < numSampledModels ; ++candidateModelIndex ) {
-					const float totalImportanceWeight = totalImportanceWeights[ candidateModelIndex ];
-					if( totalImportanceWeight > 0.0f ) {
-						neighborModelCandidateScores[ candidateModelIndex ] /= totalImportanceWeight;
-					}
-				}
 
 				return neighborModelCandidateScores;
 			}
 
 			template< class Policy >
 			Results executeWithPolicy() {
-				const int numSampledModels = database.getNumSampledModels();
-				// total score of all candidates
-				std::vector<float> totalCandidateScores( numSampledModels );
+				const int totalNumInstances = database.getTotalNumInstances();
 
-				float totalScore = 0;
+				// total score of all candidates
+				Scores totalScores( totalNumInstances );
 
 				// we iterate over all model ids and compare the query distances against all sampled models---one neighbor model at a time
 				for( int sceneNeighborModelId = 0 ; sceneNeighborModelId < database.numIds ; ++sceneNeighborModelId ) {
@@ -497,28 +488,37 @@ namespace Neighborhood {
 						continue;
 					}
 
-					const std::vector<float> neighborModelCandidateScores = matchAgainstNeighborModel<Policy>( sceneNeighborModelId );
+					const Scores neighborModelCandidateScores = matchAgainstNeighborModel<Policy>( sceneNeighborModelId );
 
-					// update the total score
-					for( int candidateModelIndex = 0 ; candidateModelIndex < numSampledModels ; ++candidateModelIndex ) {
-						const float weightedScore = neighborModelCandidateScores[ candidateModelIndex ] * neighborModelWeight;
-						totalCandidateScores[ candidateModelIndex ] += weightedScore;
-						totalScore += weightedScore;
-					}
+					totalScores.integrateNeighborModelCandidateScores( neighborModelWeight, neighborModelCandidateScores );
 				}
 
 				// compute the final score and store it in our results data structure
-				if( totalScore > 0.0f )	{
-					Results results;
-					for( int candidateModelIndex = 0 ; candidateModelIndex < numSampledModels ; ++candidateModelIndex ) {
-						const auto sceneCandidateModelId = database.sampledModelsById[ candidateModelIndex ].first;
+				if( totalScores.totalImportanceWeight > 0.0f )	{
+					// determine the best model using argmax
+					const int numSampledModels = database.getNumSampledModels();
 
-						const float score = totalCandidateScores[ candidateModelIndex ] / totalScore;
-						// TOOD: hack to remove invisible objects [10/11/2012 kirschan2]
+					Results results;
+
+					int globalInstanceIndex = 0;
+					for( int candidateModelIndex = 0 ; candidateModelIndex < numSampledModels ; ++candidateModelIndex ) {
+						const SampledModel &candidateModel = database.sampledModelsById[ candidateModelIndex ].second;
+						const int numCandidateInstances = candidateModel.instances.size();
+
+						// apply an argmax on all instances
+						float bestCandidateInstanceScore = 0;
+
+						const auto candidateInstances_end = globalInstanceIndex + numCandidateInstances;
+						for( ; globalInstanceIndex < candidateInstances_end ; ++globalInstanceIndex ) {
+							bestCandidateInstanceScore = std::max( bestCandidateInstanceScore, totalScores.getInstanceScore( globalInstanceIndex ) );
+						}
+
+						const auto sceneCandidateModelId = database.sampledModelsById[ candidateModelIndex ].first;
 						if( database.modelDatabase->informationById[ sceneCandidateModelId ].diagonalLength > 0 ) {
-							results.push_back( Result( score, sceneCandidateModelId ) );
+							results.push_back( Result( bestCandidateInstanceScore, sceneCandidateModelId ) );
 						}
 					}
+
 					boost::sort( results, std::greater< Result >() );
 					return results;
 				}

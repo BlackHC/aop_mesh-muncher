@@ -1173,9 +1173,9 @@ namespace AntTWBarUI {
 
 	protected:
 		virtual void doRefresh() {
-			SimpleContainer::doRefresh();
-
 			updateSize();
+
+			SimpleContainer::doRefresh();			
 		}
 
 	private:

@@ -99,14 +99,22 @@ namespace SGSInterface {
 		Instance instance;
 		instance.modelId = modelIndex;
 		instance.transformation = Translation3f( center );
-		return sceneRenderer.addInstance( instance );
+
+		auto id = sceneRenderer.addInstance( instance );
+		sceneGrid.markDirty();
+		return id;
 	}
 
 	void World::removeInstance( int instanceIndex ) {
 		sceneRenderer.removeInstance( instanceIndex );
+
+		sceneGrid.markDirty();
 	}
 
 	void SceneGrid::build( float resolution ) {
+		dirty = false;
+		this->resolution = resolution;
+
 		const auto &sceneBoundingBox = renderer.sceneBoundingBox;
 		mapping = createCenteredIndexMapping( resolution, sceneBoundingBox.sizes(), sceneBoundingBox.center() );
 		instanceGrid.clear();
@@ -147,6 +155,10 @@ namespace SGSInterface {
 
 	// TODO: createCenteredIndexMapping creates a mess because I have to add an offset of 0.5 everywhere [10/9/2012 kirschan2]
 	SGSInterface::SceneGrid::QueryResults SceneGrid::query( int disableModelIndex, int disabledInstanceIndex, const Vector3f &position, float radius ) {
+		if( dirty ) {
+			rebuild();
+		}
+
 		QueryResults results;
 
 		const Vector3f diagonal = Vector3f::Constant( 1.0 );

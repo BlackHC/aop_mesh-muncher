@@ -36,6 +36,8 @@ namespace SGSInterface {
 
 	// allows for queries of object centers in a certain distance
 	struct SceneGrid {
+		bool dirty;
+
 		const SGSSceneRenderer &renderer;
 
 		typedef std::vector< int > InstanceIndices;
@@ -45,9 +47,16 @@ namespace SGSInterface {
 		/*void load();
 		void store();*/
 
-		SceneGrid( const SGSSceneRenderer &renderer ) : renderer( renderer ) {}
+		SceneGrid( const SGSSceneRenderer &renderer )
+			: renderer( renderer )
+			, resolution()
+			, dirty( true )
+		{}
 
 		void build( float resolution );
+		void rebuild() {
+			build( resolution );
+		}
 
 		QueryResults query(
 			int disableModelIndex,
@@ -56,7 +65,12 @@ namespace SGSInterface {
 			float radius
 		);
 
+		void markDirty() {
+			dirty = true;
+		}
+
 	private:
+		float resolution;
 		SimpleIndexMapping3 mapping;
 		std::vector< InstanceIndices > instanceGrid;
 	};

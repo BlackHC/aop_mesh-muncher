@@ -1,0 +1,31 @@
+-:
+	views:
+		'':
+			position -7.0182085 33.2828445 5.81154108
+			direction -0.107570246 -0.566406786 -0.817075372
+	volumes:
+		'':
+			volume:
+				transformation 1 0 0 0 0 1 0 0 0 0 1 0 -25.0501537 54.6704597 -52.8126259 1
+				size 2.42738628 1.31531477 2.56205773
+		'':
+			volume:
+				transformation 1 0 0 0 0 1 0 0 0 0 1 0 -72.0359497 50.3923492 -48.2725639 1
+				size 2.1018362 1.83153105 1.66302502
+		'':
+			volume:
+				transformation 1 0 0 0 0 1 0 0 0 0 1 0 -59.8732109 44.7138939 -4.61718321 1
+				size 1.45974517 1.62658226 1.25705087
+		'':
+			volume:
+				transformation 1 0 0 0 0 1 0 0 0 0 1 0 -26.3906784 44.4960861 -10.1344328 1
+				size 5 5 5
+		'':
+			volume:
+				transformation 1 0 0 0 0 1 0 0 0 0 1 0 -34.3314743 84.3763199 56.3205528 1
+				size 5 5 5
+	modelGroups
+	neighborhoodDatabase_queryTolerance 1
+	neighborhoodDatabase_maxDistance 5
+	probeGenerator_maxDistance 5
+	probeGenerator_resolution 0.25
