@@ -412,9 +412,12 @@ inline IndexMapping3<> createIndexMapping( const Eigen::Vector3i &size, const Ei
 
 // guaranteed: non empty
 inline IndexMapping3<> createCenteredIndexMapping( const float resolution, const Eigen::Vector3f &size, const Eigen::Vector3f &center = Eigen::Vector3f::Zero() ) {
-	const Eigen::Vector3i count3 = ceil( size / resolution ).cwiseMax( 1 ); // + Eigen::Vector3i::Constant( 1 );
-	Eigen::Affine3f indexToPosition = Eigen::Translation3f( center ) * Eigen::Scaling( resolution ) * Eigen::Translation3f( -(count3.cast<float>() - Eigen::Vector3f::Constant( 1.0f )) * 0.5 );
-	return IndexMapping3<>( SimpleIndexer3( count3 ) , indexToPosition );
+	// from probeGenerator.cpp
+	const Eigen::Vector3i halfExtent = ceil( size / (2.f * resolution) - Eigen::Vector3f::Constant( 0.5f ) );
+	const Eigen::Vector3i count3 = 2 * halfExtent + Eigen::Vector3i::Constant( 1 );
+
+	Eigen::Affine3f indexToPosition = Eigen::Translation3f( center ) * Eigen::Scaling( resolution ) * Eigen::Translation3f( -halfExtent.cast<float>() );
+	return IndexMapping3<>( SimpleIndexer3( count3 ), indexToPosition );
 }
 
 typedef IndexMapping3<> SimpleIndexMapping3;

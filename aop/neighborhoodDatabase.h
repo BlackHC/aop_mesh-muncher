@@ -108,9 +108,8 @@ namespace Neighborhood {
 #endif
 
 	// alpha is the base probability for either event happening (this is for a two-event state)s
-	inline float getEntropy( float probability, float alpha = 0.1f ) {
-		const float safeProbability = probability * (1.0f - 2 * alpha) + alpha;
-		const float entropy = -logf( safeProbability );
+	inline float getEntropy( float probability ) {
+		const float entropy = -logf( probability );
 
 		return entropy;
 	}
@@ -219,7 +218,7 @@ namespace Neighborhood {
 				}
 
 				static float getNeighborModelWeight( Query *query, Id id ) {
-					return query->database.modelDatabase->informationById[id].diagonalLength;
+					return logf( query->database.modelDatabase->informationById[id].diagonalLength + 3 );
 				}
 
 				/*static float getDistanceWeight( float neighborModelTolerance, float distance ) {
@@ -405,7 +404,7 @@ namespace Neighborhood {
 						std::vector<float> missingImportanceWeights( numQueryDistances );
 
 						for( int queryDistanceIndex = 0 ; queryDistanceIndex < numQueryDistances ; ++queryDistanceIndex ) {
-							const float frequency = float( matchedDistances.matchedQueryDistanceCounters[ queryDistanceIndex ] + 1 ) / (totalNumInstances + 1);
+							const float frequency = float( matchedDistances.matchedQueryDistanceCounters[ queryDistanceIndex ] + 1 ) / (totalNumInstances + 2);
 							existsImportanceWeights[ queryDistanceIndex ] = getEntropy( frequency );
 							missingImportanceWeights[ queryDistanceIndex ] = getEntropy( 1.0f - frequency );
 						}
@@ -430,7 +429,7 @@ namespace Neighborhood {
 						const int totalNumInstances = candidateInstanceScores.size();
 
 						const int numInstances = correlatedGlobalInstanceIndices.size();
-						const float frequency = float( numInstances ) / (totalNumInstances + 1);
+						const float frequency = float( numInstances ) / (totalNumInstances + 2);
 
 						const float existsImportanceWeight = getEntropy( frequency );
 						const float missingImportanceWeight = getEntropy( 1.0 - frequency );
@@ -679,7 +678,7 @@ namespace Neighborhood {
 			}
 
 			Results execute() {
-				return executeWithPolicy< ImportanceWeightPolicy >();
+				return executeWithPolicy< UniformWeightPolicy >();
 			}
 		};
 	};

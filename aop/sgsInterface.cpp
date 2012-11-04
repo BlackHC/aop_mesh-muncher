@@ -135,7 +135,7 @@ namespace SGSInterface {
 			);
 			for( ; iter.hasMore() ; ++iter ) {
 				const auto &index3 = iter.getIndex3();
-				if( mapping.isValid( index3 ) ) { 
+				if( mapping.isValid( index3 ) ) {
 					const int index = mapping.getIndex( index3 );
 					instanceGrid[ index ].push_back( instanceIndex );
 				}
@@ -167,21 +167,30 @@ namespace SGSInterface {
 
 		const Vector3i beginIndex3 = mapping.clampIndex3( floor( Vector3f::Constant( 0.5f ) + mapping.getIndex3( minCorner ) ) );
 		const Vector3i endIndex3 = mapping.clampIndex3( ceil( Vector3f::Constant( 0.5f ) + mapping.getIndex3( maxCorner ) + diagonal ) );
-		for( auto iter = mapping.getSubIterator( beginIndex3, endIndex3 ) ; iter.hasMore() ; ++iter ) {
-			const InstanceIndices &instanceIndices = instanceGrid[ iter.getIndex() ];
-
-			for( auto instanceIndex = instanceIndices.begin() ; instanceIndex != instanceIndices.end() ; ++instanceIndex ) {
-				const int modelIndex = renderer.getModelIndex( *instanceIndex );
-				if( 
-					*instanceIndex == disabledInstanceIndex ||
-					modelIndex == disableModelIndex
-				) {
+		for( int z = beginIndex3[2] ; z < endIndex3[2] ; ++z ) {
+			for( int y = beginIndex3[1] ; y < endIndex3[1] ; ++y ) {
+				for( int x = beginIndex3[0] ; x < endIndex3[0] ; ++x ) {
+					Vector3i index3( x, y, z );
+					if( !mapping.isValid( index3 ) ) {
 						continue;
-				}
+					}
 
-				const float distance = (renderer.getInstanceTransformation( *instanceIndex ).translation() - position).norm();
-				if( distance <= radius ) {
-					results.emplace_back( std::make_pair( modelIndex, distance ) );
+					const InstanceIndices &instanceIndices = instanceGrid[ mapping.getIndex( index3 ) ];
+
+					for( auto instanceIndex = instanceIndices.begin() ; instanceIndex != instanceIndices.end() ; ++instanceIndex ) {
+						const int modelIndex = renderer.getModelIndex( *instanceIndex );
+						if(
+							*instanceIndex == disabledInstanceIndex ||
+							modelIndex == disableModelIndex
+						) {
+								continue;
+						}
+
+						const float distance = (renderer.getInstanceTransformation( *instanceIndex ).translation() - position).norm();
+						if( distance <= radius ) {
+							results.emplace_back( std::make_pair( modelIndex, distance ) );
+						}
+					}
 				}
 			}
 		}

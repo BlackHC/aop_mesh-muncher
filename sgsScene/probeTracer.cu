@@ -39,7 +39,7 @@ rtBuffer<ProbeSample> probeSamples;
 RT_PROGRAM void sampleProbes() {
 	TransformedProbe transformedProbe = transformedProbes[ probeIndex ];
 
-#if 0
+#if 1
 	Onb onb( transformedProbe.direction );
 
 	//rtPrintf( "%f", dot( onb.m_normal, cross( onb.m_tangent, onb.m_binormal ) ) );

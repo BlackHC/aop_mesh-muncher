@@ -588,6 +588,7 @@ void OptixRenderer::prepareLaunch() {
 		acceleration->markDirty();
 	}
 }
+
 void OptixRenderer::createHemisphereSamples( optix::float3 *hemisphereSamples ) {
 	// produces randomness out of thin air
 	boost::random::mt19937 rng;

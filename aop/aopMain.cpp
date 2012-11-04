@@ -101,7 +101,7 @@ void sampleAllNeighborsV2( float maxDistance, Neighborhood::NeighborhoodDatabase
 	}
 }
 
-Neighborhood::NeighborhoodDatabaseV2::Query::Results queryVolumeNeighborsV2( SGSInterface::World *world, Neighborhood::NeighborhoodDatabaseV2 &database, const Vector3f &position, float maxDistance, float tolerance ) {
+Neighborhood::Results queryVolumeNeighborsV2( SGSInterface::World *world, Neighborhood::NeighborhoodDatabaseV2 &database, const Vector3f &position, float maxDistance, float tolerance ) {
 	AUTO_TIMER_FOR_FUNCTION();
 
 	auto sceneQueryResults = world->sceneGrid.query( -1, -1, position, maxDistance );
@@ -1262,6 +1262,7 @@ namespace aop {
 		glEnable(GL_DEPTH_TEST);
 		glDepthMask(GL_TRUE);
 		glClearDepth(1.f);
+		glClearColor( 0.2, 0.3, 0.4, 1.0 );
 	}
 
 	void Application::initSGSInterface() {
@@ -1624,11 +1625,6 @@ namespace aop {
 		initEventHandling();
 
 		initSGSInterface();
-
-		// TODO: fix parameter order [10/10/2012 kirschan2]
-#if 0
-
-#endif
 
 		probeDatabase.registerSceneModels( world->scene.modelNames );
 
