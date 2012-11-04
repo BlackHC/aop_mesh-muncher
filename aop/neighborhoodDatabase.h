@@ -212,7 +212,7 @@ namespace Neighborhood {
 			};
 			typedef std::vector< UnmatchedDistance > UnmatchedDistances;
 
-			struct UniformWeightPolicy {
+			struct SharedPolicy {
 				static float getNeighborModelTolerance( Query *query, Id id ) {
 					return query->database.modelDatabase->informationById[id].diagonalLength * 0.5f;
 				}
@@ -228,7 +228,9 @@ namespace Neighborhood {
 				static float getDistanceToleranceScale( float distance ) {
 					return 1.0f + (distance - 1.0f) * 0.5f;
 				}
+			};
 
+			struct UniformWeightPolicy : SharedPolicy {
 				struct MatchedDistances {
 					// counts all matches for a certain query distance and candidateModel
 					std::vector< boost::dynamic_bitset<> > matchedQueryDistancesByGlobalInstance;
@@ -321,23 +323,7 @@ namespace Neighborhood {
 				};
 			};
 
-			struct ImportanceWeightPolicy {
-				static float getNeighborModelTolerance( Query *query, Id id ) {
-					return query->database.modelDatabase->informationById[id].diagonalLength * 0.5f;
-				}
-
-				static float getNeighborModelWeight( Query *query, Id id ) {
-					return query->database.modelDatabase->informationById[id].diagonalLength;
-				}
-
-				/*static float getDistanceWeight( float neighborModelTolerance, float distance ) {
-					return neighborModelTolerance / distance;
-				}*/
-
-				static float getDistanceToleranceScale( float distance ) {
-					return 1.0f + (distance - 1.0f) * 0.5f;
-				}
-
+			struct ImportanceWeightPolicy : SharedPolicy {
 				struct MatchedDistances {
 					// counts all matches for a certain query distance and candidateModel
 					std::vector< boost::dynamic_bitset<> > matchedQueryDistancesByGlobalInstance;
@@ -457,6 +443,98 @@ namespace Neighborhood {
 							return finalScore / finalWeight;
 						}
 						return 0.0f;
+					}
+				};
+			};
+
+			struct UniformScorePolicy : SharedPolicy {
+				struct MatchedDistances {
+					// counts all matches for a certain query distance and candidateModel
+					std::vector<int> matchedQueryDistancesByGlobalInstance;
+					int numQueryDistances;
+
+					MatchedDistances( int totalNumInstances, int numQueryDistances )
+						: matchedQueryDistancesByGlobalInstance( totalNumInstances )
+						, numQueryDistances( numQueryDistances )
+					{}
+
+					void match( int globalInstanceIndex, int queryDistanceIndex ) {
+						matchedQueryDistancesByGlobalInstance[ globalInstanceIndex ][ queryDistanceIndex ] = true;
+						++matchedQueryDistanceCounters[ queryDistanceIndex ];
+					}
+
+					int getTotalNumInstances() {
+						return matchedQueryDistancesByGlobalInstance.size();
+					}
+
+					int getNumQueryDistances() {
+						return matchedQueryDistanceCounters.size();
+					}
+				};
+
+				struct Scores {
+					std::vector<float> candidateInstanceScores;
+					float totalImportanceWeight;
+
+					float scoreOffset;
+
+					Scores( int totalNumInstances )
+						: candidateInstanceScores( totalNumInstances )
+						, totalImportanceWeight()
+						, scoreOffset()
+					{}
+
+					bool isEmpty() {
+						return totalImportanceWeight == 0.0f;
+					}
+
+					void integrateNeighborModelCandidateScores( float neighborModelWeight, const Scores &neighborModelCandidateScores ) {
+						const int totalNumInstances = candidateInstanceScores.size();
+						// update the total score
+						for( int globalInstanceIndex = 0 ; globalInstanceIndex < totalNumInstances ; globalInstanceIndex++ ) {
+							candidateInstanceScores[ globalInstanceIndex ] +=
+									neighborModelWeight
+								*
+									(neighborModelCandidateScores.scoreOffset + neighborModelCandidateScores.candidateInstanceScores[ globalInstanceIndex ])
+							;
+						}
+						totalImportanceWeight += neighborModelWeight * neighborModelCandidateScores.totalImportanceWeight;
+					}
+
+					void integrateMatchedDistances( MatchedDistances &matchedDistances ) {
+						const int numQueryDistances = matchedDistances.getNumQueryDistances();
+						const int totalNumInstances = matchedDistances.getTotalNumInstances();
+
+						std::vector<float> neighborModelImportanceWeights( numQueryDistances, 1.0 );
+						const float totalNeighborModelImportanceWeight = numQueryDistances;
+
+						totalImportanceWeight += totalNeighborModelImportanceWeight;
+
+						for( int globalInstanceIndex = 0 ; globalInstanceIndex < totalNumInstances ; ++globalInstanceIndex ) {
+							candidateInstanceScores[ globalInstanceIndex ] +=
+								matchedDistances.matchedQueryDistancesByGlobalInstance[ globalInstanceIndex ].count()
+							;
+						}
+					}
+
+					void integrateCorrelatedUnmatchedDistances( std::vector< int > &&correlatedGlobalInstanceIndices ) {
+						// not using any atm
+						const float importanceWeight = 1.0;
+
+						totalImportanceWeight += importanceWeight;
+						scoreOffset += importanceWeight;
+
+						for(
+							auto correlatedGlobalInstanceIndex = correlatedGlobalInstanceIndices.begin() ;
+							correlatedGlobalInstanceIndex != correlatedGlobalInstanceIndices.end() ;
+							++correlatedGlobalInstanceIndex
+						) {
+							candidateInstanceScores[ *correlatedGlobalInstanceIndex ] -= importanceWeight;
+						}
+					}
+
+					float getInstanceScore( int globalInstanceIndex ) const {
+						return (candidateInstanceScores[ globalInstanceIndex ] + scoreOffset) / totalImportanceWeight;
 					}
 				};
 			};
