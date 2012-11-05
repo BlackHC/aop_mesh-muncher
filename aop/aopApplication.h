@@ -147,5 +147,8 @@ namespace aop {
 		void NeighborhoodDatabase_sampleScene();
 
 		QueryResults fullQueryVolume( const Obb &queryVolume, const RawProbes &queryProbes, const RawProbeSamples &queryProbeSamples );
+
+		// validation helper
+		void NeighborhoodValidation_queryAllInstances( const std::string &filename );
 	};
 }

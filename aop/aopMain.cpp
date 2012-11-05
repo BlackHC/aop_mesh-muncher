@@ -72,6 +72,8 @@ using namespace Eigen;
 
 #include "visualizations.h"
 
+#include "validation.h"
+
 #pragma warning( once: 4244 )
 
 std::weak_ptr<AntTweakBarEventHandler::GlobalScope> AntTweakBarEventHandler::globalScope;
@@ -1013,7 +1015,7 @@ namespace aop {
 
 				application->endLongOperation();
 			} ) );
-			ui.add( AntTWBarUI::makeSharedButton( "Remerge models", [this] {
+			ui.add( AntTWBarUI::makeSharedButton( "Remerge models (recompress)", [this] {
 				application->startLongOperation();
 
 				const auto &modelIndices = application->modelTypesUI->markedModels;
@@ -1200,6 +1202,7 @@ namespace aop {
 			ui.add( AntTWBarUI::makeSharedButton( "Store probe database", [this] {
 				application->probeDatabase.store( application->settings.probeDatabasePath );
 			} ) );
+
 			ui.add( AntTWBarUI::makeSharedSeparator() );
 			ui.add( AntTWBarUI::makeSharedButton( "Load neighborhood database", [this] {
 				application->neighborDatabaseV2.load( application->settings.neighborhoodDatabaseV2Path );
@@ -1211,6 +1214,12 @@ namespace aop {
 			ui.add( AntTWBarUI::makeSharedButton( "Store neighborhood database", [this] {
 				application->neighborDatabaseV2.store( application->settings.neighborhoodDatabaseV2Path );
 			} ) );
+
+			ui.add( AntTWBarUI::makeSharedSeparator() );
+			ui.add( AntTWBarUI::makeSharedButton( "Create neighborhood validation files", [this] {
+				application->NeighborhoodValidation_queryAllInstances( application->settings.neighborhoodValidationDataPath );
+			} ) );
+
 			ui.link();
 		}
 
@@ -1857,6 +1866,32 @@ namespace aop {
 	void Application::endLongOperation() {
 		timedLog->notifyApplicationOnMessage = false;
 		ProgressTracker::onMarkFinished = nullptr;
+	}
+
+	void Application::NeighborhoodValidation_queryAllInstances( const std::string &filename ) {
+		const int numModels = world->scene.models.size();
+		const int numInstances = world->sceneRenderer.getNumInstances();
+		const float maxDistance = sceneSettings.neighborhoodDatabase_maxDistance;
+
+		Validation::NeighborhoodData data( numModels );
+		data.maxDistance = maxDistance;
+
+		for( int instanceIndex = 0 ; instanceIndex < numInstances ; instanceIndex++ ) {
+			auto neighborContext = world->sceneGrid.query(
+				-1,
+				instanceIndex,
+				world->sceneRenderer.getInstanceTransformation( instanceIndex ).translation(),
+				maxDistance
+			);
+
+			data.queryDatasets.push_back( neighborContext );
+
+			const int modelIndex = world->sceneRenderer.getModelIndex( instanceIndex );
+			data.queryInfos.push_back( modelIndex );
+			data.instanceCounts.count( modelIndex );
+		}
+
+		Validation::NeighborhoodData::store( filename, data );
 	}
 }
 

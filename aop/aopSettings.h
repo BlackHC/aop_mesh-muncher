@@ -16,6 +16,8 @@ namespace aop {
 		std::string modelDatabasePath;
 		std::string neighborhoodDatabaseV2Path;
 
+		std::string neighborhoodValidationDataPath;
+
 		Settings();
 
 		void load();

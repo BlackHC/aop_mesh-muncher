@@ -122,6 +122,7 @@ CUDA_ADD_EXECUTABLE(aop
 	aopApplication.h
 	aopSettings.h
 	aopSettingsStorage.cpp
+	aopSettingsStorage.h
 	aopMain.cpp
 
 	aopMainUI.h
@@ -153,15 +154,18 @@ CUDA_ADD_EXECUTABLE(aop
 
 	modelDatabase.h
 	modelDatabase.cpp
+	modelDatabaseStorage.h
 	modelDatabaseStorage.cpp
 
 	probeDatabase.h
 	probeDatabase.cpp
 	probeDatabaseQueries.h
+	probeDatabaseStorage.h
 	probeDatabaseStorage.cpp
 
 	neighborhoodDatabase.h
 	neighborhoodDatabase.cpp
+	neighborhoodDatabaseStorage.h
 	neighborhoodDatabaseStorage.cpp
 
 	editor.h
@@ -175,6 +179,10 @@ CUDA_ADD_EXECUTABLE(aop
 
 	modelButtonWidget.h
 	modelButtonWidget.cpp
+
+	validation.h
+	validationStorage.h
+	validationStorage.cpp
 )
 
 ADD_EXECUTABLE(Test_aop
