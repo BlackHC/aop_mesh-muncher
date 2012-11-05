@@ -96,7 +96,7 @@ struct ModelDatabase {
 
 	//////////////////////////////////////////////////////////////////////////
 	// TODO: move this into an idConverter class? [10/15/2012 kirschan2]
-	std::map< std::string, ModelIndex > modelNameIdMap;
+	std::unordered_map< std::string, ModelIndex > modelNameIdMap;
 		
 	ModelIndex convertToModelIndex( const std::string &name ) {
 		auto it = modelNameIdMap.find( name );

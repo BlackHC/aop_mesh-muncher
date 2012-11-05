@@ -132,7 +132,7 @@ namespace Serializer {
 	}
 
 	inline void write( BinaryWriter &writer, const std::string &value ) {
-		unsigned int size = (unsigned int)  value.size();
+		unsigned int size = (unsigned int) value.size();
 		fwrite( &size, sizeof( unsigned int ), 1, writer.handle );
 		fwrite( &value[0], size, 1, writer.handle );
 	}

@@ -30,6 +30,14 @@
 
 #include "probeGenerator.h"
 
+struct InstanceProbeDataset;
+struct IndexedProbeSamples;
+struct SampledModel;
+
+SERIALIZER_FWD_EXTERN_DECL( InstanceProbeDataset )
+SERIALIZER_FWD_EXTERN_DECL( IndexedProbeSamples )
+SERIALIZER_FWD_EXTERN_DECL( SampledModel )
+
 struct QueryResult {
 	float score;
 	int sceneModelIndex;
@@ -158,6 +166,15 @@ typedef ProbeGenerator::Probes RawProbes;
 typedef OptixProgramInterface::ProbeSample RawProbeSample;
 typedef OptixProgramInterface::ProbeSamples RawProbeSamples;
 
+// TODO: IO sucks as name [11/5/2012 kirschan2]
+namespace IO {
+	void loadRawQuery( const std::string &filename, RawProbes &probes, RawProbeSamples &probeSamples );
+	void storeRawQuery( const std::string &filename, const RawProbes &probes, const RawProbeSamples &probeSamples );
+	
+	QueryResults loadQueryResults( const std::string &filename );
+	void storeQueryResults( const std::string &filename, const QueryResults &results );
+}
+
 struct IDatabase {
 	virtual void registerSceneModels( const std::vector< std::string > &modelNames ) = 0;
 
@@ -181,14 +198,6 @@ struct IDatabase {
 
 	// the query interface is implemented differently by every database
 };
-
-struct InstanceProbeDataset;
-struct IndexedProbeSamples;
-struct SampledModel;
-
-SERIALIZER_FWD_EXTERN_DECL( InstanceProbeDataset )
-SERIALIZER_FWD_EXTERN_DECL( IndexedProbeSamples )
-SERIALIZER_FWD_EXTERN_DECL( SampledModel )
 
 #include <autoTimer.h>
 

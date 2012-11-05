@@ -50,6 +50,12 @@ namespace Neighborhood {
 	typedef std::pair< float, Id > Result;
 	typedef std::vector< Result > Results;
 
+	RawIdDistances loadRawIdDistances( const std::string &filename );
+	void storeRawIdDistances( const std::string &filename, RawIdDistances &rawIdDistances );
+
+	Results loadResults( const std::string &filename );
+	void storeResults( const std::string &filename, const Results &results );
+
 	struct NeighborhoodContext {
 		NeighborhoodContext() {}
 

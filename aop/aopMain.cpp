@@ -1306,7 +1306,6 @@ namespace aop {
 
 			modelDatabase.modelNameIdMap[ idInformation.name ] = modelId;
 			modelDatabase.informationById.emplace_back( std::move( idInformation ) );
-
 		}
 
 		debugUI->add( std::make_shared< DebugObjects::ModelDatabase >( this ) );

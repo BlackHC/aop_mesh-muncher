@@ -40,6 +40,8 @@ using namespace Eigen;
 struct SGSSceneRuntime {
 	SGSScene *scene;
 
+	static const int NO_MODEL = -1;
+
 	SGSSceneRuntime( SGSScene *scene ) : scene( scene ) {}
 
 	int findTexture( const std::string &name ) {
@@ -58,19 +60,70 @@ struct SGSSceneRuntime {
 			}
 		}
 
-		return -1;
+		return NO_MODEL;
 	}
 
-	/*int addColorTexture( int r, int g, int b ) {
-		const std::string name = boost::str( boost::format( "color %i %i %i" ) % r % g % b );
-
-		int textureIndex = findTexture( name );
-		if( textureIndex == SGSScene::NO_TEXTURE ) {
-			SGSScene::Texture texture;
-			texture.name = name;
-			texture.rawContent
+	int importModel( const SGSScene &otherScene, const int otherModelIndex ) {
+		const auto &modelName = otherScene.modelNames[ otherModelIndex ];
+		// check whether the object already exists
+		{
+			const int modelIndex = findModel( modelName );
+			if( modelIndex != NO_MODEL ) {
+				return modelIndex;
+			}
 		}
-	}*/
+
+		const auto &otherModel = otherScene.models[ otherModelIndex ];
+		auto model = createModel( modelName );
+
+		// copy the bounding box and sphere
+		model.bounding = otherModel.bounding;
+		// copy the sub models
+		const int numSubModels = otherModel.numSubObjects;
+		for( int subModelIndex = 0 ; subModelIndex < numSubModels ; subModelIndex++ ) {
+			const auto &otherSubModel = otherScene.subObjects[ otherModel.startSubObject + subModelIndex ];
+			auto subModel = createSubObject(
+				otherSubModel.subModelName,
+				allocateVertices( otherSubModel.numVertices ),
+				allocateIndices( otherSubModel.numIndices ),
+				otherSubModel.material
+			);
+			// copy the texture if needed
+			{
+				const int otherTextureIndex = otherSubModel.material.textureIndex[0];
+				if( otherTextureIndex != SGSScene::NO_TEXTURE ) {
+					const auto &otherTexture = otherScene.textures[ otherTextureIndex ];
+
+					int textureIndex = findTexture( otherTexture.name );
+					if( textureIndex == SGSScene::NO_TEXTURE ) {
+						textureIndex = pushTexture( otherTexture );
+					}
+
+					subModel.material.textureIndex[0] = textureIndex;
+				}
+			}
+			// copy the bounding box and sphere
+			subModel.bounding = otherSubModel.bounding;
+
+			// copy the vertex data
+			{
+				const auto beginVertex = otherScene.vertices.begin() + otherSubModel.startVertex;
+				const auto endVertex = beginVertex + otherSubModel.numVertices;
+				pushVertices( subModel, beginVertex, endVertex );
+			}
+			// copy the index data
+			{
+				const auto beginIndex = otherScene.indices.begin() + otherSubModel.startIndex;
+				const auto endIndex = beginIndex + otherSubModel.numIndices;
+				const int offset = subModel.startVertex - otherSubModel.startVertex;
+				pushIndices( offset, subModel, beginIndex, endIndex );
+			}
+
+			pushSubObject( model, subModel );
+		}
+
+		return pushModel( model );
+	}
 
 	static SGSScene::Material createMaterial( unsigned char r, unsigned char g, unsigned char b ) {
 		SGSScene::Material material;
@@ -88,7 +141,7 @@ struct SGSSceneRuntime {
 		material.alpha = 255;
 		material.alphaType = SGSScene::Material::AT_MATERIAL;
 
-		material.textureIndex[0] = -1;
+		material.textureIndex[0] = SGSScene::NO_TEXTURE;
 
 		return material;
 	}
@@ -144,7 +197,7 @@ struct SGSSceneRuntime {
 	SGSScene::Model createModel( const std::string &name ) {
 		SGSScene::Model model;
 
-		model.startSubObject = scene->models.size();
+		model.startSubObject = scene->subObjects.size();
 		model.numSubObjects = 0;
 
 		scene->modelNames.push_back( name );
@@ -197,9 +250,22 @@ struct SGSSceneRuntime {
 		return subObject.numVertices++;
 	}
 
+	template< typename RandomIterator >
+	int pushVertices( SGSScene::SubObject &subObject, RandomIterator begin, RandomIterator end ) {
+		std::copy( begin, end, std::back_inserter( scene->vertices ) );
+
+		return subObject.numVertices += end - begin;
+	}
+
 	void pushIndex( SGSScene::SubObject &subObject, int index ) {
 		scene->indices.push_back( index );
 		subObject.numIndices++;
+	}
+
+	template< typename RandomIterator >
+	void pushIndices( int offset, SGSScene::SubObject &subObject, RandomIterator begin, RandomIterator end ) {
+		std::transform( begin, end, std::back_inserter( scene->indices ), [offset] (const int index) { return index + offset; } );
+		subObject.numIndices += end - begin;
 	}
 
 	void pushQuad(
@@ -209,7 +275,7 @@ struct SGSSceneRuntime {
 		const SGSScene::Vertex &vertexC,
 		const SGSScene::Vertex &vertexD
 	) {
-		int firstVertex = scene->vertices.size();
+		const int firstVertex = scene->vertices.size();
 
 		pushVertex( subObject, vertexA );
 		pushVertex( subObject, vertexB );
@@ -235,6 +301,12 @@ struct SGSSceneRuntime {
 		return modelIndex;
 	}
 
+	int pushTexture( const SGSScene::Texture &texture ) {
+		const int textureIndex = scene->textures.size();
+		scene->textures.push_back( texture );
+		return textureIndex;
+	}
+
 	static std::string getSimpleMaterialName( const SGSScene::Material &material ) {
 		return boost::str( boost::format( "%i %i %i" ) % int( material.diffuse.r ) % int( material.diffuse.g ) % int( material.diffuse.b ) );
 	}
@@ -243,7 +315,7 @@ struct SGSSceneRuntime {
 		const auto name = boost::str( boost::format( "Box %f %f %f %s" ) % size.x() % size.y() % size.z() % getSimpleMaterialName( material ) );
 		{
 			int modelIndex = findModel( name );
-			if( modelIndex != -1 ) {
+			if( modelIndex != NO_MODEL ) {
 				return modelIndex;
 			}
 		}
@@ -309,7 +381,7 @@ struct SGSSceneRuntime {
 		const auto name = boost::str( boost::format( "Sphere %f %i %i %s" ) % radius % u % v % getSimpleMaterialName( material ) );
 		{
 			const int modelIndex = findModel( name );
-			if( modelIndex != -1 ) {
+			if( modelIndex != NO_MODEL ) {
 				return modelIndex;
 			}
 		}
@@ -378,7 +450,7 @@ void selectObjectsByModelID( SGSSceneRenderer &renderer, int modelIndex ) {
 }
 
 #if 1
-struct ModelDeclarations {
+struct SceneDeclaration {
 	struct BoxDeclaration {
 		float size[3];
 		float color[3];
@@ -410,35 +482,50 @@ struct ModelDeclarations {
 		SERIALIZER_DEFAULT_IMPL( (radius)(color)(u)(v) )
 	};
 
-	/*struct ModelImports {
+	struct ModelImports {
 		std::string scene;
 
-		std::vector< std::string > modelName;
+		std::vector< std::string > modelNames;
 
-		SERIALIZER_DEFAULT_IMPL( (scene)(modelName) );
-	};*/
+		ModelImports() {}
+		ModelImports( const std::string &scene ) : scene( scene ) {}
+
+		SERIALIZER_FIRST_KEY_IMPL( (scene)(modelNames) );
+	};
+
+	struct Instance {
+		std::string modelName;
+
+		float position[3];
+		float axis[3];
+		float degrees;
+
+		Instance() : position(), axis(), degrees() {}
+
+		SERIALIZER_FIRST_KEY_IMPL( (modelName)(position)(axis)(degrees) );
+	};
 
 	std::vector<BoxDeclaration> boxes;
 	std::vector<SphereDeclaration> spheres;
-	//std::vector<ModelImports> modelImports;
+	std::vector<ModelImports> modelImports;
+	std::vector<Instance> instances;
 
-	//SERIALIZER_DEFAULT_IMPL( (boxes)(spheres)(modelImports) )
-	SERIALIZER_DEFAULT_IMPL( (boxes)(spheres) )
+	SERIALIZER_DEFAULT_IMPL( (boxes)(spheres)(modelImports)(instances) )
 };
 
-ModelDeclarations readModelDeclarations( const char *filename ) {
+SceneDeclaration readSceneDeclaration( const char *filename ) {
 	Serializer::TextReader reader( filename );
 
-	ModelDeclarations modelDeclarations;
-	Serializer::read( reader, modelDeclarations );
+	SceneDeclaration sceneDeclaration;
+	Serializer::read( reader, sceneDeclaration );
 
-	return modelDeclarations;
+	return sceneDeclaration;
 }
 
-void writeModelDeclarations( const char *filename, const ModelDeclarations &modelDeclarations ) {
+void writeSceneDeclaration( const char *filename, const SceneDeclaration &sceneDeclaration ) {
 	Serializer::TextWriter writer( filename );
 
-	Serializer::write( writer, modelDeclarations );
+	Serializer::write( writer, sceneDeclaration );
 }
 
 using namespace boost;
@@ -446,59 +533,110 @@ namespace po = boost::program_options;
 using namespace std;
 
 void real_main( int argc, const char **argv ) {
-	//vector< string > args = po::split_winmain( "exampleModelDecls.wml testScene.sgsScene" );
+	//vector< string > args = po::split_winmain( "exampleSceneDecls.wml testScene.sgsScene" );
 	vector< string > args;
 	for( int i = 1 ; i < argc ; i++ ) {
 		args.push_back( argv[ i ] );
 	}
 
-	string modelDeclFilename, targetSceneFilename;
+	string sceneDeclFilename, targetFilename, importSceneFilename;
+	bool echoDecl = false;
 
 	po::options_description desc( "Program options" );
 	desc.add_options()
 		( "help,?", "produce this help message" )
-		( "modelDecls", po::value< std::string >( &modelDeclFilename )->default_value( "modelDecls.wml" ), "model declaration file to use" )
-		( "target", po::value< std::string >( &targetSceneFilename ), "target scene file" )
+		( "sceneDecls", po::value< std::string >( &sceneDeclFilename )->default_value( "sceneDecls.wml" ), "model declaration file to use" )
+		( "target", po::value< std::string >( &targetFilename ), "target file" )
 		( "createExample", "dump an example model declaration" )
+		( "createSceneDecls", po::value< std::string >( &importSceneFilename ), "create a identity decl file for the scene")
+		( "echo", po::bool_switch( &echoDecl ), "echo the decl on the console after reading it" )
 	;
 
 	po::positional_options_description p;
-	p.add( "modelDecls", 1 );
+	p.add( "sceneDecls", 1 );
 	p.add( "target", 1 );
 
 	po::variables_map vm;
 	po::store( po::command_line_parser( args ).options(desc).positional(p).run(), vm );
 	po::notify(vm);
 
-	if( vm.count( "help" ) ) {
+	if( vm.count( "help" ) || argc == 1 ) {
 		std::cout << desc;
 		return;
 	}
 	else if( vm.count( "createExample" ) ) {
-		ModelDeclarations modelDeclarations;
+		SceneDeclaration sceneDeclaration;
 
-		modelDeclarations.boxes.push_back( ModelDeclarations::BoxDeclaration( Eigen::Vector3f::Constant( 5.0 ), Eigen::Vector3f( 1.0f, 0.5f, 0.5f ) ) );
-		modelDeclarations.boxes.push_back( ModelDeclarations::BoxDeclaration( Eigen::Vector3f::Constant( 10.0 ), Eigen::Vector3f( 1.0f, 0.5f, 0.5f ) ) );
+		sceneDeclaration.boxes.push_back( SceneDeclaration::BoxDeclaration( Eigen::Vector3f::Constant( 5.0 ), Eigen::Vector3f( 1.0f, 0.5f, 0.5f ) ) );
+		sceneDeclaration.boxes.push_back( SceneDeclaration::BoxDeclaration( Eigen::Vector3f::Constant( 10.0 ), Eigen::Vector3f( 1.0f, 0.5f, 0.5f ) ) );
 
-		modelDeclarations.spheres.push_back( ModelDeclarations::SphereDeclaration( 5.0, Eigen::Vector3f( 1.0f, 0.5f, 0.5f ) ) );
-		modelDeclarations.spheres.push_back( ModelDeclarations::SphereDeclaration( 10.0, Eigen::Vector3f( 1.0f, 0.5f, 0.5f ) ) );
+		sceneDeclaration.spheres.push_back( SceneDeclaration::SphereDeclaration( 5.0, Eigen::Vector3f( 1.0f, 0.5f, 0.5f ) ) );
+		sceneDeclaration.spheres.push_back( SceneDeclaration::SphereDeclaration( 10.0, Eigen::Vector3f( 1.0f, 0.5f, 0.5f ) ) );
 
-		writeModelDeclarations( "exampleModelDecls.wml", modelDeclarations );
-		cout << "Successfully wrote 'exampleModelDecls.wml'!\n";
+		writeSceneDeclaration( "exampleSceneDecls.wml", sceneDeclaration );
+		cout << "Successfully wrote 'exampleSceneDecls.wml'!\n";
+		return;
+	}
+	else if( vm.count( "createSceneDecls" ) ) {
+		if( targetFilename.empty() ) {
+			targetFilename = algorithm::erase_last_copy( importSceneFilename, ".sgsScene" ) + ".wml";
+		}
+
+		SGSScene sourceScene;
+		{
+			Serializer::BinaryReader reader( importSceneFilename.c_str() );
+			Serializer::read( reader, sourceScene );
+		}
+
+		SceneDeclaration sceneDeclaration;
+		sceneDeclaration.modelImports.push_back( SceneDeclaration::ModelImports( importSceneFilename ) );
+		auto &modelImport = sceneDeclaration.modelImports.front();
+
+		for( int modelIndex = 0 ; modelIndex < sourceScene.models.size() ; modelIndex++ ) {
+			modelImport.modelNames.push_back( sourceScene.modelNames[ modelIndex ] );
+		}
+
+		for( int instanceIndex = 0 ; instanceIndex < sourceScene.objects.size() ; instanceIndex++ ) {
+			const auto &instance = sourceScene.objects[ instanceIndex ];
+
+			const auto &modelName = sourceScene.modelNames[ instance.modelId ];
+			const auto transformation = Eigen::Affine3f( Eigen::Matrix4f::Map( sourceScene.objects[ instanceIndex ].transformation ) );
+			const Vector3f translation = transformation.translation();
+			const AngleAxisf angleAxis( transformation.linear() );
+
+			SceneDeclaration::Instance instanceDecl;
+			instanceDecl.modelName = modelName;
+			for( int i = 0 ; i < 3 ; i++ ) {
+				instanceDecl.position[i] = translation[i];	
+			}
+			
+			const auto &axis = angleAxis.axis();
+			for( int i = 0 ; i < 3 ; i++ ) {
+				instanceDecl.axis[i] = axis[i];
+			}
+			instanceDecl.degrees = angleAxis.angle() / M_PI * 180.0f;
+
+			sceneDeclaration.instances.push_back( instanceDecl );
+		}
+
+		writeSceneDeclaration( targetFilename.c_str(), sceneDeclaration );
+		cout << "Successfully wrote '" << targetFilename << "'!\n";
 		return;
 	}
 
-	if( targetSceneFilename.empty() ) {
-		targetSceneFilename = algorithm::erase_last_copy( modelDeclFilename, ".wml" ) + ".sgsScene";
+	if( targetFilename.empty() ) {
+		targetFilename = algorithm::erase_last_copy( sceneDeclFilename, ".wml" ) + ".sgsScene";
 	}
 
 	// read the decls
-	ModelDeclarations modelDeclarations;
+	SceneDeclaration sceneDeclaration;
 	{
-		Serializer::TextReader reader( modelDeclFilename.c_str() );
-		cout << "Decls:\n" << wml::emit( reader.root );
+		Serializer::TextReader reader( sceneDeclFilename.c_str() );
+		if( echoDecl ) {
+			cout << "Decls:\n" << wml::emit( reader.root );
+		}
 
-		Serializer::read( reader, modelDeclarations );
+		Serializer::read( reader, sceneDeclaration );
 	}
 
 	{
@@ -507,21 +645,56 @@ void real_main( int argc, const char **argv ) {
 
 		cout << "creating primitive models..\n";
 		SGSSceneRuntime runtime( &targetScene );
-		for (auto box = modelDeclarations.boxes.begin() ; box != modelDeclarations.boxes.end() ; ++box ) {
+		for (auto box = sceneDeclaration.boxes.begin() ; box != sceneDeclaration.boxes.end() ; ++box ) {
 			runtime.addBoxModel( Vector3f::Map( box->size ), runtime.createMaterial( Vector3f::Map( box->color ) ) );
 		}
 
-		for (auto sphere = modelDeclarations.spheres.begin() ; sphere != modelDeclarations.spheres.end() ; ++sphere ) {
+		for (auto sphere = sceneDeclaration.spheres.begin() ; sphere != sceneDeclaration.spheres.end() ; ++sphere ) {
 			runtime.addSphereModel( sphere->radius, runtime.createMaterial( Vector3f::Map( sphere->color ) ), sphere->u, sphere->v );
 		}
 
-		/*cout << "importing models..\n";
-		std::map< std::string, SGSScene > importedScenes;
-		for( */
+		cout << "importing models..\n";
+		for( auto modelImports = sceneDeclaration.modelImports.begin() ; modelImports != sceneDeclaration.modelImports.end() ; ++modelImports ) {
+			cout << "\timporting from scene '" << modelImports->scene << "'\n";
 
-		cout << "writing target scene '" << targetSceneFilename << "'\n";
+			SGSScene sourceScene;
+			{
+				Serializer::BinaryReader reader( modelImports->scene.c_str() );
+				Serializer::read( reader, sourceScene );
+			}
+
+			SGSSceneRuntime sourceRuntime( &sourceScene );
+
+			for( auto modelName = modelImports->modelNames.begin() ; modelName != modelImports->modelNames.end() ; ++modelName ) {
+				const int modelIndex = sourceRuntime.findModel( *modelName );
+				if( modelIndex != SGSSceneRuntime::NO_MODEL ) {
+					cout << "\t\t" << *modelName << "\n";
+					runtime.importModel( sourceScene, modelIndex );
+				}
+				else {
+					cout << "\t! " << *modelName << " not found!\n";
+				}
+			}
+		}
+
+		cout << "creating instances..\n";
+		for( auto instance = sceneDeclaration.instances.begin() ; instance != sceneDeclaration.instances.end() ; ++instance ) {
+			const int modelIndex = runtime.findModel( instance->modelName );
+			if( modelIndex == SGSSceneRuntime::NO_MODEL ) {
+				cout << "\t! " << instance->modelName << " not found!\n";
+				continue;
+			}
+
+			const float radians = instance->degrees / 180.0 * M_PI;
+			const AngleAxisf angleAxis( radians, Vector3f::Map( instance->axis ) );
+			const Affine3f transformation = Translation3f( Vector3f::Map( instance->position ) ) * angleAxis;
+
+			runtime.addInstance( modelIndex, transformation );
+		}
+
+		cout << "writing target scene '" << targetFilename << "'\n";
 		{
-			Serializer::BinaryWriter writer( targetSceneFilename.c_str() );
+			Serializer::BinaryWriter writer( targetFilename.c_str() );
 
 			Serializer::write( writer, targetScene );
 		}
