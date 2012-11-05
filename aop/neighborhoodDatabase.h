@@ -97,7 +97,7 @@ namespace Neighborhood {
 	};
 
 #if 0
-	inline float getEntropy( float certainty, float probability, float alpha = 0.1f ) {
+	inline float getMessageLength( float certainty, float probability, float alpha = 0.1f ) {
 		const float safeProbability = probability * (1.0f - alpha) + alpha * 0.5f;
 		const float positiveEntropy = -logf( safeProbability );
 		const float negativeEntropy = -logf( 1.0 - safeProbability );
@@ -107,11 +107,28 @@ namespace Neighborhood {
 	}
 #endif
 
-	// alpha is the base probability for either event happening (this is for a two-event state)s
-	inline float getEntropy( float probability ) {
+	// alpha is the base probability for either event happening (this is for a two-event state)
+	inline float getMessageLength( float probability ) {
 		const float entropy = -logf( probability );
 
 		return entropy;
+	}
+
+	inline float getEntropy( float probability ) {
+		const float positiveMessageLength = getMessageLength( probability );
+		const float negativeMessageLength = getMessageLength( 1.0f - probability );
+
+		return positiveMessageLength * probability + (1.0f - probability) * negativeMessageLength;
+	}
+
+	inline float combinePositiveAndNegativeScores( float score, float maxNegativeScore, float maxPositiveScore ) {
+		float threshold = 0.2;
+		if( score >= 0.0f ) {
+			return score / maxPositiveScore * (1.0 - threshold) + threshold;
+		}
+		else {
+			return (1.0 + score / maxNegativeScore) * threshold;
+		}
 	}
 
 	struct SampledModel {
@@ -233,18 +250,17 @@ namespace Neighborhood {
 			struct UniformWeightPolicy : SharedPolicy {
 				struct MatchedDistances {
 					// counts all matches for a certain query distance and candidateModel
-					std::vector< boost::dynamic_bitset<> > matchedQueryDistancesByGlobalInstance;
+					std::vector<int> matchedQueryDistancesByGlobalInstance;
 					// counts all matches for a certain query distance
-					std::vector<int> matchedQueryDistanceCounters;
+					int numQueryDistances;
 
 					MatchedDistances( int totalNumInstances, int numQueryDistances )
-						: matchedQueryDistancesByGlobalInstance( totalNumInstances, boost::dynamic_bitset<>( numQueryDistances ) )
-						, matchedQueryDistanceCounters( numQueryDistances )
+						: matchedQueryDistancesByGlobalInstance( totalNumInstances )
+						, numQueryDistances( numQueryDistances )
 					{}
 
 					void match( int globalInstanceIndex, int queryDistanceIndex ) {
-						matchedQueryDistancesByGlobalInstance[ globalInstanceIndex ][ queryDistanceIndex ] = true;
-						++matchedQueryDistanceCounters[ queryDistanceIndex ];
+						matchedQueryDistancesByGlobalInstance[ globalInstanceIndex ] += 1;
 					}
 
 					int getTotalNumInstances() {
@@ -252,7 +268,7 @@ namespace Neighborhood {
 					}
 
 					int getNumQueryDistances() {
-						return matchedQueryDistanceCounters.size();
+						return numQueryDistances;
 					}
 				};
 
@@ -289,31 +305,23 @@ namespace Neighborhood {
 						const int numQueryDistances = matchedDistances.getNumQueryDistances();
 						const int totalNumInstances = matchedDistances.getTotalNumInstances();
 
-						std::vector<float> neighborModelImportanceWeights( numQueryDistances, 1.0 );
-						const float totalNeighborModelImportanceWeight = numQueryDistances;
-
-						totalImportanceWeight += totalNeighborModelImportanceWeight;
+						totalImportanceWeight += numQueryDistances;
 
 						for( int globalInstanceIndex = 0 ; globalInstanceIndex < totalNumInstances ; ++globalInstanceIndex ) {
-							candidateInstanceScores[ globalInstanceIndex ] +=
-								matchedDistances.matchedQueryDistancesByGlobalInstance[ globalInstanceIndex ].count()
-							;
+							candidateInstanceScores[ globalInstanceIndex ] += matchedDistances.matchedQueryDistancesByGlobalInstance[ globalInstanceIndex ];
 						}
 					}
 
 					void integrateCorrelatedUnmatchedDistances( std::vector< int > &&correlatedGlobalInstanceIndices ) {
-						// not using any atm
-						const float importanceWeight = 1.0;
-
-						totalImportanceWeight += importanceWeight;
-						scoreOffset += importanceWeight;
+						totalImportanceWeight += 1;
+						scoreOffset += 1;
 
 						for(
 							auto correlatedGlobalInstanceIndex = correlatedGlobalInstanceIndices.begin() ;
 							correlatedGlobalInstanceIndex != correlatedGlobalInstanceIndices.end() ;
 							++correlatedGlobalInstanceIndex
 						) {
-							candidateInstanceScores[ *correlatedGlobalInstanceIndex ] -= importanceWeight;
+							candidateInstanceScores[ *correlatedGlobalInstanceIndex ] -= 1;
 						}
 					}
 
@@ -391,8 +399,8 @@ namespace Neighborhood {
 
 						for( int queryDistanceIndex = 0 ; queryDistanceIndex < numQueryDistances ; ++queryDistanceIndex ) {
 							const float frequency = float( matchedDistances.matchedQueryDistanceCounters[ queryDistanceIndex ] + 1 ) / (totalNumInstances + 2);
-							existsImportanceWeights[ queryDistanceIndex ] = getEntropy( frequency );
-							missingImportanceWeights[ queryDistanceIndex ] = getEntropy( 1.0f - frequency );
+							existsImportanceWeights[ queryDistanceIndex ] = getMessageLength( frequency );
+							missingImportanceWeights[ queryDistanceIndex ] = getMessageLength( 1.0f - frequency );
 						}
 
 						for( int globalInstanceIndex = 0 ; globalInstanceIndex < totalNumInstances ; ++globalInstanceIndex ) {
@@ -417,8 +425,8 @@ namespace Neighborhood {
 						const int numInstances = correlatedGlobalInstanceIndices.size();
 						const float frequency = float( numInstances ) / (totalNumInstances + 2);
 
-						const float existsImportanceWeight = getEntropy( frequency );
-						const float missingImportanceWeight = getEntropy( 1.0 - frequency );
+						const float existsImportanceWeight = getMessageLength( frequency );
+						const float missingImportanceWeight = getMessageLength( 1.0 - frequency );
 
 						// we process all unmatched instances now (assumig frequency <0.5...!)
 						// everybody gets a missingImportanceWeight offset
@@ -459,6 +467,94 @@ namespace Neighborhood {
 					{}
 
 					void match( int globalInstanceIndex, int queryDistanceIndex ) {
+						++matchedQueryDistancesByGlobalInstance[ globalInstanceIndex ];
+					}
+
+					int getTotalNumInstances() {
+						return matchedQueryDistancesByGlobalInstance.size();
+					}
+
+					int getNumQueryDistances() {
+						return numQueryDistances;
+					}
+				};
+
+				struct Scores {
+					std::vector<float> candidateInstanceScores;
+					float weightedTotalNumQueryDistances;
+					float weightedTotalNumUnmatchedDistances;
+
+					Scores( int totalNumInstances )
+						: candidateInstanceScores( totalNumInstances )
+						, weightedTotalNumQueryDistances()
+						, weightedTotalNumUnmatchedDistances()
+					{}
+
+					bool isEmpty() {
+						return
+								weightedTotalNumQueryDistances == 0.0f
+							&&
+								weightedTotalNumUnmatchedDistances == 0.0f
+						;
+					}
+
+					void integrateNeighborModelCandidateScores( float neighborModelWeight, const Scores &neighborModelCandidateScores ) {
+						const int totalNumInstances = candidateInstanceScores.size();
+						// update the total score
+						for( int globalInstanceIndex = 0 ; globalInstanceIndex < totalNumInstances ; globalInstanceIndex++ ) {
+							candidateInstanceScores[ globalInstanceIndex ] +=
+									neighborModelWeight
+								*
+									neighborModelCandidateScores.candidateInstanceScores[ globalInstanceIndex ]
+							;
+						}
+						weightedTotalNumQueryDistances += neighborModelWeight * neighborModelCandidateScores.weightedTotalNumQueryDistances;
+						weightedTotalNumUnmatchedDistances += neighborModelWeight * neighborModelCandidateScores.weightedTotalNumUnmatchedDistances;
+					}
+
+					void integrateMatchedDistances( MatchedDistances &matchedDistances ) {
+						const int numQueryDistances = matchedDistances.getNumQueryDistances();
+						weightedTotalNumQueryDistances += numQueryDistances;
+
+						const int totalNumInstances = matchedDistances.getTotalNumInstances();
+						for( int globalInstanceIndex = 0 ; globalInstanceIndex < totalNumInstances ; ++globalInstanceIndex ) {
+							candidateInstanceScores[ globalInstanceIndex ] += matchedDistances.matchedQueryDistancesByGlobalInstance[ globalInstanceIndex ];
+						}
+					}
+
+					void integrateCorrelatedUnmatchedDistances( std::vector< int > &&correlatedGlobalInstanceIndices ) {
+						weightedTotalNumUnmatchedDistances += 1;
+
+						for(
+							auto correlatedGlobalInstanceIndex = correlatedGlobalInstanceIndices.begin() ;
+							correlatedGlobalInstanceIndex != correlatedGlobalInstanceIndices.end() ;
+							++correlatedGlobalInstanceIndex
+						) {
+							candidateInstanceScores[ *correlatedGlobalInstanceIndex ] -= 1;
+						}
+					}
+
+					float getInstanceScore( int globalInstanceIndex ) const {
+						// alternative: use two ranges: 0.1..1.0 for positive scores and 0.0 to 0.1 for negative scores
+						const float candidateInstanceScore = candidateInstanceScores[ globalInstanceIndex ];
+						return combinePositiveAndNegativeScores( candidateInstanceScore, weightedTotalNumUnmatchedDistances, weightedTotalNumQueryDistances );
+					}
+				};
+			};
+
+			struct ImportanceScorePolicy : SharedPolicy {
+				struct MatchedDistances {
+					// counts all matches for a certain query distance and candidateModel
+					std::vector< boost::dynamic_bitset<> > matchedQueryDistancesByGlobalInstance;
+					// counts all matches for a certain query distance
+					std::vector<int> matchedQueryDistanceCounters;
+
+					MatchedDistances( int totalNumInstances, int numQueryDistances )
+						: matchedQueryDistancesByGlobalInstance( totalNumInstances, boost::dynamic_bitset<>( numQueryDistances ) )
+						, matchedQueryDistanceCounters( numQueryDistances )
+					{}
+
+					void match( int globalInstanceIndex, int queryDistanceIndex ) {
 						matchedQueryDistancesByGlobalInstance[ globalInstanceIndex ][ queryDistanceIndex ] = true;
 						++matchedQueryDistanceCounters[ queryDistanceIndex ];
 					}
@@ -474,18 +570,21 @@ namespace Neighborhood {
 
 				struct Scores {
 					std::vector<float> candidateInstanceScores;
-					float totalImportanceWeight;
-
-					float scoreOffset;
+					float maxPossibleWeightedPositiveScore;
+					float maxPossibleWeightedNegativeScore;
 
 					Scores( int totalNumInstances )
 						: candidateInstanceScores( totalNumInstances )
-						, totalImportanceWeight()
-						, scoreOffset()
+						, maxPossibleWeightedPositiveScore()
+						, maxPossibleWeightedNegativeScore()
 					{}
 
 					bool isEmpty() {
-						return totalImportanceWeight == 0.0f;
+						return
+								maxPossibleWeightedPositiveScore == 0.0f
+							&&
+								maxPossibleWeightedNegativeScore == 0.0f
+						;
 					}
 
 					void integrateNeighborModelCandidateScores( float neighborModelWeight, const Scores &neighborModelCandidateScores ) {
@@ -495,46 +594,63 @@ namespace Neighborhood {
 							candidateInstanceScores[ globalInstanceIndex ] +=
 									neighborModelWeight
 								*
-									(neighborModelCandidateScores.scoreOffset + neighborModelCandidateScores.candidateInstanceScores[ globalInstanceIndex ])
+									neighborModelCandidateScores.candidateInstanceScores[ globalInstanceIndex ]
 							;
 						}
-						totalImportanceWeight += neighborModelWeight * neighborModelCandidateScores.totalImportanceWeight;
+						maxPossibleWeightedPositiveScore += neighborModelWeight * neighborModelCandidateScores.maxPossibleWeightedPositiveScore;
+						maxPossibleWeightedNegativeScore += neighborModelWeight * neighborModelCandidateScores.maxPossibleWeightedNegativeScore;
 					}
 
 					void integrateMatchedDistances( MatchedDistances &matchedDistances ) {
 						const int numQueryDistances = matchedDistances.getNumQueryDistances();
 						const int totalNumInstances = matchedDistances.getTotalNumInstances();
 
-						std::vector<float> neighborModelImportanceWeights( numQueryDistances, 1.0 );
-						const float totalNeighborModelImportanceWeight = numQueryDistances;
+						std::vector<float> scores( numQueryDistances );
 
-						totalImportanceWeight += totalNeighborModelImportanceWeight;
+						for( int queryDistanceIndex = 0 ; queryDistanceIndex < numQueryDistances ; ++queryDistanceIndex ) {
+							const float frequency = float( matchedDistances.matchedQueryDistanceCounters[ queryDistanceIndex ] + 1 ) / (totalNumInstances + 2);
+
+							const float score = getMessageLength( frequency ); // + getMessageLength( 1.0f - frequency );
+
+							scores[ queryDistanceIndex ] = score ;
+
+							maxPossibleWeightedPositiveScore += score;
+						}
 
 						for( int globalInstanceIndex = 0 ; globalInstanceIndex < totalNumInstances ; ++globalInstanceIndex ) {
-							candidateInstanceScores[ globalInstanceIndex ] +=
-								matchedDistances.matchedQueryDistancesByGlobalInstance[ globalInstanceIndex ].count()
-							;
+							for( int queryDistanceIndex = 0 ; queryDistanceIndex < numQueryDistances ; ++queryDistanceIndex ) {
+								if( matchedDistances.matchedQueryDistancesByGlobalInstance[ globalInstanceIndex ][ queryDistanceIndex ] ) {
+									// this is a positive match because we have a matching query distance
+									candidateInstanceScores[ globalInstanceIndex ] += scores[ queryDistanceIndex ];
+								}
+							}
 						}
 					}
 
 					void integrateCorrelatedUnmatchedDistances( std::vector< int > &&correlatedGlobalInstanceIndices ) {
-						// not using any atm
-						const float importanceWeight = 1.0;
+						const int totalNumInstances = candidateInstanceScores.size();
 
-						totalImportanceWeight += importanceWeight;
-						scoreOffset += importanceWeight;
+						const int numInstances = correlatedGlobalInstanceIndices.size();
+						// frequency of the negative matches
+						const float frequency = float( numInstances ) / (totalNumInstances + 2);
+
+						const float negativeScore = getMessageLength( frequency );
+
+						maxPossibleWeightedNegativeScore += negativeScore;
 
 						for(
 							auto correlatedGlobalInstanceIndex = correlatedGlobalInstanceIndices.begin() ;
 							correlatedGlobalInstanceIndex != correlatedGlobalInstanceIndices.end() ;
 							++correlatedGlobalInstanceIndex
 						) {
-							candidateInstanceScores[ *correlatedGlobalInstanceIndex ] -= importanceWeight;
+							candidateInstanceScores[ *correlatedGlobalInstanceIndex ] -= negativeScore;
 						}
 					}
 
 					float getInstanceScore( int globalInstanceIndex ) const {
-						return (candidateInstanceScores[ globalInstanceIndex ] + scoreOffset) / totalImportanceWeight;
+						// alternative: use two ranges: 0.1..1.0 for positive scores and 0.0 to 0.1 for negative scores
+						const float candidateInstanceScore = candidateInstanceScores[ globalInstanceIndex ];
+						return combinePositiveAndNegativeScores( candidateInstanceScore, maxPossibleWeightedNegativeScore, maxPossibleWeightedPositiveScore );
 					}
 				};
 			};
@@ -756,7 +872,7 @@ namespace Neighborhood {
 			}
 
 			Results execute() {
-				return executeWithPolicy< UniformWeightPolicy >();
+				return executeWithPolicy< ImportanceScorePolicy >();
 			}
 		};
 	};

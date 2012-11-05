@@ -11,7 +11,7 @@ using namespace Neighborhood;
 using namespace Neighborhood;
 
 static void sortResultEps( Results &results ) {
-	boost::sort( results, [] ( const Result &a, const Result &b ) -> bool { 
+	boost::sort( results, [] ( const Result &a, const Result &b ) -> bool {
 		const float eps = 0.0000001;
 		if( a.first > b.first + eps ) {
 			return true;
@@ -133,7 +133,6 @@ static RawIdDistances createQueryDataset( const int queryNumInstances[ numDistan
 
 	return rawDataset;
 }
-
 
 template< int numModels >
 static void addSimpleScene( int distance, NeighborhoodDatabaseV2 &database, const int sceneNumInstances[numModels] ) {
@@ -489,7 +488,7 @@ TEST( NeighborhoodDatabase_Query, testcase3 ) {
  * Expected:
  *	 Uniform query: same result for both examples, A and B are equally likely
  *	 Weighted query: A/B will be less probable in example 0 than in example 1 because each other is missing unexpectedly
- *	 
+ *
  * Actually:
  *	0 better than 1
  */
@@ -582,7 +581,7 @@ TEST( NeighborhoodDatabase_Query, failcompcase1 ) {
  *	- - - CC
  *
  * Result:
- *  Uniform chooses  
+ *  Uniform chooses
  * Actually:
  *	0 better than 1
  */
@@ -663,6 +662,93 @@ TEST( NeighborhoodDatabase_Query, compcase1 ) {
 
 		ASSERT_EQ( 3, results.size() );
 		EXPECT_EQ( 2, results[2].second ) << "Importance Weight!";
+		EXPECT_GT( results[0].first, results[1].first );
+
+		weigtedResult[1] = results[0].first;
+	}
+
+	EXPECT_FLOAT_EQ( uniformResult[0], uniformResult[1] );
+	EXPECT_LT( weigtedResult[0], weigtedResult[1] );
+	std::cout << uniformResult[0];
+}
+
+TEST( NeighborhoodDatabase_Query, compcase1b ) {
+	ModelDatabase modelDatabase( nullptr );
+	mockModelDatabaseWith( modelDatabase, 3 );
+
+	NeighborhoodDatabaseV2 example[2];
+	example[0].modelDatabase = &modelDatabase;
+	example[1].modelDatabase = &modelDatabase;
+
+	int datasets[][4][3] = {
+		{
+			{ 1, 0, 0 },
+			{ 0 },
+			{ 0, 1, 0 },
+			{ 0, 0, 4 }
+		}
+	};
+
+	for( int i = 0 ; i < 2 ; i++ ) {
+		addConcentricScene< 4, 3 >( example[0], datasets[0], 100.0f );
+	}
+
+	for( int i = 0 ; i < 1 ; i++ ) {
+		addConcentricScene< 4, 3 >( example[1], datasets[0], 100.0f );
+	}
+
+	int queries[][3][3] = {
+		{
+			{ 0 },
+			{ 0 },
+			{ 0, 0, 2 }
+		}
+	};
+
+	float uniformResult[2], weigtedResult[2];
+	{
+		NeighborhoodDatabaseV2::Query query( example[0], 0, createQueryDataset< 3, 3 >( queries[0] ) );
+
+		auto results = query.executeWithPolicy<NeighborhoodDatabaseV2::Query::UniformScorePolicy>();
+		sortResultEps( results );
+
+		ASSERT_EQ( 3, results.size() );
+		EXPECT_EQ( 0, results[0].second );
+		EXPECT_FLOAT_EQ( results[0].first, results[1].first );
+		uniformResult[0] = results[0].first;
+	}
+	{
+		NeighborhoodDatabaseV2::Query query( example[0], 0, createQueryDataset< 3, 3 >( queries[0] ) );
+
+		auto results = query.executeWithPolicy<NeighborhoodDatabaseV2::Query::ImportanceScorePolicy>();
+		sortResultEps( results );
+
+		ASSERT_EQ( 3, results.size() );
+		EXPECT_EQ( 0, results[0].second ) << "Importance Score!";
+		EXPECT_GT( results[0].first, results[1].first );
+		weigtedResult[0] = results[0].first;
+	}
+
+	{
+		NeighborhoodDatabaseV2::Query query( example[1], 0, createQueryDataset< 3, 3 >( queries[0] ) );
+
+		auto results = query.executeWithPolicy<NeighborhoodDatabaseV2::Query::UniformScorePolicy>();
+		sortResultEps( results );
+
+		ASSERT_EQ( 3, results.size() );
+		EXPECT_EQ( 2, results[2].second ) << "Uniform Score!";
+		EXPECT_FLOAT_EQ( results[0].first, results[1].first );
+
+		uniformResult[1] = results[0].first;
+	}
+	{
+		NeighborhoodDatabaseV2::Query query( example[1], 0, createQueryDataset< 3, 3 >( queries[0] ) );
+
+		auto results = query.executeWithPolicy<NeighborhoodDatabaseV2::Query::ImportanceScorePolicy>();
+		sortResultEps( results );
+
+		ASSERT_EQ( 3, results.size() );
+		EXPECT_EQ( 2, results[2].second ) << "Importance Score!";
 		EXPECT_GT( results[0].first, results[1].first );
 
 		weigtedResult[1] = results[0].first;
