@@ -208,6 +208,40 @@ namespace ProbeGenerator {
 		}
 	}
 
+	int cullDirectionMask( const Eigen::Vector3f &averagedNormal, int directionMask ) {
+		const float averagedNormalLength = averagedNormal.norm();
+		const float threshold = averagedNormalLength * (averagedNormalLength - 1.0f);
+
+		for( int directionIndex = 0 ; directionIndex< boost::size( directions ) ; directionIndex++ ) {
+			// remove the direction from the mask if we are below the threshold
+			if( averagedNormal.dot( directions[ directionIndex ] ) < threshold ) {
+				directionMask &= ~(1<<directionIndex);
+			}
+		}
+
+		return directionMask;
+	}
+
+	// this is a hack and won't work with more than 64 directions easily
+	void appendProbesFromSample(
+		const float resolution,
+		const Eigen::Vector3f &position,
+		const int directionMask,
+		Probes &probes
+	) {
+		Probe probe;
+
+		const Vector3i cellPosition = floor( position / resolution + Vector3f::Constant( 0.5f ) );
+		probe.position = cellPosition.cast< signed char >();
+
+		for( int directionIndex = 0 ; directionIndex< boost::size( directions ) ; directionIndex++ ) {
+			if( directionMask & (1<<directionIndex) ) {
+				probe.directionIndex = directionIndex;
+				probes.push_back( probe );
+			}
+		}
+	}
+
 	ProbePositions rotateProbePositions( const Probes &probes, int orientationIndex ) {
 		const Matrix3f rotation = getRotation( orientationIndex );
 

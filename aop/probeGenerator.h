@@ -69,4 +69,13 @@ namespace ProbeGenerator {
 		const Eigen::Vector3f &averagedNormal,
 		Probes &probes
 	);
+
+	void appendProbesFromSample(
+		const float resolution,
+		const Eigen::Vector3f &position,
+		const int directionMask,
+		Probes &probes
+	);
+
+	int cullDirectionMask( const Eigen::Vector3f &averagedNormal, int directionMask );
 };

@@ -813,6 +813,8 @@ namespace aop {
 	};
 #endif
 	struct ModelDatabaseUI {
+		aop::NormalGenerationMode normalGenerationMode;
+
 		Application *application;
 
 		AntTWBarUI::SimpleContainer ui;
@@ -822,13 +824,23 @@ namespace aop {
 		}
 
 		void init() {
+			AntTWBarUI::TypeBuilder::Enum<aop::NormalGenerationMode>( "NormalGenerationMode" )
+				.add( "Position", aop::NGM_POSITION )
+				.add( "Average Normal", aop::NGM_AVERAGE_NORMAL )
+				.add( "Neighbors", aop::NGM_NEIGHBORS )
+				.add( "Combined", aop::NGM_COMBINED )
+				.define();
+			;
+
 			ui.setName( "Model Database" );
+			ui.add( AntTWBarUI::makeSharedVariable( "Normal generation mode", AntTWBarUI::makeReferenceAccessor( normalGenerationMode  ) ) );
+			ui.add( AntTWBarUI::makeSharedSeparator() );
 			ui.add( AntTWBarUI::makeSharedButton( "Load", [&] () { application->modelDatabase.load( application->settings.modelDatabasePath.c_str() ); } ) );
 			ui.add( AntTWBarUI::makeSharedButton( "Store", [&] () { application->modelDatabase.store( application->settings.modelDatabasePath.c_str() ); } ) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
 			ui.add( AntTWBarUI::makeSharedButton( "Sample models", [&] {
 				application->startLongOperation();
-				application->ModelDatabase_sampleAll();
+				application->ModelDatabase_sampleAll( normalGenerationMode );
 				application->endLongOperation();
 			} ) );
 			ui.link();
@@ -919,7 +931,7 @@ namespace aop {
 		Application *application;
 		AntTWBarUI::SimpleContainer ui;
 		QueryType queryType;
-		
+
 		MainUI( Application *application ) : application( application ), queryType( QT_NORMAL ) {
 			init();
 		}
@@ -1337,7 +1349,7 @@ namespace aop {
 		debugUI->add( std::make_shared< DebugObjects::ModelDatabase >( this ) );
 	}
 
-	int Application::ModelDatabase_sampleModel( int sceneModelIndex, float resolution ) {
+	int Application::ModelDatabase_sampleModel( int sceneModelIndex, float resolution, NormalGenerationMode normalGenerationMode ) {
 		AUTO_TIMER( boost::format( "model %i") % sceneModelIndex );
 
 		const auto bbox = world->sceneRenderer.getModelBoundingBox( sceneModelIndex );
@@ -1347,6 +1359,7 @@ namespace aop {
 		idInformation.voxelResolution = resolution;
 
 		const auto &voxels = idInformation.voxels = AUTO_TIME( world->sceneRenderer.voxelizeModel( sceneModelIndex, resolution ), "voxelizing");
+		GridStorage<int> directionMasks( voxels.getMapping() );
 
 		auto &probes = idInformation.probes;
 		probes.reserve( voxels.getMapping().count * 13 );
@@ -1360,20 +1373,65 @@ namespace aop {
 				if( sample.numSamples > 0 ) {
 					numNonEmpty++;
 
-					const Vector3f position = voxels.getMapping().getPosition( iter.getIndex3() );
-					// use the trivial normal calculations for now [10/16/2012 kirschan2]
-#if 0
-					const Vector3f normal(
-						sample.nx / 255.0 * 2 - 1.0,
-						sample.ny / 255.0 * 2 - 1.0,
-						sample.nz / 255.0 * 2 - 1.0
-					);
-#else
-					// we dont use the weighted and averaged normal for now
-					const Vector3f normal = (position - bbox.center()).normalized();
-#endif
-					ProbeGenerator::appendProbesFromSample( resolution, position, normal, probes );
+					switch( normalGenerationMode ) {
+						case NGM_COMBINED:
+						case NGM_AVERAGE_NORMAL: {
+							// unpack the normal
+							const Vector3f normal(
+								sample.nx / 255.0 * 2 - 1.0,
+								sample.ny / 255.0 * 2 - 1.0,
+								sample.nz / 255.0 * 2 - 1.0
+							);
+
+							directionMasks[ *iter ] = ProbeGenerator::cullDirectionMask( normal, ~0 );
+						}
+						break;
+						case NGM_POSITION: {
+							const Vector3f position = voxels.getMapping().getPosition( iter.getIndex3() );
+							const Vector3f normal = (position - bbox.center()).normalized();
+
+							directionMasks[ *iter ] = ProbeGenerator::cullDirectionMask( normal, ~0 );
+						}
+						break;
+						case NGM_NEIGHBORS: {
+							directionMasks[ *iter ] = ~0;
+						}
+						break;
+					}
 				}
+				/*else {
+					directionMasks[ *iter ] = 0;
+				}*/
+			}
+
+			for( auto iter = directionMasks.getIterator() ; iter.hasMore() ; ++iter ) {
+				int directionMask = directionMasks[ *iter ];
+
+				if( directionMask == 0 ) {
+					continue;
+				}
+
+				if( normalGenerationMode == NGM_COMBINED || normalGenerationMode == NGM_NEIGHBORS ) {
+					for( int neighborIndex = 0 ; neighborIndex < 26 ; neighborIndex++ ) {
+						int neighborBit = 1 << neighborIndex;
+
+						if( (directionMask & neighborBit) == 0 ) {
+							continue;
+						}
+
+						const Vector3i neighborIndex3 = iter.getIndex3() + neighborOffsets[ neighborIndex ];
+						if( directionMasks.getMapping().isValid( neighborIndex3 ) ) {
+							const int neighborDirectionMask = directionMasks[ neighborIndex3 ];
+
+							if( neighborDirectionMask & neighborBit ) {
+								directionMask &= ~neighborBit;
+							}
+						}
+					}
+				}
+
+				const Vector3f position = directionMasks.getMapping().getPosition( iter.getIndex3() );
+				ProbeGenerator::appendProbesFromSample( resolution, position, directionMask, probes );
 			}
 		}
 
@@ -1393,7 +1451,7 @@ namespace aop {
 	}
 
 	// this samples/voxelizes all models in the scene and create probes
-	void Application::ModelDatabase_sampleAll() {
+	void Application::ModelDatabase_sampleAll( NormalGenerationMode normalGenerationMode ) {
 		AUTO_TIMER();
 
 		const auto &models = world->scene.models;
@@ -1406,7 +1464,7 @@ namespace aop {
 		size_t totalProbes = 0;
 
 		for( int sceneModelIndex = 0 ; sceneModelIndex < numModels ; sceneModelIndex++ ) {
-			const int numNonEmpty = ModelDatabase_sampleModel( sceneModelIndex, sceneSettings.probeGenerator_resolution );
+			const int numNonEmpty = ModelDatabase_sampleModel( sceneModelIndex, sceneSettings.probeGenerator_resolution, normalGenerationMode );
 
 			ModelDatabase::ModelInformation & idInformation = modelDatabase.informationById[ sceneModelIndex ];
 

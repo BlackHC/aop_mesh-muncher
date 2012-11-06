@@ -29,6 +29,13 @@
 struct DebugUI;
 
 namespace aop {
+	enum NormalGenerationMode {
+		NGM_POSITION,
+		NGM_AVERAGE_NORMAL,
+		NGM_NEIGHBORS,
+		NGM_COMBINED
+	};
+
 	struct CandidateSidebarUI;
 	struct LocalCandidateBarUI;
 	struct ModelSelectionBarUI;
@@ -55,13 +62,6 @@ namespace aop {
 			QT_NORMAL,
 			QT_WEIGHTED,
 			QT_FULL
-		};
-
-		enum NormalGenerationType {
-			NGT_AUTOMATIC,
-			NGT_AVERAGE,
-			NGT_NEIGHBOR,
-			NGT_COMBINED
 		};
 
 		sf::Clock frameClock, clock;
@@ -135,12 +135,12 @@ namespace aop {
 		void endLongOperation();
 
 		void ModelDatabase_init();
-		void ModelDatabase_sampleAll();
+		void ModelDatabase_sampleAll( NormalGenerationMode normalGenerationMode );
 		// returns the number of non-empty voxels
-		int ModelDatabase_sampleModel( int sceneModelIndex, float resolution );
+		int ModelDatabase_sampleModel( int sceneModelIndex, float resolution, NormalGenerationMode normalGenerationMode );
 
 		virtual void sampleModel( int modelId, float resolution, ModelDatabase::ImportInterface::Tag ) {
-			ModelDatabase_sampleModel( modelId, resolution );
+			ModelDatabase_sampleModel( modelId, resolution, NGM_COMBINED );
 		}
 
 		ProbeContext::QueryResults queryVolume( const SceneSettings::NamedTargetVolume &queryVolume, QueryType queryType );
