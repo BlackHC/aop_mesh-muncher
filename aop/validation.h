@@ -22,10 +22,26 @@ namespace Validation {
 			instanceCounts[ modelIndex ] += 1;
 			totalNumInstances +=1; 
 		}
+
+		float calculateRankExpectation() const;
+	};
+
+	struct NeighborhoodSettings {
+		float maxDistance;
+		float positionVariance;
+		int numSamples;
+
+		NeighborhoodSettings() {}
+
+		NeighborhoodSettings( int numSamples, float maxDistance, float positionVariance )
+			: numSamples( numSamples )
+			, maxDistance( maxDistance )
+			, positionVariance( positionVariance )
+		{}
 	};
 
 	struct NeighborhoodData {
-		float maxDistance;
+		NeighborhoodSettings settings;
 
 		NeighborhoodQueryDatasets queryDatasets;
 		std::vector<int> queryInfos;
@@ -33,7 +49,10 @@ namespace Validation {
 		InstanceCounts instanceCounts;
 
 		NeighborhoodData() {}
-		NeighborhoodData( int numModels ) : instanceCounts( numModels ) {}
+		NeighborhoodData( int numModels, NeighborhoodSettings settings )
+			: instanceCounts( numModels )
+			, settings( settings )
+		{}
 
 		static NeighborhoodData load( const std::string &filename );
 		static void store( const std::string &filename, const NeighborhoodData &neighborhoodData );

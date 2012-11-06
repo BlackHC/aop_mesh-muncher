@@ -13,12 +13,12 @@ namespace aop {
 		Serializer::write( writer, *this );
 	}
 
-	void SceneSettings::load( const char *filename ) {
+	void SceneSettings::load( const std::string &filename ) {
 		Serializer::TextReader reader( filename );
 		Serializer::get( reader, *this );
 	}
 
-	void SceneSettings::store( const char *filename ) const {
+	void SceneSettings::store( const std::string &filename ) const {
 		Serializer::TextWriter writer( filename );
 		Serializer::put( writer, *this );
 	}
@@ -30,6 +30,8 @@ namespace aop {
 		, modelDatabasePath( "modelDatabase" )
 		, neighborhoodDatabaseV2Path( "neighborhoodDatabaseV2" )
 		, neighborhoodValidationDataPath( "neighborhood.validationData" )
+		, validation_neighborhood_positionVariance( 0.0f )
+		, validation_neighborhood_numSamples()
 	{
 	}
 }

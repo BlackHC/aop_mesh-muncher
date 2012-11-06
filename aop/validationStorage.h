@@ -11,8 +11,14 @@ SERIALIZER_DEFAULT_EXTERN_IMPL( Validation::InstanceCounts,
 	(totalNumInstances)
 )
 
-SERIALIZER_DEFAULT_EXTERN_IMPL( Validation::NeighborhoodData,
+SERIALIZER_DEFAULT_EXTERN_IMPL( Validation::NeighborhoodSettings,
+	(numSamples)
 	(maxDistance)
+	(positionVariance)
+)
+
+SERIALIZER_DEFAULT_EXTERN_IMPL( Validation::NeighborhoodData,
+	(settings)
 	(queryDatasets)
 	(queryInfos)
 	(instanceCounts)

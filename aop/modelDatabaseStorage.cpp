@@ -2,7 +2,7 @@
 
 const int CACHE_FORMAT_VERSION = 0;
 
-bool ModelDatabase::load( const char *filename ) {
+bool ModelDatabase::load( const std::string &filename ) {
 	Serializer::BinaryReader reader( filename, CACHE_FORMAT_VERSION );
 	if( reader.valid() ) {
 		reader.get( informationById );
@@ -11,7 +11,7 @@ bool ModelDatabase::load( const char *filename ) {
 	return false;
 }
 
-void ModelDatabase::store( const char *filename ) {
+void ModelDatabase::store( const std::string &filename ) {
 	Serializer::BinaryWriter writer( filename, CACHE_FORMAT_VERSION );
 	writer.put( informationById );
 }

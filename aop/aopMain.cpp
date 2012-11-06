@@ -73,6 +73,9 @@ using namespace Eigen;
 #include "visualizations.h"
 
 #include "validation.h"
+#include "boost/random/mersenne_twister.hpp"
+#include "boost/random/uniform_on_sphere.hpp"
+#include "boost/random/uniform_real_distribution.hpp"
 
 #pragma warning( once: 4244 )
 
@@ -371,7 +374,7 @@ namespace DebugObjects {
 			);
 		}
 
-		void addQueryVisualization( const SceneSettings::NamedTargetVolume &queryVolume, const RawProbes &probes, const RawProbeSamples &probeSamples ) {
+		void addQueryVisualization( const SceneSettings::NamedTargetVolume &queryVolume, const ProbeContext::RawProbes &probes, const ProbeContext::RawProbeSamples &probeSamples ) {
 			const float scaleFactor = 0.25f;
 			{
 				GL::ScopedDisplayList list;
@@ -916,7 +919,7 @@ namespace aop {
 		Application *application;
 		AntTWBarUI::SimpleContainer ui;
 		QueryType queryType;
-
+		
 		MainUI( Application *application ) : application( application ), queryType( QT_NORMAL ) {
 			init();
 		}
@@ -995,8 +998,14 @@ namespace aop {
 				AntTWBarUI::makeReferenceAccessor( application->sceneSettings.probeGenerator_resolution )
 			) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
-			ui.add( AntTWBarUI::makeSharedButton( "Load settings", [this] { application->sceneSettings.load( application->settings.sceneSettingsPath.c_str() ); } ) );
-			ui.add( AntTWBarUI::makeSharedButton( "Store settings", [this] { application->sceneSettings.store( application->settings.sceneSettingsPath.c_str() ); } ) );
+			ui.add( AntTWBarUI::makeSharedButton( "Load settings", [this] {
+				application->sceneSettings.load( application->settings.sceneSettingsPath.c_str() );
+			} ) );
+			ui.add( AntTWBarUI::makeSharedButton( "Store settings", [this] {
+				application->settings.store();
+				application->sceneSettings.store( application->settings.sceneSettingsPath.c_str() );
+			} ) );
+
 			//ui.add( AntTWBarUI::makeSharedVector< NamedTargetVolumeView >( "Camera Views", application->settings.volumes) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
 			ui.add( AntTWBarUI::makeSharedButton( "Sample marked objects", [this] {
@@ -1062,7 +1071,7 @@ namespace aop {
 
 						boost::sort(
 							queryResults,
-							QueryResult::greaterByScoreAndModelIndex
+							ProbeContext::QueryResult::greaterByScoreAndModelIndex
 						);
 
 						std::vector<CandidateSidebarUI::ScoreModelIndexPair> scoredModelIndices;
@@ -1086,7 +1095,7 @@ namespace aop {
 
 					boost::sort(
 						queryResults,
-						QueryResult::greaterByScoreAndModelIndex
+						ProbeContext::QueryResult::greaterByScoreAndModelIndex
 					);
 
 					std::vector<CandidateSidebarUI::ScoreModelIndexPair> scoredModelIndices;
@@ -1216,7 +1225,15 @@ namespace aop {
 			} ) );
 
 			ui.add( AntTWBarUI::makeSharedSeparator() );
-			ui.add( AntTWBarUI::makeSharedButton( "Create neighborhood validation files", [this] {
+			ui.add( AntTWBarUI::makeSharedVariable(
+				"position variance // neighborhood validation",
+				AntTWBarUI::makeReferenceAccessor( application->settings.validation_neighborhood_positionVariance )
+			) );
+			ui.add( AntTWBarUI::makeSharedVariable(
+				"#samples // neighborhood validation",
+				AntTWBarUI::makeReferenceAccessor( application->settings.validation_neighborhood_numSamples )
+			) );
+			ui.add( AntTWBarUI::makeSharedButton( "create validation file // neighborhood", [this] {
 				application->NeighborhoodValidation_queryAllInstances( application->settings.neighborhoodValidationDataPath );
 			} ) );
 
@@ -1439,7 +1456,7 @@ namespace aop {
 			}
 
 			// TODO: rename RawProbeData to Optix...::ProbeSamples! [10/21/2012 kirschan2]
-			RawProbeSamples rawProbeSamples;
+			ProbeContext::RawProbeSamples rawProbeSamples;
 
 			progressTracker.markFinished();
 
@@ -1459,15 +1476,15 @@ namespace aop {
 		log( boost::format( "total sampled probes: %i" ) % totalCount );
 	}
 
-	ProbeContextTolerance Application::getPCTFromSettings() {
-		ProbeContextTolerance pct;
+	ProbeContext::ProbeContextTolerance Application::getPCTFromSettings() {
+		ProbeContext::ProbeContextTolerance pct;
 		pct.occusionTolerance = sceneSettings.probeQuery_occlusionTolerance;
 		pct.distanceTolerance = sceneSettings.probeQuery_distanceTolerance;
 		pct.colorLabTolerance = sceneSettings.probeQuery_colorTolerance;
 		return pct;
 	}
 
-	QueryResults Application::queryVolume( const SceneSettings::NamedTargetVolume &queryVolume, QueryType queryType ) {
+	ProbeContext::QueryResults Application::queryVolume( const SceneSettings::NamedTargetVolume &queryVolume, QueryType queryType ) {
 		ProgressTracker::Context progressTracker( 3 );
 
 		AUTO_TIMER_FOR_FUNCTION();
@@ -1475,12 +1492,12 @@ namespace aop {
 		RenderContext renderContext;
 		renderContext.setDefault();
 
-		RawProbes queryProbes;
+		ProbeContext::RawProbes queryProbes;
 		ProbeGenerator::generateQueryProbes( queryVolume.volume.size, sceneSettings.probeGenerator_resolution, queryProbes );
 
 		progressTracker.markFinished();
 
-		RawProbeSamples queryProbeSamples;
+		ProbeContext::RawProbeSamples queryProbeSamples;
 		AUTO_TIMER_BLOCK( "sampling scene") {
 			OptixRenderer::TransformedProbes transformedQueryProbes;
 			ProbeGenerator::transformProbes( queryProbes, queryVolume.volume.transformation, sceneSettings.probeGenerator_resolution, transformedQueryProbes );
@@ -1488,7 +1505,7 @@ namespace aop {
 		}
 		progressTracker.markFinished();
 
-		QueryResults queryResults;
+		ProbeContext::QueryResults queryResults;
 		switch( queryType ) {
 		case QT_NORMAL:
 			queryResults = normalQueryVolume( queryVolume.volume, queryProbes, queryProbeSamples );
@@ -1509,8 +1526,8 @@ namespace aop {
 		return queryResults;
 	}
 
-	QueryResults Application::normalQueryVolume( const Obb &queryVolume, const RawProbes &queryProbes, const RawProbeSamples &queryProbeSamples ) {
-		ProbeDatabase::Query query( probeDatabase );
+	ProbeContext::QueryResults Application::normalQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples ) {
+		ProbeContext::ProbeDatabase::Query query( probeDatabase );
 		{
 			query.setQueryDataset( queryProbeSamples );
 
@@ -1540,8 +1557,8 @@ namespace aop {
 		return query.getQueryResults();
 	}
 
-	QueryResults Application::fullQueryVolume( const Obb &queryVolume, const RawProbes &queryProbes, const RawProbeSamples &queryProbeSamples ) {
-		ProbeDatabase::FullQuery query( probeDatabase );
+	ProbeContext::QueryResults Application::fullQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples ) {
+		ProbeContext::ProbeDatabase::FullQuery query( probeDatabase );
 		{
 			query.setQueryVolume( queryVolume, sceneSettings.probeGenerator_resolution );
 			query.setQueryDataset( queryProbes, queryProbeSamples );
@@ -1566,8 +1583,8 @@ namespace aop {
 		return query.getQueryResults();
 	}
 
-	QueryResults Application::weightedQueryVolume( const Obb &queryVolume, const RawProbes &queryProbes, const RawProbeSamples &queryProbeSamples ) {
-		ProbeDatabase::WeightedQuery query( probeDatabase );
+	ProbeContext::QueryResults Application::weightedQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples ) {
+		ProbeContext::ProbeDatabase::WeightedQuery query( probeDatabase );
 		{
 			query.setQueryDataset( queryProbes, queryProbeSamples );
 
@@ -1872,138 +1889,37 @@ namespace aop {
 		const int numModels = world->scene.models.size();
 		const int numInstances = world->sceneRenderer.getNumInstances();
 		const float maxDistance = sceneSettings.neighborhoodDatabase_maxDistance;
+		const float positionVariance = settings.validation_neighborhood_positionVariance;
+		const int numSamples = settings.validation_neighborhood_numSamples;
 
-		Validation::NeighborhoodData data( numModels );
-		data.maxDistance = maxDistance;
+		boost::random::mt19937 rng;
+		boost::random::uniform_on_sphere<float, std::vector<float>> sphere(3);
+		boost::random::uniform_real_distribution<float> squaredRadius( 0.0, positionVariance * positionVariance );
+
+		Validation::NeighborhoodData data( numModels, Validation::NeighborhoodSettings( numSamples, maxDistance, positionVariance ) );
 
 		for( int instanceIndex = 0 ; instanceIndex < numInstances ; instanceIndex++ ) {
-			auto neighborContext = world->sceneGrid.query(
-				-1,
-				instanceIndex,
-				world->sceneRenderer.getInstanceTransformation( instanceIndex ).translation(),
-				maxDistance
-			);
-
-			data.queryDatasets.push_back( neighborContext );
-
 			const int modelIndex = world->sceneRenderer.getModelIndex( instanceIndex );
-			data.queryInfos.push_back( modelIndex );
 			data.instanceCounts.count( modelIndex );
+
+			const auto position = world->sceneRenderer.getInstanceTransformation( instanceIndex ).translation();
+			for( int sampleIndex = 0 ; sampleIndex < numSamples ; ++sampleIndex ) {
+				const Vector3f shift = Eigen::Vector3f::Map( &sphere( rng ).front() ) * sqrtf( squaredRadius( rng ) );
+				auto neighborContext = world->sceneGrid.query(
+					-1,
+					instanceIndex,
+					position + shift,
+					maxDistance
+				);
+
+				data.queryDatasets.push_back( neighborContext );
+				data.queryInfos.push_back( modelIndex );
+			}
 		}
 
 		Validation::NeighborhoodData::store( filename, data );
 	}
 }
-
-#if 0
-void real_main() {
-	aop::Application application;
-
-	application.init();
-
-	// The main loop - ends as soon as the window is closed
-
-
-/*	EventDispatcher verboseEventDispatcher( "sub" );
-	eventDispatcher.addEventHandler( make_nonallocated_shared( verboseEventDispatcher ) );
-
-	KeyAction reloadShadersAction( "reload shaders", sf::Keyboard::R, [&] () { world.sceneRenderer.reloadShaders(); } );
-	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( reloadShadersAction ) );
-
-	BoolVariableToggle showBoundingSpheresToggle( "show bounding spheres", world.sceneRenderer.debug.showBoundingSpheres, sf::Keyboard::B );
-	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( showBoundingSpheresToggle ) );
-
-	BoolVariableToggle showTerrainBoundingSpheresToggle( "show terrain bounding spheres",world.sceneRenderer.debug.showTerrainBoundingSpheres, sf::Keyboard::N );
-	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( showTerrainBoundingSpheresToggle ) );
-
-	BoolVariableToggle updateRenderListsToggle( "updateRenderLists",world.sceneRenderer.debug.updateRenderLists, sf::Keyboard::C );
-	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( updateRenderListsToggle ) );
-
-	IntVariableControl disabledObjectIndexControl( "disabledModelIndex", view.renderContext.disabledModelIndex, -1, world.scene.modelNames.size(), sf::Keyboard::Numpad7, sf::Keyboard::Numpad1 );
-	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( disabledObjectIndexControl ) );
-
-	IntVariableControl disabledInstanceIndexControl( "disabledInstanceIndex",view.renderContext.disabledInstanceIndex, -1, world.scene.numSceneObjects, sf::Keyboard::Numpad9, sf::Keyboard::Numpad3 );
-	verboseEventDispatcher.addEventHandler( make_nonallocated_shared( disabledInstanceIndexControl ) );*/
-
-	//DebugWindowManager debugWindowManager;
-
-#if 0
-	TextureVisualizationWindow optixWindow;
-	optixWindow.init( "Optix Version" );
-	optixWindow.texture = world.optixRenderer.debugTexture;
-
-	debugWindowManager.windows.push_back( make_nonallocated_shared( optixWindow ) );
-#endif
-#if 0
-	TextureVisualizationWindow mergedTextureWindow;
-	mergedTextureWindow.init( "merged object textures" );
-	mergedTextureWindow.texture = world.sceneRenderer.mergedTexture;
-
-	debugWindowManager.windows.push_back( make_nonallocated_shared( mergedTextureWindow ) );
-#endif
-
-
-
-	Instance testInstance;
-	testInstance.modelId = 0;
-	testInstance.transformation.setIdentity();
-	//world.sceneRenderer.addInstance( testInstance );
-
-	ProbeGenerator::initDirections();
-
-#if 0
-	CandidateFinder candidateFinder;
-	candidateFinder.reserveIds(0);
-	view.renderContext.disabledModelIndex = 0;
-	DebugRender::DisplayList probeVisualization;
-	{
-		auto instanceIndices = world.sceneRenderer.getModelInstances( 0 );
-
-		int totalCount = 0;
-
-		for( auto instanceIndex = instanceIndices.begin() ; instanceIndex != instanceIndices.end() ; ++instanceIndex ) {
-			boost::timer::auto_cpu_timer timer( "ProbeSampling, batch: %ws wall, %us user + %ss system = %ts CPU (%p%)\n" );
-
-			ProbeDataset dataset;
-			std::vector<SGSInterface::Probe> transformedProbes;
-
-			world.generateProbes( *instanceIndex, 0.25, dataset.probes, transformedProbes );
-
-			std::cout << "sampling " << transformedProbes.size() << " probes in one batch:\n\t";
-			world.optixRenderer.sampleProbes( transformedProbes, dataset.probeContexts, view.renderContext );
-
-			candidateFinder.addDataset(0, std::move( dataset ) );
-
-			totalCount += transformedProbes.size();
-
-			/*probeVisualization.beginCompileAndAppend();
-			visualizeProbes( 0.25, transformedProbes );
-			probeVisualization.endCompile();*/
-		}
-
-		std::cout << "num probes: " << totalCount << "\n";
-
-		candidateFinder.integrateDatasets();
-	}
-	view.renderContext.disabledModelIndex = -1;
-
-	return;
-#endif
-
-	{
-		aop::SceneSettings::NamedTargetVolume targetVolume;
-
-		targetVolume.name = "test";
-		targetVolume.volume.transformation.setIdentity();
-		targetVolume.volume.size.setConstant( 3.0 );
-
-		application.settings.volumes.push_back( targetVolume );
-	}
-
-	application.eventLoop();
-};
-#endif
-
 
 void main() {
 	MEMORYSTATUSEX memoryStatusEx;

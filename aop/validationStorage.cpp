@@ -1,7 +1,7 @@
 #include "validationStorage.h"
 
 namespace Validation {
-	const int CACHE_FORMAT_VERSION = 0;
+	const int CACHE_FORMAT_VERSION = 1;
 
 	NeighborhoodData NeighborhoodData::load( const std::string &filename ) {
 		Serializer::BinaryReader reader( filename.c_str(), CACHE_FORMAT_VERSION );

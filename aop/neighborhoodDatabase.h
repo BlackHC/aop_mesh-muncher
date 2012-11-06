@@ -159,7 +159,7 @@ namespace Neighborhood {
 
 		std::vector< IdSampledModelPair > sampledModelsById;
 
-		NeighborhoodDatabaseV2() : numIds(), totalNumInstances() {}
+		NeighborhoodDatabaseV2() : numIds(), totalNumInstances(), modelDatabase() {}
 
 		bool load( const std::string &filename );
 		void store( const std::string &filename ) const;
@@ -878,7 +878,7 @@ namespace Neighborhood {
 			}
 
 			Results execute() {
-				return executeWithPolicy< ImportanceScorePolicy >();
+				return executeWithPolicy< UniformWeightPolicy >();
 			}
 		};
 	};

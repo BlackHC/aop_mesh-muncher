@@ -87,8 +87,8 @@ struct ModelDatabase {
 	}
 
 	// see candidateFinderCache.cpp
-	bool load( const char *filename );
-	void store( const char *filename );
+	bool load( const std::string &filename );
+	void store( const std::string &filename );
 
 #if 0
 	void registerModel( int modelIndex, IdInformation &&informationById );
@@ -97,7 +97,7 @@ struct ModelDatabase {
 	//////////////////////////////////////////////////////////////////////////
 	// TODO: move this into an idConverter class? [10/15/2012 kirschan2]
 	std::unordered_map< std::string, ModelIndex > modelNameIdMap;
-		
+
 	ModelIndex convertToModelIndex( const std::string &name ) {
 		auto it = modelNameIdMap.find( name );
 		if( it != modelNameIdMap.end() ) {
@@ -109,7 +109,7 @@ struct ModelDatabase {
 	ModelIndexGroup convertToModelIndices( const ModelGroup &group ) {
 		ModelIndexGroup converted;
 		converted.reserve( group.size() );
-		
+
 		for( auto modelName = group.begin() ; modelName != group.end() ; ++modelName ) {
 			ModelIndex modelIndex = convertToModelIndex( *modelName );
 			if( modelIndex != INVALID_MODEL_INDEX ) {

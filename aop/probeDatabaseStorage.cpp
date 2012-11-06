@@ -2,6 +2,7 @@
 
 const int CACHE_FORMAT_VERSION = 4;
 
+namespace ProbeContext {
 bool ProbeDatabase::load( const std::string &filename ) {
 	Serializer::BinaryReader reader( filename.c_str(), CACHE_FORMAT_VERSION );
 	if( reader.valid() ) {
@@ -55,4 +56,4 @@ namespace IO {
 		writer.put( results );
 	}
 }
-
+}

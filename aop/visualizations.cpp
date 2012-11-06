@@ -6,7 +6,7 @@
 
 using namespace Eigen;
 
-void visualizeProbes( float resolution, const RawProbes &probes ) {
+void visualizeProbes( float resolution, const ProbeContext::RawProbes &probes ) {
 	DebugRender::begin();
 	glColor3f( 0.0, 1.0, 1.0 );
 	glBegin( GL_LINES );
@@ -51,8 +51,8 @@ void visualizeColorGrid( const VoxelizedModel::Voxels &grid, GridVisualizationMo
 
 void visualizeProbe(
 	const Eigen::Vector3f &missColor,
-	const RawProbe &probe,
-	const RawProbeSample &probeSample,
+	const ProbeContext::RawProbe &probe,
+	const ProbeContext::RawProbeSample &probeSample,
 	float maxDistance,
 	float gridResolution,
 	float scaleFactor,
@@ -124,8 +124,8 @@ void visualizeRawProbeSamples(
 	float maxDistance,
 	float gridResolution,
 	float scaleFactor,
-	const RawProbes &probes,
-	const RawProbeSamples &probeSamples,
+	const ProbeContext::RawProbes &probes,
+	const ProbeContext::RawProbeSamples &probeSamples,
 	ProbeVisualizationMode pvm
 ) {
 	if( probes.size() != probeSamples.size() ) {
@@ -152,8 +152,8 @@ void visualizeProbeDataset(
 	float maxDistance,
 	float gridResolution,
 	float scaleFactor,
-	const DBProbes &probes,
-	const DBProbeSamples &probeSamples,
+	const ProbeContext::DBProbes &probes,
+	const ProbeContext::DBProbeSamples &probeSamples,
 	ProbeVisualizationMode pvm
 ) {
 	DebugRender::begin();

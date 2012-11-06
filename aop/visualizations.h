@@ -4,7 +4,7 @@
 #include "sgsInterface.h"
 #include "probeDatabase.h"
 
-void visualizeProbes( float resolution, const RawProbes &probes );
+void visualizeProbes( float resolution, const ProbeContext::RawProbes &probes );
 
 enum GridVisualizationMode {
 	GVM_POSITION,
@@ -30,8 +30,8 @@ void visualizeProbeDataset(
 	float maxResolution,
 	float gridResolution,
 	float scaleFactor,
-	const DBProbes &probes,
-	const DBProbeSamples &probeSamples,
+	const ProbeContext::DBProbes &probes,
+	const ProbeContext::DBProbeSamples &probeSamples,
 	ProbeVisualizationMode pvm
 );
 
@@ -40,7 +40,7 @@ void visualizeRawProbeSamples(
 	float maxDistance,
 	float gridResolution,
 	float scaleFactor,
-	const RawProbes &probes,
-	const RawProbeSamples &probeSamples,
+	const ProbeContext::RawProbes &probes,
+	const ProbeContext::RawProbeSamples &probeSamples,
 	ProbeVisualizationMode pvm
 );

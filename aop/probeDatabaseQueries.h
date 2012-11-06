@@ -3,6 +3,8 @@
 #include "probeDatabase.h"
 #include "boost\range\algorithm\max_element.hpp"
 
+namespace ProbeContext {
+
 struct ProbeDatabase::Query {
 	typedef std::shared_ptr<Query> Ptr;
 
@@ -540,3 +542,4 @@ protected:
 	Eigen::Affine3f queryVolumeTransformation;
 	float queryResolution;
 };
+}

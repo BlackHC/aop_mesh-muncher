@@ -18,6 +18,9 @@ namespace aop {
 
 		std::string neighborhoodValidationDataPath;
 
+		float validation_neighborhood_positionVariance;
+		int validation_neighborhood_numSamples;
+
 		Settings();
 
 		void load();
@@ -80,7 +83,7 @@ namespace aop {
 			, probeQuery_colorTolerance( 1.0 )
 		{}
 
-		void load( const char *filename );
-		void store( const char *filename ) const;
+		void load( const std::string &filename );
+		void store( const std::string &filename ) const;
 	};
 }

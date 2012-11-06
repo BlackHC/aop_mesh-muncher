@@ -30,13 +30,26 @@
 
 #include "probeGenerator.h"
 
+#include <autoTimer.h>
+
+#include <boost/lexical_cast.hpp>
+#include <sort_permute_iter.h>
+#include "boost/range/algorithm/sort.hpp"
+#include <boost/iterator/counting_iterator.hpp>
+
+namespace ProbeContext {
+
 struct InstanceProbeDataset;
 struct IndexedProbeSamples;
 struct SampledModel;
 
-SERIALIZER_FWD_EXTERN_DECL( InstanceProbeDataset )
-SERIALIZER_FWD_EXTERN_DECL( IndexedProbeSamples )
-SERIALIZER_FWD_EXTERN_DECL( SampledModel )
+}
+
+SERIALIZER_FWD_EXTERN_DECL( ProbeContext::InstanceProbeDataset )
+SERIALIZER_FWD_EXTERN_DECL( ProbeContext::IndexedProbeSamples )
+SERIALIZER_FWD_EXTERN_DECL( ProbeContext::SampledModel )
+
+namespace ProbeContext {
 
 struct QueryResult {
 	float score;
@@ -199,14 +212,9 @@ struct IDatabase {
 	// the query interface is implemented differently by every database
 };
 
-#include <autoTimer.h>
-
-#include <boost/lexical_cast.hpp>
 
 //////////////////////////////////////////////////////////////////////////
-#include <sort_permute_iter.h>
-#include "boost/range/algorithm/sort.hpp"
-#include <boost/iterator/counting_iterator.hpp>
+
 
 struct ProbeContextTolerance {
 	// tolerance means: |x-y| < tolerance, then match
@@ -656,7 +664,7 @@ private:
 
 	void setOcclusionLowerBounds();
 
-	SERIALIZER_FWD_FRIEND_EXTERN( IndexedProbeSamples );
+	SERIALIZER_FWD_FRIEND_EXTERN( ProbeContext::IndexedProbeSamples );
 
 private:
 	// better error messages than with boost::noncopyable
@@ -909,7 +917,7 @@ private:
 	std::vector< ProbeGenerator::ProbePositions > rotatedProbePositions;
 	float resolution;
 
-	SERIALIZER_FWD_FRIEND_EXTERN( SampledModel );
+	SERIALIZER_FWD_FRIEND_EXTERN( ProbeContext::SampledModel );
 
 private:
 	// better error messages than with boost::noncopyable
@@ -978,5 +986,7 @@ struct ProbeDatabase : IDatabase {
 private:
 	SampledModels sampledModels;
 };
+
+}
 
 #include "probeDatabaseQueries.h"

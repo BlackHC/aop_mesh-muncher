@@ -181,9 +181,40 @@ CUDA_ADD_EXECUTABLE(aop
 	modelButtonWidget.cpp
 
 	validation.h
+	validation.cpp
 	validationStorage.h
 	validationStorage.cpp
 )
+
+
+ADD_EXECUTABLE(Validate_aop_neighborhood
+	modelDatabase.h
+	modelDatabase.cpp
+	modelDatabaseStorage.h
+	modelDatabaseStorage.cpp
+
+	neighborhoodDatabase.h
+	neighborhoodDatabase.cpp
+	neighborhoodDatabaseStorage.h
+	neighborhoodDatabaseStorage.cpp
+
+	validation.h
+	validation.cpp
+	validationStorage.h
+	validationStorage.cpp
+
+	../framework/logger.h
+	../framework/logger.cpp
+
+	../framework/progressTracker.h
+	../framework/progressTracker.cpp
+
+	../framework/autoTimer.h
+	../framework/autoTimer.cpp
+
+	validation_neighborhood.cpp
+)
+
 
 ADD_EXECUTABLE(Test_aop
 	probeDatabase.h
@@ -258,6 +289,11 @@ TARGET_LINK_LIBRARIES(aop ${SOIL_LIBRARY})
 TARGET_LINK_LIBRARIES(aop ${optix_LIBRARY})
 
 #TARGET_LINK_LIBRARIES(aop ${GWEN_LIBRARY})
+
+TARGET_LINK_LIBRARIES(Validate_aop_neighborhood ${SFML_LIBRARIES})
+TARGET_LINK_LIBRARIES(Validate_aop_neighborhood ${Boost_LIBRARIES})
+TARGET_LINK_LIBRARIES(Validate_aop_neighborhood ${SOIL_LIBRARY})
+TARGET_LINK_LIBRARIES(Validate_aop_neighborhood ${optix_LIBRARY})
 
 TARGET_LINK_LIBRARIES(Test_aop ${ANTTWEAKBAR_LIBRARY})
 TARGET_LINK_LIBRARIES(Test_aop ${SFML_LIBRARIES})

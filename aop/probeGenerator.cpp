@@ -9,23 +9,12 @@
 
 using namespace Eigen;
 
-namespace {
-	const Eigen::Vector3i rotationAxes[] = {
-		Eigen::Vector3i( 1, 0, 0 ), Eigen::Vector3i( 0, 1, 0 ), Eigen::Vector3i( 0, 0, 1 ),
-		Eigen::Vector3i( 1, 1, 0 ), Eigen::Vector3i( 1, -1, 0 ),
-		Eigen::Vector3i( 1, 0, 1 ), Eigen::Vector3i( 1, 0, -1 ),
-		Eigen::Vector3i( 0, 1, -1 ), Eigen::Vector3i( 0, 1, 1 )
-		//Eigen::Vector3i( 1, -1, 1 ), Eigen::Vector3i( 1, 1, -1 ),
-		//Eigen::Vector3i( 1, 1, 1 ), Eigen::Vector3i( 1, -1, -1 ),
-	};
-}
-
 namespace ProbeGenerator {
 	static Eigen::Vector3f directions[ boost::extent< decltype( neighborOffsets ) >::value  ];
 	BOOST_STATIC_ASSERT( boost::extent< decltype( neighborOffsets ) >::value  == 26 );
 
-	static Eigen::Matrix3f orientations[ boost::extent< decltype( rotationAxes ) >::value * 3 + 1 ];
-	static int rotatedDirectionsMap[ boost::extent< decltype( orientations ) >::value ][ boost::extent< decltype( neighborOffsets ) >::value ];
+	static Eigen::Matrix3f orientations[ 24 ];
+	static int rotatedDirectionsMap[ 24 ][ 26 ];
 
 	void initDirections() {
 		for( int i = 0 ; i < boost::size( neighborOffsets ) ; i++ ) {
@@ -47,13 +36,23 @@ namespace ProbeGenerator {
 
 	void initOrientations() {
 		// init the rotation matrices
-		orientations[0].setIdentity();
+		int orientationIndex = 0;
+		for( int firstAxis = 0 ; firstAxis < 3 ; firstAxis++ ) {
+			for( int firstSign = 0 ; firstSign < 2 ; firstSign++ ) {
+				const Vector3f firstDirection = Vector3f::Unit( firstAxis ) * ((firstSign > 0) ? -1.0 : 1.0);
+				for( int secondAxis = 0 ; secondAxis < 2 ; secondAxis++) {
+					for( int secondSign = 0 ; secondSign < 2 ; secondSign++ ) {
+						const Vector3f secondDirection = Vector3f::Unit( (firstAxis + secondAxis + 1) % 3 ) * ((secondSign > 0) ? -1.0 : 1.0);
+						const Vector3f thirdDirection = firstDirection.cross( secondDirection );
 
-		for( int i = 0 ; i < boost::size( rotationAxes ) ; ++i ) {
-			const Vector3d rotationAxis = rotationAxes[i].cast<double>().normalized();
-			orientations[ 1 + i * 3 ] = Eigen::AngleAxisd( Math::PI_2, rotationAxis ).toRotationMatrix().cast<float>();
-			orientations[ 1 + i * 3 + 1 ] = Eigen::AngleAxisd( Math::PI, rotationAxis ).toRotationMatrix().cast<float>();
-			orientations[ 1 + i * 3 + 2 ] = Eigen::AngleAxisd( Math::PI_2, -rotationAxis ).toRotationMatrix().cast<float>();
+						orientations[ orientationIndex ].col( 0 ) = firstDirection;
+						orientations[ orientationIndex ].col( 1 ) = secondDirection;
+						orientations[ orientationIndex ].col( 2 ) = thirdDirection;
+
+						orientationIndex++;
+					}
+				}
+			}
 		}
 
 		// map the directions
@@ -195,9 +194,9 @@ namespace ProbeGenerator {
 	) {
 		Probe probe;
 
-		const Vector3i cellPosition = floor( position / resolution + Vector3f::Constant( 0.5f ) );		
-		probe.position = cellPosition.cast< signed char >(); 
-		
+		const Vector3i cellPosition = floor( position / resolution + Vector3f::Constant( 0.5f ) );
+		probe.position = cellPosition.cast< signed char >();
+
 		const float averagedNormalLength = averagedNormal.norm();
 		const float threshold = averagedNormalLength * (averagedNormalLength - 1.0f);
 
@@ -218,7 +217,7 @@ namespace ProbeGenerator {
 		const int probesCount = (int) probes.size();
 		for( int probeIndex = 0 ; probeIndex < probesCount ; probeIndex++ ) {
 			const auto &probe = probes[ probeIndex ];
-		
+
 			const Vector3f rotatedPosition = rotation * probe.position.cast<float>();
 			probePositions.push_back( floor(rotatedPosition + Vector3f::Constant( 0.5f )).cast<signed char>() );
 		}

@@ -115,10 +115,10 @@ namespace Serializer {
 	struct BinaryWriter : boost::noncopyable {
 		FILE *handle;
 
-		BinaryWriter( const char *filename ) : handle( fopen( filename , "wb" ) ) {
+		BinaryWriter( const std::string &filename ) : handle( fopen( filename.c_str() , "wb" ) ) {
 		}
 
-		BinaryWriter( const char *filename, int version ) : handle( fopen( filename , "wb" ) ) {
+		BinaryWriter( const std::string &filename, int version ) : handle( fopen( filename.c_str() , "wb" ) ) {
 			put( version );
 		}
 
@@ -137,8 +137,8 @@ namespace Serializer {
 	struct BinaryReader : boost::noncopyable {
 		FILE *handle;
 
-		BinaryReader( const char *filename ) : handle( fopen( filename , "rb" ) ) {}
-		BinaryReader( const char *filename, int version ) : handle( fopen( filename , "rb" ) ) {
+		BinaryReader( const std::string &filename ) : handle( fopen( filename.c_str() , "rb" ) ) {}
+		BinaryReader( const std::string &filename, int version ) : handle( fopen( filename.c_str() , "rb" ) ) {
 			if( handle ) {
 				int actualVersion;
 				get( actualVersion );
@@ -188,7 +188,7 @@ namespace Serializer {
 				wml::Node *mapNode;
 				wml::Node *keyNode;
 
-				Environment( Base &base, wml::Node *newMapNode, wml::Node *newKeyNode = nullptr ) 
+				Environment( Base &base, wml::Node *newMapNode, wml::Node *newKeyNode = nullptr )
 					: base( base ),
 					mapNode( base.mapNode ),
 					keyNode( base.keyNode )
@@ -213,10 +213,10 @@ namespace Serializer {
 	struct TextWriter : detail::TextBase {
 		std::string filename;
 
-		// TODO: fix this hack and implement proper support for a TextWriterBase that just consists of TextBase and nothing else 
+		// TODO: fix this hack and implement proper support for a TextWriterBase that just consists of TextBase and nothing else
 		// we should wrap fread and fwrite as well, so we are independent of the actual output method [10/12/2012 kirschan2]
 		TextWriter( detail::TextConverterTag tag ) {}
-		TextWriter( const char *filename ) : filename( filename ) {}
+		TextWriter( const std::string &filename ) : filename( filename ) {}
 		~TextWriter() {
 			if( !filename.empty() ) {
 				wml::emitFile( filename, root );
@@ -239,7 +239,7 @@ namespace Serializer {
 		// node counter for unnamed gets (so we can iterate over all sub nodes of mapNode)
 		int unnamedCounter;
 
-		TextReader( const char *filename ) : unnamedCounter( 0 ) {
+		TextReader( const std::string &filename ) : unnamedCounter( 0 ) {
 			root = wml::parseFile( filename );
 		}
 
@@ -258,10 +258,10 @@ namespace Serializer {
 			}
 		};
 	};
-	
+
 	//////////////////////////////////////////////////////////////////////////
 	// binary mode passthrough
-	
+
 	template< typename Value >
 	void put( BinaryWriter &writer, const Value &value ) {
 		write( writer, value );
@@ -271,12 +271,12 @@ namespace Serializer {
 	void put( BinaryWriter &writer, const char *key, const Value &value ) {
 		write( writer, value );
 	}
-		
+
 	template< typename Value >
 	void putAsKey( BinaryWriter &writer, const char *key, const Value &value ) {
 		write( writer, value );
 	}
-	
+
 	template< typename Value >
 	void get( BinaryReader &reader, Value &value ) {
 		read( reader, value );
@@ -321,9 +321,9 @@ namespace Serializer {
 			{
 				TextWriter::Environment environment( writer, writer.keyNode );
 
-				write( writer, value );				
+				write( writer, value );
 			}
-			
+
 			// keyNode has been used - additional putAsKey will be simple puts
 			writer.keyNode = nullptr;
 		}
@@ -336,7 +336,7 @@ namespace Serializer {
 		class is_default_constructible {
 			typedef int yes;
 			typedef char no;
-		
+
 			// for fun: the other version, does not work... wtf?
 #if 1
 			template<int x, int y> class is_equal {};
@@ -346,7 +346,7 @@ namespace Serializer {
 			static yes sfinae( typename is_equal< sizeof U(), sizeof U() >::type * );
 #else
 			template<int x> class is_okay { typedef void type; };
-			
+
 			template< class U >
 			static yes sfinae( typename is_okay< sizeof U() >::type * );
 #endif
@@ -379,7 +379,7 @@ namespace Serializer {
 			value = defaultValue;
 		}
 	}
-	
+
 
 	// change: we don't use default values except if we pass them [10/12/2012 kirschan2]
 	//  this allows use to default initialize values in the default constructor, for example
@@ -388,7 +388,7 @@ namespace Serializer {
 #if 0
 	// if we don't pass a default value, we either construct a default value, if possible
 	template< typename Value >
-	typename boost::enable_if< detail::is_default_constructible< Value > >::type 
+	typename boost::enable_if< detail::is_default_constructible< Value > >::type
 	get( TextReader &reader, const char *key, Value &value ) {
 		if( !detail::tryGet( reader, key, value ) ) {
 			value = Value();
@@ -397,7 +397,7 @@ namespace Serializer {
 
 	// or we fail, if there is no default constructor
 	template< typename Value >
-	typename boost::enable_if_c< !detail::is_default_constructible< Value >::value >::type 
+	typename boost::enable_if_c< !detail::is_default_constructible< Value >::value >::type
 	get( TextReader &reader, const char *key, Value &value ) {
 		if( !detail::tryGet( reader, key, value ) ) {
 			reader.mapNode->error( boost::str( boost::format( "'%s' not found!") % key ) );
@@ -420,10 +420,10 @@ namespace Serializer {
 		else {
 			{
 				TextReader::Environment environment( reader, reader.keyNode );
-			
+
 				read( reader, value );
 			}
-			
+
 			// keyNode has been used - additional getAsKey will be gets
 			reader.keyNode = nullptr;
 		}
@@ -482,9 +482,9 @@ namespace Serializer {
 			writer.mapNode->content = std::move( writer.mapNode->data().content );
 			writer.mapNode->nodes.clear();
 		}
-		else 
+		else
 		// has the keyNode been 'used'?
-		if( !writer.keyNode ) {		
+		if( !writer.keyNode ) {
 			// verify there is only one data node
 			BOOST_ASSERT( keyNode.size() == 1 );
 
@@ -561,7 +561,7 @@ namespace Serializer {
 
 	//////////////////////////////////////////////////////////////////////////
 	// enums
-	
+
 	template< typename Value >
 	typename boost::enable_if< boost::is_enum< Value > >::type
 		read( BinaryReader &reader, Value &value ) {
@@ -578,7 +578,7 @@ namespace Serializer {
 	struct Reflection {
 		/*
 		static std::pair< const char *, Value > get( int index ) {
-			return std::make_pair( nullptr, Value() ); 
+			return std::make_pair( nullptr, Value() );
 		}
 		}*/
 	};
@@ -616,7 +616,7 @@ namespace Serializer {
 			return std::make_pair( nullptr, Value() ); \
 		} \
 	};
-	
+
 	// using serializer_reflection
 	template< typename Value >
 	typename boost::enable_if< detail::has_reflection< Value > >::type

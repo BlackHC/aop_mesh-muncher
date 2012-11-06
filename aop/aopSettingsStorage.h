@@ -28,4 +28,6 @@ SERIALIZER_DEFAULT_EXTERN_IMPL( aop::Settings,
 	(probeDatabasePath)
 	(modelDatabasePath)
 	(neighborhoodDatabaseV2Path)
+	(validation_neighborhood_positionVariance)
+	(validation_neighborhood_numSamples)
 );

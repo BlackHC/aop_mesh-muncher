@@ -57,6 +57,13 @@ namespace aop {
 			QT_FULL
 		};
 
+		enum NormalGenerationType {
+			NGT_AUTOMATIC,
+			NGT_AVERAGE,
+			NGT_NEIGHBOR,
+			NGT_COMBINED
+		};
+
 		sf::Clock frameClock, clock;
 
 		sf::RenderWindow mainWindow;
@@ -81,7 +88,7 @@ namespace aop {
 		SceneSettings sceneSettings;
 		bool hideScene;
 
-		ProbeDatabase probeDatabase;
+		ProbeContext::ProbeDatabase probeDatabase;
 		Neighborhood::NeighborhoodDatabaseV2 neighborDatabaseV2;
 		ModelDatabase modelDatabase;
 
@@ -136,17 +143,17 @@ namespace aop {
 			ModelDatabase_sampleModel( modelId, resolution );
 		}
 
-		QueryResults queryVolume( const SceneSettings::NamedTargetVolume &queryVolume, QueryType queryType );
-		QueryResults normalQueryVolume( const Obb &queryVolume, const RawProbes &queryProbes, const RawProbeSamples &queryProbeSamples );
-		QueryResults weightedQueryVolume( const Obb &queryVolume, const RawProbes &queryProbes, const RawProbeSamples &queryProbeSamples );
+		ProbeContext::QueryResults queryVolume( const SceneSettings::NamedTargetVolume &queryVolume, QueryType queryType );
+		ProbeContext::QueryResults normalQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples );
+		ProbeContext::QueryResults weightedQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples );
 
 		void ProbeDatabase_sampleInstances( int modelIndex );
 
-		ProbeContextTolerance getPCTFromSettings();
+		ProbeContext::ProbeContextTolerance getPCTFromSettings();
 
 		void NeighborhoodDatabase_sampleScene();
 
-		QueryResults fullQueryVolume( const Obb &queryVolume, const RawProbes &queryProbes, const RawProbeSamples &queryProbeSamples );
+		ProbeContext::QueryResults fullQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples );
 
 		// validation helper
 		void NeighborhoodValidation_queryAllInstances( const std::string &filename );
