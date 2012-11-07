@@ -52,7 +52,7 @@ void ProbeDatabase::clear( int sceneModelIndex ) {
 
 void ProbeDatabase::addInstanceProbes(
 	int sceneModelIndex,
-	const Obb &sampleSource,
+	const Obb::Transformation &sourceTransformation,
 	const float resolution,
 	const RawProbes &probes,
 	const RawProbeSamples &probeSamples
@@ -67,13 +67,13 @@ void ProbeDatabase::addInstanceProbes(
 	}
 
 	SampledModel &sampledModel = sampledModels[ localModelIndex ];
-	sampledModel.addInstanceProbes( sampleSource, resolution, probes, ProbeSampleTransformation::transformSamples( probeSamples ) );
+	sampledModel.addInstanceProbes( sourceTransformation, resolution, probes, ProbeSampleTransformation::transformSamples( probeSamples ) );
 }
 
 void ProbeDatabase::compile( int sceneModelIndex ) {
 	const int localModelIndex = modelIndexMapper.getLocalModelIndex( sceneModelIndex );
 	if( localModelIndex != ModelIndexMapper::INVALID_INDEX ) {
-		sampledModels[ localModelIndex ].mergeInstances();
+		sampledModels[ localModelIndex ].mergeInstances( colorCounter );
 	}
 }
 }

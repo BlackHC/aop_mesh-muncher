@@ -1,6 +1,25 @@
 #include "probeDatabase.h"
 #include "gtest.h"
 
+using namespace ProbeContext;
+
+TEST( ColorCounter, constructor ) {
+	ColorCounter colorCounter;
+	EXPECT_EQ( 0, colorCounter.totalNumSamples );
+	for( int i = 0 ; i < colorCounter.numBuckets ; ++i ) {
+		EXPECT_EQ( 0, colorCounter.buckets[ i ] );
+	}
+}
+
+TEST( ColorCounter, getBucket ) {
+	RawProbeSample rawProbeSample;
+	rawProbeSample.colorLab.x = 0;
+	rawProbeSample.colorLab.y = -100;
+	rawProbeSample.colorLab.z = -100;
+
+	EXPECT_EQ( 0, ColorCounter::getBucketIndex( rawProbeSample ) );
+}
+
 TEST( DBProbeSample, lexicographicalLess ) {
 	DBProbeSample a, b;
 	{
@@ -222,7 +241,7 @@ TEST( ProbeDatabase, zeroTolerance ) {
 	modelNames.push_back( "test" );
 	probeDatabase.registerSceneModels( modelNames );
 
-	probeDatabase.addInstanceProbes( 0, Obb(), 1.0, probes, rawProbeSamples );
+	probeDatabase.addInstanceProbes( 0, Obb::Transformation(), 1.0, probes, rawProbeSamples );
 	probeDatabase.compileAll();
 
 	{
@@ -302,7 +321,7 @@ TEST( ProbeDatabase, zeroTolerance_biggerDB ) {
 	modelNames.push_back( "test" );
 	probeDatabase.registerSceneModels( modelNames );
 
-	probeDatabase.addInstanceProbes( 0, Obb(), 1.0, probes, rawProbeSamples );
+	probeDatabase.addInstanceProbes( 0, Obb::Transformation(), 1.0, probes, rawProbeSamples );
 	probeDatabase.compileAll();
 
 	{
@@ -378,7 +397,7 @@ TEST( ProbeDatabase, oneTolerance ) {
 	modelNames.push_back( "test" );
 	probeDatabase.registerSceneModels( modelNames );
 
-	probeDatabase.addInstanceProbes( 0, Obb(), 1.0, probes, rawProbeSamples );
+	probeDatabase.addInstanceProbes( 0, Obb::Transformation(), 1.0, probes, rawProbeSamples );
 	probeDatabase.compileAll();
 
 	ProbeContextTolerance pct;

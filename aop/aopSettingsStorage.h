@@ -20,6 +20,9 @@ SERIALIZER_DEFAULT_EXTERN_IMPL( aop::SceneSettings,
 	(neighborhoodDatabase_maxDistance)
 	(probeGenerator_maxDistance)
 	(probeGenerator_resolution)
+	(probeQuery_occlusionTolerance)
+	(probeQuery_distanceTolerance)
+	(probeQuery_colorTolerance)
 );
 
 SERIALIZER_DEFAULT_EXTERN_IMPL( aop::Settings,

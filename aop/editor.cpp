@@ -490,7 +490,7 @@ void Editor::Placing::onMouse( EventState &eventState ) {
 
 				const Vector3f obbCenter = position + saturateInBox( normal, boundingBox.sizes() );
 
-				editor->world->addInstance( modelIndex, obbCenter );
+				editor->world->addInstance( modelIndex, obbCenter - boundingBox.center() );
 			}
 		};
 		Placer( editor, position, normal ).dispatch( editor->selection );

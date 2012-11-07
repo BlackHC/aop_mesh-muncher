@@ -226,10 +226,10 @@ namespace DebugObjects {
 
 		bool visible;
 
-		SceneDisplayListObject( const std::string &name, GL::DisplayList &displayList )
+		SceneDisplayListObject( const std::string &name, GL::DisplayList &displayList, bool visible = true )
 			: container( AntTWBarUI::CT_GROUP, name )
 			, displayList( displayList )
-			, visible( true )
+			, visible( visible )
 		{
 			init();
 		}
@@ -318,11 +318,12 @@ namespace DebugObjects {
 
 		Vector3f missColor;
 		static bool automaticallyVisualizeQuery;
+		static bool automaticallyVisualizeConfigurationQueryDetails;
 
 		ProbeDatabase( Application *application )
 			: container( "Probe database" )
 			, application( application )
-			, missColor( 0.5, 1.0, 0.5 )
+			, missColor( 0.2, 0.3, 0.4 )
 		{
 			init();
 		}
@@ -335,7 +336,7 @@ namespace DebugObjects {
 
 			// TODO: add an instanceIndex member to each instance in ProbeDatabase [10/16/2012 kirschan2]
 			for( auto sampledInstance = sampledModel.getInstances().begin() ; sampledInstance != sampledModel.getInstances().end() ; ++sampledInstance ) {
-				DebugRender::setTransformation( sampledInstance->getSource().transformation );
+				DebugRender::setTransformation( sampledInstance->getSource() );
 				DebugRender::startLocalTransform();
 				visualizeProbeDataset(
 					missColor,
@@ -372,6 +373,127 @@ namespace DebugObjects {
 			debugUI->add(
 				std::make_shared< DebugObjects::SceneDisplayListObject >( name, list.publish() )
 			);
+		}
+
+		void addConfigurationQueryVisualization( const Obb &volume, const ProbeContext::ProbeDatabase::FullQuery &query ) {
+			const float scaleFactor = 0.25f;
+			const auto details = query.getDetailedQueryResults();
+
+			// only do the first two models for now
+			int numDetails = std::min<int>( details.size(), 2 );
+			for( int detailIndex = 0 ; detailIndex < numDetails ; detailIndex++ ) {
+				const auto &detailedQueryResult = details[ detailIndex ];
+
+				const float bestScore = detailedQueryResult.score;
+
+				const int sceneModelIndex = detailedQueryResult.sceneModelIndex;
+				const int localModelIndex = query.database.modelIndexMapper.getLocalModelIndex( sceneModelIndex );
+				const int numProbes = query.database.getSampledModels()[ localModelIndex ].getProbes().size();
+
+#if 1
+				GL::ScopedDisplayList list;
+				list.begin();
+
+				DebugRender::begin();
+				DebugRender::setTransformation( volume.transformation );
+				DebugRender::startLocalTransform();
+
+				for( int z = 0 ; z < query.queryVolumeSize[2] ; z++ ) {
+					for( int y = 0 ; y < query.queryVolumeSize[1] ; y++ ) {
+						for( int x = 0 ; x < query.queryVolumeSize[0] ; x++ ) {
+							const Vector3f position = query.queryResolution * (Vector3i( x, y, z ) - query.queryVolumeOffset).cast<float>();
+							DebugRender::setPosition( position );
+
+							const int index = x + query.queryVolumeSize[0] * (y + query.queryVolumeSize[1] * z);
+
+							int bestOrientation = 0;
+							float bestCount = 0.0f;
+							for( int orientationIndex = 0 ; orientationIndex < ProbeGenerator::getNumOrientations() ; orientationIndex++ ) {
+								const auto &counterGrid = detailedQueryResult.matchesByOrientation[ orientationIndex ];
+								const auto matchCount = counterGrid[ index ];
+								if( matchCount > bestCount ) {
+									bestCount = matchCount;
+									bestOrientation = orientationIndex;
+								}
+							}
+
+							const float normalizedScore = bestCount / numProbes / bestScore;
+							if( normalizedScore < 0.5 ) {
+								continue;
+							}
+
+							const float redComponent = clamp<float>( normalizedScore, 0.0f, 1.0f );
+							const float glowComponent = clamp<float>( (normalizedScore - 0.9f) * 10.0f, 0.0f, 1.0f );
+							DebugRender::setColor( Vector3f( redComponent, glowComponent, glowComponent ) );
+
+							DebugRender::drawAbstractSphere( scaleFactor / 4 * query.queryResolution, 5 );
+							DebugRender::drawVector( scaleFactor * query.queryResolution * -ProbeGenerator::getRotation(bestOrientation).col(2) );
+						}
+					}
+				}
+
+				DebugRender::setPosition( query.queryResolution * query.queryVolumeOffset.cast<float>() + Vector3f::Constant( 4.0 ) );
+				DebugRender::drawCoordinateSystem( 2.0 );
+				DebugRender::endLocalTransform();
+				DebugRender::end();
+				list.end();
+				debugUI->add(
+					std::make_shared< DebugObjects::SceneDisplayListObject >(
+						boost::str(
+							boost::format( "%s" )
+							% query.database.modelIndexMapper.getSceneModelName( sceneModelIndex )
+						),
+						list.publish(),
+						false
+					)
+				);
+#else
+				for( int orientationIndex = 0 ; orientationIndex < ProbeGenerator::getNumOrientations() ; orientationIndex++ ) {
+					const auto &counterGrid = detailedQueryResult.matchesByOrientation[ orientationIndex ];
+
+					GL::ScopedDisplayList list;
+					list.begin();
+
+					DebugRender::begin();
+					DebugRender::setTransformation( volume.transformation );
+					DebugRender::startLocalTransform();
+
+					for( int z = 0 ; z < query.queryVolumeSize[2] ; z++ ) {
+						for( int y = 0 ; y < query.queryVolumeSize[1] ; y++ ) {
+							for( int x = 0 ; x < query.queryVolumeSize[0] ; x++ ) {
+								const Vector3f position = query.queryResolution * (Vector3i( x, y, z ) - query.queryVolumeOffset).cast<float>();
+								DebugRender::setPosition( position );
+
+								const int index = x + query.queryVolumeSize[0] * (y + query.queryVolumeSize[1] * z);
+
+								const float normalizedScore = float( counterGrid[ index ] ) / numProbes;
+								const float redComponent = clamp<float>( normalizedScore / 5.0f, 0.0f, 1.0f );
+								const float glowComponent = clamp<float>( normalizedScore / 5.0f - 1.0, 0.0f, 1.0f );
+								DebugRender::setColor( Vector3f( redComponent, glowComponent, glowComponent ) );
+								DebugRender::drawAbstractSphere( scaleFactor * query.queryResolution, 5 );
+							}
+						}
+					}
+
+					DebugRender::setPosition( query.queryResolution * query.queryVolumeOffset.cast<float>() + Vector3f::Constant( 4.0 ) );
+					DebugRender::drawCoordinateSystem( 2.0 );
+					DebugRender::endLocalTransform();
+					DebugRender::end();
+					list.end();
+					debugUI->add(
+						std::make_shared< DebugObjects::SceneDisplayListObject >(
+							boost::str(
+								boost::format( "%s %i" )
+								% query.database.modelIndexMapper.getSceneModelName( sceneModelIndex )
+								% orientationIndex
+							),
+							list.publish(),
+							false
+						)
+					);
+				}
+#endif
+			}
 		}
 
 		void addQueryVisualization( const SceneSettings::NamedTargetVolume &queryVolume, const ProbeContext::RawProbes &probes, const ProbeContext::RawProbeSamples &probeSamples ) {
@@ -552,6 +674,7 @@ namespace DebugObjects {
 
 		void init() {
 			container.add( AntTWBarUI::makeSharedVariable( "Auto vis query", AntTWBarUI::makeReferenceAccessor( automaticallyVisualizeQuery ) ) );
+			container.add( AntTWBarUI::makeSharedVariable( "Auto vis config query", AntTWBarUI::makeReferenceAccessor( automaticallyVisualizeConfigurationQueryDetails ) ) );
 			container.add( AntTWBarUI::makeSharedButton(
 				"Vis max distance for all sampled instances",
 				[&] () {
@@ -610,6 +733,7 @@ namespace DebugObjects {
 	};
 
 	bool ProbeDatabase::automaticallyVisualizeQuery = false;
+	bool ProbeDatabase::automaticallyVisualizeConfigurationQueryDetails = false;
 
 	struct OptixView : IDebugObject {
 		Application *application;
@@ -819,7 +943,10 @@ namespace aop {
 
 		AntTWBarUI::SimpleContainer ui;
 
-		ModelDatabaseUI( Application *application ) : application( application ) {
+		ModelDatabaseUI( Application *application )
+			: application( application )
+			, normalGenerationMode( aop::NGM_COMBINED )
+		{
 			init();
 		}
 
@@ -1524,8 +1651,13 @@ namespace aop {
 			}
 			progressTracker.markFinished();
 
-			Obb modelObb = makeOBB( world->sceneRenderer.getInstanceTransformation( instanceIndex ), world->sceneRenderer.getModelBoundingBox( modelIndex ) );
-			probeDatabase.addInstanceProbes( modelIndex, modelObb, sceneSettings.probeGenerator_resolution, probes, rawProbeSamples );
+			probeDatabase.addInstanceProbes(
+				modelIndex,
+				world->sceneRenderer.getInstanceTransformation( instanceIndex ),
+				sceneSettings.probeGenerator_resolution,
+				probes,
+				rawProbeSamples
+			);
 			progressTracker.markFinished();
 
 			totalCount += (int) transformedProbes.size();
@@ -1636,6 +1768,10 @@ namespace aop {
 				% queryResult->sceneModelIndex
 				% queryResult->score
 			);
+		}
+
+		if( DebugObjects::ProbeDatabase::automaticallyVisualizeConfigurationQueryDetails ) {
+			probeDatabase_debugUI->addConfigurationQueryVisualization( queryVolume, query );
 		}
 
 		return query.getQueryResults();

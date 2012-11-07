@@ -22,7 +22,7 @@ BOOST_STATIC_ASSERT( sizeof( ProbeContext::RawProbe ) == 4 );
 BOOST_STATIC_ASSERT( sizeof( ProbeContext::RawProbeSample ) == 8 );
 BOOST_STATIC_ASSERT( sizeof( ProbeContext::DBProbeSample ) == 8 + 8 );
 
-SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeContext::SampledModel::SampledInstance, (source)(probeSamples) )
+SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeContext::SampledModel::SampledInstance, (sourceTransformation)(probeSamples) )
 SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeContext::IndexedProbeSamples, (data)(occlusionLowerBounds) )
 SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeContext::SampledModel,
 	(instances)

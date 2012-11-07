@@ -99,14 +99,34 @@ namespace CIELAB {
 		0.0557101034f, -0.204021037f, 1.05699599f
 	};
 
+	inline HOSTORDEVICE const float f( const float v ) {
+		const float threshold = 6.0f / 29.0f;
+		if( v > threshold*threshold*threshold ) {
+			return powf( v, 1.0f/3.0f );
+		}
+		else {
+			return v / (3.0f * threshold * threshold) + 4.0f / 29.0f;
+		}
+	}
+
+	inline HOSTORDEVICE const float inv_f( const float v ) {
+		const float threshold = 6.0f / 29.0f;
+		if( v > threshold ) {
+			return v*v*v;
+		}
+		else {
+			return 3.0f * threshold * threshold * (v - 4.0 / 29.0);
+		}
+	}
+
 	inline HOSTORDEVICE float3 fromRGB( const float3 &rgb ) {
 		const float3 XYZ = *reinterpret_cast<const Matrix3x3*>(rgb2XYZ) * rgb;
 
 		// I'm leaving out the linear small value correction
 		const float3 transformedXYZ = {
-			powf( XYZ.x / D65white.x, 1.f/3.f),
-			powf( XYZ.y / D65white.y, 1.f/3.f),
-			powf( XYZ.z / D65white.z, 1.f/3.f)
+			f( XYZ.x / D65white.x ),
+			f( XYZ.y / D65white.y ),
+			f( XYZ.z / D65white.z )
 		};
 
 		const float3 Lab = {
@@ -127,9 +147,9 @@ namespace CIELAB {
 
 		// again I'm leaving out the linear small value correction
 		const float3 XYZ = {
-			powf( transformedXYZ.x, 3.0f ) * D65white.x,
-			powf( transformedXYZ.y, 3.0f ) * D65white.y,
-			powf( transformedXYZ.z, 3.0f ) * D65white.z
+			inv_f( transformedXYZ.x ) * D65white.x,
+			inv_f( transformedXYZ.y ) * D65white.y,
+			inv_f( transformedXYZ.z ) * D65white.z
 		};
 
 		const float3 rgb = *reinterpret_cast<const Matrix3x3*>(XYZ2rgb) * XYZ;

@@ -1,0 +1,117 @@
+boxes
+spheres
+modelImports:
+	testScene.sgsScene 'platform, brown' 'platform, green' 'platform, muddy blue' 'platform, light blue' 'platform, white' 'small cube, white' 'small cube, baby blue' 'small cube, lime green' 'small cube, red' 'small cube, purple' 'small cube, egg orange' 'small cube, light yellow' 'medium cube, white' 'medium cube, baby blue' 'medium cube, lime green' 'medium cube, red' 'medium cube, purple' 'medium cube, egg orange' 'medium cube, light yellow' 'small box, white' 'small box, baby blue' 'small box, lime green' 'small box, red' 'small box, purple' 'small box, egg orange' 'small box, light yellow' 'big box, white' 'big box, baby blue' 'big box, lime green' 'big box, red' 'big box, purple' 'big box, egg orange' 'big box, light yellow' 'wall, white' 'wall, baby blue' 'wall, lime green' 'wall, red' 'wall, purple' 'wall, egg orange' 'wall, light yellow' 'ball, white' 'ball, baby blue' 'ball, lime green' 'ball, red' 'ball, purple' 'ball, egg orange' 'ball, light yellow' 'big ball, white' 'big ball, baby blue' 'big ball, lime green' 'big ball, red' 'big ball, purple' 'big ball, egg orange' 'big ball, light yellow' Data\Models\Terrain_objects\Containers\Barrels\barrel1.s3d Data\Models\Terrain_objects\Containers\Barrels\barrel_explosive.s3d Data\Models\Terrain_objects\Containers\Crates\crate3.s3d Data\Models\Terrain_objects\Containers\Crates\crate6.s3d Data\Models\Terrain_objects\Containers\Crates\crate_01c.s3d Data\Models\Terrain_objects\Containers\Crates\crate_01b.s3d Data\Models\Terrain_objects\Walls\Solidwalls\reinforced_wall_support.s3d Data\Models\Terrain_objects\Containers\Crates\cardboard_big_box01.s3d Data\Models\Terrain_objects\Containers\Crates\supply_crate_01.s3d Data\Models\Terrain_objects\Vegetation\Trees\pine_falling_1b.s3d
+instances:
+	'platform, green':
+		position 0 0 0
+		axis 1 0 0
+		degrees 0
+	'platform, green':
+		position 0 0 80
+		axis 1 0 0
+		degrees 0
+	'platform, green':
+		position 80 0 80
+		axis 1 0 0
+		degrees 0
+	'platform, green':
+		position 80 0 0
+		axis 1 0 0
+		degrees 0
+	'small cube, red':
+		position 6 1.49999928 77
+		axis 1 0 0
+		degrees 0
+	'small cube, red':
+		position 3 1.50000107 77
+		axis 1 0 0
+		degrees 0
+	'small cube, red':
+		position 0 1.49999869 77
+		axis 1 0 0
+		degrees 0
+	'small cube, red':
+		position -3 1.49999964 77
+		axis 1 0 0
+		degrees 0
+	'small cube, red':
+		position -6 1.49999928 77
+		axis 1 0 0
+		degrees 0
+	'small cube, white':
+		position 86 1.50000036 77
+		axis 1 0 0
+		degrees 0
+	'small cube, white':
+		position 83 1.4999994 77
+		axis 1 0 0
+		degrees 0
+	'small cube, white':
+		position 80 1.5000006 77
+		axis 1 0 0
+		degrees 0
+	'small cube, white':
+		position 77 1.5000006 77
+		axis 1 0 0
+		degrees 0
+	'small cube, white':
+		position 74 1.50000036 77
+		axis 1 0 0
+		degrees 0
+	'small cube, red':
+		position 6 1.49999928 -3
+		axis 1 0 0
+		degrees 0
+	'small cube, red':
+		position 3 1.50000107 -3
+		axis 1 0 0
+		degrees 0
+	'small cube, red':
+		position 0 1.49999869 -3
+		axis 1 0 0
+		degrees 0
+	'small cube, red':
+		position -3 1.49999964 -3
+		axis 1 0 0
+		degrees 0
+	'small cube, red':
+		position -6 1.49999928 -3
+		axis 1 0 0
+		degrees 0
+	'small cube, white':
+		position 86 1.50000036 -3
+		axis 1 0 0
+		degrees 0
+	'small cube, white':
+		position 83 1.4999994 -3
+		axis 1 0 0
+		degrees 0
+	'small cube, white':
+		position 80 1.5000006 -3
+		axis 1 0 0
+		degrees 0
+	'small cube, white':
+		position 77 1.5000006 -3
+		axis 1 0 0
+		degrees 0
+	'small cube, white':
+		position 74 1.50000036 -3
+		axis 1 0 0
+		degrees 0
+	Data\Models\Terrain_objects\Containers\Barrels\barrel_explosive.s3d:
+		position -3 1.00000024 0
+		axis 1 0 0
+		degrees 0
+	Data\Models\Terrain_objects\Containers\Barrels\barrel_explosive.s3d:
+		position 3 1.00000048 0
+		axis 1 0 0
+		degrees 0
+	Data\Models\Terrain_objects\Containers\Barrels\barrel1.s3d:
+		position 77 1.00000048 0
+		axis 1 0 0
+		degrees 0
+	Data\Models\Terrain_objects\Containers\Barrels\barrel1.s3d:
+		position 83 0.99999994 0
+		axis 1 0 0
+		degrees 0

@@ -311,8 +311,11 @@ struct SGSSceneRuntime {
 		return boost::str( boost::format( "%i %i %i" ) % int( material.diffuse.r ) % int( material.diffuse.g ) % int( material.diffuse.b ) );
 	}
 
-	int addBoxModel( const Eigen::Vector3f &size, const SGSScene::Material &material ) {
-		const auto name = boost::str( boost::format( "Box %f %f %f %s" ) % size.x() % size.y() % size.z() % getSimpleMaterialName( material ) );
+	int addBoxModel( const Eigen::Vector3f &size, const SGSScene::Material &material, std::string name = std::string() ) {
+		if( name.empty() ) {
+			name = boost::str( boost::format( "Box %f %f %f %s" ) % size.x() % size.y() % size.z() % getSimpleMaterialName( material ) );
+		}
+
 		{
 			int modelIndex = findModel( name );
 			if( modelIndex != NO_MODEL ) {
@@ -377,8 +380,11 @@ struct SGSSceneRuntime {
 		return pushModel( model );
 	}
 
-	int addSphereModel( float radius, const SGSScene::Material &material, int u = 10, int v = 20 ) {
-		const auto name = boost::str( boost::format( "Sphere %f %i %i %s" ) % radius % u % v % getSimpleMaterialName( material ) );
+	int addSphereModel( float radius, const SGSScene::Material &material, int u = 10, int v = 20, std::string name = std::string() ) {
+		if( name.empty() ) {
+			name = boost::str( boost::format( "Sphere %f %i %i %s" ) % radius % u % v % getSimpleMaterialName( material ) );
+		}
+
 		{
 			const int modelIndex = findModel( name );
 			if( modelIndex != NO_MODEL ) {
@@ -450,10 +456,23 @@ void selectObjectsByModelID( SGSSceneRenderer &renderer, int modelIndex ) {
 }
 
 #if 1
+inline void setColorFromString( const std::string &webColor, float *color ) {
+	if( webColor.empty() ) {
+		return;
+	}
+
+	const long colorRGB = strtol( webColor.c_str(), nullptr, 16 );
+	color[0] = ((colorRGB & 0x00ff0000) >> 16) / 255.0f;
+	color[1] = ((colorRGB & 0x0000ff00) >> 8) / 255.0f;
+	color[2] = ((colorRGB & 0x000000ff)) / 255.0f;
+}
+
 struct SceneDeclaration {
 	struct BoxDeclaration {
+		std::string name;
 		float size[3];
 		float color[3];
+		std::string webColor;
 
 		BoxDeclaration() {}
 
@@ -462,11 +481,14 @@ struct SceneDeclaration {
 			Vector3f::Map( this->color ) = color;
 		}
 
-		SERIALIZER_DEFAULT_IMPL( (size)(color) )
+		SERIALIZER_DEFAULT_IMPL( (size)(color)(webColor)(name) )
 	};
+
 	struct SphereDeclaration {
+		std::string name;
 		float radius;
 		float color[3];
+		std::string webColor;
 		int u, v;
 
 		SphereDeclaration() : u( 10 ), v( 20 ) {}
@@ -479,10 +501,11 @@ struct SceneDeclaration {
 			this->v = v;
 		}
 
-		SERIALIZER_DEFAULT_IMPL( (radius)(color)(u)(v) )
+		SERIALIZER_DEFAULT_IMPL( (radius)(color)(u)(v)(webColor)(name) )
+
 	};
 
-	struct ModelImports {
+	/*struct ModelImports {
 		std::string scene;
 
 		std::vector< std::string > modelNames;
@@ -491,7 +514,7 @@ struct SceneDeclaration {
 		ModelImports( const std::string &scene ) : scene( scene ) {}
 
 		SERIALIZER_FIRST_KEY_IMPL( (scene)(modelNames) );
-	};
+	};*/
 
 	struct Instance {
 		std::string modelName;
@@ -507,7 +530,7 @@ struct SceneDeclaration {
 
 	std::vector<BoxDeclaration> boxes;
 	std::vector<SphereDeclaration> spheres;
-	std::vector<ModelImports> modelImports;
+	std::vector<std::pair<std::string, std::vector< std::string >>> modelImports;
 	std::vector<Instance> instances;
 
 	SERIALIZER_DEFAULT_IMPL( (boxes)(spheres)(modelImports)(instances) )
@@ -545,7 +568,7 @@ void real_main( int argc, const char **argv ) {
 	po::options_description desc( "Program options" );
 	desc.add_options()
 		( "help,?", "produce this help message" )
-		( "sceneDecls", po::value< std::string >( &sceneDeclFilename )->default_value( "sceneDecls.wml" ), "model declaration file to use" )
+		( "sceneDecls", po::value< std::string >( &sceneDeclFilename ), "model declaration file to use" )
 		( "target", po::value< std::string >( &targetFilename ), "target file" )
 		( "createExample", "dump an example model declaration" )
 		( "createSceneDecls", po::value< std::string >( &importSceneFilename ), "create a identity decl file for the scene")
@@ -578,8 +601,8 @@ void real_main( int argc, const char **argv ) {
 		return;
 	}
 	else if( vm.count( "createSceneDecls" ) ) {
-		if( targetFilename.empty() ) {
-			targetFilename = algorithm::erase_last_copy( importSceneFilename, ".sgsScene" ) + ".wml";
+		if( sceneDeclFilename.empty() ) {
+			sceneDeclFilename = algorithm::erase_last_copy( sceneDeclFilename, ".sgsScene" ) + ".wml";
 		}
 
 		SGSScene sourceScene;
@@ -589,11 +612,10 @@ void real_main( int argc, const char **argv ) {
 		}
 
 		SceneDeclaration sceneDeclaration;
-		sceneDeclaration.modelImports.push_back( SceneDeclaration::ModelImports( importSceneFilename ) );
-		auto &modelImport = sceneDeclaration.modelImports.front();
+		std::vector<std::string> modelNames;
 
 		for( int modelIndex = 0 ; modelIndex < sourceScene.models.size() ; modelIndex++ ) {
-			modelImport.modelNames.push_back( sourceScene.modelNames[ modelIndex ] );
+			modelNames.push_back( sourceScene.modelNames[ modelIndex ] );
 		}
 
 		for( int instanceIndex = 0 ; instanceIndex < sourceScene.objects.size() ; instanceIndex++ ) {
@@ -607,9 +629,9 @@ void real_main( int argc, const char **argv ) {
 			SceneDeclaration::Instance instanceDecl;
 			instanceDecl.modelName = modelName;
 			for( int i = 0 ; i < 3 ; i++ ) {
-				instanceDecl.position[i] = translation[i];	
+				instanceDecl.position[i] = translation[i];
 			}
-			
+
 			const auto &axis = angleAxis.axis();
 			for( int i = 0 ; i < 3 ; i++ ) {
 				instanceDecl.axis[i] = axis[i];
@@ -619,8 +641,12 @@ void real_main( int argc, const char **argv ) {
 			sceneDeclaration.instances.push_back( instanceDecl );
 		}
 
-		writeSceneDeclaration( targetFilename.c_str(), sceneDeclaration );
-		cout << "Successfully wrote '" << targetFilename << "'!\n";
+		sceneDeclaration.modelImports.push_back( std::make_pair( importSceneFilename, modelNames ) );
+		auto &modelImport = sceneDeclaration.modelImports.front();
+
+
+		writeSceneDeclaration( sceneDeclFilename.c_str(), sceneDeclaration );
+		cout << "Successfully wrote '" << sceneDeclFilename << "'!\n";
 		return;
 	}
 
@@ -646,26 +672,28 @@ void real_main( int argc, const char **argv ) {
 		cout << "creating primitive models..\n";
 		SGSSceneRuntime runtime( &targetScene );
 		for (auto box = sceneDeclaration.boxes.begin() ; box != sceneDeclaration.boxes.end() ; ++box ) {
-			runtime.addBoxModel( Vector3f::Map( box->size ), runtime.createMaterial( Vector3f::Map( box->color ) ) );
+			setColorFromString( box->webColor, box->color );
+			runtime.addBoxModel( Vector3f::Map( box->size ), runtime.createMaterial( Vector3f::Map( box->color ) ), box->name );
 		}
 
 		for (auto sphere = sceneDeclaration.spheres.begin() ; sphere != sceneDeclaration.spheres.end() ; ++sphere ) {
-			runtime.addSphereModel( sphere->radius, runtime.createMaterial( Vector3f::Map( sphere->color ) ), sphere->u, sphere->v );
+			setColorFromString( sphere->webColor, sphere->color );
+			runtime.addSphereModel( sphere->radius, runtime.createMaterial( Vector3f::Map( sphere->color ) ), sphere->u, sphere->v, sphere->name );
 		}
 
 		cout << "importing models..\n";
 		for( auto modelImports = sceneDeclaration.modelImports.begin() ; modelImports != sceneDeclaration.modelImports.end() ; ++modelImports ) {
-			cout << "\timporting from scene '" << modelImports->scene << "'\n";
+			cout << "\timporting from scene '" << modelImports->first << "'\n";
 
 			SGSScene sourceScene;
 			{
-				Serializer::BinaryReader reader( modelImports->scene.c_str() );
+				Serializer::BinaryReader reader( modelImports->first );
 				Serializer::read( reader, sourceScene );
 			}
 
 			SGSSceneRuntime sourceRuntime( &sourceScene );
 
-			for( auto modelName = modelImports->modelNames.begin() ; modelName != modelImports->modelNames.end() ; ++modelName ) {
+			for( auto modelName = modelImports->second.begin() ; modelName != modelImports->second.end() ; ++modelName ) {
 				const int modelIndex = sourceRuntime.findModel( *modelName );
 				if( modelIndex != SGSSceneRuntime::NO_MODEL ) {
 					cout << "\t\t" << *modelName << "\n";

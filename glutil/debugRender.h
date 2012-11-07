@@ -463,7 +463,7 @@ namespace DebugRender {
 		glPopMatrix();
 	}
 
-	inline void drawCordinateSystem( float size ) {
+	inline void drawCoordinateSystem( float size ) {
 		glBegin(GL_LINES);
 		glColor3f( 1.0, 0.0, 0.0 );
 		glVertex3f( 0.0, 0.0, 0.0 );
@@ -477,6 +477,11 @@ namespace DebugRender {
 		glVertex3f( 0.0, 0.0, 0.0 );
 		glVertex3f( 0.0, 0.0, size );
 		glEnd();
+	}
+
+	// TODO: deprecated...
+	inline void drawCordinateSystem( float size ) {
+		drawCoordinateSystem( size );
 	}
 
 	inline void drawEllipse( float radius, bool wireframe = true, int n = 20, const Eigen::Vector3f &axis1 = Eigen::Vector3f::UnitX(), const Eigen::Vector3f &axis2 = Eigen::Vector3f::UnitY() ) {

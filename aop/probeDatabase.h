@@ -200,7 +200,7 @@ struct IDatabase {
 	// TODO: add it should be straight-forward to change source to contain sceneName + obb if necessary [10/21/2012 kirschan2]
 	virtual void addInstanceProbes(
 		int sceneModelIndex,
-		const Obb &sampleSource,
+		const Obb::Transformation &instanceTransformation,
 		const float resolution,
 		const RawProbes &probes,
 		const RawProbeSamples &probeSamples
@@ -307,7 +307,6 @@ struct DBProbeSample : RawProbeSample {
 			a.colorLab.y - b.colorLab.y,
 			a.colorLab.z - b.colorLab.z
 			);
-		// TODO: cache the squared? [10/1/2012 kirschan2]
 		if( colorDistance.squaredNorm() > squaredTolerance ) {
 			return false;
 		}
@@ -319,11 +318,7 @@ struct DBProbeSample : RawProbeSample {
 	}
 
 	static __forceinline__ bool matchOcclusion( const DBProbeSample &a, const DBProbeSample &b, const int integerTolerance) {
-		int absDelta = a.occlusion - b.occlusion;
-		if( absDelta < 0 ) {
-			absDelta = -absDelta;
-		}
-		return absDelta <= integerTolerance;
+		return abs( a.occlusion - b.occlusion ) <= integerTolerance;
 	}
 
 	static __forceinline__ bool matchOcclusionDistanceColor(
@@ -422,6 +417,99 @@ namespace CompressedDataset {
 		}
 	}
 }
+
+struct ProbeCounter {
+	float maxDistance;
+	/* 3 bits for occlusion
+	 * 3 bits for distance
+	 * 3x4 bits for colors
+	 * = 6+12 = 18 bits for lookup
+	 * 2**18 * 4 = 1 MB
+	 */
+	static const int numBuckets = 1<<18;
+	std::vector<unsigned> buckets;
+
+	const unsigned getBucketIndex( const RawProbeSample &probeSample ) {
+		union Index {
+			struct {
+			unsigned occlusion : 3;
+			unsigned distance : 3;
+			unsigned L : 4;
+			unsigned a : 4;
+			unsigned b : 4;
+			};
+			unsigned int value;
+		} index;
+
+		index.occlusion = clamp<int>( probeSample.occlusion * 8 / OptixProgramInterface::numProbeSamples, 0, 7 );
+		index.distance = clamp<int>( probeSample.distance * 8.0 / maxDistance, 0, 7 );
+
+		index.L = clamp<int>( probeSample.colorLab.x / 25, 0, 15 );
+		index.a = clamp<int>( (probeSample.colorLab.y + 100) / 12.5f, 0, 15 );
+		index.b = clamp<int>( (probeSample.colorLab.y + 100) / 12.5f, 0, 15 );
+		
+		return index.value;
+	}
+
+	ProbeCounter( float maxDistance = 0.0f ) 
+		: buckets( numBuckets )
+		, maxDistance( maxDistance )
+	{
+	}
+
+	ProbeCounter( ProbeCounter &&other )
+		: maxDistance( other.maxDistance )
+		, buckets( std::move( buckets ) )
+	{
+	}
+};
+
+struct ColorCounter {
+	/* 3x4 bits for colors
+	 * = 12 bits for lookup
+	 * 2**12 * 4 = 16 KB
+	 */
+	static const int numBuckets = 1<<18;
+	std::vector<unsigned> buckets;
+	int totalNumSamples;
+
+	static const unsigned getBucketIndex( const RawProbeSample &probeSample ) {
+		union Index {
+			struct {
+				unsigned L : 4;
+				unsigned a : 4;
+				unsigned b : 4;
+			};
+			unsigned value;
+		} index;
+
+		index.value = 0;
+
+		index.L = clamp<int>( probeSample.colorLab.x / 25, 0, 15 );
+		index.a = clamp<int>( (probeSample.colorLab.y + 100) / 12.5f, 0, 15 );
+		index.b = clamp<int>( (probeSample.colorLab.y + 100) / 12.5f, 0, 15 );
+		
+		return index.value;
+	}
+
+	ColorCounter() 
+		: buckets( numBuckets )
+		, totalNumSamples()
+	{
+	}
+
+	ColorCounter( ColorCounter &&other )
+		: buckets( std::move( buckets ) )
+		, totalNumSamples( other.totalNumSamples )
+	{
+	}
+
+	void clear() {
+		buckets.clear();
+		buckets.resize( numBuckets );
+		totalNumSamples = 0;
+	}
+};
 
 // this dataset creates auxiliary structures automatically
 // invariant: sorted and occlusionLowerBounds is correctly set
@@ -704,33 +792,33 @@ namespace IndexedProbeSamplesHelper {
 
 struct SampledModel {
 	struct SampledInstance {
-		Obb source;
+		Obb::Transformation sourceTransformation;
 		DBProbeSamples probeSamples;
 
 		const DBProbeSamples &getProbeSamples() const {
 			return probeSamples;
 		}
 
-		const Obb &getSource() const {
-			return source;
+		const Obb::Transformation &getSource() const {
+			return sourceTransformation;
 		}
 
 		SampledInstance() {}
 
 		SampledInstance( SampledInstance &&other )
-			: source( std::move( other.source ) )
+			: sourceTransformation( std::move( other.sourceTransformation ) )
 			, probeSamples( std::move( other.probeSamples ) )
 		{
 		}
 
-		SampledInstance( Obb source, DBProbeSamples &&probeSamples )
-			: source( std::move( source ) )
+		SampledInstance( Obb::Transformation sourceTransformation, DBProbeSamples &&probeSamples )
+			: sourceTransformation( std::move( sourceTransformation ) )
 			, probeSamples( std::move( probeSamples ) )
 		{
 		}
 
 		SampledInstance & operator = ( SampledInstance &&other ) {
-			source = std::move( other.source );
+			sourceTransformation = std::move( other.sourceTransformation );
 			probeSamples = std::move( other.probeSamples );
 
 			return *this;
@@ -739,7 +827,7 @@ struct SampledModel {
 	typedef std::vector<SampledInstance> SampledInstances;
 
 	void addInstanceProbes(
-		const Obb &source,
+		const Obb::Transformation &sourceTransformation,
 		float datasetResolution,
 		const DBProbes &datasetProbes,
 		DBProbeSamples &&probeSamples
@@ -771,7 +859,7 @@ struct SampledModel {
 			resolution = datasetResolution;
 		}
 
-		instances.emplace_back( SampledInstance( source, std::move( probeSamples ) ) );
+		instances.emplace_back( SampledInstance( sourceTransformation, std::move( probeSamples ) ) );
 	}
 
 	void clear() {
@@ -821,7 +909,7 @@ struct SampledModel {
 	}
 
 	// TODO: rename to compile
-	void mergeInstances() {
+	void mergeInstances( ColorCounter &colorCounter ) {
 		if( instances.empty() ) {
 			return;
 		}
@@ -846,6 +934,11 @@ struct SampledModel {
 				}
 			}
 
+			for( auto probeSample = mergedProbeSamples.begin() ; probeSample != mergedProbeSamples.end() ; ++probeSample ) {
+				colorCounter.buckets[ ColorCounter::getBucketIndex( *probeSample ) ]++;
+				colorCounter.totalNumSamples++;
+			}
+
 			// TODO: magic constants!!! [10/17/2012 kirschan2]
 			//std::cout << OptixProgramInterface::numProbeSamples << "\n";
 			ProbeContextToleranceV2 pctv2( int( 0.124f * OptixProgramInterface::numProbeSamples ), 1.0f, 0.25f * 0.95f );
@@ -864,7 +957,7 @@ struct SampledModel {
 
 			const int probesCount = probes.size();
 			for( int probeIndex = 0 ; probeIndex < probesCount ; probeIndex++ ) {
-				const auto & probe = probes[ probeIndex ];
+				const auto &probe = probes[ probeIndex ];
 				const auto directionIndex = probe.directionIndex;
 
 				auto &probeSamples = probeSamplesByDirectionIndex[ directionIndex ];
@@ -926,6 +1019,13 @@ private:
 };
 
 struct ProbeDatabase : IDatabase {
+	struct Settings {
+		float maxDistance;
+		float resolution;
+
+		ProbeContextToleranceV2 compressionTolerance;
+	};
+
 	struct Query;
 	struct WeightedQuery;
 	struct FullQuery;
@@ -934,8 +1034,9 @@ struct ProbeDatabase : IDatabase {
 	// TODO: fix the naming [10/15/2012 kirschan2]
 	typedef std::vector<SampledModel> SampledModels;
 
+	// the model index mapper is used to map local model ids to global ids at run-time depending on the scene
 	ModelIndexMapper modelIndexMapper;
-
+	// stored with the DB so that we can determine what a sampled model is
 	std::vector< std::string > localModelNames;
 
 	virtual void registerSceneModels( const std::vector< std::string > &modelNames );
@@ -948,7 +1049,7 @@ struct ProbeDatabase : IDatabase {
 
 	virtual void addInstanceProbes(
 		int sceneModelIndex,
-		const Obb &sampleSource,
+		const Obb::Transformation &sourceTransformation,
 		const float resolution,
 		const RawProbes &untransformedProbes,
 		const RawProbeSamples &probeSamples
@@ -956,8 +1057,9 @@ struct ProbeDatabase : IDatabase {
 
 	virtual void compile( int sceneModelIndex );
 	virtual void compileAll() {
+		colorCounter.clear();
 		for( auto sampledModel = sampledModels.begin() ; sampledModel != sampledModels.end() ; ++sampledModel ) {
-			sampledModel->mergeInstances();
+			sampledModel->mergeInstances( colorCounter );
 		}
 	}
 
@@ -985,6 +1087,7 @@ struct ProbeDatabase : IDatabase {
 
 private:
 	SampledModels sampledModels;
+	ColorCounter colorCounter;
 };
 
 }

@@ -46,7 +46,6 @@ struct ProbeDatabase::Query {
 			throw std::logic_error( "queryResults is not empty!" );
 		}
 
-		// NOTE: this can be easily parallelized
 		detailedQueryResults.resize( database.sampledModels.size() );
 
 		using namespace Concurrency;
@@ -381,6 +380,23 @@ protected:
 #endif
 
 struct ProbeDatabase::FullQuery {
+	struct DetailedQueryResult : QueryResult {
+		std::vector< std::vector< int > > matchesByOrientation;
+
+		DetailedQueryResult()
+			: QueryResult()
+			, matchesByOrientation( 24 )
+		{
+		}
+
+		DetailedQueryResult( int sceneModelIndex )
+			: QueryResult( sceneModelIndex )
+			, matchesByOrientation( 24 )
+		{
+		}
+	};
+	typedef std::vector<DetailedQueryResult> DetailedQueryResults;
+
 	FullQuery( const ProbeDatabase &database ) : database( database ) {}
 
 	void setProbeContextTolerance( const ProbeContextTolerance &pct ) {
@@ -408,7 +424,8 @@ struct ProbeDatabase::FullQuery {
 		}
 
 		// NOTE: this can be easily parallelized
-		std::vector< QueryResults > multiQueryResults( database.sampledModels.size() );
+		detailedQueryResults.clear();
+		detailedQueryResults.resize( database.sampledModels.size() );
 
 		using namespace Concurrency;
 
@@ -421,14 +438,17 @@ struct ProbeDatabase::FullQuery {
 				[&] ( int id ) {
 					Log::initThreadScope( logScope, 0 );
 
-					multiQueryResults[ id ] = matchAgainst( id, database.modelIndexMapper.getSceneModelIndex( id ) );
+					detailedQueryResults[ id ] = matchAgainst( id, database.modelIndexMapper.getSceneModelIndex( id ) );
 				}
 			);
 		}
 
-		for( auto subQueryResults = multiQueryResults.begin() ; subQueryResults != multiQueryResults.end() ; ++subQueryResults ) {
-			boost::push_back( queryResults, *subQueryResults );
-		}
+		queryResults.resize( detailedQueryResults.size() );
+		boost::transform( detailedQueryResults, queryResults.begin(), [] ( const DetailedQueryResult &r ) { return QueryResult( r ); } );
+	}
+
+	const DetailedQueryResults & getDetailedQueryResults() const {
+		return detailedQueryResults;
 	}
 
 	const QueryResults & getQueryResults() const {
@@ -436,7 +456,7 @@ struct ProbeDatabase::FullQuery {
 	}
 
 protected:
-	QueryResults matchAgainst( int localSceneIndex, int sceneModelIndex ) {
+	DetailedQueryResult matchAgainst( int localSceneIndex, int sceneModelIndex ) {
 		const auto &sampledModel = database.sampledModels[ localSceneIndex ];
 
 		AUTO_TIMER_FOR_FUNCTION( 
@@ -445,6 +465,8 @@ protected:
 			% sampledModel.getMergedInstances().size()
 			% queryProbes.size()
 		);
+
+		DetailedQueryResult detailedQueryResult( sceneModelIndex );
 
 		float bestScore = 0.0;
 		for( int orientationIndex = 0 ; orientationIndex < ProbeGenerator::getNumOrientations() ; ++orientationIndex ) {
@@ -472,9 +494,9 @@ protected:
 				void onMatch( int sampledModelProbeSampleIndex, int queryProbeSampleIndex, const DBProbeSample &sampledModelProbeSample, const DBProbeSample &queryProbeSample ) {
 					// calculate the target position
 					const Eigen::Vector3i targetPosition =
-							modelProbePositions[ sampledModelProbeSample.probeIndex ].cast<int>()
-						+
 							queryProbes[ queryProbeSample.probeIndex ].position.cast<int>()
+						-
+							modelProbePositions[ sampledModelProbeSample.probeIndex ].cast<int>()
 					;
 					
 					const Eigen::Vector3i targetCell = targetPosition + query.queryVolumeOffset;
@@ -494,7 +516,8 @@ protected:
 
 			MatchController matchController( *this, sampledModel.getRotatedProbePositions( orientationIndex ), queryProbes );
 
-			AUTO_TIMER_BLOCK( "matching" ) {
+			//AUTO_TIMER_BLOCK( "matching" ) 
+			{
 				const int *rotatedDirections = ProbeGenerator::getRotatedDirections( orientationIndex );
 				for( int directionIndex = 0 ; directionIndex < ProbeGenerator::getNumDirections() ; directionIndex++ ) {
 					IndexedProbeSamples::Matcher< MatchController& > matcher(
@@ -521,14 +544,19 @@ protected:
 			bestScore = std::max( bestScore, score );
 
 			std::cout << "orientation:" << orientationIndex << " best score:" << score << "\n";
+
+			detailedQueryResult.matchesByOrientation[ orientationIndex ] = std::move( mergedQueryVolumeMatches );
 		}
 
-		QueryResults modelQueryResults;
-		modelQueryResults.push_back( QueryResult( bestScore, sceneModelIndex, Eigen::Vector3f(), Eigen::Quaternionf() ) );
-		return modelQueryResults;
+		detailedQueryResult.score = bestScore;
+		detailedQueryResult.position = Eigen::Vector3f();
+		detailedQueryResult.orientation = Eigen::Quaternionf();
+
+		return detailedQueryResult;
 	}
 
-protected:
+	// to be able to easily visualize stuff for now
+public:
 	const ProbeDatabase &database;
 
 	std::vector< IndexedProbeSamples > indexedProbeSamplesByDirectionIndices;
@@ -536,6 +564,7 @@ protected:
 
 	ProbeContextTolerance probeContextTolerance;
 
+	DetailedQueryResults detailedQueryResults;
 	QueryResults queryResults;
 
 	Eigen::Vector3i queryVolumeSize, queryVolumeOffset;
