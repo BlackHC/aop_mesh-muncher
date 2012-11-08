@@ -216,6 +216,39 @@ ADD_EXECUTABLE(Validate_aop_neighborhood
 )
 
 
+ADD_EXECUTABLE(Validate_aop_probes
+	modelDatabase.h
+	modelDatabase.cpp
+	modelDatabaseStorage.h
+	modelDatabaseStorage.cpp
+
+	probeGenerator.h
+	probeGenerator.cpp
+
+	probeDatabase.h
+	probeDatabase.cpp
+	probeDatabaseQueries.h
+	probeDatabaseStorage.h
+	probeDatabaseStorage.cpp
+
+	validation.h
+	validation.cpp
+	validationStorage.h
+	validationStorage.cpp
+
+	../framework/logger.h
+	../framework/logger.cpp
+
+	../framework/progressTracker.h
+	../framework/progressTracker.cpp
+
+	../framework/autoTimer.h
+	../framework/autoTimer.cpp
+
+	validation_probes.cpp
+)
+
+
 ADD_EXECUTABLE(Test_aop
 	probeDatabase.h
 	probeDatabase.cpp
@@ -294,6 +327,11 @@ TARGET_LINK_LIBRARIES(Validate_aop_neighborhood ${SFML_LIBRARIES})
 TARGET_LINK_LIBRARIES(Validate_aop_neighborhood ${Boost_LIBRARIES})
 TARGET_LINK_LIBRARIES(Validate_aop_neighborhood ${SOIL_LIBRARY})
 TARGET_LINK_LIBRARIES(Validate_aop_neighborhood ${optix_LIBRARY})
+
+TARGET_LINK_LIBRARIES(Validate_aop_probes ${SFML_LIBRARIES})
+TARGET_LINK_LIBRARIES(Validate_aop_probes ${Boost_LIBRARIES})
+TARGET_LINK_LIBRARIES(Validate_aop_probes ${SOIL_LIBRARY})
+TARGET_LINK_LIBRARIES(Validate_aop_probes ${optix_LIBRARY})
 
 TARGET_LINK_LIBRARIES(Test_aop ${ANTTWEAKBAR_LIBRARY})
 TARGET_LINK_LIBRARIES(Test_aop ${SFML_LIBRARIES})

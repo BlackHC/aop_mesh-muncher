@@ -157,5 +157,6 @@ namespace aop {
 
 		// validation helper
 		void NeighborhoodValidation_queryAllInstances( const std::string &filename );
+		void ProbesValidation_queryAllInstances( const std::string &filename );
 	};
 }

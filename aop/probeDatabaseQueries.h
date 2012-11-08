@@ -123,12 +123,14 @@ protected:
 		};
 
 		IndexedProbeSamples::Matcher< MatchController > matcher( sampledModelProbeSamples, indexedProbeSamples, probeContextTolerance, MatchController( sampledModelProbeSamples.size(), indexedProbeSamples.size() ) );
-		AUTO_TIMER_BLOCK( "matching" ) {
+		//AUTO_TIMER_BLOCK( "matching" )
+		{
 			matcher.match();
 		}
 
 		boost::dynamic_bitset<> mergedProbeSamplesSampledModel( sampledModelProbeSamples.size() ), mergedProbeSamplesQueryVolume( indexedProbeSamples.size() );
-		AUTO_TIMER_BLOCK( "combining matches" ) {
+		//AUTO_TIMER_BLOCK( "combining matches" )
+		{
 			matcher.controller.probesMatchedQueryVolume.combine_each(
 				[&] ( const boost::dynamic_bitset<> &set ) {
 					mergedProbeSamplesQueryVolume |= set;
@@ -531,7 +533,8 @@ protected:
 			}
 
 			std::vector< int > mergedQueryVolumeMatches( queryVolumeSize.prod() );
-			AUTO_TIMER_BLOCK( "combining matches" ) {
+			//AUTO_TIMER_BLOCK( "combining matches" )
+			{
 				matchController.queryVolumeMatches.combine_each(
 					[&] ( const std::vector< int > &matches) {
 						boost::transform( mergedQueryVolumeMatches, matches, mergedQueryVolumeMatches.begin(), std::plus<int>() );
@@ -543,7 +546,7 @@ protected:
 			const float score = float( *maxElement ) / sampledModel.getProbes().size();		
 			bestScore = std::max( bestScore, score );
 
-			std::cout << "orientation:" << orientationIndex << " best score:" << score << "\n";
+			//std::cout << "orientation:" << orientationIndex << " best score:" << score << "\n";
 
 			detailedQueryResult.matchesByOrientation[ orientationIndex ] = std::move( mergedQueryVolumeMatches );
 		}

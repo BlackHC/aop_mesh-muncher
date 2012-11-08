@@ -647,16 +647,12 @@ namespace DebugObjects {
 			DebugRender::begin();
 			DebugRender::setColor( Vector3f( 1.0, 1.0, 0.0 ) );
 
-			const int numIds = application->probeDatabase.getNumSampledModels();
-			for( int modelIndex = 0 ; modelIndex < numIds ; ++modelIndex ) {
-				if( application->probeDatabase.isEmpty( modelIndex ) ) {
-					continue;
-				}
+			const int numSampledModels = application->probeDatabase.getNumSampledModels();
+			for( int localModelIndex = 0 ; localModelIndex < numSampledModels ; ++localModelIndex ) {
+				const auto &sampledModel = application->probeDatabase.getSampledModels()[ localModelIndex ];
 
-				// TODO: add an instanceIndex member to each instance in ProbeDatabase [10/16/2012 kirschan2]
-				const auto instanceIndices = application->world->sceneRenderer.getModelInstances( modelIndex );
-				for( auto instanceIndex = instanceIndices.begin() ; instanceIndex != instanceIndices.end() ; ++instanceIndex ) {
-					const auto transformation = application->world->sceneRenderer.getInstanceTransformation( *instanceIndex );
+				for( auto instance = sampledModel.getInstances().begin() ; instance != sampledModel.getInstances().end() ; instance++ ) {
+					const auto &transformation = instance->getSource();
 
 					DebugRender::setPosition( transformation.translation() );
 					DebugRender::drawAbstractSphere( application->sceneSettings.probeGenerator_maxDistance );
@@ -1208,10 +1204,7 @@ namespace aop {
 						auto queryResults = application->queryVolume( application->sceneSettings.volumes[ selection->index ], queryType );
 						application->endLongOperation();
 
-						boost::sort(
-							queryResults,
-							ProbeContext::QueryResult::greaterByScoreAndModelIndex
-						);
+						
 
 						std::vector<CandidateSidebarUI::ScoreModelIndexPair> scoredModelIndices;
 						for( auto queryResult = queryResults.begin() ; queryResult != queryResults.end() ; ++queryResult ) {
@@ -1374,6 +1367,37 @@ namespace aop {
 			) );
 			ui.add( AntTWBarUI::makeSharedButton( "create validation file // neighborhood", [this] {
 				application->NeighborhoodValidation_queryAllInstances( application->settings.neighborhoodValidationDataPath );
+			} ) );
+
+			ui.add( AntTWBarUI::makeSharedSeparator() );
+			ui.add( AntTWBarUI::makeSharedVariable(
+				"position variance // probe validation",
+				AntTWBarUI::makeReferenceAccessor( application->settings.validation_probes_positionVariance )
+			) );
+			ui.add( AntTWBarUI::makeSharedVariable(
+				"#samples // probe validation",
+				AntTWBarUI::makeReferenceAccessor( application->settings.validation_probes_numSamples )
+			) );
+			ui.add( AntTWBarUI::makeSharedVariable(
+				"query volume size // probe validation",
+				AntTWBarUI::makeReferenceAccessor( application->settings.validation_probes_queryVolumeSize )
+			) );
+			ui.add( AntTWBarUI::makeSharedButton( "create validation file // probes", [this] {
+				application->ProbesValidation_queryAllInstances( application->settings.probeValidationDataPath );
+			} ) );
+
+			ui.add( AntTWBarUI::makeSharedButton( "print max bounding box diagonal @ marked models", [this] {
+				float maxDiagonalLength = 0.0f;
+				const auto &modelIndices = application->modelTypesUI->markedModels;
+				for( auto modelIndex = modelIndices.begin() ; modelIndex != modelIndices.end() ; ++modelIndex ) {
+					maxDiagonalLength = 
+						std::max(
+							maxDiagonalLength,
+							application->modelDatabase.informationById[ *modelIndex ].diagonalLength
+						)
+					;
+				}
+				log( boost::format( "print max bounding box diagonal @ marked models = %f" ) % maxDiagonalLength );
 			} ) );
 
 			ui.link();
@@ -1712,6 +1736,11 @@ namespace aop {
 		if( DebugObjects::ProbeDatabase::automaticallyVisualizeQuery ) {
 			probeDatabase_debugUI->addQueryVisualization( queryVolume, queryProbes, queryProbeSamples );
 		}
+
+		boost::sort(
+			queryResults,
+			ProbeContext::QueryResult::greaterByScoreAndModelIndex
+		);
 
 		return queryResults;
 	}
@@ -2098,7 +2127,13 @@ namespace aop {
 
 			const auto position = world->sceneRenderer.getInstanceTransformation( instanceIndex ).translation();
 			for( int sampleIndex = 0 ; sampleIndex < numSamples ; ++sampleIndex ) {
-				const Vector3f shift = Eigen::Vector3f::Map( &sphere( rng ).front() ) * sqrtf( squaredRadius( rng ) );
+				const Vector3f shift = 
+						positionVariance > 0.0f
+					?
+						Vector3f( Vector3f::Map( &sphere( rng ).front() ) * sqrtf( squaredRadius( rng ) ) )
+					:
+						Eigen::Vector3f::Zero()
+				;
 				auto neighborContext = world->sceneGrid.query(
 					-1,
 					instanceIndex,
@@ -2112,6 +2147,93 @@ namespace aop {
 		}
 
 		Validation::NeighborhoodData::store( filename, data );
+	}
+
+	void Application::ProbesValidation_queryAllInstances( const std::string &filename ) {
+		AUTO_TIMER_FOR_FUNCTION();
+
+		// we use the marked models as basis
+		// its the only model group I support atm
+
+		Validation::ProbeSettings probeSettings;
+
+		probeSettings.colorTolerance = sceneSettings.probeQuery_colorTolerance;
+		probeSettings.distanceTolerance = sceneSettings.probeQuery_distanceTolerance;
+		probeSettings.occlusionTolerance = sceneSettings.probeQuery_occlusionTolerance;
+
+		const float maxDistance = probeSettings.maxDistance = sceneSettings.probeGenerator_maxDistance;
+		const float resolution = probeSettings.resolution = sceneSettings.probeGenerator_resolution;
+
+		const float queryVolumeSize = probeSettings.queryVolumeSize = settings.validation_probes_queryVolumeSize;
+		const int numSamples = probeSettings.numSamples = settings.validation_probes_numSamples;
+		const float positionVariance = probeSettings.positionVariance = settings.validation_probes_positionVariance;
+
+		boost::random::mt19937 rng;
+		boost::random::uniform_on_sphere<float, std::vector<float>> sphere(3);
+		boost::random::uniform_real_distribution<float> squaredRadius( 0.0, positionVariance * positionVariance );
+
+		RenderContext renderContext;
+		renderContext.setDefault();
+
+		// this will take some time
+		startLongOperation();
+
+		const auto &modelIndices = modelTypesUI->markedModels;
+
+		const int numModels = modelIndices.size();
+		Validation::ProbeData data( numModels, probeSettings );
+
+		ProgressTracker::Context modelProgressTracker( modelIndices.size() + 1 );
+		for( int localModelIndex = 0 ; localModelIndex < numModels ; localModelIndex++ ) {
+			const int sceneModelIndex = modelIndices[ localModelIndex ];
+			data.localModelNames.push_back( probeDatabase.modelIndexMapper.getSceneModelName( sceneModelIndex ) );
+
+			log( boost::format( "sampling model %i" ) % sceneModelIndex );
+
+			auto instanceIndices = world->sceneRenderer.getModelInstances( sceneModelIndex );
+			data.instanceCounts.count( localModelIndex, instanceIndices.size() );
+
+			// loop through all instances of sceneModelIndex and create numSamples many query volumes
+			ProgressTracker::Context instanceProgressTracker( instanceIndices.size() );
+			for( auto instanceIndex = instanceIndices.begin() ; instanceIndex != instanceIndices.end() ; ++instanceIndex ) {
+				const auto position = world->sceneRenderer.getInstanceTransformation( *instanceIndex ).translation();
+
+				for( int sampleIndex = 0 ; sampleIndex < numSamples ; ++sampleIndex ) {
+					const Vector3f shift = 
+							positionVariance > 0
+						?
+							Vector3f( Vector3f::Map( &sphere( rng ).front() ) * sqrtf( squaredRadius( rng ) ) )
+						:
+							Eigen::Vector3f::Zero()
+					;
+
+					Validation::ProbeData::QueryData queryData;
+
+					queryData.expectedSceneModelIndex = localModelIndex;
+					queryData.queryVolume = Obb( Obb::Transformation( Eigen::Translation3f( position + shift ) ), Eigen::Vector3f::Constant( queryVolumeSize ) );
+
+					ProbeGenerator::generateQueryProbes( queryData.queryVolume.size, resolution, queryData.queryProbes );
+
+					AUTO_TIMER_BLOCK( "sampling scene") {
+						OptixRenderer::TransformedProbes transformedQueryProbes;
+						ProbeGenerator::transformProbes( queryData.queryProbes, queryData.queryVolume.transformation, resolution, transformedQueryProbes );
+
+						renderContext.disabledInstanceIndex = *instanceIndex;
+						world->optixRenderer.sampleProbes( transformedQueryProbes, queryData.querySamples, renderContext, maxDistance );
+					}
+					instanceProgressTracker.markFinished();
+
+					data.queries.push_back( std::move( queryData ) );
+				}
+			}
+
+			modelProgressTracker.markFinished();
+		}
+
+		Validation::ProbeData::store( filename, data );
+		modelProgressTracker.markFinished();
+
+		endLongOperation();
 	}
 }
 

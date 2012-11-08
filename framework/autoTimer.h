@@ -38,6 +38,7 @@ struct AutoTimer {
 #define _AUTO_TIMER_MERGE_2( x, y ) x ## y
 #define _AUTO_TIMER_MERGE( x, y ) _AUTO_TIMER_MERGE_2( x, y )
 
+#if 0
 // TODO: rename to AUTO_TIME* [10/13/2012 kirschan2]
 #define AUTO_TIMER_BLOCK( ... ) if( auto _AUTO_TIMER_MERGE( scopedTimer, __COUNTER__ ) = AutoTimer( __FUNCTION__, __VA_ARGS__ ) )
 #define AUTO_TIME( expression, ... ) \
@@ -56,3 +57,23 @@ struct AutoTimer {
 #define AUTO_TIMER_NAMED( name, ... ) AutoTimer name( __FUNCTION__, __VA_ARGS__ )
 #define AUTO_TIMER_DEFAULT( ... ) AutoTimer autoTimer( __FUNCTION__, __VA_ARGS__ )
 #define AUTO_TIMER_MEASURE( ... ) if( auto _AUTO_TIMER_MERGE( scopedTimer, __COUNTER__ ) = AutoTimer( __FUNCTION__, __VA_ARGS__ ) )
+#else
+// TODO: rename to AUTO_TIME* [10/13/2012 kirschan2]
+#define AUTO_TIMER_BLOCK( ... ) if( true )
+#define AUTO_TIME( expression, ... ) \
+		(expression)
+
+// only one function timer is allowed per function
+#define AUTO_TIMER_FUNCTION( ... ) 
+
+// creates an anonymous auto timer
+#define AUTO_TIMER( ... ) 
+
+//////////////////////////////////////////////////////////////////////////
+// deprecated
+// TODO: name refactoring [10/1/2012 kirschan2]
+#define AUTO_TIMER_FOR_FUNCTION(...) 
+#define AUTO_TIMER_NAMED( name, ... ) 
+#define AUTO_TIMER_DEFAULT( ... ) 
+#define AUTO_TIMER_MEASURE( ... ) if( true )
+#endif 

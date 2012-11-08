@@ -17,9 +17,14 @@ namespace aop {
 		std::string neighborhoodDatabaseV2Path;
 
 		std::string neighborhoodValidationDataPath;
+		std::string probeValidationDataPath;
 
 		float validation_neighborhood_positionVariance;
 		int validation_neighborhood_numSamples;
+
+		float validation_probes_positionVariance;
+		int validation_probes_numSamples;
+		float validation_probes_queryVolumeSize;
 
 		Settings();
 

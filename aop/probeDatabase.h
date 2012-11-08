@@ -473,7 +473,7 @@ struct ColorCounter {
 	std::vector<unsigned> buckets;
 	int totalNumSamples;
 
-	static const unsigned getBucketIndex( const RawProbeSample &probeSample ) {
+	static unsigned getBucketIndex( const RawProbeSample &probeSample ) {
 		union Index {
 			struct {
 				unsigned L : 4;
@@ -502,6 +502,12 @@ struct ColorCounter {
 		: buckets( std::move( buckets ) )
 		, totalNumSamples( other.totalNumSamples )
 	{
+	}
+
+	void splat( const RawProbeSample &probeSample ) {
+		const unsigned bucketIndex = getBucketIndex( probeSample );
+		buckets[ bucketIndex ]++;
+		totalNumSamples++;
 	}
 
 	void clear() {
@@ -876,6 +882,7 @@ struct SampledModel {
 		rotatedProbePositions.resize( ProbeGenerator::getNumOrientations() );
 		
 		resolution = 0.f;
+		modelColorCounter.clear();
 	}
 
 	SampledModel()
@@ -910,6 +917,7 @@ struct SampledModel {
 
 	// TODO: rename to compile
 	void mergeInstances( ColorCounter &colorCounter ) {
+
 		if( instances.empty() ) {
 			return;
 		}
@@ -935,8 +943,8 @@ struct SampledModel {
 			}
 
 			for( auto probeSample = mergedProbeSamples.begin() ; probeSample != mergedProbeSamples.end() ; ++probeSample ) {
-				colorCounter.buckets[ ColorCounter::getBucketIndex( *probeSample ) ]++;
-				colorCounter.totalNumSamples++;
+				colorCounter.splat( *probeSample );
+				modelColorCounter.splat( *probeSample );
 			}
 
 			// TODO: magic constants!!! [10/17/2012 kirschan2]
@@ -1001,6 +1009,7 @@ struct SampledModel {
 	}
 
 private:
+	ColorCounter modelColorCounter;
 	SampledInstances instances;
 	IndexedProbeSamples mergedInstances;
 
@@ -1057,9 +1066,9 @@ struct ProbeDatabase : IDatabase {
 
 	virtual void compile( int sceneModelIndex );
 	virtual void compileAll() {
-		colorCounter.clear();
+		globalColorCounter.clear();
 		for( auto sampledModel = sampledModels.begin() ; sampledModel != sampledModels.end() ; ++sampledModel ) {
-			sampledModel->mergeInstances( colorCounter );
+			sampledModel->mergeInstances( globalColorCounter );
 		}
 	}
 
@@ -1087,7 +1096,7 @@ struct ProbeDatabase : IDatabase {
 
 private:
 	SampledModels sampledModels;
-	ColorCounter colorCounter;
+	ColorCounter globalColorCounter;
 };
 
 }

@@ -73,7 +73,7 @@ void ProbeDatabase::addInstanceProbes(
 void ProbeDatabase::compile( int sceneModelIndex ) {
 	const int localModelIndex = modelIndexMapper.getLocalModelIndex( sceneModelIndex );
 	if( localModelIndex != ModelIndexMapper::INVALID_INDEX ) {
-		sampledModels[ localModelIndex ].mergeInstances( colorCounter );
+		sampledModels[ localModelIndex ].mergeInstances( globalColorCounter );
 	}
 }
 }

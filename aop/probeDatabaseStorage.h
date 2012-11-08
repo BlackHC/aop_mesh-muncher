@@ -24,6 +24,12 @@ BOOST_STATIC_ASSERT( sizeof( ProbeContext::DBProbeSample ) == 8 + 8 );
 
 SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeContext::SampledModel::SampledInstance, (sourceTransformation)(probeSamples) )
 SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeContext::IndexedProbeSamples, (data)(occlusionLowerBounds) )
+
+SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeContext::ColorCounter,
+	(buckets)
+	(totalNumSamples)
+)
+
 SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeContext::SampledModel,
 	(instances)
 	(mergedInstances)
@@ -31,6 +37,7 @@ SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeContext::SampledModel,
 	(probes)
 	(rotatedProbePositions)
 	(resolution)
+	(modelColorCounter)
 )
 
 SERIALIZER_ENABLE_RAW_MODE_EXTERN( OptixProgramInterface::ProbeSample );

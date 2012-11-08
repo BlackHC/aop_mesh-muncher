@@ -8,6 +8,7 @@ bool ProbeDatabase::load( const std::string &filename ) {
 	if( reader.valid() ) {
 		reader.get( localModelNames );
 		reader.get( sampledModels );
+		reader.get( globalColorCounter );
 
 		modelIndexMapper.registerLocalModels( localModelNames );
 
@@ -20,6 +21,7 @@ void ProbeDatabase::store( const std::string &filename ) const {
 	Serializer::BinaryWriter writer( filename.c_str(), CACHE_FORMAT_VERSION );
 	writer.put( localModelNames );
 	writer.put( sampledModels );
+	writer.put( globalColorCounter );
 }
 
 namespace IO {

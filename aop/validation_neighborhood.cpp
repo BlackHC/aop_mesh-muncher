@@ -87,8 +87,8 @@ void main() {
 	log( boost::format(
 		"%s[max distance %f, tolerance %f, position variance %f, num samples %i] // rankExpectation = %f" )
 		% executionKernel.getInfoString()
-		% tolerance
 		% validationData.settings.maxDistance
+		% tolerance
 		% validationData.settings.positionVariance
 		% validationData.settings.numSamples
 	 	% rankExpectation

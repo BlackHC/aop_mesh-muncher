@@ -29,9 +29,15 @@ namespace aop {
 		, probeDatabasePath( "probeDatabase" )
 		, modelDatabasePath( "modelDatabase" )
 		, neighborhoodDatabaseV2Path( "neighborhoodDatabaseV2" )
+
 		, neighborhoodValidationDataPath( "neighborhood.validationData" )
-		, validation_neighborhood_positionVariance( 0.0f )
-		, validation_neighborhood_numSamples()
+		, validation_neighborhood_positionVariance()
+		, validation_neighborhood_numSamples(1)
+
+		, probeValidationDataPath( "probe.validationData" )
+		, validation_probes_positionVariance()
+		, validation_probes_numSamples(1)
+		, validation_probes_queryVolumeSize(3)
 	{
 	}
 }

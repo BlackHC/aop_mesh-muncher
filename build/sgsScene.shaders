@@ -40,7 +40,7 @@ sceneLighting:
 						
 			vec4 refDepth4 = textureGather( shadowMap, viewportPosition.xy );
 			//return refDepth4.x;
-			if( any( greaterThan( refDepth4, vec4( viewportPosition.z * 0.995 ) ) ) ) {
+			if( any( greaterThan( refDepth4, vec4( viewportPosition.z * 0.99995 ) ) ) ) {
 				return 1.0;
 			}
 			else {
