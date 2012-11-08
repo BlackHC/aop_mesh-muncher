@@ -71,6 +71,9 @@ void ProbeDatabase::addInstanceProbes(
 }
 
 void ProbeDatabase::compile( int sceneModelIndex ) {
+	throw std::exception( "not supported atm!" );
+
+	// globalColorCounter does not support partial updates
 	const int localModelIndex = modelIndexMapper.getLocalModelIndex( sceneModelIndex );
 	if( localModelIndex != ModelIndexMapper::INVALID_INDEX ) {
 		sampledModels[ localModelIndex ].mergeInstances( globalColorCounter );

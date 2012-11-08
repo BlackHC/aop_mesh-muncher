@@ -34,6 +34,21 @@ Scalar clamp( const Scalar &value, const Scalar &min, const Scalar &max ) {
 	return value;
 }
 
+// alpha is the base probability for either event happening (this is for a two-event state)
+inline float getMessageLength( float probability ) {
+	const float messageLength = -logf( probability );
+
+	return messageLength;
+}
+
+inline float getBinaryEntropy( float probability ) {
+	const float positiveMessageLength = getMessageLength( probability );
+	const float negativeMessageLength = getMessageLength( 1.0f - probability );
+
+	const float binaryEntropy = positiveMessageLength * probability + (1.0f - probability) * negativeMessageLength;
+	return binaryEntropy;
+}
+
 namespace ColorConversion {
 	namespace HSV {
 		/*

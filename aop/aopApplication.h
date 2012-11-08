@@ -60,8 +60,9 @@ namespace aop {
 	struct Application : ModelDatabase::ImportInterface {
 		enum QueryType {
 			QT_NORMAL,
-			QT_WEIGHTED,
-			QT_FULL
+			QT_IMPORTANCE,
+			QT_FULL,
+			QT_IMPORTANCE_FULL
 		};
 
 		sf::Clock frameClock, clock;
@@ -87,6 +88,8 @@ namespace aop {
 		Settings settings;
 		SceneSettings sceneSettings;
 		bool hideScene;
+		// TODO: note this is all that has been implemented so far [11/8/2012 kirschan2]
+		bool hideBottomBar;
 
 		ProbeContext::ProbeDatabase probeDatabase;
 		Neighborhood::NeighborhoodDatabaseV2 neighborDatabaseV2;
@@ -94,7 +97,12 @@ namespace aop {
 
 		bool renderOptixView;
 
-		Application() : renderOptixView( false ), modelDatabase( this ), hideScene( false ) {}
+		Application()
+			: renderOptixView( false )
+			, modelDatabase( this )
+			, hideScene( false )
+			, hideBottomBar( true )
+		{}
 
 		struct MainUI;
 		struct NamedVolumesEditorView;
@@ -145,8 +153,8 @@ namespace aop {
 
 		ProbeContext::QueryResults queryVolume( const SceneSettings::NamedTargetVolume &queryVolume, QueryType queryType );
 		ProbeContext::QueryResults normalQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples );
-		ProbeContext::QueryResults weightedQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples );
-
+		ProbeContext::QueryResults importanceQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples );
+		
 		void ProbeDatabase_sampleInstances( int modelIndex );
 
 		ProbeContext::ProbeContextTolerance getPCTFromSettings();
@@ -154,6 +162,7 @@ namespace aop {
 		void NeighborhoodDatabase_sampleScene();
 
 		ProbeContext::QueryResults fullQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples );
+		ProbeContext::QueryResults importanceFullQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples );
 
 		// validation helper
 		void NeighborhoodValidation_queryAllInstances( const std::string &filename );

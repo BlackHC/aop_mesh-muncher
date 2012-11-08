@@ -1,6 +1,6 @@
 #include "probeDatabaseStorage.h"
 
-const int CACHE_FORMAT_VERSION = 4;
+const int CACHE_FORMAT_VERSION = 5;
 
 namespace ProbeContext {
 bool ProbeDatabase::load( const std::string &filename ) {

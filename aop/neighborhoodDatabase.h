@@ -113,20 +113,6 @@ namespace Neighborhood {
 	}
 #endif
 
-	// alpha is the base probability for either event happening (this is for a two-event state)
-	inline float getMessageLength( float probability ) {
-		const float entropy = -logf( probability );
-
-		return entropy;
-	}
-
-	inline float getEntropy( float probability ) {
-		const float positiveMessageLength = getMessageLength( probability );
-		const float negativeMessageLength = getMessageLength( 1.0f - probability );
-
-		return positiveMessageLength * probability + (1.0f - probability) * negativeMessageLength;
-	}
-
 	inline float combinePositiveAndNegativeScores( float score, float maxNegativeScore, float maxPositiveScore ) {
 		float threshold = 0.2;
 		if( score >= 0.0f ) {

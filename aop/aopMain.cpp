@@ -375,7 +375,8 @@ namespace DebugObjects {
 			);
 		}
 
-		void addConfigurationQueryVisualization( const Obb &volume, const ProbeContext::ProbeDatabase::FullQuery &query ) {
+		template< typename FullQueryType >
+		void addConfigurationQueryVisualization( const Obb &volume, const FullQueryType &query ) {
 			const float scaleFactor = 0.25f;
 			const auto details = query.getDetailedQueryResults();
 
@@ -426,7 +427,7 @@ namespace DebugObjects {
 							const float glowComponent = clamp<float>( (normalizedScore - 0.9f) * 10.0f, 0.0f, 1.0f );
 							DebugRender::setColor( Vector3f( redComponent, glowComponent, glowComponent ) );
 
-							DebugRender::drawAbstractSphere( scaleFactor / 4 * query.queryResolution, 5 );
+							DebugRender::drawAbstractSphere( scaleFactor / 4 * query.queryResolution, true, 5 );
 							DebugRender::drawVector( scaleFactor * query.queryResolution * -ProbeGenerator::getRotation(bestOrientation).col(2) );
 						}
 					}
@@ -1072,8 +1073,9 @@ namespace aop {
 
 			AntTWBarUI::TypeBuilder::Enum< QueryType >( "QueryType" )
 				.add( "Normal", QT_NORMAL )
-				.add( "Weighted", QT_WEIGHTED )
-				.add( "Full", QT_FULL )
+				.add( "Importance", QT_IMPORTANCE )
+				.add( "Configuration", QT_FULL )
+				.add( "Importance Configuration", QT_IMPORTANCE_FULL )
 				.define()
 			;
 
@@ -1724,11 +1726,14 @@ namespace aop {
 		case QT_NORMAL:
 			queryResults = normalQueryVolume( queryVolume.volume, queryProbes, queryProbeSamples );
 			break;
-		case QT_WEIGHTED:
-			queryResults = weightedQueryVolume( queryVolume.volume, queryProbes, queryProbeSamples );
+		case QT_IMPORTANCE:
+			queryResults = importanceQueryVolume( queryVolume.volume, queryProbes, queryProbeSamples );
 			break;
 		case QT_FULL:
 			queryResults = fullQueryVolume( queryVolume.volume, queryProbes, queryProbeSamples );
+			break;
+		case QT_IMPORTANCE_FULL:
+			queryResults = importanceFullQueryVolume( queryVolume.volume, queryProbes, queryProbeSamples );
 			break;
 		}
 		progressTracker.markFinished();
@@ -1806,10 +1811,40 @@ namespace aop {
 		return query.getQueryResults();
 	}
 
-	ProbeContext::QueryResults Application::weightedQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples ) {
-		ProbeContext::ProbeDatabase::WeightedQuery query( probeDatabase );
+	ProbeContext::QueryResults Application::importanceFullQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples ) {
+		ProbeContext::ProbeDatabase::ImportanceFullQuery query( probeDatabase );
 		{
+			query.setQueryVolume( queryVolume, sceneSettings.probeGenerator_resolution );
 			query.setQueryDataset( queryProbes, queryProbeSamples );
+
+			query.setProbeContextTolerance( getPCTFromSettings() );
+
+			query.execute();
+		}
+
+		const auto &queryResults = query.getQueryResults();
+		for( auto queryResult = queryResults.begin() ; queryResult != queryResults.end() ; ++queryResult ) {
+			log(
+				boost::format(
+					"%i:\n"
+					"\tscore %f\n"
+				)
+				% queryResult->sceneModelIndex
+				% queryResult->score
+			);
+		}
+
+		if( DebugObjects::ProbeDatabase::automaticallyVisualizeConfigurationQueryDetails ) {
+			probeDatabase_debugUI->addConfigurationQueryVisualization( queryVolume, query );
+		}
+
+		return query.getQueryResults();
+	}
+
+	ProbeContext::QueryResults Application::importanceQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples ) {
+		ProbeContext::ProbeDatabase::ImportanceQuery query( probeDatabase );
+		{
+			query.setQueryDataset( queryProbeSamples );
 
 			query.setProbeContextTolerance( getPCTFromSettings() );
 

@@ -28,6 +28,8 @@ SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeContext::IndexedProbeSamples, (data)(occlus
 SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeContext::ColorCounter,
 	(buckets)
 	(totalNumSamples)
+	(entropy)
+	(totalMessageLength)
 )
 
 SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeContext::SampledModel,

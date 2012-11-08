@@ -472,6 +472,8 @@ struct ColorCounter {
 	static const int numBuckets = 1<<18;
 	std::vector<unsigned> buckets;
 	int totalNumSamples;
+	float entropy;
+	float totalMessageLength;
 
 	static unsigned getBucketIndex( const RawProbeSample &probeSample ) {
 		union Index {
@@ -495,13 +497,24 @@ struct ColorCounter {
 	ColorCounter() 
 		: buckets( numBuckets )
 		, totalNumSamples()
+		, entropy()
+		, totalMessageLength()
 	{
 	}
 
 	ColorCounter( ColorCounter &&other )
-		: buckets( std::move( buckets ) )
+		: buckets( std::move( other.buckets ) )
 		, totalNumSamples( other.totalNumSamples )
+		, entropy( other.entropy )
+		, totalMessageLength( other.totalMessageLength )
 	{
+	}
+
+	ColorCounter & operator = ( ColorCounter &&other ) {
+		buckets = std::move( other.buckets );
+		totalNumSamples = other.totalNumSamples;
+		entropy = other.entropy;
+		totalMessageLength = other.totalMessageLength;
 	}
 
 	void splat( const RawProbeSample &probeSample ) {
@@ -510,10 +523,49 @@ struct ColorCounter {
 		totalNumSamples++;
 	}
 
+	void splatSamples( const RawProbeSamples &probeSamples ) {
+		for( auto probeSample = probeSamples.begin() ; probeSample != probeSamples.end() ; probeSample++ ) {		
+			splat( *probeSample );
+		}
+	}
+
+	float getAdjustedFrequency( int bucketIndex ) const {
+		const int matches = buckets[ bucketIndex ];
+		return (matches + 1.0) / (totalNumSamples + 2.0);
+	}
+
+	float getAdjustedFrequency( const RawProbeSample &probeSample ) const {
+		const unsigned bucketIndex = getBucketIndex( probeSample );
+		return getAdjustedFrequency( bucketIndex );
+	}
+
+	float getMessageLength( const RawProbeSample &probeSample ) const {
+		return ::getMessageLength( getAdjustedFrequency( probeSample ) );
+	}
+
+	void calculateEntropy() {
+		entropy = 0.0f;
+		totalMessageLength = 0.0f;
+		for( int bucketIndex = 0 ; bucketIndex < numBuckets ; bucketIndex++ ) {
+			const int bucketSize = buckets[ bucketIndex ];
+			if( bucketSize == 0 ) {
+				continue;
+			}
+
+			const float frequency = float( bucketSize ) / float( totalNumSamples );
+			const float adjustedFrequency = ( bucketSize + 1.0f ) / ( totalNumSamples + 2.0f );
+			const float messageLength = ::getMessageLength( adjustedFrequency );
+			totalMessageLength += bucketSize * messageLength;
+			entropy += frequency * messageLength;
+		}
+	}
+
 	void clear() {
 		buckets.clear();
 		buckets.resize( numBuckets );
 		totalNumSamples = 0;
+		entropy = 0.0f;
+		totalMessageLength = 0.0f;
 	}
 };
 
@@ -885,6 +937,19 @@ struct SampledModel {
 		modelColorCounter.clear();
 	}
 
+private:
+	ColorCounter modelColorCounter;
+	SampledInstances instances;
+	IndexedProbeSamples mergedInstances;
+
+	std::vector< IndexedProbeSamples > mergedInstancesByDirectionIndex;
+
+	DBProbes probes;
+	std::vector< ProbeGenerator::ProbePositions > rotatedProbePositions;
+	float resolution;
+
+public:
+
 	SampledModel()
 		: resolution( 0.f )
 	{
@@ -899,6 +964,7 @@ struct SampledModel {
 		, probes( std::move( other.probes ) )
 		, rotatedProbePositions( std::move( other.rotatedProbePositions ) )
 		, resolution( other.resolution )
+		, modelColorCounter( std::move( other.modelColorCounter ) )
 	{}
 
 	SampledModel & operator = ( SampledModel &&other ) {
@@ -912,11 +978,25 @@ struct SampledModel {
 
 		resolution = other.resolution;
 
+		modelColorCounter = other.modelColorCounter;
+
 		return *this;
 	}
 
 	// TODO: rename to compile
 	void mergeInstances( ColorCounter &colorCounter ) {
+		{
+			for( auto instance = instances.begin() ; instance < instances.end() ; instance++ ) {
+				const auto probeSamples = instance->getProbeSamples();
+
+				for( auto probeSample = probeSamples.begin() ; probeSample != probeSamples.end() ; probeSample++ ) {
+					colorCounter.splat( *probeSample );
+					modelColorCounter.splat( *probeSample );
+				}
+			}
+		
+			modelColorCounter.calculateEntropy();
+		}
 
 		if( instances.empty() ) {
 			return;
@@ -940,11 +1020,6 @@ struct SampledModel {
 				for( auto instance = instances.begin() ; instance != instances.end() ; ++instance ) {
 					boost::push_back( mergedProbeSamples, instance->getProbeSamples() );
 				}
-			}
-
-			for( auto probeSample = mergedProbeSamples.begin() ; probeSample != mergedProbeSamples.end() ; ++probeSample ) {
-				colorCounter.splat( *probeSample );
-				modelColorCounter.splat( *probeSample );
 			}
 
 			// TODO: magic constants!!! [10/17/2012 kirschan2]
@@ -1008,16 +1083,9 @@ struct SampledModel {
 		return probes;
 	}
 
-private:
-	ColorCounter modelColorCounter;
-	SampledInstances instances;
-	IndexedProbeSamples mergedInstances;
-
-	std::vector< IndexedProbeSamples > mergedInstancesByDirectionIndex;
-
-	DBProbes probes;
-	std::vector< ProbeGenerator::ProbePositions > rotatedProbePositions;
-	float resolution;
+	const ColorCounter &getColorCounter() const {
+		return modelColorCounter;
+	}
 
 	SERIALIZER_FWD_FRIEND_EXTERN( ProbeContext::SampledModel );
 
@@ -1036,9 +1104,9 @@ struct ProbeDatabase : IDatabase {
 	};
 
 	struct Query;
-	struct WeightedQuery;
+	struct ImportanceQuery;
 	struct FullQuery;
-	//struct OrientationQuery;
+	struct ImportanceFullQuery;
 
 	// TODO: fix the naming [10/15/2012 kirschan2]
 	typedef std::vector<SampledModel> SampledModels;
@@ -1070,6 +1138,7 @@ struct ProbeDatabase : IDatabase {
 		for( auto sampledModel = sampledModels.begin() ; sampledModel != sampledModels.end() ; ++sampledModel ) {
 			sampledModel->mergeInstances( globalColorCounter );
 		}
+		globalColorCounter.calculateEntropy();
 	}
 
 	int getNumSampledModels() const {
