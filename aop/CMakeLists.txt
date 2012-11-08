@@ -198,6 +198,9 @@ ADD_EXECUTABLE(Validate_aop_neighborhood
 	neighborhoodDatabaseStorage.h
 	neighborhoodDatabaseStorage.cpp
 
+	probeGenerator.h
+	probeGenerator.cpp
+
 	validation.h
 	validation.cpp
 	validationStorage.h

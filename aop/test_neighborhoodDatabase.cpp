@@ -112,7 +112,7 @@ TEST( NeighborhoodDatabaseV2_Query, all ) {
 static void mockModelDatabaseWith( ModelDatabase &modelDatabase, int numModels ) {
 	for( int i = 0 ; i < numModels ; i++ ) {
 		ModelDatabase::ModelInformation info;
-		info.area = info.diagonalLength = info.volume = 1.0;
+		info.area = info.diagonalLength = info.volume = 1;
 		modelDatabase.informationById.emplace_back( std::move( info ) );
 	}
 }
@@ -668,7 +668,7 @@ TEST( NeighborhoodDatabase_Query, compcase1 ) {
 	}
 
 	EXPECT_FLOAT_EQ( uniformResult[0], uniformResult[1] );
-	EXPECT_LT( weigtedResult[0], weigtedResult[1] );
+	EXPECT_LT( weigtedResult[0], weigtedResult[1] ) << "Final comparison for the improved score";
 	std::cout << uniformResult[0];
 }
 
@@ -709,53 +709,53 @@ TEST( NeighborhoodDatabase_Query, compcase1b ) {
 	{
 		NeighborhoodDatabaseV2::Query query( example[0], 0, createQueryDataset< 3, 3 >( queries[0] ) );
 
-		auto results = query.executeWithPolicy<NeighborhoodDatabaseV2::Query::UniformScorePolicy>();
+		auto results = query.executeWithPolicy<NeighborhoodDatabaseV2::Query::UniformWeightPolicy>();
 		sortResultEps( results );
 
-		ASSERT_EQ( 3, results.size() );
-		EXPECT_EQ( 0, results[0].second );
-		EXPECT_FLOAT_EQ( results[0].first, results[1].first );
+		ASSERT_EQ( 3, results.size() ) << "Uniform";
+		EXPECT_EQ( 0, results[0].second ) << "Uniform";
+		EXPECT_FLOAT_EQ( results[0].first, results[1].first ) << "Uniform";
 		uniformResult[0] = results[0].first;
 	}
 	{
 		NeighborhoodDatabaseV2::Query query( example[0], 0, createQueryDataset< 3, 3 >( queries[0] ) );
 
-		auto results = query.executeWithPolicy<NeighborhoodDatabaseV2::Query::ImportanceScorePolicy>();
+		auto results = query.executeWithPolicy<NeighborhoodDatabaseV2::Query::JaccardIndexPolicy>();
 		sortResultEps( results );
 
-		ASSERT_EQ( 3, results.size() );
-		EXPECT_EQ( 0, results[0].second ) << "Importance Score!";
-		EXPECT_GT( results[0].first, results[1].first );
+		ASSERT_EQ( 3, results.size() ) << "Jaccard";
+		EXPECT_EQ( 0, results[0].second ) << "Jaccard";
+		EXPECT_GT( results[0].first, results[1].first ) << "Jaccard";
 		weigtedResult[0] = results[0].first;
 	}
 
 	{
 		NeighborhoodDatabaseV2::Query query( example[1], 0, createQueryDataset< 3, 3 >( queries[0] ) );
 
-		auto results = query.executeWithPolicy<NeighborhoodDatabaseV2::Query::UniformScorePolicy>();
+		auto results = query.executeWithPolicy<NeighborhoodDatabaseV2::Query::UniformWeightPolicy>();
 		sortResultEps( results );
 
-		ASSERT_EQ( 3, results.size() );
-		EXPECT_EQ( 2, results[2].second ) << "Uniform Score!";
-		EXPECT_FLOAT_EQ( results[0].first, results[1].first );
+		ASSERT_EQ( 3, results.size() ) << "Uniform";
+		EXPECT_EQ( 2, results[2].second ) << "Uniform";
+		EXPECT_FLOAT_EQ( results[0].first, results[1].first ) << "Uniform";
 
 		uniformResult[1] = results[0].first;
 	}
 	{
 		NeighborhoodDatabaseV2::Query query( example[1], 0, createQueryDataset< 3, 3 >( queries[0] ) );
 
-		auto results = query.executeWithPolicy<NeighborhoodDatabaseV2::Query::ImportanceScorePolicy>();
+		auto results = query.executeWithPolicy<NeighborhoodDatabaseV2::Query::JaccardIndexPolicy>();
 		sortResultEps( results );
 
-		ASSERT_EQ( 3, results.size() );
-		EXPECT_EQ( 2, results[2].second ) << "Importance Score!";
-		EXPECT_GT( results[0].first, results[1].first );
+		ASSERT_EQ( 3, results.size() ) << "Jaccard";
+		EXPECT_EQ( 2, results[2].second ) << "Jaccard";
+		EXPECT_GT( results[0].first, results[1].first ) << "Jaccard";
 
 		weigtedResult[1] = results[0].first;
 	}
 
-	EXPECT_FLOAT_EQ( uniformResult[0], uniformResult[1] );
-	EXPECT_LT( weigtedResult[0], weigtedResult[1] );
+	EXPECT_FLOAT_EQ( uniformResult[0], uniformResult[1] ) << "Final comparison";
+	EXPECT_LT( weigtedResult[0], weigtedResult[1] ) << "Final comparison for the improved score";
 	std::cout << uniformResult[0];
 }
 
