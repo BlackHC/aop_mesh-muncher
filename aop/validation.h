@@ -21,7 +21,7 @@ namespace Validation {
 
 		void count( int modelIndex, int numInstances = 1 ) {
 			instanceCounts[ modelIndex ] += numInstances;
-			totalNumInstances +=numInstances; 
+			totalNumInstances +=numInstances;
 		}
 
 		float calculateRankExpectation() const;
@@ -32,7 +32,11 @@ namespace Validation {
 		float positionVariance;
 		int numSamples;
 
-		NeighborhoodSettings() {}
+		NeighborhoodSettings()
+			: maxDistance()
+			, positionVariance()
+			, numSamples()
+		{}
 
 		NeighborhoodSettings( int numSamples, float maxDistance, float positionVariance )
 			: numSamples( numSamples )

@@ -89,6 +89,12 @@ struct KernelResults {
 		(importanceWeight)
 		(jaccardIndex)
 	)
+
+	KernelResults()
+		: uniformWeight()
+		, importanceWeight()
+		, jaccardIndex()
+	{}
 };
 
 template< typename Results >
@@ -120,8 +126,6 @@ struct ExpectationsResult {
 	int sampleSelector;
 	int numQueries;
 
-	int numInstances;
-
 	float maxFrequency_expectedRank;
 	KernelResults<TimerResults> timers;
 	KernelResults<float> expectedRanks;
@@ -129,12 +133,20 @@ struct ExpectationsResult {
 	SERIALIZER_DEFAULT_IMPL(
 		(sampleSelector)
 		(numQueries)
-		(numInstances)
 		(settings)
 		(maxFrequency_expectedRank)
 		(expectedRanks)
 		(timers)
 	)
+
+	ExpectationsResult()
+		: sampleSelector(-1)
+		, numQueries()
+		, maxFrequency_expectedRank()
+		, timers()
+		, expectedRanks()
+	{
+	}
 };
 
 typedef std::vector< ExpectationsResult > ExpectationsResults;
@@ -159,17 +171,18 @@ void executeKernel(
 	boost::timer::cpu_timer cpuTimer;
 
 #pragma omp parallel for reduction(+ : rankSum)
-	for( int sampleIndex = sampleSelector ; sampleIndex < validationData.queryDatasets.size() ; sampleIndex += numSamples ) {
-		const int modelIndex = validationData.queryInfos[ sampleIndex ];
+	for( int sampleIndex = 0 ; sampleIndex < numTotalSamples ; sampleIndex++  ) {
+		const int queryIndex = sampleIndex * numSamples + sampleSelector;
+		const int modelIndex = validationData.queryInfos[ queryIndex ];
 
-		const auto &queryData = validationData.queryDatasets[ sampleIndex ];
+		const auto &queryData = validationData.queryDatasets[ queryIndex ];
 
-		//const auto results = ExecutionKernel::execute( neighborhoodDatabase, tolerance, queryData );
-		Neighborhood::Results results;
+		const auto results = ExecutionKernel::execute( neighborhoodDatabase, tolerance, queryData );
+		//Neighborhood::Results results;
 
 		rankResults[ sampleIndex ] = results.size();
 		for( int resultIndex = 0 ; resultIndex < results.size() ; ++resultIndex ) {
-			if( results[ resultIndex ].second == modelIndex ) {
+			if( results[ sampleIndex ].second == modelIndex ) {
 				rankResults[ sampleIndex ] = resultIndex;
 				rankSum += resultIndex;
 				break;
@@ -208,21 +221,21 @@ void testValidationData(
 		}
 	}
 
-	ExpectationsResult expectationResult = ExpectationsResult();
+	ExpectationsResult expectationResult;
 	ValidationDataResults<RankResults> validationDataRanks;
 
+	expectationResult.settings = validationData.settings;
+	validationDataRanks.settings = validationData.settings;
+
+	expectationResult.sampleSelector = sampleSelector;
+	validationDataRanks.sampleSelector = sampleSelector;
+
+	const float maxFrequency_expectedRank = validationData.instanceCounts.calculateRankExpectation();
+	expectationResult.maxFrequency_expectedRank = maxFrequency_expectedRank;
+	validationDataRanks.maxFrequency_expectedRank = maxFrequency_expectedRank;
+	
 	if( sampleSelector < validationData.settings.numSamples ) {
 		expectationResult.numQueries = validationData.queryDatasets.size() / validationData.settings.numSamples;
-
-		expectationResult.settings = validationData.settings;
-		validationDataRanks.settings = validationData.settings;
-
-		expectationResult.sampleSelector = sampleSelector;
-		validationDataRanks.sampleSelector = sampleSelector;
-
-		const float maxFrequency_expectedRank = validationData.instanceCounts.calculateRankExpectation();
-		expectationResult.maxFrequency_expectedRank = maxFrequency_expectedRank;
-		validationDataRanks.maxFrequency_expectedRank = maxFrequency_expectedRank;
 
 		log( boost::format(
 			"max distance %f\nposition variance %f\nnum samples %i" )
@@ -276,7 +289,7 @@ void testValidationData(
 			);
 
 			Serializer::TextWriter writer( resultFilePath );
-			Serializer::put( writer, validationDataRanks );
+			Serializer::write( writer, validationDataRanks );
 		}
 	}
 
@@ -291,7 +304,7 @@ void testValidationData(
 		);
 
 		Serializer::TextWriter writer( resultFilePath );
-		Serializer::put( writer, expectationsResults );
+		Serializer::write( writer, expectationsResults );
 	}
 }
 
