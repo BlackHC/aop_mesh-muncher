@@ -80,57 +80,77 @@ typedef std::vector< std::pair< int, Results > > FullResults;
 typedef std::vector< int > RankResults;
 
 // per validation data
-template< typename Results >
-struct ValidationDataResults {
-	Validation::NeighborhoodSettings settings;
-
-	float maxFrequency;
-	Results uniformWeight, importanceWeight, jaccardIndex;
+template< typename Result >
+struct KernelResults {
+	Result uniformWeight, importanceWeight, jaccardIndex;
 
 	SERIALIZER_DEFAULT_IMPL(
-		(settings)
-		(maxFrequency)
 		(uniformWeight)
 		(importanceWeight)
 		(jaccardIndex)
+	)
+};
+
+template< typename Results >
+struct ValidationDataResults {
+	Validation::NeighborhoodSettings settings;
+	int sampleSelector;
+	
+	float maxFrequency;
+	KernelResults<Results> results;
+ 
+	SERIALIZER_DEFAULT_IMPL(
+		(settings)
+		(maxFrequency)
+		(results)
+		(time)
 	)
 };
 
 // per validation data
 struct ExpectationsResult {
 	Validation::NeighborhoodSettings settings;
+	int sampleSelector;
 
-	float maxFrequency;
-	float uniformWeight, importanceWeight, jaccardIndex;
+	float maxFrequency_expectedRank;
+	KernelResults<float> time;
+	KernelResults<float> expectedRanks;
 
-	SERIALIZER_DEFAULT_IMPL( 
+	SERIALIZER_DEFAULT_IMPL(
+		(sampleSelector)
 		(settings)
 		(maxFrequency)
-		(uniformWeight)
-		(importanceWeight)
-		(jaccardIndex)
+		(expectedRanks)
+		(time)
 	)
 };
 
 typedef std::vector< ExpectationsResult > ExpectationsResults;
 
 template<typename ExecutionKernel>
-void executeKernel( const Neighborhood::NeighborhoodDatabaseV2 &neighborhoodDatabase, const Validation::NeighborhoodData &validationData, float &expectationResult, RankResults &rankResults ) {
+void executeKernel(
+	int sampleSelector,
+	const Neighborhood::NeighborhoodDatabaseV2 &neighborhoodDatabase,
+	const Validation::NeighborhoodData &validationData,
+	float &expectationResult,
+	RankResults &rankResults
+) {
 	const float tolerance = validationData.settings.positionVariance + 0.25;
 
-	const int numSamples = validationData.queryDatasets.size();
-	rankResults.resize( numSamples );
+	const int numSamples = validationData.settings.numSamples;
+	const int numTotalSamples = validationData.queryDatasets.size() / numSamples;
+	rankResults.resize( numTotalSamples );
 
 	int rankSum = 0;
 
 #pragma omp parallel for reduction(+ : rankSum)
-	for( int sampleIndex = 0 ; sampleIndex < validationData.queryDatasets.size() ; ++sampleIndex ) {
-		std::cout << "*";
+	for( int sampleIndex = sampleSelector ; sampleIndex < validationData.queryDatasets.size() ; sampleIndex += numSamples ) {
 		const int modelIndex = validationData.queryInfos[ sampleIndex ];
 
 		const auto &queryData = validationData.queryDatasets[ sampleIndex ];
 
 		const auto results = ExecutionKernel::execute( neighborhoodDatabase, tolerance, queryData );
+		//Neighborhood::Results results;
 
 		rankResults[ sampleIndex ] = results.size();
 		for( int resultIndex = 0 ; resultIndex < results.size() ; ++resultIndex ) {
@@ -140,22 +160,38 @@ void executeKernel( const Neighborhood::NeighborhoodDatabaseV2 &neighborhoodData
 				break;
 			}
 		}
+
+		if( (sampleIndex % 100) == 0 ) {
+			std::cout << "*";
+		}
 	}
+	std::cout << "\n";
 
 	const float rankExpectation = double( rankSum ) /  validationData.queryDatasets.size();
 	expectationResult = rankExpectation;
 }
 
-void testValidationData( 
+void testValidationData(
+	int sampleSelector,
 	const Neighborhood::NeighborhoodDatabaseV2 &neighborhoodDatabase,
 	const std::string &validationDataPath,
 	ExpectationsResults &expectationsResults
 ) {
-	Validation::NeighborhoodData validationData = Validation::NeighborhoodData::load( buildPath( validationDataPath + validationDataName ) );
+	Validation::NeighborhoodData validationData;
+
+	{
+		const std::string validationDataFilePath = buildPath( validationDataPath + validationDataName );
+		bool success = Validation::NeighborhoodData::load( validationDataFilePath, validationData );
+
+		if( !success ) {
+			logError( boost::format( "Failed to load validationData '%s'!\n" ) % validationDataFilePath );
+			return;
+		}
+	}
 
 	ExpectationsResult expectationResult;
 	ValidationDataResults<RankResults> validationDataRanks;
-	
+
 	expectationResult.settings = validationData.settings;
 	validationDataRanks.settings = validationData.settings;
 
@@ -184,15 +220,16 @@ void testValidationData(
 
 	{
 		const std::string resultFilePath = buildPath(
-			boost::str( boost::format( "%s%f_%f_%i.rankResults.wml" ) 
+			boost::str( boost::format( "%s%i_%f_%f_%i.rankResults.wml" )
 				% resultsPath
+				% sampleSelector
 				% validationData.settings.maxDistance
 				% validationData.settings.positionVariance
 				% validationData.settings.numSamples
 			)
 		);
 
-		Serializer::TextWriter writer( resultsPath );
+		Serializer::TextWriter writer( resultFilePath );
 		Serializer::put( writer, validationDataRanks );
 	}
 
@@ -200,17 +237,19 @@ void testValidationData(
 
 	{
 		const std::string resultFilePath = buildPath(
-			boost::str( boost::format( "%sexpectationsResults.wml" ) 
+			boost::str( boost::format( "%s%i_expectationsResults.wml" )
 				% resultsPath
+				% sampleSelector
 			)
 		);
 
-		Serializer::TextWriter writer( resultsPath );
+		Serializer::TextWriter writer( resultFilePath );
 		Serializer::put( writer, expectationsResults );
 	}
 }
 
 void testNeighborDatabase(
+	int sampleSelector,
 	ModelDatabase &modelDatabase,
 	const char *neighborDatabasePath,
 	int numValidationDataPaths,
@@ -230,7 +269,7 @@ void testNeighborDatabase(
 	}
 
 	for( int i = 0 ; i < numValidationDataPaths ; i++ ) {
-		testValidationData( neighborhoodDatabase, validationDataPaths[i], expectationsResults );
+		testValidationData( sampleSelector, neighborhoodDatabase, validationDataPaths[i], expectationsResults );
 	}
 }
 
@@ -250,34 +289,35 @@ void main() {
 	const char *paths[] = {
 		"5/0/",
 		"5/1/",
-		"5/2/"
+		"5/2/",
 
 		"10/0/",
 		"10/2/",
-		"10/4/"
+		"10/4/",
 
 		"20/0/",
 		"20/2/",
 		"20/4/",
-		"20/8/"
+		"20/8/",
 
 		"40/0/",
 		"40/2/",
 		"40/4/",
 		"40/8/"
 	};
+	const int sampleSelector = 0;
 
 	ExpectationsResults expectationsResults;
 
 	int index = 0;
-	testNeighborDatabase( modelDatabase, "5/", 3, &paths[index], expectationsResults );
+	testNeighborDatabase( sampleSelector, modelDatabase, "5/", 3, &paths[index], expectationsResults );
 	index += 3;
 
-	testNeighborDatabase( modelDatabase, "10/", 3, &paths[index], expectationsResults );
+	testNeighborDatabase( sampleSelector, modelDatabase, "10/", 3, &paths[index], expectationsResults );
 	index += 3;
 
-	testNeighborDatabase( modelDatabase, "20/", 4, &paths[index], expectationsResults );
+	testNeighborDatabase( sampleSelector, modelDatabase, "20/", 4, &paths[index], expectationsResults );
 	index += 4;
 
-	testNeighborDatabase( modelDatabase, "40/", 4, &paths[index], expectationsResults );
+	testNeighborDatabase( sampleSelector, modelDatabase, "40/", 4, &paths[index], expectationsResults );
 }

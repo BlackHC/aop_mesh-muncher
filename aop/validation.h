@@ -55,7 +55,7 @@ namespace Validation {
 			, settings( settings )
 		{}
 
-		static NeighborhoodData load( const std::string &filename );
+		static bool load( const std::string &filename, NeighborhoodData &neighborhoodData );
 		static void store( const std::string &filename, const NeighborhoodData &neighborhoodData );
 	};
 

@@ -4,18 +4,16 @@
 namespace Validation {
 	const int CACHE_FORMAT_VERSION = 1;
 
-	NeighborhoodData NeighborhoodData::load( const std::string &filename ) {
+	bool NeighborhoodData::load( const std::string &filename, NeighborhoodData &neighborhoodData ) {
 		Serializer::BinaryReader reader( filename.c_str(), CACHE_FORMAT_VERSION );
 		if( reader.valid() ) {
-			NeighborhoodData results;
+			reader.get( neighborhoodData );
 
-			reader.get( results );
-
-			return results;
+			return true;
 		}
 
-		logError( boost::format( "'%s' uses an old format!" ) % filename );
-		return NeighborhoodData();
+		logError( boost::format( "'%s' uses an old format or is missing!" ) % filename );
+		return false;
 	}
 
 	void NeighborhoodData::store( const std::string &filename, const NeighborhoodData &neighborhoodData ) {
