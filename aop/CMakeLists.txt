@@ -157,6 +157,9 @@ CUDA_ADD_EXECUTABLE(aop
 	modelDatabaseStorage.h
 	modelDatabaseStorage.cpp
 
+	queryResult.h
+	queryResultStorage.h
+
 	probeDatabase.h
 	probeDatabase.cpp
 	probeDatabaseQueries.h
@@ -188,6 +191,9 @@ CUDA_ADD_EXECUTABLE(aop
 
 
 ADD_EXECUTABLE(Validate_aop_neighborhood
+	queryResult.h
+	queryResultStorage.h
+
 	modelDatabase.h
 	modelDatabase.cpp
 	modelDatabaseStorage.h
@@ -221,6 +227,9 @@ ADD_EXECUTABLE(Validate_aop_neighborhood
 
 
 ADD_EXECUTABLE(Validate_aop_probes
+	queryResult.h
+	queryResultStorage.h
+
 	modelDatabase.h
 	modelDatabase.cpp
 	modelDatabaseStorage.h
@@ -255,6 +264,9 @@ ADD_EXECUTABLE(Validate_aop_probes
 
 
 ADD_EXECUTABLE(Test_aop
+	queryResult.h
+	queryResultStorage.h
+
 	probeDatabase.h
 	probeDatabase.cpp
 	probeDatabaseStorage.cpp

@@ -151,18 +151,18 @@ namespace aop {
 			ModelDatabase_sampleModel( modelId, resolution, NGM_COMBINED );
 		}
 
-		ProbeContext::QueryResults queryVolume( const SceneSettings::NamedTargetVolume &queryVolume, QueryType queryType );
-		ProbeContext::QueryResults normalQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples );
-		ProbeContext::QueryResults importanceQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples );
-		
+		QueryResults queryVolume( const SceneSettings::NamedTargetVolume &queryVolume, QueryType queryType );
+		QueryResults normalQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples );
+		QueryResults importanceQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples );
+
 		void ProbeDatabase_sampleInstances( int modelIndex );
 
 		ProbeContext::ProbeContextTolerance getPCTFromSettings();
 
 		void NeighborhoodDatabase_sampleScene();
 
-		ProbeContext::QueryResults fullQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples );
-		ProbeContext::QueryResults importanceFullQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples );
+		QueryResults fullQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples );
+		QueryResults importanceFullQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples );
 
 		// validation helper
 		void NeighborhoodValidation_queryAllInstances( const std::string &filename );

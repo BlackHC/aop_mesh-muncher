@@ -104,6 +104,7 @@ namespace SGSInterface {
 		);
 
 		int addInstance( int modelIndex, const Eigen::Vector3f &center );
+		int addInstance( int modelIndex, const Eigen::Affine3f &transformation );
 		void removeInstance( int instanceIndex );
 	};
 }

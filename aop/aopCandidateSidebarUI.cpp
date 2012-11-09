@@ -16,8 +16,8 @@ void aop::LocalCandidateBarUI::init() {
 
 	const float totalEntryHeight = buttonHeight + barHeight + buttonVerticalPadding;
 
-	const int numModels = std::min<int>( 30, (int) candidates.size() );
-	const int numDisplayedModels = std::min<int>( numModels, static_cast< int >( 1.0f / totalEntryHeight ) );
+	const int numQueryResults = std::min<int>( 30, (int) queryResults.size() );
+	const int numDisplayedModels = std::min<int>( numQueryResults, static_cast< int >( 1.0f / totalEntryHeight ) );
 	const float totalHeight = totalEntryHeight * numDisplayedModels;
 
 	scroller.size[0] = buttonWidth;
@@ -25,9 +25,9 @@ void aop::LocalCandidateBarUI::init() {
 
 	scroller.scrollStep = totalEntryHeight;
 
-	for( int i = 0 ; i < numModels ; i++ ) {
-		const float score = candidates[ i ].first;
-		const int modelIndex = candidates[ i ].second;
+	for( int i = 0 ; i < numQueryResults ; i++ ) {
+		const float score = queryResults[ i ].score;
+		const int modelIndex = queryResults[i].sceneModelIndex;
 
 		scroller.addEventHandler(
 			std::make_shared< ActionModelButton >(
@@ -35,13 +35,13 @@ void aop::LocalCandidateBarUI::init() {
 				Eigen::Vector2f( buttonWidth, buttonHeight ),
 				modelIndex,
 				application->world->sceneRenderer,
-				[this, modelIndex] () {
+				[this, i] () {
 					if( sf::Keyboard::isKeyPressed( sf::Keyboard::LAlt ) ) {
-						log( application->world->scene.modelNames[ modelIndex ] );
-						application->editor.selectModel( modelIndex );
+						log( application->world->scene.modelNames[ queryResults[i].sceneModelIndex ] );
+						application->editor.selectModel( queryResults[i].sceneModelIndex );
 					}
 					else {
-						application->world->addInstance( modelIndex, queryObb.transformation.translation() );
+						application->world->addInstance( queryResults[i].sceneModelIndex, queryResults[i].transformation );
 					}
 				}
 			)
@@ -70,7 +70,7 @@ void aop::LocalCandidateBarUI::refresh() {
 	}
 
 	const auto screenBox = Eigen_getTransformedAlignedBox( application->cameraView.viewerContext.projectionView * queryObb.transformation, queryObb.asLocalAlignedBox3f() );
-	
+
 	Eigen::Vector2f offset = screenBox.corner( Eigen::AlignedBox3f::TopRightCeil ).head<2>();
 	offset.y() *= -1.0f;
 
@@ -80,8 +80,9 @@ void aop::LocalCandidateBarUI::refresh() {
 	clipper.transformChain.setScale( 2.0f * scale );
 }
 
-void aop::CandidateSidebarUI::setModels( std::vector<ScoreModelIndexPair> scoredModelIndices, const Eigen::Vector3f &position ) {
+void aop::CandidateSidebarUI::setModels( const QueryResults &_queryResults  ) {
 	clear();
+	queryResults = _queryResults;
 
 	const float buttonWidth = 0.1f;
 	const float buttonAbsPadding = 32;
@@ -96,17 +97,18 @@ void aop::CandidateSidebarUI::setModels( std::vector<ScoreModelIndexPair> scored
 
 	const float totalEntryHeight = buttonHeight + barHeight + buttonVerticalPadding;
 
-	const int maxNumModels = 30;
+	const int maxNumCandidates = 30;
 
-	const int numModels = std::min<int>( maxNumModels, scoredModelIndices.size() );
+	const int numQueryResults = std::min<int>( maxNumCandidates, queryResults.size() );
 
 	sidebar.minY = 0;
-	sidebar.maxY = (numModels - 1 ) * totalEntryHeight;
+	sidebar.maxY = (numQueryResults - 1 ) * totalEntryHeight;
 	sidebar.scrollStep = totalEntryHeight;
 
-	for( int i = 0 ; i < numModels ; i++ ) {
-		const float score = scoredModelIndices[ i ].first;
-		const int modelIndex = scoredModelIndices[ i ].second;
+	for( int i = 0 ; i < numQueryResults ; i++ ) {
+		const float score = queryResults[ i ].score;
+		const int modelIndex = queryResults[i].sceneModelIndex;
+		Eigen::Affine3f transformation = queryResults[i].transformation;
 
 		sidebar.addEventHandler(
 			std::make_shared< ActionModelButton >(
@@ -114,13 +116,13 @@ void aop::CandidateSidebarUI::setModels( std::vector<ScoreModelIndexPair> scored
 				Eigen::Vector2f( buttonWidth, buttonHeight ),
 				modelIndex,
 				application->world->sceneRenderer,
-				[this, modelIndex, position] () {
+				[this, i] () {
 					if( sf::Keyboard::isKeyPressed( sf::Keyboard::LAlt ) ) {
-						log( application->world->scene.modelNames[ modelIndex ] );
-						application->editor.selectModel( modelIndex );
+						log( application->world->scene.modelNames[ queryResults[i].sceneModelIndex ] );
+						application->editor.selectModel( queryResults[i].sceneModelIndex );
 					}
 					else {
-						application->world->addInstance( modelIndex, position );
+						application->world->addInstance( queryResults[i].sceneModelIndex, queryResults[i].transformation );
 					}
 			}
 		) );

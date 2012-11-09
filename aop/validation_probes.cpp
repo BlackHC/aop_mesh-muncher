@@ -33,7 +33,7 @@ ProbeContextTolerance createFromSettings( const Validation::ProbeSettings &setti
 }
 
 struct UniformBidirectional_ExecutionKernel {
-	static ProbeContext::QueryResults execute( const ProbeDatabase &probeDatabase, const Validation::ProbeSettings &settings, const Validation::ProbeData::QueryData &queryData ) {
+	static QueryResults execute( const ProbeDatabase &probeDatabase, const Validation::ProbeSettings &settings, const Validation::ProbeData::QueryData &queryData ) {
 		ProbeContext::ProbeDatabase::Query query( probeDatabase );
 		{
 			query.setQueryDataset( queryData.querySamples );
@@ -51,7 +51,7 @@ struct UniformBidirectional_ExecutionKernel {
 };
 
 struct UniformFull_ExecutionKernel {
-	static ProbeContext::QueryResults execute( const ProbeDatabase &probeDatabase, const Validation::ProbeSettings &settings, const Validation::ProbeData::QueryData &queryData ) {
+	static QueryResults execute( const ProbeDatabase &probeDatabase, const Validation::ProbeSettings &settings, const Validation::ProbeData::QueryData &queryData ) {
 		ProbeContext::ProbeDatabase::FullQuery query( probeDatabase );
 		{
 			query.setQueryVolume( queryData.queryVolume, settings.resolution );
@@ -99,7 +99,7 @@ void main() {
 	log( boost::format( "control rank expectation: %i" ) % frequencyRankExpectation );
 
 	log( boost::format( "num queries: %i" ) % validationData.queries.size() );
-	
+
 	int rankSum = 0;
 
 	if( probeDatabase.getNumSampledModels() != validationData.instanceCounts.instanceCounts.size() ) {
@@ -117,7 +117,7 @@ void main() {
 		auto queryResults = executionKernel.execute( probeDatabase, validationData.settings, queryData );
 		boost::sort(
 			queryResults,
-			ProbeContext::QueryResult::greaterByScoreAndModelIndex
+			QueryResult::greaterByScoreAndModelIndex
 		);
 
 		for( int resultIndex = 0 ; resultIndex < queryResults.size() ; resultIndex++, rankSum++ ) {

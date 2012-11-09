@@ -28,21 +28,17 @@ namespace aop {
 	};
 
 	struct LocalCandidateBarUI {
-		typedef std::pair< float, int > ScoreModelIndexPair;
-
 		Application *application;
 
 		ClippedContainer clipper;
 		ScrollableContainer scroller;
 
+		QueryResults queryResults;
 		Obb queryObb;
 		
-		typedef std::vector< ScoreModelIndexPair > Candidates;
-		Candidates candidates;
-		
-		LocalCandidateBarUI( Application *application, Candidates candidates, const Obb &queryObb ) 
+		LocalCandidateBarUI( Application *application, QueryResults queryResults, Obb queryObb ) 
 			: application( application )
-			, candidates( std::move( candidates ) )
+			, queryResults( std::move( queryResults ) )
 			, queryObb( queryObb )
 		{
 			init();
@@ -53,11 +49,11 @@ namespace aop {
 	};
 
 	struct CandidateSidebarUI {
-		typedef std::pair< float, int > ScoreModelIndexPair;
-
 		Application *application;
 
 		CandidateContainer sidebar;
+
+		QueryResults queryResults;
 
 		CandidateSidebarUI( Application *application ) : application( application ) {
 			init();
@@ -71,7 +67,7 @@ namespace aop {
 			sidebar.clear();
 		}
 
-		void setModels( std::vector<ScoreModelIndexPair> scoredModelIndices, const Eigen::Vector3f &position );
+		void setModels( const QueryResults &queryResults );
 	};
 
 	inline std::shared_ptr<CandidateSidebarUI> createCandidateSidebarUI( Application *application ) {

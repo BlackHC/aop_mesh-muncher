@@ -1105,6 +1105,7 @@ namespace aop {
 				}
 			) );
 
+#if 0
 			ui.add( AntTWBarUI::makeSharedButton(
 				"Test local candidate bars",
 				[this] {
@@ -1117,6 +1118,7 @@ namespace aop {
 					);
 				}
 			) );
+#endif
 
 			ui.add( AntTWBarUI::makeSharedVariable(
 				"Editor mode",
@@ -1206,16 +1208,9 @@ namespace aop {
 						auto queryResults = application->queryVolume( application->sceneSettings.volumes[ selection->index ], queryType );
 						application->endLongOperation();
 
-						
-
-						std::vector<CandidateSidebarUI::ScoreModelIndexPair> scoredModelIndices;
-						for( auto queryResult = queryResults.begin() ; queryResult != queryResults.end() ; ++queryResult ) {
-							scoredModelIndices.push_back( std::make_pair( queryResult->score, queryResult->sceneModelIndex ) );
-						}
-
-						application->candidateSidebarUI->setModels( scoredModelIndices, selection->getObb().transformation.translation() );
+						application->candidateSidebarUI->setModels( queryResults );
 						application->localCandidateBarUIs.emplace_back(
-							std::make_shared<LocalCandidateBarUI>( application, scoredModelIndices, selection->getObb() )
+							std::make_shared<LocalCandidateBarUI>( application, queryResults, selection->getObb() )
 						);
 					}
 				};
@@ -1229,16 +1224,11 @@ namespace aop {
 
 					boost::sort(
 						queryResults,
-						ProbeContext::QueryResult::greaterByScoreAndModelIndex
+						QueryResult::greaterByScoreAndModelIndex
 					);
 
-					std::vector<CandidateSidebarUI::ScoreModelIndexPair> scoredModelIndices;
-					for( auto queryResult = queryResults.begin() ; queryResult != queryResults.end() ; ++queryResult ) {
-						scoredModelIndices.push_back( std::make_pair( queryResult->score, queryResult->sceneModelIndex ) );
-					}
-
 					application->localCandidateBarUIs.emplace_back(
-						std::make_shared<LocalCandidateBarUI>( application, scoredModelIndices, queryVolume->volume )
+						std::make_shared<LocalCandidateBarUI>( application, queryResults, queryVolume->volume )
 					);
 
 					progressTracker.markFinished();
@@ -1274,7 +1264,15 @@ namespace aop {
 						);
 						application->endLongOperation();
 
-						application->candidateSidebarUI->setModels( queryResults, selection->getObb().transformation.translation() );
+						QueryResults transformedQueryResults;
+						for( auto queryResult = queryResults.begin() ; queryResult != queryResults.end() ; ++queryResult ) {
+							QueryResult transformedQueryResult;
+							transformedQueryResult.score = queryResult->first;
+							transformedQueryResult.sceneModelIndex = queryResult->second;
+							transformedQueryResult.transformation = selection->getObb().transformation;
+						}
+
+						application->candidateSidebarUI->setModels( transformedQueryResults );
 					}
 				};
 				QueryNeighborsVisitor( application ).dispatch( application->editor.selection );
@@ -1315,22 +1313,22 @@ namespace aop {
 						std::vector< std::pair< float, int > > scores( application->modelDatabase.informationById.size() );
 
 						// merge both results
-						for( auto matchInfo = matchInfos.begin() ; matchInfo != matchInfos.end() ; ++matchInfo ) {
-							scores[ matchInfo->sceneModelIndex ] = std::make_pair( matchInfo->score, matchInfo->sceneModelIndex );
+						for( auto queryResult = queryResults.begin() ; queryResult != queryResults.end() ; ++queryResult ) {
+							scores[ queryResult->second ] = std::make_pair( queryResult->first, queryResult->second );
 						}
 
-						for( auto queryResult = queryResults.begin() ; queryResult != queryResults.end() ; ++queryResult ) {
-							if( scores[ queryResult->second ].first > 0 ) {
-								scores[ queryResult->second ].first += queryResult->first * 0.5f;
-								// we might disable the if-check again, so here.. make it always work correctly :)
-								scores[ queryResult->second ].second = queryResult->second;
+						for( auto matchInfo = matchInfos.begin() ; matchInfo != matchInfos.end() ; ++matchInfo ) {
+							if( scores[ matchInfo->sceneModelIndex ].first > 0.0f ) {
+								matchInfo->score += scores[ matchInfo->sceneModelIndex ].first * 0.5f;
 							}
 						}
 
-						boost::sort( scores, std::greater< std::pair< float, int > >() );
-						boost::remove_erase_if( scores, [] ( const std::pair< float, int > &x ) { return x.first == 0.0; } );
+						boost::sort(
+							matchInfos,
+							QueryResult::greaterByScoreAndModelIndex
+						);
 
-						application->candidateSidebarUI->setModels( scores, selection->getObb().transformation.translation() );
+						application->candidateSidebarUI->setModels( matchInfos );
 					}
 				};
 				QueryVolumeVisitor( application ).dispatch( application->editor.selection );
@@ -1392,7 +1390,7 @@ namespace aop {
 				float maxDiagonalLength = 0.0f;
 				const auto &modelIndices = application->modelTypesUI->markedModels;
 				for( auto modelIndex = modelIndices.begin() ; modelIndex != modelIndices.end() ; ++modelIndex ) {
-					maxDiagonalLength = 
+					maxDiagonalLength =
 						std::max(
 							maxDiagonalLength,
 							application->modelDatabase.informationById[ *modelIndex ].diagonalLength
@@ -1700,7 +1698,7 @@ namespace aop {
 		return pct;
 	}
 
-	ProbeContext::QueryResults Application::queryVolume( const SceneSettings::NamedTargetVolume &queryVolume, QueryType queryType ) {
+	QueryResults Application::queryVolume( const SceneSettings::NamedTargetVolume &queryVolume, QueryType queryType ) {
 		ProgressTracker::Context progressTracker( 3 );
 
 		AUTO_TIMER_FOR_FUNCTION();
@@ -1721,7 +1719,7 @@ namespace aop {
 		}
 		progressTracker.markFinished();
 
-		ProbeContext::QueryResults queryResults;
+		QueryResults queryResults;
 		switch( queryType ) {
 		case QT_NORMAL:
 			queryResults = normalQueryVolume( queryVolume.volume, queryProbes, queryProbeSamples );
@@ -1744,16 +1742,17 @@ namespace aop {
 
 		boost::sort(
 			queryResults,
-			ProbeContext::QueryResult::greaterByScoreAndModelIndex
+			QueryResult::greaterByScoreAndModelIndex
 		);
 
 		return queryResults;
 	}
 
-	ProbeContext::QueryResults Application::normalQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples ) {
+	QueryResults Application::normalQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples ) {
 		ProbeContext::ProbeDatabase::Query query( probeDatabase );
 		{
 			query.setQueryDataset( queryProbeSamples );
+			query.setQueryVolume( queryVolume, sceneSettings.probeGenerator_resolution );
 
 			query.setProbeContextTolerance( getPCTFromSettings() );
 
@@ -1781,7 +1780,7 @@ namespace aop {
 		return query.getQueryResults();
 	}
 
-	ProbeContext::QueryResults Application::fullQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples ) {
+	QueryResults Application::fullQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples ) {
 		ProbeContext::ProbeDatabase::FullQuery query( probeDatabase );
 		{
 			query.setQueryVolume( queryVolume, sceneSettings.probeGenerator_resolution );
@@ -1811,7 +1810,7 @@ namespace aop {
 		return query.getQueryResults();
 	}
 
-	ProbeContext::QueryResults Application::importanceFullQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples ) {
+	QueryResults Application::importanceFullQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples ) {
 		ProbeContext::ProbeDatabase::ImportanceFullQuery query( probeDatabase );
 		{
 			query.setQueryVolume( queryVolume, sceneSettings.probeGenerator_resolution );
@@ -1841,10 +1840,11 @@ namespace aop {
 		return query.getQueryResults();
 	}
 
-	ProbeContext::QueryResults Application::importanceQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples ) {
+	QueryResults Application::importanceQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples ) {
 		ProbeContext::ProbeDatabase::ImportanceQuery query( probeDatabase );
 		{
 			query.setQueryDataset( queryProbeSamples );
+			query.setQueryVolume( queryVolume, sceneSettings.probeGenerator_resolution );
 
 			query.setProbeContextTolerance( getPCTFromSettings() );
 
@@ -2162,7 +2162,7 @@ namespace aop {
 
 			const auto position = world->sceneRenderer.getInstanceTransformation( instanceIndex ).translation();
 			for( int sampleIndex = 0 ; sampleIndex < numSamples ; ++sampleIndex ) {
-				const Vector3f shift = 
+				const Vector3f shift =
 						positionVariance > 0.0f
 					?
 						Vector3f( Vector3f::Map( &sphere( rng ).front() ) * sqrtf( squaredRadius( rng ) ) )
@@ -2234,7 +2234,7 @@ namespace aop {
 				const auto position = world->sceneRenderer.getInstanceTransformation( *instanceIndex ).translation();
 
 				for( int sampleIndex = 0 ; sampleIndex < numSamples ; ++sampleIndex ) {
-					const Vector3f shift = 
+					const Vector3f shift =
 							positionVariance > 0
 						?
 							Vector3f( Vector3f::Map( &sphere( rng ).front() ) * sqrtf( squaredRadius( rng ) ) )

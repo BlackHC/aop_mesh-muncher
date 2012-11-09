@@ -6,6 +6,8 @@
 
 #include "probeDatabase.h"
 
+#include "queryResultStorage.h"
+
 /*
 namespace Serializer {
 		template< typename Reader >
@@ -40,12 +42,6 @@ SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeContext::SampledModel,
 	(rotatedProbePositions)
 	(resolution)
 	(modelColorCounter)
-)
-
-SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeContext::QueryResult,
-	(score)
-	(sceneModelIndex)
-	(transformation)
 )
 
 SERIALIZER_ENABLE_RAW_MODE_EXTERN( OptixProgramInterface::ProbeSample );

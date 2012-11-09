@@ -105,6 +105,16 @@ namespace SGSInterface {
 		return id;
 	}
 
+	int World::addInstance( int modelIndex, const Eigen::Affine3f &transformation ) {
+		Instance instance;
+		instance.modelId = modelIndex;
+		instance.transformation = transformation;
+
+		auto id = sceneRenderer.addInstance( instance );
+		sceneGrid.markDirty();
+		return id;
+	}
+
 	void World::removeInstance( int instanceIndex ) {
 		sceneRenderer.removeInstance( instanceIndex );
 

@@ -37,6 +37,8 @@
 #include "boost/range/algorithm/sort.hpp"
 #include <boost/iterator/counting_iterator.hpp>
 
+#include "queryResult.h"
+
 namespace ProbeContext {
 
 struct InstanceProbeDataset;
@@ -50,44 +52,6 @@ SERIALIZER_FWD_EXTERN_DECL( ProbeContext::IndexedProbeSamples )
 SERIALIZER_FWD_EXTERN_DECL( ProbeContext::SampledModel )
 
 namespace ProbeContext {
-
-struct QueryResult {
-	float score;
-	int sceneModelIndex;
-
-	Eigen::Affine3f transformation;
-
-	QueryResult()
-		: score()
-		, sceneModelIndex()
-		, transformation( Eigen::Affine3f::Identity() )
-	{
-	}
-
-	QueryResult( int sceneModelIndex )
-		: score()
-		, sceneModelIndex( sceneModelIndex )
-		, transformation( Eigen::Affine3f::Identity() )
-	{
-	}
-
-	QueryResult( float score, int sceneModelIndex, const Eigen::Affine3f &transformation )
-		: score( score )
-		, sceneModelIndex( sceneModelIndex )
-		, transformation( transformation )
-	{
-	}
-
-	static bool greaterByScoreAndModelIndex( const QueryResult &a, const QueryResult &b ) {
-		return
-				boost::make_tuple( a.score, a.sceneModelIndex )
-			>
-				boost::make_tuple( b.score, b.sceneModelIndex )
-		;
-	}
-};
-
-typedef std::vector< QueryResult > QueryResults;
 
 struct ModelIndexMapper {
 	static const int INVALID_INDEX = -1;
@@ -1020,8 +984,8 @@ public:
 
 			// TODO: magic constants!!! [10/17/2012 kirschan2]
 			//std::cout << OptixProgramInterface::numProbeSamples << "\n";
-			ProbeContextToleranceV2 pctv2( int( 0.124f * OptixProgramInterface::numProbeSamples ), 1.0f, 0.25f * 0.95f );
-			CompressedDataset::compress( instances.size(), probes.size(), mergedProbeSamples, pctv2 );
+			/*ProbeContextToleranceV2 pctv2( int( 0.124f * OptixProgramInterface::numProbeSamples ), 1.0f, 0.25f * 0.95f );
+			CompressedDataset::compress( instances.size(), probes.size(), mergedProbeSamples, pctv2 );*/
 			mergedInstances = IndexedProbeSamples( std::move( mergedProbeSamples ) );
 		}
 

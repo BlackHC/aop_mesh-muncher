@@ -32,6 +32,10 @@ struct ProbeDatabase::Query {
 	typedef std::vector<DetailedQueryResult> DetailedQueryResults;
 
 	Query( const ProbeDatabase &database ) : database( database ) {}
+	
+	void setQueryVolume( const Obb &queryVolume, float resolution ) {
+		queryVolumeTransformation = queryVolume.transformation;
+	}
 
 	void setProbeContextTolerance( const ProbeContextTolerance &pct ) {
 		probeContextTolerance = pct;
@@ -163,6 +167,8 @@ protected:
 
 		detailedQueryResult.score = detailedQueryResult.probeMatchPercentage * detailedQueryResult.queryMatchPercentage;
 
+		detailedQueryResult.transformation = queryVolumeTransformation;
+
 		return detailedQueryResult;
 	}
 
@@ -175,6 +181,8 @@ protected:
 
 	DetailedQueryResults detailedQueryResults;
 	QueryResults queryResults;
+
+	Eigen::Affine3f queryVolumeTransformation;
 };
 
 struct ProbeDatabase::ImportanceQuery {
@@ -204,6 +212,10 @@ struct ProbeDatabase::ImportanceQuery {
 	typedef std::vector<DetailedQueryResult> DetailedQueryResults;
 
 	ImportanceQuery( const ProbeDatabase &database ) : database( database ) {}
+
+	void setQueryVolume( const Obb &queryVolume, float resolution ) {
+		queryVolumeTransformation = queryVolume.transformation;
+	}
 
 	void setProbeContextTolerance( const ProbeContextTolerance &pct ) {
 		probeContextTolerance = pct;
@@ -359,6 +371,8 @@ protected:
 
 		detailedQueryResult.score = detailedQueryResult.probeMatchPercentage * detailedQueryResult.queryMatchPercentage;
 
+		detailedQueryResult.transformation = queryVolumeTransformation;
+
 		return detailedQueryResult;
 	}
 
@@ -372,6 +386,8 @@ protected:
 
 	DetailedQueryResults detailedQueryResults;
 	QueryResults queryResults;
+
+	Eigen::Affine3f queryVolumeTransformation;
 };
 
 struct ProbeDatabase::FullQuery {
@@ -463,7 +479,6 @@ protected:
 
 		DetailedQueryResult detailedQueryResult( sceneModelIndex );
 
-		float bestScore = 0.0;
 		for( int orientationIndex = 0 ; orientationIndex < ProbeGenerator::getNumOrientations() ; ++orientationIndex ) {
 			using namespace Concurrency;
 
@@ -537,16 +552,24 @@ protected:
 
 			auto maxElement = boost::max_element( mergedQueryVolumeMatches );
 			const float score = float( *maxElement ) / sampledModel.getProbes().size();
-			bestScore = std::max( bestScore, score );
+			if( detailedQueryResult.score < score ) {
+				detailedQueryResult.score = score;
 
-			//std::cout << "orientation:" << orientationIndex << " best score:" << score << "\n";
+				const int positionIndex = maxElement - mergedQueryVolumeMatches.begin();
+				const int x = positionIndex % queryVolumeSize[0];
+				const int y = (positionIndex / queryVolumeSize[0]) % queryVolumeSize[1];
+				const int z = positionIndex / queryVolumeSize[0] / queryVolumeSize[1];
+
+				detailedQueryResult.transformation =
+						queryVolumeTransformation
+					*	Eigen::Translation3f( queryResolution * (Eigen::Vector3f( x, y, z ) - queryVolumeOffset.cast<float>()) )
+					*	Eigen::Affine3f( ProbeGenerator::getRotation( orientationIndex ) )
+				;
+			}
 
 			detailedQueryResult.matchesByOrientation[ orientationIndex ] = std::move( mergedQueryVolumeMatches );
 		}
-
-		detailedQueryResult.score = bestScore;
-		detailedQueryResult.transformation.setIdentity();
-
+		
 		return detailedQueryResult;
 	}
 
@@ -659,7 +682,6 @@ protected:
 
 		DetailedQueryResult detailedQueryResult( sceneModelIndex );
 
-		float bestScore = 0.0;
 		for( int orientationIndex = 0 ; orientationIndex < ProbeGenerator::getNumOrientations() ; ++orientationIndex ) {
 			using namespace Concurrency;
 
@@ -772,15 +794,23 @@ protected:
 			;
 
 			const float score = float( *maxElement ) / sampledModel.getProbes().size();
-			bestScore = std::max( bestScore, score );
+			if( detailedQueryResult.score < score ) {
+				detailedQueryResult.score = score;
 
-			//std::cout << "orientation:" << orientationIndex << " best score:" << score << "\n";
+				const int positionIndex = maxElement - mergedQueryVolumeMatches.begin();
+				const int x = positionIndex % queryVolumeSize[0];
+				const int y = (positionIndex / queryVolumeSize[0]) % queryVolumeSize[1];
+				const int z = positionIndex / queryVolumeSize[0] / queryVolumeSize[1];
+
+				detailedQueryResult.transformation =
+						queryVolumeTransformation
+					*	Eigen::Translation3f( queryResolution * (Eigen::Vector3f( x, y, z ) - queryVolumeOffset.cast<float>()) )
+					*	Eigen::Affine3f( ProbeGenerator::getRotation( orientationIndex ) )
+				;
+			}
 
 			detailedQueryResult.matchesByOrientation[ orientationIndex ] = std::move( mergedQueryVolumeMatches );
 		}
-
-		detailedQueryResult.score = bestScore;
-		detailedQueryResult.transformation.setIdentity();
 
 		return detailedQueryResult;
 	}
