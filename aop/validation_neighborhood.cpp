@@ -182,7 +182,7 @@ void executeKernel(
 
 		rankResults[ sampleIndex ] = results.size();
 		for( int resultIndex = 0 ; resultIndex < results.size() ; ++resultIndex ) {
-			if( results[ sampleIndex ].second == modelIndex ) {
+			if( results[ resultIndex ].second == modelIndex ) {
 				rankResults[ sampleIndex ] = resultIndex;
 				rankSum += resultIndex;
 				break;
