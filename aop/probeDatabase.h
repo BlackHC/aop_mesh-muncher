@@ -55,30 +55,26 @@ struct QueryResult {
 	float score;
 	int sceneModelIndex;
 
-	Eigen::Vector3f position;
-	Eigen::Quaternionf orientation;
+	Eigen::Affine3f transformation;
 
 	QueryResult()
 		: score()
 		, sceneModelIndex()
-		, position()
-		, orientation()
+		, transformation( Eigen::Affine3f::Identity() )
 	{
 	}
 
 	QueryResult( int sceneModelIndex )
 		: score()
 		, sceneModelIndex( sceneModelIndex )
-		, position()
-		, orientation()
+		, transformation( Eigen::Affine3f::Identity() )
 	{
 	}
 
-	QueryResult( float score, int sceneModelIndex, const Eigen::Vector3f &position, const Eigen::Quaternionf &orientation )
+	QueryResult( float score, int sceneModelIndex, const Eigen::Affine3f &transformation )
 		: score( score )
 		, sceneModelIndex( sceneModelIndex )
-		, position( position )
-		, orientation( orientation )
+		, transformation( transformation )
 	{
 	}
 

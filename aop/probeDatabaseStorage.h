@@ -42,10 +42,15 @@ SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeContext::SampledModel,
 	(modelColorCounter)
 )
 
+SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeContext::QueryResult,
+	(score)
+	(sceneModelIndex)
+	(transformation)
+)
+
 SERIALIZER_ENABLE_RAW_MODE_EXTERN( OptixProgramInterface::ProbeSample );
 SERIALIZER_ENABLE_RAW_MODE_EXTERN( ProbeContext::RawProbe );
 SERIALIZER_ENABLE_RAW_MODE_EXTERN( ProbeContext::DBProbeSample );
-SERIALIZER_ENABLE_RAW_MODE_EXTERN( ProbeContext::QueryResult );
 
 // TODO: this is a duplicate from aopSettingsStorage.cpp---add a storage header instead? [10/22/2012 kirschan2]
 SERIALIZER_DEFAULT_EXTERN_IMPL( Obb, (transformation)(size) );

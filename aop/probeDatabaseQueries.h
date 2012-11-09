@@ -545,8 +545,7 @@ protected:
 		}
 
 		detailedQueryResult.score = bestScore;
-		detailedQueryResult.position = Eigen::Vector3f();
-		detailedQueryResult.orientation = Eigen::Quaternionf();
+		detailedQueryResult.transformation.setIdentity();
 
 		return detailedQueryResult;
 	}
@@ -781,8 +780,7 @@ protected:
 		}
 
 		detailedQueryResult.score = bestScore;
-		detailedQueryResult.position = Eigen::Vector3f();
-		detailedQueryResult.orientation = Eigen::Quaternionf();
+		detailedQueryResult.transformation.setIdentity();
 
 		return detailedQueryResult;
 	}
