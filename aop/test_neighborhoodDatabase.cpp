@@ -112,7 +112,7 @@ TEST( NeighborhoodDatabaseV2_Query, all ) {
 static void mockModelDatabaseWith( ModelDatabase &modelDatabase, int numModels ) {
 	for( int i = 0 ; i < numModels ; i++ ) {
 		ModelDatabase::ModelInformation info;
-		info.area = info.diagonalLength = info.volume = 1;
+		info.area = info.diagonalLength = info.volume = 0.5;
 		modelDatabase.informationById.emplace_back( std::move( info ) );
 	}
 }
@@ -224,6 +224,10 @@ static void addConcentricScene( NeighborhoodDatabaseV2 &database, const int scen
 	}
 
 	addInstances( database, std::move( simpleInstances ), maxDistance );
+}
+
+QueryResults myExecuteQuery( NeighborhoodDatabaseV2::Query &query ) {
+	return quer
 }
 
 /* Case 1:

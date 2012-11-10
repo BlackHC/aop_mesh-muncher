@@ -28,6 +28,7 @@ struct Config {
 	// work splitting on a cluster
 	int numMachines;
 	int machineIndex;
+	int numCores;
 
 	// runs
 	typedef std::vector< std::string > Jobs;
@@ -37,13 +38,14 @@ struct Config {
 
 	Config()
 		: sampleSelector()
-		, base( "C:/Andreas/probeValidationData" )
+		, base( "C:/Andreas/probeValidationData/road" )
 		, results( "results" )
 		, modelDatabase( "modelDatabase" )
 		, probeDatabase( "probeDatabase" )
 		, validationData( "probe.validationData" )
 		, numMachines(1)
 		, machineIndex()
+		, numCores(1)
 	{
 	}
 
@@ -57,6 +59,7 @@ struct Config {
 		(jobs)
 		(numMachines)
 		(machineIndex)
+		(numCores)
 	)
 
 	std::string buildPath( const std::string &filePath ) const {
@@ -112,15 +115,40 @@ struct KernelResults {
 	{}
 };
 
+struct ValidatorInfo {
+	int numCores, numMachines, machineIndex;
+	int sampleSelector;
+
+	ValidatorInfo()
+		: numCores()
+		, numMachines()
+		, machineIndex()
+		, sampleSelector()
+	{
+	}
+
+	SERIALIZER_DEFAULT_IMPL(
+		(sampleSelector)
+		(numMachines)
+		(machineIndex)
+		(numCores)
+	)
+
+	static ValidatorInfo globalInfo;
+};
+
+ValidatorInfo ValidatorInfo::globalInfo;
+
 template< typename Results >
 struct ValidationDataResults {
 	Validation::ProbeSettings settings;
-	int sampleSelector;
+	ValidatorInfo info;
 
 	float maxFrequency_expectedRank;
 	KernelResults<Results> results;
 
 	SERIALIZER_DEFAULT_IMPL(
+		(info)
 		(settings)
 		(maxFrequency_expectedRank)
 		(results)
@@ -138,14 +166,15 @@ typedef boost::timer::cpu_times TimerResults;
 // per validation data
 struct ExpectationsResult {
 	Validation::ProbeSettings settings;
-	int sampleSelector;
+	ValidatorInfo info;
+
 	int numQueries;
 	float maxFrequency_expectedRank;
 	KernelResults<TimerResults> timers;
 	KernelResults<float> expectedRanks;
 
 	SERIALIZER_DEFAULT_IMPL(
-		(sampleSelector)
+		(info)
 		(numQueries)
 		(settings)
 		(maxFrequency_expectedRank)
@@ -154,7 +183,7 @@ struct ExpectationsResult {
 	)
 
 	ExpectationsResult()
-		: sampleSelector(-1)
+		: info()
 		, numQueries()
 		, maxFrequency_expectedRank()
 		, timers()
@@ -281,8 +310,8 @@ void executeKernel(
 		const auto &queryData = validationData.queries[ sampleIndex ];
 		const int sceneModelIndex = queryData.expectedSceneModelIndex;
 
-		//QueryResults queryResults = ExecutionKernel::execute( probeDatabase, validationData.settings, queryData );
-		QueryResults queryResults;
+		QueryResults queryResults = ExecutionKernel::execute( probeDatabase, validationData.settings, queryData );
+		//QueryResults queryResults;
 
 		{
 			unsortedResults[ outputIndex ].first = sceneModelIndex;
@@ -347,8 +376,8 @@ void testValidationData(
 	expectationResult.settings = validationData.settings;
 	fullResults.settings = validationDataRanks.settings = validationData.settings;
 
-	expectationResult.sampleSelector = config.sampleSelector;
-	fullResults.sampleSelector = validationDataRanks.sampleSelector = config.sampleSelector;
+	expectationResult.info = ValidatorInfo::globalInfo;
+	fullResults.info = validationDataRanks.info = ValidatorInfo::globalInfo;
 
 	const float maxFrequency_expectedRank = validationData.instanceCounts.calculateRankExpectation();
 	expectationResult.maxFrequency_expectedRank = maxFrequency_expectedRank;
@@ -388,14 +417,15 @@ void testValidationData(
 			log( "empty sample range for this machine!" );
 			return;
 		}
-		const int endIndex = std::min( beginIndex + averageNumInstancesPerMachine, numInstances );
+		const int endIndex = std::min( beginIndex + averageNumInstancesPerMachine * config.numCores, numInstances );
 
 		log(
-			boost::format( "num instances for this machine: %i (total %i) [%i--%i)" )
+			boost::format( "num instances for this machine: %i (total %i) [%i--%i) for %i cores" )
 			% (endIndex - beginIndex)
 			% numInstances
 			% beginIndex
 			% endIndex
+			% config.numCores
 		);
 
 		log( "UniformBidirectional" );
@@ -544,6 +574,9 @@ void real_main( int argc, const char **argv ) {
 		Serializer::read( reader, config );
 	}
 
+	ValidatorInfo::globalInfo.machineIndex = config.machineIndex;
+	ValidatorInfo::globalInfo.numMachines = config.numMachines;
+	ValidatorInfo::globalInfo.numCores = config.numCores;
 
 	ModelDatabase modelDatabase( nullptr );
 	{
