@@ -2145,7 +2145,6 @@ namespace aop {
 
 	void Application::NeighborhoodValidation_queryAllInstances( const std::string &filename ) {
 		const int numModels = world->scene.models.size();
-		const int numInstances = world->sceneRenderer.getNumInstances();
 		const float maxDistance = sceneSettings.neighborhoodDatabase_maxDistance;
 		const float positionVariance = settings.validation_neighborhood_positionVariance;
 		const int numSamples = settings.validation_neighborhood_numSamples;
@@ -2156,28 +2155,36 @@ namespace aop {
 
 		Validation::NeighborhoodData data( numModels, Validation::NeighborhoodSettings( numSamples, maxDistance, positionVariance ) );
 
-		for( int instanceIndex = 0 ; instanceIndex < numInstances ; instanceIndex++ ) {
-			const int modelIndex = world->sceneRenderer.getModelIndex( instanceIndex );
-			data.instanceCounts.count( modelIndex );
+		const std::vector< int > markedModels = modelTypesUI->markedModels;
+		for( auto markedModelIndex = markedModels.begin() ; markedModelIndex != markedModels.end() ; ++markedModelIndex ) {
+			const auto instanceIndices = world->sceneRenderer.getModelInstances( *markedModelIndex );
 
-			const auto position = world->sceneRenderer.getInstanceTransformation( instanceIndex ).translation();
-			for( int sampleIndex = 0 ; sampleIndex < numSamples ; ++sampleIndex ) {
-				const Vector3f shift =
-						positionVariance > 0.0f
-					?
-						Vector3f( Vector3f::Map( &sphere( rng ).front() ) * sqrtf( squaredRadius( rng ) ) )
-					:
-						Eigen::Vector3f::Zero()
-				;
-				auto neighborContext = world->sceneGrid.query(
-					-1,
-					instanceIndex,
-					position + shift,
-					maxDistance
-				);
+			const int instanceIndexsCount = (int) instanceIndices.size();
+			for( int instanceIndexIndex = 0 ; instanceIndexIndex < instanceIndexsCount ; instanceIndexIndex++ ) {
+				const int instanceIndex = instanceIndices[ instanceIndexIndex ];
 
-				data.queryDatasets.push_back( neighborContext );
-				data.queryInfos.push_back( modelIndex );
+				const int modelIndex = world->sceneRenderer.getModelIndex( instanceIndex );
+				data.instanceCounts.count( modelIndex );
+
+				const auto position = world->sceneRenderer.getInstanceTransformation( instanceIndex ).translation();
+				for( int sampleIndex = 0 ; sampleIndex < numSamples ; ++sampleIndex ) {
+					const Vector3f shift =
+							positionVariance > 0.0f
+						?
+							Vector3f( Vector3f::Map( &sphere( rng ).front() ) * sqrtf( squaredRadius( rng ) ) )
+						:
+							Eigen::Vector3f::Zero()
+					;
+					auto neighborContext = world->sceneGrid.query(
+						-1,
+						instanceIndex,
+						position + shift,
+						maxDistance
+					);
+
+					data.queryDatasets.push_back( neighborContext );
+					data.queryInfos.push_back( modelIndex );
+				}
 			}
 		}
 

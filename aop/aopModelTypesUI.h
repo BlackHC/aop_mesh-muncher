@@ -104,6 +104,14 @@ namespace aop {
 			appendMarkedModels( modelIndices );
 		}
 
+		void addAllModels() {
+			markedModels.clear();
+			const int numModels = application->modelDatabase.informationById.size();
+			for( int modelindex = 0 ; modelindex < numModels ; modelindex++ ) {
+				markedModels.push_back( modelindex );
+			}
+		}
+
 		ModelTypesUI( Application *application ) : application( application ) {
 			init();
 		}
@@ -144,6 +152,10 @@ namespace aop {
 				markedModelsUi.add( AntTWBarUI::makeSharedButton( "= {}", [this] () {
 					markedModels.clear();
 				} ) );
+				markedModelsUi.add( AntTWBarUI::makeSharedButton( "= all models", [this] () {
+					addAllModels();
+				} ) );
+				markedModelsUi.add( AntTWBarUI::makeSharedSeparator() );
 				markedModelsUi.add( AntTWBarUI::makeSharedButton( "= selection", [this] () {
 					ReplaceWithSelectionVisitor( this ).dispatch( application->editor.selection );
 				} ) );
