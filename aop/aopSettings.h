@@ -66,7 +66,7 @@ namespace aop {
 
 		std::vector<NamedCameraState> views;
 		std::vector<NamedTargetVolume> volumes;
-		std::vector<NamedModelGroup> modelGroups;
+		ModelGroup markedModels;
 
 		float neighborhoodDatabase_queryTolerance;
 		float neighborhoodDatabase_maxDistance;

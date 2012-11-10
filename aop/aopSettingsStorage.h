@@ -15,7 +15,7 @@ SERIALIZER_EXTERN_IMPL( aop::SceneSettings::NamedModelGroup, name, (models), );
 SERIALIZER_DEFAULT_EXTERN_IMPL( aop::SceneSettings,
 	(views)
 	(volumes)
-	(modelGroups)
+	(markedModels)
 	(neighborhoodDatabase_queryTolerance)
 	(neighborhoodDatabase_maxDistance)
 	(probeGenerator_maxDistance)

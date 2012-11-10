@@ -58,6 +58,14 @@ namespace aop {
 			}
 		}
 
+		void loadFromSceneSettings() {
+			markedModels = application->modelDatabase.convertToModelIndices( application->sceneSettings.markedModels );
+		}
+
+		void updateSceneSettings() {
+			application->sceneSettings.markedModels = application->modelDatabase.convertToModelGroup( markedModels );
+		}
+
 		void toggleMarkedModel( int index ) {
 			auto found = boost::find( markedModels, index );
 			if( found == markedModels.end() ) {
@@ -67,6 +75,7 @@ namespace aop {
 				markedModels.erase( found );
 			}
 			boost::sort( markedModels );
+			updateSceneSettings();
 		}
 
 		void replaceMarkedModels( const std::vector<int> modelIndices ) {
@@ -76,6 +85,7 @@ namespace aop {
 
 		void validateMarkedModels() {
 			boost::erase( markedModels, boost::unique< boost::return_found_end>( boost::sort( markedModels ) ) );
+			updateSceneSettings();
 		}
 
 		void appendMarkedModels( const std::vector<int> modelIndices ) {
@@ -88,6 +98,7 @@ namespace aop {
 					return !application->probeDatabase.isEmpty( modelIndex );
 				}
 			);
+			validateMarkedModels();
 		}
 
 		void addAlreadySampledModels() {
@@ -104,15 +115,35 @@ namespace aop {
 			appendMarkedModels( modelIndices );
 		}
 
+		void clearMarkedModels() {
+			markedModels.clear();
+			validateMarkedModels();
+		}
+
 		void addAllModels() {
 			markedModels.clear();
 			const int numModels = application->modelDatabase.informationById.size();
 			for( int modelindex = 0 ; modelindex < numModels ; modelindex++ ) {
 				markedModels.push_back( modelindex );
 			}
+			updateSceneSettings();
 		}
 
-		ModelTypesUI( Application *application ) : application( application ) {
+		void setModelsWithMaxSize( float maxDiagonalLength ) {
+			std::vector< int > modelIndices;
+			const auto &modelDatabaseInfos = application->modelDatabase.informationById;
+			const int numModels = modelDatabaseInfos.size();
+			for( int modelIndex = 0 ; modelIndex < numModels ; modelIndex++ ) {
+				if( modelDatabaseInfos[ modelIndex ].diagonalLength <= maxDiagonalLength ) {
+					modelIndices.push_back( modelIndex );
+				}
+			}
+			replaceMarkedModels( modelIndices );
+		}
+
+		float maxDiagonalLength;
+
+		ModelTypesUI( Application *application ) : application( application ), maxDiagonalLength( 5.0 ) {
 			init();
 		}
 
@@ -137,6 +168,8 @@ namespace aop {
 		};
 
 		void init() {
+			loadFromSceneSettings();
+
 			beautifyModelNames();
 
 			{
@@ -150,12 +183,24 @@ namespace aop {
 			{
 				markedModelsUi.setName( "Marked models");
 				markedModelsUi.add( AntTWBarUI::makeSharedButton( "= {}", [this] () {
-					markedModels.clear();
+					clearMarkedModels();
 				} ) );
 				markedModelsUi.add( AntTWBarUI::makeSharedButton( "= all models", [this] () {
 					addAllModels();
 				} ) );
+				
 				markedModelsUi.add( AntTWBarUI::makeSharedSeparator() );
+
+				markedModelsUi.add( AntTWBarUI::makeSharedVariable(
+					"max diagonal length",
+					AntTWBarUI::makeReferenceAccessor( maxDiagonalLength )
+				) );
+				markedModelsUi.add( AntTWBarUI::makeSharedButton( "= models with diagonal length <= max", [this] () {
+					setModelsWithMaxSize( maxDiagonalLength );
+				} ) );
+
+				markedModelsUi.add( AntTWBarUI::makeSharedSeparator() );
+
 				markedModelsUi.add( AntTWBarUI::makeSharedButton( "= selection", [this] () {
 					ReplaceWithSelectionVisitor( this ).dispatch( application->editor.selection );
 				} ) );
@@ -165,6 +210,11 @@ namespace aop {
 				markedModelsUi.add( AntTWBarUI::makeSharedSeparator() );
 				markedModelsUi.add( AntTWBarUI::makeSharedButton( "selection =", [this] () {
 					application->editor.selectModels( markedModels );
+				} ) );
+				markedModelsUi.add( AntTWBarUI::makeSharedButton( "selection +=", [this] () {
+					for( auto markedModelIndex = markedModels.begin() ; markedModelIndex != markedModels.end() ; ++markedModelIndex ) {
+						application->editor.selectAdditionalModel( *markedModelIndex );
+					}
 				} ) );
 				markedModelsUi.add( AntTWBarUI::makeSharedButton( "-= already probe-sampled", [this] () {
 					removeAlreadySampledModels();

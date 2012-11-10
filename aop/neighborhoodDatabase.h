@@ -945,12 +945,10 @@ namespace Neighborhood {
 						}
 
 						const auto sceneCandidateModelId = database.sampledModelsById[ candidateModelIndex ].first;
-						if( database.modelDatabase->informationById[ sceneCandidateModelId ].diagonalLength > 0 ) {
-							results.push_back( Result( bestCandidateInstanceScore, sceneCandidateModelId ) );
-						}
+						//if( database.modelDatabase->informationById[ sceneCandidateModelId ].diagonalLength > 0 ) {
+						results.push_back( Result( bestCandidateInstanceScore, sceneCandidateModelId ) );
 					}
-
-					boost::sort( results, std::greater< Result >() );
+										
 					return results;
 				}
 				else {
@@ -959,7 +957,7 @@ namespace Neighborhood {
 			}
 
 			Results execute() {
-				return executeWithPolicy< ImportanceWeightPolicy >();
+				return executeWithPolicy< JaccardIndexPolicy >();
 			}
 		};
 	};

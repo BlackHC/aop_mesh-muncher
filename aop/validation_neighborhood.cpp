@@ -11,6 +11,7 @@
 #include <boost/program_options/parsers.hpp>
 #include <boost/program_options/variables_map.hpp>
 #include <boost/algorithm/string.hpp>
+#include "boost/range/algorithm/sort.hpp"
 
 using namespace Neighborhood;
 
@@ -22,22 +23,76 @@ using namespace Neighborhood;
  * results are stored next to modelDB
  */
 
-const std::string basePath = "C:/Andreas/neighborhoodValidationData";
-const std::string modelDatabaseName = "modelDatabase";
-const std::string databaseName = "neighborhoodDatabaseV2";
-const std::string validationDataName = "neighborhood.validationData";
+const std::string defaultConfigName = "neighborhoodValidation.wml";
 
-const std::string resultsPath = "results/";
+struct Config {
+	// base names for dirs
+	std::string base;
+	// base + / + results
+	std::string results;
 
-std::string buildPath( const std::string &filePath ) {
-	const std::string path = boost::str(
-		boost::format( "%s/%s")
-		% basePath
-		% filePath
-	);
-	log( boost::format( "Accessing %s" ) % path );
-	return path;
-}
+	// filenames
+	std::string modelDatabase;
+	std::string neighborhoodDatabase;
+	std::string validationData;
+
+	// basic config
+	int sampleSelector;
+
+	// runs
+	typedef std::vector< std::string > Jobs;
+	typedef std::pair< std::string, Jobs > VarianceJobs;
+	typedef std::vector< VarianceJobs > DistanceVarianceJobs;
+	DistanceVarianceJobs jobs;
+
+	Config()
+		: sampleSelector()
+		, base( "C:/Andreas/neighborhoodValidationData" )
+		, results( "results" )
+		, modelDatabase( "modelDatabase" )
+		, neighborhoodDatabase( "neighborhoodDatabaseV2" )
+		, validationData( "neighborhood.validationData" )
+	{
+	}
+
+	SERIALIZER_DEFAULT_IMPL(
+		(sampleSelector)
+		(base)
+		(results)
+		(modelDatabase)
+		(neighborhoodDatabase)
+		(validationData)
+		(jobs)
+	)
+
+	std::string buildPath( const std::string &filePath ) const {
+		const std::string path = boost::str(
+			boost::format( "%s/%s")
+			% base
+			% filePath
+		);
+		log( boost::format( "Accessing %s" ) % path );
+		return path;
+	}
+
+	std::string buildModelDatabasePath() const {
+		return buildPath( modelDatabase );
+	}
+
+	std::string buildResultPath( const std::string &file ) const {
+		return buildPath( results + "/" + file );
+	}
+
+	std::string buildNeighborhoodDatabasePath( const std::string &distancePath ) const {
+		return buildPath( distancePath + "/" + neighborhoodDatabase );
+	}
+
+	std::string buildValidationDataPath( const std::string &distancePath, const std::string &variancePath ) const {
+		return buildPath( distancePath + "/" + variancePath + "/" + validationData );
+	}
+};
+
+Config config;
 
 struct UniformWeight_ExecutionKernel {
 	static Neighborhood::Results execute( const Neighborhood::NeighborhoodDatabaseV2 &neighborhoodDatabase, float tolerance, RawIdDistances queryData ) {
@@ -125,7 +180,6 @@ struct ExpectationsResult {
 	Validation::NeighborhoodSettings settings;
 	int sampleSelector;
 	int numQueries;
-
 	float maxFrequency_expectedRank;
 	KernelResults<TimerResults> timers;
 	KernelResults<float> expectedRanks;
@@ -156,15 +210,18 @@ void executeKernel(
 	int sampleSelector,
 	const Neighborhood::NeighborhoodDatabaseV2 &neighborhoodDatabase,
 	const Validation::NeighborhoodData &validationData,
+
 	float &expectationResult,
 	TimerResults &timerResults,
-	RankResults &rankResults
+	RankResults &rankResults,
+	FullResults &unsortedResults
 ) {
 	const float tolerance = validationData.settings.positionVariance + 0.25;
 
 	const int numSamples = validationData.settings.numSamples;
 	const int numTotalSamples = validationData.queryDatasets.size() / numSamples;
 	rankResults.resize( numTotalSamples );
+	unsortedResults.resize( numTotalSamples );
 
 	int rankSum = 0;
 
@@ -177,8 +234,12 @@ void executeKernel(
 
 		const auto &queryData = validationData.queryDatasets[ queryIndex ];
 
-		const auto results = ExecutionKernel::execute( neighborhoodDatabase, tolerance, queryData );
+		Neighborhood::Results results = ExecutionKernel::execute( neighborhoodDatabase, tolerance, queryData );
 		//Neighborhood::Results results;
+		unsortedResults[ sampleIndex ].first = modelIndex;
+		unsortedResults[ sampleIndex ].second = results;
+
+		boost::sort( results, std::greater< Neighborhood::Result >() );
 
 		rankResults[ sampleIndex ] = results.size();
 		for( int resultIndex = 0 ; resultIndex < results.size() ; ++resultIndex ) {
@@ -206,13 +267,12 @@ void executeKernel(
 void testValidationData(
 	int sampleSelector,
 	const Neighborhood::NeighborhoodDatabaseV2 &neighborhoodDatabase,
-	const std::string &validationDataPath,
+	const std::string &validationDataFilePath,
 	ExpectationsResults &expectationsResults
 ) {
 	Validation::NeighborhoodData validationData;
 
 	{
-		const std::string validationDataFilePath = buildPath( validationDataPath + validationDataName );
 		bool success = Validation::NeighborhoodData::load( validationDataFilePath, validationData );
 
 		if( !success ) {
@@ -223,17 +283,18 @@ void testValidationData(
 
 	ExpectationsResult expectationResult;
 	ValidationDataResults<RankResults> validationDataRanks;
+	ValidationDataResults<FullResults> fullResults;
 
 	expectationResult.settings = validationData.settings;
-	validationDataRanks.settings = validationData.settings;
+	fullResults.settings = validationDataRanks.settings = validationData.settings;
 
 	expectationResult.sampleSelector = sampleSelector;
-	validationDataRanks.sampleSelector = sampleSelector;
+	fullResults.sampleSelector = validationDataRanks.sampleSelector = sampleSelector;
 
 	const float maxFrequency_expectedRank = validationData.instanceCounts.calculateRankExpectation();
 	expectationResult.maxFrequency_expectedRank = maxFrequency_expectedRank;
-	validationDataRanks.maxFrequency_expectedRank = maxFrequency_expectedRank;
-	
+	fullResults.maxFrequency_expectedRank = validationDataRanks.maxFrequency_expectedRank = maxFrequency_expectedRank;
+
 	if( sampleSelector < validationData.settings.numSamples ) {
 		expectationResult.numQueries = validationData.queryDatasets.size() / validationData.settings.numSamples;
 
@@ -254,7 +315,8 @@ void testValidationData(
 			validationData,
 			expectationResult.expectedRanks.uniformWeight,
 			expectationResult.timers.uniformWeight,
-			validationDataRanks.results.uniformWeight
+			validationDataRanks.results.uniformWeight,
+			fullResults.results.uniformWeight
 		);
 
 		log( "importanceWeight" );
@@ -264,7 +326,8 @@ void testValidationData(
 			validationData,
 			expectationResult.expectedRanks.importanceWeight,
 			expectationResult.timers.importanceWeight,
-			validationDataRanks.results.importanceWeight
+			validationDataRanks.results.importanceWeight,
+			fullResults.results.importanceWeight
 		);
 
 		log( "jaccardIndex" );
@@ -274,13 +337,13 @@ void testValidationData(
 			validationData,
 			expectationResult.expectedRanks.jaccardIndex,
 			expectationResult.timers.jaccardIndex,
-			validationDataRanks.results.jaccardIndex
+			validationDataRanks.results.jaccardIndex,
+			fullResults.results.jaccardIndex
 		);
 
 		{
-			const std::string resultFilePath = buildPath(
-				boost::str( boost::format( "%s%i__%i_%i_%i.rankResults.wml" )
-					% resultsPath
+			const std::string resultFilePath = config.buildResultPath(
+				boost::str( boost::format( "%i__%i_%i_%i.rankResults.wml" )
 					% sampleSelector
 					% int( validationData.settings.maxDistance )
 					% int( validationData.settings.positionVariance )
@@ -291,14 +354,26 @@ void testValidationData(
 			Serializer::TextWriter writer( resultFilePath );
 			Serializer::write( writer, validationDataRanks );
 		}
+		{
+			const std::string resultFilePath = config.buildResultPath(
+				boost::str( boost::format( "%i__%i_%i_%i.fullResults.wml" )
+					% sampleSelector
+					% int( validationData.settings.maxDistance )
+					% int( validationData.settings.positionVariance )
+					% validationData.settings.numSamples
+				)
+			);
+
+			Serializer::TextWriter writer( resultFilePath );
+			Serializer::write( writer, fullResults );
+		}
 	}
 
 	expectationsResults.push_back( expectationResult );
 
 	{
-		const std::string resultFilePath = buildPath(
-			boost::str( boost::format( "%s%i_expectationsResults.wml" )
-				% resultsPath
+		const std::string resultFilePath = config.buildResultPath(
+			boost::str( boost::format( "%i_expectationsResults.wml" )
 				% sampleSelector
 			)
 		);
@@ -311,34 +386,53 @@ void testValidationData(
 void testNeighborDatabase(
 	int sampleSelector,
 	ModelDatabase &modelDatabase,
-	const char *neighborDatabasePath,
-	int numValidationDataPaths,
-	const char **validationDataPaths,
+	const Config::VarianceJobs &jobs,
 	ExpectationsResults &expectationsResults
 ) {
 	Neighborhood::NeighborhoodDatabaseV2 neighborhoodDatabase;
 	neighborhoodDatabase.modelDatabase = &modelDatabase;
 
 	{
-		bool success = neighborhoodDatabase.load( buildPath( neighborDatabasePath + databaseName ) );
+		const std::string path = config.buildNeighborhoodDatabasePath( jobs.first );
+		bool success = neighborhoodDatabase.load( path );
 
 		if( !success ) {
-			logError( boost::format( "Failed to load neighborhoodDatabase '%s'!\n" ) % neighborDatabasePath );
+			logError( boost::format( "Failed to load neighborhoodDatabase '%s'!\n" ) % path );
 			return;
 		}
 	}
 
-	for( int i = 0 ; i < numValidationDataPaths ; i++ ) {
-		testValidationData( sampleSelector, neighborhoodDatabase, validationDataPaths[i], expectationsResults );
+	for( auto job = jobs.second.begin() ; job != jobs.second.end() ; ++job ) {
+		const std::string path = config.buildValidationDataPath( jobs.first, *job );
+		testValidationData( sampleSelector, neighborhoodDatabase, path, expectationsResults );
 	}
 }
 
-void main() {
+void main( int argc, const char **argv ) {
 	omp_set_num_threads( 12*4 );
+
+	// load config
+	std::string configName = defaultConfigName;
+	if( argc == 2 ) {
+		configName = argv[1];
+	}
+
+	{
+		Serializer::TextWriter writer( "neighborhoodValidation_defaultConfig.wml" );
+		Serializer::write( writer, config );
+	}
+
+	{
+		Serializer::TextReader reader( configName );
+		log( "loaded config" );
+		log( wml::emit( reader.root ) );
+		Serializer::read( reader, config );
+	}
+
 
 	ModelDatabase modelDatabase( nullptr );
 	{
-		bool success = modelDatabase.load( buildPath( modelDatabaseName ) );
+		bool success = modelDatabase.load( config.buildModelDatabasePath() );
 
 		if( !success ) {
 			logError( "Failed to load the modelDatabase!\n" );
@@ -346,38 +440,9 @@ void main() {
 		}
 	}
 
-	const char *paths[] = {
-		"5/0/",
-		"5/1/",
-		"5/2/",
-
-		"10/0/",
-		"10/2/",
-		"10/4/",
-
-		"20/0/",
-		"20/2/",
-		"20/4/",
-		"20/8/",
-
-		"40/0/",
-		"40/2/",
-		"40/4/",
-		"40/8/"
-	};
-	const int sampleSelector = 0;
-
 	ExpectationsResults expectationsResults;
 
-	int index = 0;
-	testNeighborDatabase( sampleSelector, modelDatabase, "5/", 3, &paths[index], expectationsResults );
-	index += 3;
-
-	testNeighborDatabase( sampleSelector, modelDatabase, "10/", 3, &paths[index], expectationsResults );
-	index += 3;
-
-	testNeighborDatabase( sampleSelector, modelDatabase, "20/", 4, &paths[index], expectationsResults );
-	index += 4;
-
-	testNeighborDatabase( sampleSelector, modelDatabase, "40/", 4, &paths[index], expectationsResults );
+	for( auto distanceJobs = config.jobs.begin() ; distanceJobs != config.jobs.end() ; ++distanceJobs ) {
+		testNeighborDatabase( config.sampleSelector, modelDatabase, *distanceJobs, expectationsResults );	
+	}
 }

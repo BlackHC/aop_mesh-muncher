@@ -79,16 +79,37 @@ using namespace Eigen;
 
 #pragma warning( once: 4244 )
 
+boost::mt19937 randomNumberGenerator(static_cast<unsigned int>(std::time(0)));
+
 std::weak_ptr<AntTweakBarEventHandler::GlobalScope> AntTweakBarEventHandler::globalScope;
 
 //////////////////////////////////////////////////////////////////////////
 // V2
 //
+//
+void sampleAllNeighborsForV2( std::vector<int> modelIndices, float maxDistance, Neighborhood::NeighborhoodDatabaseV2 &database, SGSInterface::World &world ) {
+	AUTO_TIMER_FOR_FUNCTION();
+
+	for( auto modelIndex = modelIndices.begin() ; modelIndex != modelIndices.end() ; ++modelIndex ) {
+		const auto instanceIndices = world.sceneRenderer.getModelInstances( *modelIndex );
+
+		for( auto instanceIndex = instanceIndices.begin() ; instanceIndex != instanceIndices.end() ; ++instanceIndex ) {
+			auto queryResults = world.sceneGrid.query(
+				-1,
+				*instanceIndex,
+				world.sceneRenderer.getInstanceTransformation( *instanceIndex ).translation(),
+				maxDistance
+			);
+
+			const int modelIndex = world.sceneRenderer.getModelIndex( *instanceIndex );
+
+			database.addInstance( modelIndex, std::move( queryResults ) );
+		}
+	}
+}
 
 void sampleAllNeighborsV2( float maxDistance, Neighborhood::NeighborhoodDatabaseV2 &database, SGSInterface::World &world ) {
 	AUTO_TIMER_FOR_FUNCTION();
-
-	database.numIds = world.scene.models.size();
 
 	const int numInstances = world.sceneRenderer.getNumInstances();
 
@@ -1139,6 +1160,7 @@ namespace aop {
 			ui.add( AntTWBarUI::makeSharedSeparator() );
 			ui.add( AntTWBarUI::makeSharedButton( "Load settings", [this] {
 				application->sceneSettings.load( application->settings.sceneSettingsPath.c_str() );
+				application->modelTypesUI->loadFromSceneSettings();
 			} ) );
 			ui.add( AntTWBarUI::makeSharedButton( "Store settings", [this] {
 				application->settings.store();
@@ -1255,13 +1277,14 @@ namespace aop {
 					}
 					void visit( Editor::ObbSelection *selection ) {
 						application->startLongOperation();
-						auto queryResults = queryVolumeNeighborsV2(
+						Neighborhood::Results queryResults = queryVolumeNeighborsV2(
 							application->world.get(),
 							application->neighborDatabaseV2,
 							selection->getObb().transformation.translation(),
 							application->sceneSettings.neighborhoodDatabase_maxDistance,
 							application->sceneSettings.neighborhoodDatabase_queryTolerance
 						);
+						boost::sort( queryResults, std::greater< Neighborhood::Result >() );
 						application->endLongOperation();
 
 						QueryResults transformedQueryResults;
@@ -1270,6 +1293,7 @@ namespace aop {
 							transformedQueryResult.score = queryResult->first;
 							transformedQueryResult.sceneModelIndex = queryResult->second;
 							transformedQueryResult.transformation = selection->getObb().transformation;
+							transformedQueryResults.push_back( transformedQueryResult );
 						}
 
 						application->candidateSidebarUI->setModels( transformedQueryResults );
@@ -1301,13 +1325,14 @@ namespace aop {
 						);*/
 
 						application->startLongOperation();
-						auto queryResults = queryVolumeNeighborsV2(
+						Neighborhood::Results queryResults = queryVolumeNeighborsV2(
 							application->world.get(),
 							application->neighborDatabaseV2,
 							selection->getObb().transformation.translation(),
 							application->sceneSettings.neighborhoodDatabase_maxDistance,
 							application->sceneSettings.neighborhoodDatabase_queryTolerance
 						);
+						boost::sort( queryResults, std::greater< Neighborhood::Result >() );
 						application->endLongOperation();
 
 						std::vector< std::pair< float, int > > scores( application->modelDatabase.informationById.size() );
@@ -1348,9 +1373,16 @@ namespace aop {
 			ui.add( AntTWBarUI::makeSharedButton( "Load neighborhood database", [this] {
 				application->neighborDatabaseV2.load( application->settings.neighborhoodDatabaseV2Path );
 			} ) );
-			ui.add( AntTWBarUI::makeSharedButton( "Sample neighborhood database", [this] {
+			ui.add( AntTWBarUI::makeSharedButton( "Clear neighborhood database", [this] {
+				application->neighborDatabaseV2.clear();
+			} ) );
+			ui.add( AntTWBarUI::makeSharedButton( "All // sample neighborhood database", [this] {
 				application->neighborDatabaseV2.clear();
 				sampleAllNeighborsV2( application->sceneSettings.neighborhoodDatabase_maxDistance, application->neighborDatabaseV2, *application->world );
+			} ) );
+			ui.add( AntTWBarUI::makeSharedButton( "Marked // sample neighborhood database", [this] {
+				application->neighborDatabaseV2.clear();
+				sampleAllNeighborsForV2( application->modelTypesUI->markedModels, application->sceneSettings.neighborhoodDatabase_maxDistance, application->neighborDatabaseV2, *application->world );
 			} ) );
 			ui.add( AntTWBarUI::makeSharedButton( "Store neighborhood database", [this] {
 				application->neighborDatabaseV2.store( application->settings.neighborhoodDatabaseV2Path );
@@ -1921,6 +1953,9 @@ namespace aop {
 		antTweakBarEventHandler.init( mainWindow );
 		eventDispatcher.addEventHandler( make_nonallocated_shared( antTweakBarEventHandler ) );
 
+		// load sceneSettings
+		sceneSettings.load( settings.sceneSettingsPath.c_str() );
+
 		{
 			// TODO: hack - fix this [10/20/2012 Andreas]
 			const sf::Vector2i windowSize( mainWindow.getSize() );
@@ -1930,9 +1965,6 @@ namespace aop {
 
 		ModelDatabase_init();
 		neighborDatabaseV2.modelDatabase = &modelDatabase;
-
-		// load sceneSettings
-		sceneSettings.load( settings.sceneSettingsPath.c_str() );
 
 		if( !sceneSettings.views.empty() ) {
 			sceneSettings.views.front().pushTo( mainCamera );
@@ -2149,7 +2181,6 @@ namespace aop {
 		const float positionVariance = settings.validation_neighborhood_positionVariance;
 		const int numSamples = settings.validation_neighborhood_numSamples;
 
-		boost::random::mt19937 rng;
 		boost::random::uniform_on_sphere<float, std::vector<float>> sphere(3);
 		boost::random::uniform_real_distribution<float> squaredRadius( 0.0, positionVariance * positionVariance );
 
@@ -2171,7 +2202,7 @@ namespace aop {
 					const Vector3f shift =
 							positionVariance > 0.0f
 						?
-							Vector3f( Vector3f::Map( &sphere( rng ).front() ) * sqrtf( squaredRadius( rng ) ) )
+							Vector3f( Vector3f::Map( &sphere( randomNumberGenerator ).front() ) * sqrtf( squaredRadius( randomNumberGenerator ) ) )
 						:
 							Eigen::Vector3f::Zero()
 					;
@@ -2190,6 +2221,10 @@ namespace aop {
 
 		Validation::NeighborhoodData::store( filename, data );
 	}
+
+/*	void Application::ProbesValidation_determineQueryVolumeSizeForMarkedModels() const {
+
+	}*/
 
 	void Application::ProbesValidation_queryAllInstances( const std::string &filename ) {
 		AUTO_TIMER_FOR_FUNCTION();
@@ -2210,7 +2245,6 @@ namespace aop {
 		const int numSamples = probeSettings.numSamples = settings.validation_probes_numSamples;
 		const float positionVariance = probeSettings.positionVariance = settings.validation_probes_positionVariance;
 
-		boost::random::mt19937 rng;
 		boost::random::uniform_on_sphere<float, std::vector<float>> sphere(3);
 		boost::random::uniform_real_distribution<float> squaredRadius( 0.0, positionVariance * positionVariance );
 
@@ -2244,7 +2278,7 @@ namespace aop {
 					const Vector3f shift =
 							positionVariance > 0
 						?
-							Vector3f( Vector3f::Map( &sphere( rng ).front() ) * sqrtf( squaredRadius( rng ) ) )
+							Vector3f( Vector3f::Map( &sphere( randomNumberGenerator ).front() ) * sqrtf( squaredRadius( randomNumberGenerator ) ) )
 						:
 							Eigen::Vector3f::Zero()
 					;

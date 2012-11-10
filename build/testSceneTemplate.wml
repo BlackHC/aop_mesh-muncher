@@ -1,0 +1,333 @@
+boxes:
+	-:
+		name::
+			platform, brown
+		size 20 2 20
+		webColor 945412
+	-:
+		name::
+			platform, green
+		size 20 2 20
+		webColor 129429
+	-:
+		name::
+			platform, muddy blue
+		size 20 2 20
+		webColor 6488a5
+	-:
+		name::
+			platform, light blue
+		size 20 2 20
+		webColor e5eaf1
+	-:
+		name::
+			platform, white
+		size 20 2 20
+		webColor f0f0f0
+
+	-:
+		name::
+			small cube, white
+		size 1 1 1
+		webColor f0f0f0
+	-:
+		name::
+			small cube, baby blue
+		size 1 1 1
+		webColor 12a7ed
+	-:
+		name::
+			small cube, lime green
+		size 1 1 1
+		webColor b1ea15
+	-:
+		name::
+			small cube, red
+		size 1 1 1
+		webColor eb0000
+	-:
+		name::
+			small cube, purple
+		size 1 1 1
+		webColor c414e7
+	-:
+		name::
+			small cube, egg orange
+		size 1 1 1
+		webColor f5bb29
+	-:
+		name::
+			small cube, light yellow
+		size 1 1 1
+		webColor eded18
+
+
+	-:
+		name::
+			medium cube, white
+		size 2 2 2
+		webColor f0f0f0
+	-:
+		name::
+			medium cube, baby blue
+		size 2 2 2
+		webColor 12a7ed
+	-:
+		name::
+			medium cube, lime green
+		size 2 2 2
+		webColor b1ea15
+	-:
+		name::
+			medium cube, red
+		size 2 2 2
+		webColor eb0000
+	-:
+		name::
+			medium cube, purple
+		size 2 2 2
+		webColor c414e7
+	-:
+		name::
+			medium cube, egg orange
+		size 2 2 2
+		webColor f5bb29
+	-:
+		name::
+			medium cube, light yellow
+		size 2 2 2
+		webColor eded18
+
+
+	-:
+		name::
+			small box, white
+		size 3 2 2
+		webColor f0f0f0
+	-:
+		name::
+			small box, baby blue
+		size 3 2 2
+		webColor 12a7ed
+	-:
+		name::
+			small box, lime green
+		size 3 2 2
+		webColor b1ea15
+	-:
+		name::
+			small box, red
+		size 3 2 2
+		webColor eb0000
+	-:
+		name::
+			small box, purple
+		size 3 2 2
+		webColor c414e7
+	-:
+		name::
+			small box, egg orange
+		size 3 2 2
+		webColor f5bb29
+	-:
+		name::
+			small box, light yellow
+		size 3 2 2
+		webColor eded18
+
+	-:
+		name::
+			big box, white
+		size 4 3 3
+		webColor f0f0f0
+	-:
+		name::
+			big box, baby blue
+		size 4 3 3
+		webColor 12a7ed
+	-:
+		name::
+			big box, lime green
+		size 4 3 3
+		webColor b1ea15
+	-:
+		name::
+			big box, red
+		size 4 3 3
+		webColor eb0000
+	-:
+		name::
+			big box, purple
+		size 4 3 3
+		webColor c414e7
+	-:
+		name::
+			big box, egg orange
+		size 4 3 3
+		webColor f5bb29
+	-:
+		name::
+			big box, light yellow
+		size 4 3 3
+		webColor eded18
+
+	-:
+		name::
+			wall, white
+		size 5 5 1
+		webColor f0f0f0
+	-:
+		name::
+			wall, baby blue
+		size 5 5 1
+		webColor 12a7ed
+	-:
+		name::
+			wall, lime green
+		size 5 5 1
+		webColor b1ea15
+	-:
+		name::
+			wall, red
+		size 5 5 1
+		webColor eb0000
+	-:
+		name::
+			wall, purple
+		size 5 5 1
+		webColor c414e7
+	-:
+		name::
+			wall, egg orange
+		size 5 5 1
+		webColor f5bb29
+	-:
+		name::
+			wall, light yellow
+		size 5 5 1
+		webColor eded18
+
+spheres:
+	-:
+		name::
+			ball, white
+		radius 1
+		u 10
+		v 20
+		webColor f0f0f0
+	-:
+		name::
+			ball, baby blue
+		radius 1
+		u 10
+		v 20
+		webColor 12a7ed
+	-:
+		name::
+			ball, lime green
+		radius 1
+		u 10
+		v 20
+		webColor b1ea15
+	-:
+		name::
+			ball, red
+		radius 1
+		u 10
+		v 20
+		webColor eb0000
+	-:
+		name::
+			ball, purple
+		radius 1
+		u 10
+		v 20
+		webColor c414e7
+	-:
+		name::
+			ball, egg orange
+		radius 1
+		u 10
+		v 20
+		webColor f5bb29
+	-:
+		name::
+			ball, light yellow
+		radius 1
+		u 10
+		v 20
+		webColor eded18
+
+
+	-:
+		name::
+			big ball, white
+		radius 3
+		u 10
+		v 20
+		webColor f0f0f0
+	-:
+		name::
+			big ball, baby blue
+		radius 3
+		u 10
+		v 20
+		webColor 12a7ed
+	-:
+		name::
+			big ball, lime green
+		radius 3
+		u 10
+		v 20
+		webColor b1ea15
+	-:
+		name::
+			big ball, red
+		radius 3
+		u 10
+		v 20
+		webColor eb0000
+	-:
+		name::
+			big ball, purple
+		radius 3
+		u 10
+		v 20
+		webColor c414e7
+	-:
+		name::
+			big ball, egg orange
+		radius 3
+		u 10
+		v 20
+		webColor f5bb29
+	-:
+		name::
+			big ball, light yellow
+		radius 3
+		u 10
+		v 20
+		webColor eded18
+
+modelImports:
+	scene.sgsScene:
+		Data\Models\Terrain_objects\Containers\Barrels\barrel1.s3d
+		Data\Models\Terrain_objects\Containers\Barrels\barrel_explosive.s3d
+
+		Data\Models\Terrain_objects\Containers\Crates\crate3.s3d
+		Data\Models\Terrain_objects\Containers\Crates\crate6.s3d
+
+		Data\Models\Terrain_objects\Containers\Crates\crate_01c.s3d
+		Data\Models\Terrain_objects\Containers\Crates\crate_01b.s3d
+
+		Data\Models\Terrain_objects\Walls\Solidwalls\reinforced_wall_support.s3d
+
+		Data\Models\Terrain_objects\Containers\Crates\cardboard_big_box01.s3d
+
+		Data\Models\Terrain_objects\Containers\Crates\supply_crate_01.s3d
+
+		Data\Models\Terrain_objects\Vegetation\Trees\pine_falling_1b.s3d
+
+
+
+
