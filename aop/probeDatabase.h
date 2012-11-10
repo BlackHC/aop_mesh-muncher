@@ -143,7 +143,7 @@ typedef OptixProgramInterface::ProbeSamples RawProbeSamples;
 namespace IO {
 	void loadRawQuery( const std::string &filename, RawProbes &probes, RawProbeSamples &probeSamples );
 	void storeRawQuery( const std::string &filename, const RawProbes &probes, const RawProbeSamples &probeSamples );
-	
+
 	QueryResults loadQueryResults( const std::string &filename );
 	void storeQueryResults( const std::string &filename, const QueryResults &results );
 }
@@ -407,11 +407,11 @@ struct ProbeCounter {
 		index.L = clamp<int>( probeSample.colorLab.x / 25, 0, 15 );
 		index.a = clamp<int>( (probeSample.colorLab.y + 100) / 12.5f, 0, 15 );
 		index.b = clamp<int>( (probeSample.colorLab.y + 100) / 12.5f, 0, 15 );
-		
+
 		return index.value;
 	}
 
-	ProbeCounter( float maxDistance = 0.0f ) 
+	ProbeCounter( float maxDistance = 0.0f )
 		: buckets( numBuckets )
 		, maxDistance( maxDistance )
 	{
@@ -450,11 +450,11 @@ struct ColorCounter {
 		index.L = clamp<int>( probeSample.colorLab.x / 25, 0, 15 );
 		index.a = clamp<int>( (probeSample.colorLab.y + 100) / 12.5f, 0, 15 );
 		index.b = clamp<int>( (probeSample.colorLab.y + 100) / 12.5f, 0, 15 );
-		
+
 		return index.value;
 	}
 
-	ColorCounter() 
+	ColorCounter()
 		: buckets( numBuckets )
 		, totalNumSamples()
 		, entropy()
@@ -484,7 +484,7 @@ struct ColorCounter {
 	}
 
 	void splatSamples( const RawProbeSamples &probeSamples ) {
-		for( auto probeSample = probeSamples.begin() ; probeSample != probeSamples.end() ; probeSample++ ) {		
+		for( auto probeSample = probeSamples.begin() ; probeSample != probeSamples.end() ; probeSample++ ) {
 			splat( *probeSample );
 		}
 	}
@@ -530,7 +530,8 @@ struct ColorCounter {
 };
 
 // this dataset creates auxiliary structures automatically
-// invariant: sorted and occlusionLowerBounds is correctly set
+// invariant: sorted and occlusionLowerBounds is correctlyset
+#if 0
 struct IndexedProbeSamples {
 	DBProbeSamples data;
 	std::vector<int> occlusionLowerBounds;
@@ -777,6 +778,306 @@ private:
 	IndexedProbeSamples( const IndexedProbeSamples &other );
 	IndexedProbeSamples & operator = ( const IndexedProbeSamples &other );
 };
+#else
+struct IndexedProbeSamples {
+	DBProbeSamples data;
+	std::vector<int> occlusionLowerBounds;
+	// indexed by occlusion, contains a sparse range of distance/probeSample start indices
+	std::vector<std::vector<std::pair<float, int>>> distanceLowerBounds;
+
+	const DBProbeSamples &getProbeSamples() const {
+		return data;
+	}
+
+	IndexedProbeSamples() {}
+
+	IndexedProbeSamples( DBProbeSamples &&other ) :
+		data( std::move( other ) ),
+		occlusionLowerBounds()
+	{
+		sort();
+		setOcclusionLowerBounds();
+	}
+
+	IndexedProbeSamples( IndexedProbeSamples &&other ) :
+		data( std::move( other.data ) ),
+		occlusionLowerBounds( std::move( other.occlusionLowerBounds ) )
+	{
+	}
+
+	IndexedProbeSamples & operator = ( IndexedProbeSamples && other ) {
+		data = std::move( other.data );
+		occlusionLowerBounds = std::move( other.occlusionLowerBounds );
+
+		return *this;
+	}
+
+	IndexedProbeSamples clone() const {
+		IndexedProbeSamples cloned;
+		cloned.data = data;
+		cloned.occlusionLowerBounds = occlusionLowerBounds;
+		return cloned;
+	}
+
+	int size() const {
+		return (int) data.size();
+	}
+
+	typedef std::pair< int, int > IntRange;
+	IntRange getOcclusionRange( int level ) const {
+		return std::make_pair( occlusionLowerBounds[level], occlusionLowerBounds[ level + 1 ] );
+	}
+
+	// [leftLevel, rightLevel] (ie inclusive!)
+	IntRange getOcclusionRange( int leftLevel, int rightLevel ) const {
+		return std::make_pair( occlusionLowerBounds[leftLevel], occlusionLowerBounds[ rightLevel + 1 ] );
+	}
+
+#if 0
+	struct MatcherController {
+		void onMatch( int outerProbeSampleIndex, int innerProbeSampleIndex, const DBProbeSample &outer, const DBProbeSample &inner ) {
+		}
+
+		void onNewThreadStarted() {
+		}
+	};
+#endif
+
+	template< typename Controller >
+	struct Matcher {
+		const IndexedProbeSamples &probeSamplesInner;
+		const IndexedProbeSamples &probeSamplesOuter;
+		const ProbeContextTolerance &probeContextTolerance;
+		Controller controller;
+
+		Matcher( const IndexedProbeSamples &outer, const IndexedProbeSamples &inner, const ProbeContextTolerance &probeContextTolerance, Controller &&controller )
+			: probeSamplesOuter( outer )
+			, probeSamplesInner( inner )
+			, probeContextTolerance( probeContextTolerance )
+			, controller( std::forward<Controller>( controller ) )
+		{
+		}
+
+		Matcher( const IndexedProbeSamples &outer, const IndexedProbeSamples &inner )
+			: probeSamplesOuter( outer )
+			, probeSamplesInner( inner )
+			, probeContextTolerance( probeContextTolerance )
+			, controller()
+		{
+		}
+
+		void match() {
+			if( probeSamplesOuter.size() == 0 || probeSamplesInner.size() == 0 ) {
+				return;
+			}
+
+			// idea:
+			//	use a binary search approach to generate only needed subranges
+
+			// we can compare the different occlusion ranges against each other, after including the tolerance
+
+			// TODO: is it better to make both ranges about equally big or not?
+			// its better they are equal
+
+			// assuming that the query set is smaller, we enlarge it, to have less items to sort than vice-versa
+			// we could determine this at runtime...
+			// if( sampledModels.size() > indexedProbeSamples.size() ) {...} else {...}
+			const int occlusionTolerance = int( OptixProgramInterface::numProbeSamples * probeContextTolerance.occusionTolerance + 0.5 );
+
+			// TODO: use a stack allocated array here? [9/27/2012 kirschan2]
+
+			typedef std::pair< IntRange, IntRange > RangeJob;
+			std::vector< RangeJob > rangeJobs;
+			rangeJobs.reserve( OptixProgramInterface::numProbeSamples );
+			for( int occulsionLevel = 0 ; occulsionLevel <= OptixProgramInterface::numProbeSamples ; occulsionLevel++ ) {
+				const IntRange rangeOuter = probeSamplesOuter.getOcclusionRange( occulsionLevel );
+
+				if( rangeOuter.first == rangeOuter.second ) {
+					continue;
+				}
+
+				const int leftToleranceLevel = std::max( 0, occulsionLevel - occlusionTolerance );
+				const int rightToleranceLevel = std::min( occulsionLevel + occlusionTolerance, OptixProgramInterface::numProbeSamples );
+				for( int toleranceLevel = leftToleranceLevel ; toleranceLevel <= rightToleranceLevel ; toleranceLevel++ ) {
+					const IntRange rangeInner = probeSamplesInner.getOcclusionRange( toleranceLevel );
+
+					// is one of the ranges empty? if so, we don't need to check it at all
+					if( rangeInner.first == rangeInner.second ) {
+						continue;
+					}
+
+					// store the range for later
+					rangeJobs.push_back( std::make_pair( rangeOuter, rangeInner ) );
+				}
+			}
+
+			//AUTO_TIMER_BLOCK( "matching" )
+			{
+				using namespace Concurrency;
+				parallel_for_each( rangeJobs.begin(), rangeJobs.end(),
+					[&] ( const RangeJob &rangeJob ) {
+						controller.onNewThreadStarted();
+
+						matchSortedRanges(
+							rangeJob.first,
+							rangeJob.second
+						);
+					}
+				);
+			}
+		}
+
+		void matchSortedRanges(
+			const IntRange &rangeOuter,
+			const IntRange &rangeInner
+		) {
+			const float squaredColorTolerance = probeContextTolerance.colorLabTolerance * probeContextTolerance.colorLabTolerance;
+
+			// assert: the range is not empty
+			const int beginIndexOuter = rangeOuter.first;
+			const int endIndexOuter = rangeOuter.second;
+			int indexOuter = beginIndexOuter;
+
+			const int beginIndexInner = rangeInner.first;
+			const int endIndexInner = rangeInner.second;
+			int indexInner = beginIndexInner;
+
+			DBProbeSample probeSampleOuter = probeSamplesOuter.getProbeSamples()[ indexOuter ];
+			int outerMisses = 0;
+			float lastInnerDistance = 0.0f;
+			for( ; indexOuter < endIndexOuter - 1 ; indexOuter++ ) {
+				const DBProbeSample nextSampleOuter = probeSamplesOuter.getProbeSamples()[ indexOuter + 1 ];
+				int nextIndexInner = indexInner;
+
+				const float minDistance = probeSampleOuter.distance - probeContextTolerance.distanceTolerance;
+				const float maxDistance = probeSampleOuter.distance + probeContextTolerance.distanceTolerance;
+				const float minNextDistance = nextSampleOuter.distance - probeContextTolerance.distanceTolerance;
+
+				int innerMisses = 0;
+				for( ; indexInner < endIndexInner ; indexInner++ ) {
+					const DBProbeSample probeSampleInner = probeSamplesInner.getProbeSamples()[ indexInner ];
+
+					// distance too small?
+					if( probeSampleInner.distance < minDistance ) {
+						// TODO: late addition [11/10/2012 kirschan2]
+						if( ++innerMisses == 3 ) {
+							DBProbeSample testSample;
+							testSample.distance = minDistance;
+
+							// jump to the next index
+							const auto nextInnerIter = std::lower_bound(
+								probeSamplesInner.getProbeSamples().begin() + indexInner + 1,
+								probeSamplesInner.getProbeSamples().begin() + endIndexInner,
+								testSample,
+								[] ( const DBProbeSample &sampleA, const DBProbeSample &sampleB ) {
+									return sampleA.distance < sampleB.distance;
+								}
+							);
+							indexInner = nextInnerIter - probeSamplesInner.getProbeSamples().begin();
+							indexInner -= 1; // for the loop increment
+							nextIndexInner = indexInner;
+							if( indexInner == endIndexInner ) {
+								break;
+							}
+						}
+						else {
+							// then the next one is too far away as well
+							nextIndexInner = indexInner + 1;
+						}
+						continue;
+					}
+
+					// if nextIndexInner can't use this probe, the next overlapped sample might be the first one it likes
+					if( probeSampleInner.distance < minNextDistance ) {
+						// set it to the next ref sample
+						nextIndexInner = indexInner + 1;
+					}
+					// else:
+					//  nextIndexInner points to the first overlapped sample the next pure sample might match
+
+					// are we past our interval
+					if( probeSampleInner.distance > maxDistance ) {
+						lastInnerDistance = probeSampleInner.distance;
+						outerMisses++;
+						// enough for this probe, do the next
+						break;
+					}
+					outerMisses = 0;
+
+					if( DBProbeSample::matchColor( probeSampleOuter, probeSampleInner, squaredColorTolerance ) ) {
+						controller.onMatch( indexOuter, indexInner, probeSampleOuter, probeSampleInner );
+					}
+				}
+
+				if( outerMisses == 3 ) {
+					// jump ahead
+					DBProbeSample testSample;
+					testSample.distance = lastInnerDistance - probeContextTolerance.distanceTolerance;
+					const auto nextOuterIter = std::lower_bound(
+						probeSamplesOuter.getProbeSamples().begin() + indexOuter + 1,
+						probeSamplesOuter.getProbeSamples().begin() + endIndexOuter,
+						testSample,
+						[] ( const DBProbeSample &sampleA, const DBProbeSample &sampleB ) {
+							return sampleA.distance < sampleB.distance;
+						}
+					);
+					indexOuter = nextOuterIter - probeSamplesOuter.getProbeSamples().begin();
+					if( indexOuter < endIndexOuter ) {
+						probeSampleOuter = *nextOuterIter;
+					}
+					indexOuter -= 1; // for the loop counter
+					indexInner = nextIndexInner;
+				}
+				else {
+					probeSampleOuter = nextSampleOuter;
+					indexInner = nextIndexInner;
+				}
+			}
+
+			// process the last pure probe
+			{
+				const float minDistance = probeSampleOuter.distance - probeContextTolerance.distanceTolerance;
+				const float maxDistance = probeSampleOuter.distance + probeContextTolerance.distanceTolerance;
+
+				for( ; indexInner < endIndexInner ; indexInner++ ) {
+					const DBProbeSample probeSampleInner = probeSamplesInner.getProbeSamples()[ indexInner ];
+
+					// distance too small?
+					if( probeSampleInner.distance < minDistance ) {
+						continue;
+					}
+
+					// are we past our interval
+					if( probeSampleInner.distance > maxDistance ) {
+						// enough for this probe, we're done
+						break;
+					}
+
+					if( DBProbeSample::matchColor( probeSampleOuter, probeSampleInner, squaredColorTolerance ) ) {
+						controller.onMatch( indexOuter, indexInner, probeSampleOuter, probeSampleInner );
+					}
+				}
+			}
+		}
+	};
+
+private:
+	void sort() {
+		AUTO_TIMER_FUNCTION();
+
+		boost::sort( data, DBProbeSample::lexicographicalLess );
+	}
+
+	void setOcclusionLowerBounds();
+
+	SERIALIZER_FWD_FRIEND_EXTERN( ProbeContext::IndexedProbeSamples );
+
+private:
+	// better error messages than with boost::noncopyable
+	IndexedProbeSamples( const IndexedProbeSamples &other );
+	IndexedProbeSamples & operator = ( const IndexedProbeSamples &other );
+};
+#endif
 
 namespace IndexedProbeSamplesHelper {
 	inline std::vector< IndexedProbeSamples > createIndexedProbeSamplesByDirectionIndices(
@@ -892,7 +1193,7 @@ struct SampledModel {
 
 		rotatedProbePositions.clear();
 		rotatedProbePositions.resize( ProbeGenerator::getNumOrientations() );
-		
+
 		resolution = 0.f;
 		modelColorCounter.clear();
 	}
@@ -929,10 +1230,10 @@ public:
 
 	SampledModel & operator = ( SampledModel &&other ) {
 		instances = std::move( other.instances );
-		
+
 		mergedInstances = std::move( other.mergedInstances );
 		mergedInstancesByDirectionIndex = std::move( other.mergedInstancesByDirectionIndex );
-		
+
 		probes = std::move( other.probes );
 		rotatedProbePositions = std::move( other.rotatedProbePositions );
 
@@ -954,7 +1255,7 @@ public:
 					modelColorCounter.splat( *probeSample );
 				}
 			}
-		
+
 			modelColorCounter.calculateEntropy();
 		}
 

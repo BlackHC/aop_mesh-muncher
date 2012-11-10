@@ -1,11 +1,10 @@
 #include "validationStorage.h"
 
-
 namespace Validation {
 	const int CACHE_FORMAT_VERSION = 1;
 
 	bool NeighborhoodData::load( const std::string &filename, NeighborhoodData &neighborhoodData ) {
-		Serializer::BinaryReader reader( filename.c_str(), CACHE_FORMAT_VERSION );
+		Serializer::BinaryReader reader( filename, CACHE_FORMAT_VERSION );
 		if( reader.valid() ) {
 			reader.get( neighborhoodData );
 
@@ -17,27 +16,25 @@ namespace Validation {
 	}
 
 	void NeighborhoodData::store( const std::string &filename, const NeighborhoodData &neighborhoodData ) {
-		Serializer::BinaryWriter writer( filename.c_str(), CACHE_FORMAT_VERSION );
+		Serializer::BinaryWriter writer( filename, CACHE_FORMAT_VERSION );
 
 		writer.put( neighborhoodData );
 	}
 
-	ProbeData ProbeData::load( const std::string &filename ) {
-		Serializer::BinaryReader reader( filename.c_str(), CACHE_FORMAT_VERSION );
+	bool ProbeData::load( const std::string &filename, ProbeData &probeData ) {
+		Serializer::BinaryReader reader( filename, CACHE_FORMAT_VERSION );
 		if( reader.valid() ) {
-			ProbeData probeData;
-
 			reader.get( probeData );
 
-			return probeData;
+			return true;
 		}
 
 		logError( boost::format( "'%s' uses an old format!" ) % filename );
-		return ProbeData();
+		return false;
 	}
 
 	void ProbeData::store( const std::string &filename, const ProbeData &probeData ) {
-		Serializer::BinaryWriter writer( filename.c_str(), CACHE_FORMAT_VERSION );
+		Serializer::BinaryWriter writer( filename, CACHE_FORMAT_VERSION );
 
 		writer.put( probeData );
 	}

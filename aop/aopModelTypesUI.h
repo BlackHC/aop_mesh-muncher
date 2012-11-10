@@ -168,8 +168,6 @@ namespace aop {
 		};
 
 		void init() {
-			loadFromSceneSettings();
-
 			beautifyModelNames();
 
 			{

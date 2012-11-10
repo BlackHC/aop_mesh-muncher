@@ -257,7 +257,7 @@ void executeKernel(
 	timerResults = cpuTimer.elapsed();
 	std::cout << "\n";
 
-	const float rankExpectation = double( rankSum ) /  validationData.queryDatasets.size();
+	const float rankExpectation = double( rankSum ) / numTotalSamples;
 	expectationResult = rankExpectation;
 
 	log( boost::format( "rankExpectation: %f" ) % rankExpectation, 1 );
@@ -428,7 +428,6 @@ void main( int argc, const char **argv ) {
 		log( wml::emit( reader.root ) );
 		Serializer::read( reader, config );
 	}
-
 
 	ModelDatabase modelDatabase( nullptr );
 	{

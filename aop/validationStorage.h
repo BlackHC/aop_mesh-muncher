@@ -26,17 +26,16 @@ SERIALIZER_DEFAULT_EXTERN_IMPL( Validation::NeighborhoodData,
 	(instanceCounts)
 )
 
-/*SERIALIZER_DEFAULT_EXTERN_IMPL( Validation::ProbeSettings,
+SERIALIZER_DEFAULT_EXTERN_IMPL( Validation::ProbeSettings,
 	(maxDistance)
-	(resolution)
-
-	(queryVolumeSize)
-
-	(numSamples)
 	(positionVariance)
-)*/
-
-SERIALIZER_ENABLE_RAW_MODE_EXTERN( Validation::ProbeSettings );
+	(numSamples)
+	(queryVolumeSize)
+	(resolution)
+	(distanceTolerance)
+	(occlusionTolerance)
+	(colorTolerance)
+)
 
 SERIALIZER_DEFAULT_EXTERN_IMPL( Validation::ProbeData::QueryData,
 	(querySamples)

@@ -1410,6 +1410,9 @@ namespace aop {
 				"#samples // probe validation",
 				AntTWBarUI::makeReferenceAccessor( application->settings.validation_probes_numSamples )
 			) );
+			ui.add( AntTWBarUI::makeSharedButton( "determine fit bounding box", [this] {
+				application->ProbesValidation_determineQueryVolumeSizeForMarkedModels();
+			} ) );
 			ui.add( AntTWBarUI::makeSharedVariable(
 				"query volume size // probe validation",
 				AntTWBarUI::makeReferenceAccessor( application->settings.validation_probes_queryVolumeSize )
@@ -1974,6 +1977,8 @@ namespace aop {
 			// TODO: add select wrappers to editorWrapper or editor [10/3/2012 kirschan2]
 			editor.selectObb( 0 );
 		}
+
+		modelTypesUI->loadFromSceneSettings();
 	}
 
 	void Application::updateUI() {
@@ -2222,9 +2227,43 @@ namespace aop {
 		Validation::NeighborhoodData::store( filename, data );
 	}
 
-/*	void Application::ProbesValidation_determineQueryVolumeSizeForMarkedModels() const {
+	void Application::ProbesValidation_determineQueryVolumeSizeForMarkedModels() const {
+		const auto &modelIndices = modelTypesUI->markedModels;
 
-	}*/
+		AlignedBox3f queryBoundingBox;
+		AlignedBox3f offsetBoundingBox;
+
+		const int numModels = modelIndices.size();
+
+		ProgressTracker::Context modelProgressTracker( modelIndices.size() + 1 );
+		for( int localModelIndex = 0 ; localModelIndex < numModels ; localModelIndex++ ) {
+			const int sceneModelIndex = modelIndices[ localModelIndex ];
+
+			auto instanceIndices = world->sceneRenderer.getModelInstances( sceneModelIndex );
+
+			// loop through all instances of sceneModelIndex and create numSamples many query volumes
+			for( auto instanceIndex = instanceIndices.begin() ; instanceIndex != instanceIndices.end() ; ++instanceIndex ) {
+				const auto instanceRotation = Affine3f( world->sceneRenderer.getInstanceTransformation( *instanceIndex ).linear() );
+				auto modelBoundingBox = world->sceneRenderer.getModelBoundingBox( sceneModelIndex );
+				modelBoundingBox.extend( Vector3f::Zero() );
+				offsetBoundingBox.extend( modelBoundingBox.center() );
+				const auto instanceBoundingBox = Eigen_getTransformedAlignedBox( instanceRotation, modelBoundingBox );
+
+				queryBoundingBox.extend( instanceBoundingBox );
+			}
+		}
+
+		log( boost::format( "fit size: %f %f %f" )
+			% queryBoundingBox.sizes()[0]
+			% queryBoundingBox.sizes()[1]
+			% queryBoundingBox.sizes()[2]
+		);
+		log( boost::format( "offset: %f %f %f" )
+			% offsetBoundingBox.sizes()[0]
+			% offsetBoundingBox.sizes()[1]
+			% offsetBoundingBox.sizes()[2]
+		);
+	}
 
 	void Application::ProbesValidation_queryAllInstances( const std::string &filename ) {
 		AUTO_TIMER_FOR_FUNCTION();
@@ -2259,10 +2298,11 @@ namespace aop {
 		const int numModels = modelIndices.size();
 		Validation::ProbeData data( numModels, probeSettings );
 
+		data.localModelNames = world->scene.modelNames;
+
 		ProgressTracker::Context modelProgressTracker( modelIndices.size() + 1 );
 		for( int localModelIndex = 0 ; localModelIndex < numModels ; localModelIndex++ ) {
 			const int sceneModelIndex = modelIndices[ localModelIndex ];
-			data.localModelNames.push_back( probeDatabase.modelIndexMapper.getSceneModelName( sceneModelIndex ) );
 
 			log( boost::format( "sampling model %i" ) % sceneModelIndex );
 
@@ -2285,7 +2325,7 @@ namespace aop {
 
 					Validation::ProbeData::QueryData queryData;
 
-					queryData.expectedSceneModelIndex = localModelIndex;
+					queryData.expectedSceneModelIndex = sceneModelIndex;
 					queryData.queryVolume = Obb( Obb::Transformation( Eigen::Translation3f( position + shift ) ), Eigen::Vector3f::Constant( queryVolumeSize ) );
 
 					ProbeGenerator::generateQueryProbes( queryData.queryVolume.size, resolution, queryData.queryProbes );

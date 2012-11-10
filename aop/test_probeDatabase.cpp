@@ -450,7 +450,7 @@ TEST( ProbeDatabase, oneTolerance ) {
 	}
 }
 
-#if 0
+#if 1
 TEST( ProbeDatabase, big ) {
 	// init the dataset
 	RawProbeSamples rawProbeSamples, rawTestProbeSamples;
@@ -469,7 +469,7 @@ TEST( ProbeDatabase, big ) {
 	modelNames.push_back( "test" );
 	probeDatabase.registerSceneModels( modelNames );
 
-	probeDatabase.addInstanceProbes( 0, Obb(), probes, rawProbeSamples );
+	probeDatabase.addInstanceProbes( 0, Obb::Transformation(), 1.0, probes, rawProbeSamples );
 	probeDatabase.compileAll();
 
 	{
@@ -498,6 +498,66 @@ TEST( ProbeDatabase, big ) {
 		ProbeContextTolerance pct;
 		pct.occusionTolerance = 0;
 		pct.distanceTolerance = 0;
+		query.setProbeContextTolerance( pct );
+
+		query.execute();
+
+		ProbeDatabase::Query::DetailedQueryResults detailedQueryResults = query.getDetailedQueryResults();
+
+		ASSERT_EQ( detailedQueryResults.size(), 1 );
+		EXPECT_EQ( detailedQueryResults[0].numMatches, 300000 );
+		EXPECT_EQ( detailedQueryResults[0].sceneModelIndex, 0 );
+	}
+}
+
+
+TEST( ProbeDatabase, bigWithTolerance ) {
+	// init the dataset
+	RawProbeSamples rawProbeSamples, rawTestProbeSamples;
+	for( int i = 0 ; i < 20000 ; i++ ) {
+		for( int j = 0 ; j < 30 ; j++ ) {
+			rawProbeSamples.push_back( makeProbeSample( j, i ) );
+			rawTestProbeSamples.push_back( makeProbeSample( j, 10000 + i ) );
+		}
+	}
+
+	auto probes = std::vector< DBProbe >( rawProbeSamples.size() );
+
+	ProbeDatabase probeDatabase;
+
+	std::vector< std::string > modelNames;
+	modelNames.push_back( "test" );
+	probeDatabase.registerSceneModels( modelNames );
+
+	probeDatabase.addInstanceProbes( 0, Obb::Transformation(), 1.0, probes, rawProbeSamples );
+	probeDatabase.compileAll();
+
+	{
+		ProbeDatabase::Query query( probeDatabase );
+
+		query.setQueryDataset( rawProbeSamples );
+
+		ProbeContextTolerance pct;
+		pct.occusionTolerance = 0;
+		pct.distanceTolerance = 2;
+		query.setProbeContextTolerance( pct );
+
+		query.execute();
+
+		ProbeDatabase::Query::DetailedQueryResults detailedQueryResults = query.getDetailedQueryResults();
+
+		ASSERT_EQ( detailedQueryResults.size(), 1 );
+		EXPECT_EQ( detailedQueryResults[0].numMatches, 600000 );
+		EXPECT_EQ( detailedQueryResults[0].sceneModelIndex, 0 );
+	}
+	{
+		ProbeDatabase::Query query( probeDatabase );
+
+		query.setQueryDataset( rawTestProbeSamples );
+
+		ProbeContextTolerance pct;
+		pct.occusionTolerance = 0;
+		pct.distanceTolerance = 2;
 		query.setProbeContextTolerance( pct );
 
 		query.execute();

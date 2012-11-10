@@ -120,7 +120,7 @@ namespace Validation {
 		{
 		}
 
-		static ProbeData load( const std::string &filename );
+		static bool load( const std::string &filename, ProbeData &probeData );
 		static void store( const std::string &filename, const ProbeData &probeData );
 	};
 }
