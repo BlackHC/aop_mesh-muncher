@@ -4,6 +4,355 @@
 #include "boost\range\algorithm\max_element.hpp"
 
 namespace ProbeContext {
+#if 1
+struct ProbeDatabase::FastQuery {
+	struct DetailedQueryResult : QueryResult {
+		float queryMatchPercentage;
+		float probeMatchPercentage;
+
+		DetailedQueryResult()
+			: QueryResult()
+			, queryMatchPercentage()
+			, probeMatchPercentage()
+		{
+		}
+
+		DetailedQueryResult( int sceneModelIndex )
+			: QueryResult( sceneModelIndex )
+			, queryMatchPercentage()
+			, probeMatchPercentage()
+		{
+		}
+	};
+	typedef std::vector<DetailedQueryResult> DetailedQueryResults;
+
+	FastQuery( const ProbeDatabase &database ) : database( database ) {}
+
+	void setQueryVolume( const Obb &queryVolume, float resolution ) {
+		queryVolumeTransformation = queryVolume.transformation;
+	}
+
+	void setProbeContextTolerance( const ProbeContextTolerance &pct ) {
+		probeContextTolerance = pct;
+	}
+
+	void setQueryDataset( const RawProbeSamples &rawProbeSamples ) {
+		SampleBitPlaneHelper::splatProbeSamples( queryBitPlane, database.sampleQuantizer, rawProbeSamples );
+		queryLinearizedProbeSamples.push_back( database.sampleQuantizer, rawProbeSamples );
+	}
+
+	void execute() {
+		if( !queryResults.empty() ) {
+			throw std::logic_error( "queryResults is not empty!" );
+		}
+
+		detailedQueryResults.resize( database.sampledModels.size() );
+
+		using namespace Concurrency;
+
+		AUTO_TIMER_MEASURE() {
+			int logScope = Log::getScope();
+
+			parallel_for< int >(
+				0,
+				(int) database.sampledModels.size(),
+				[&] ( int localModelIndex ) {
+					Log::initThreadScope( logScope, 0 );
+
+					detailedQueryResults[ localModelIndex ] = matchAgainst( localModelIndex, database.modelIndexMapper.getSceneModelIndex( localModelIndex ) );
+				}
+			);
+		}
+
+		boost::remove_erase_if( detailedQueryResults, [] ( const DetailedQueryResult &r ) { return r.score == 0.0f; });
+
+		queryResults.resize( detailedQueryResults.size() );
+		boost::transform( detailedQueryResults, queryResults.begin(), [] ( const DetailedQueryResult &r ) { return QueryResult( r ); } );
+	}
+
+	const QueryResults & getQueryResults() const {
+		return queryResults;
+	}
+
+	const DetailedQueryResults & getDetailedQueryResults() const {
+		return detailedQueryResults;
+	}
+
+protected:
+	const ProbeDatabase &database;
+
+	SampleBitPlane queryBitPlane;
+	LinearizedProbeSamples queryLinearizedProbeSamples;
+
+	ProbeContextTolerance probeContextTolerance;
+
+	DetailedQueryResults detailedQueryResults;
+	QueryResults queryResults;
+
+	Eigen::Affine3f queryVolumeTransformation;
+
+protected:
+	DetailedQueryResult matchAgainst( int localSceneIndex, int sceneModelIndex ) {
+		const auto &sampledModel = database.sampledModels[ localSceneIndex ];
+
+		// check if any of the probe sample sets is empty
+		const int sampledModel_numProbeSamples = sampledModel.linearizedProbeSamples.samples.size();
+		const int queryVolume_numProbeSamples = queryLinearizedProbeSamples.samples.size();
+		if( sampledModel_numProbeSamples == 0 || queryVolume_numProbeSamples == 0 ) {
+			return DetailedQueryResult( sceneModelIndex );
+		}
+
+		AUTO_TIMER_FOR_FUNCTION(
+			boost::format( "id = %i, %i ref probes (%i query probes)" )
+			% sceneModelIndex
+			% sampledModel_numProbeSamples
+			% queryVolume_numProbeSamples
+		);
+
+		// loop through the query linearized array and look up everything in the sampled model bit plane
+		// and vice versa
+
+		int sampledModel_numMatchedProbeSamples = 0;
+		for( auto modelPackedSample = sampledModel.linearizedProbeSamples.samples.begin() ; modelPackedSample != sampledModel.linearizedProbeSamples.samples.end() ; ++modelPackedSample ) {
+			// look up
+			if( queryBitPlane.test( *modelPackedSample ) ) {
+				sampledModel_numMatchedProbeSamples++;
+			}
+		}
+
+
+		int queryVolume_numMatchedProbeSamples = 0;
+		for( auto queryPackedSample = queryLinearizedProbeSamples.samples.begin() ; queryPackedSample != queryLinearizedProbeSamples.samples.end() ; ++queryPackedSample ) {
+			// look up
+			if( sampledModel.sampleBitPlane.test( *queryPackedSample ) ) {
+				queryVolume_numMatchedProbeSamples++;
+			}
+		}
+
+		DetailedQueryResult detailedQueryResult( sceneModelIndex );
+
+		detailedQueryResult.probeMatchPercentage = (sampledModel_numMatchedProbeSamples + 0.0f ) / (sampledModel_numProbeSamples + 0.0f);
+		detailedQueryResult.queryMatchPercentage = (queryVolume_numMatchedProbeSamples + 0.0f) / (queryVolume_numProbeSamples + 0.0f);
+
+		detailedQueryResult.score = detailedQueryResult.probeMatchPercentage * detailedQueryResult.queryMatchPercentage;
+
+		detailedQueryResult.transformation = queryVolumeTransformation;
+
+		return detailedQueryResult;
+	}
+};
+
+struct ProbeDatabase::FastConfigurationQuery {
+		struct DetailedQueryResult : QueryResult {
+		std::vector< std::vector< int > > matchesByOrientation;
+
+		DetailedQueryResult()
+			: QueryResult()
+			, matchesByOrientation( 24 )
+		{
+		}
+
+		DetailedQueryResult( int sceneModelIndex )
+			: QueryResult( sceneModelIndex )
+			, matchesByOrientation( 24 )
+		{
+		}
+	};
+	typedef std::vector<DetailedQueryResult> DetailedQueryResults;
+
+	FastConfigurationQuery( const ProbeDatabase &database ) : database( database ) {}
+
+	void setQueryVolume( const Obb &queryVolume, float resolution ) {
+		queryVolumeOffset = ProbeGenerator::getGridHalfExtent( queryVolume.size, resolution );
+		queryVolumeSize = 2 * queryVolumeOffset + Eigen::Vector3i::Constant( 1 );
+		queryVolumeTransformation = queryVolume.transformation;
+		queryResolution = resolution;
+	}
+
+	void setProbeContextTolerance( const ProbeContextTolerance &pct ) {
+		probeContextTolerance = pct;
+	}
+
+	void setQueryDataset( const RawProbes &probes, const RawProbeSamples &probeSamples ) {
+		queryProbes = probes;
+
+		SampleBitPlaneHelper::splatProbeSamples( queryBitPlane, database.sampleQuantizer, probeSamples );
+		for( int directionIndex = 0 ; directionIndex < ProbeGenerator::getNumDirections() ; directionIndex++ ) {
+			queryPartialProbeSamplesByDirection[ directionIndex ].init( probeSamples.size(), 1 );
+		}
+
+		for( int probeIndex = 0 ; probeIndex < probeSamples.size() ; probeIndex++ ) {
+			const auto &queryProbe = probes[ probeIndex ];
+			const auto &queryProbeSample = probeSamples[ probeIndex ];
+			queryPartialProbeSamplesByDirection[ queryProbe.directionIndex ].push_back( database.sampleQuantizer, probeIndex, queryProbeSample );
+		}
+	}
+
+	void execute() {
+		if( !queryResults.empty() ) {
+			throw std::logic_error( "queryResults is not empty!" );
+		}
+
+		detailedQueryResults.resize( database.sampledModels.size() );
+
+		using namespace Concurrency;
+
+		AUTO_TIMER_MEASURE() {
+			int logScope = Log::getScope();
+
+			parallel_for< int >(
+				0,
+				(int) database.sampledModels.size(),
+				[&] ( int localModelIndex ) {
+					Log::initThreadScope( logScope, 0 );
+
+					detailedQueryResults[ localModelIndex ] = matchAgainst( localModelIndex, database.modelIndexMapper.getSceneModelIndex( localModelIndex ) );
+				}
+			);
+		}
+
+		boost::remove_erase_if( detailedQueryResults, [] ( const DetailedQueryResult &r ) { return r.score == 0.0f; });
+
+		queryResults.resize( detailedQueryResults.size() );
+		boost::transform( detailedQueryResults, queryResults.begin(), [] ( const DetailedQueryResult &r ) { return QueryResult( r ); } );
+	}
+
+	const QueryResults & getQueryResults() const {
+		return queryResults;
+	}
+
+	const DetailedQueryResults & getDetailedQueryResults() const {
+		return detailedQueryResults;
+	}
+
+protected:
+	const ProbeDatabase &database;
+
+	SampleBitPlane queryBitPlane;
+	int queryVolume_numProbeSamples;
+	std::vector<PartialProbeSamples> queryPartialProbeSamplesByDirection;
+
+	ProbeContextTolerance probeContextTolerance;
+
+	DetailedQueryResults detailedQueryResults;
+	QueryResults queryResults;
+
+	RawProbes queryProbes;
+	Eigen::Vector3i queryVolumeSize, queryVolumeOffset;
+	Eigen::Affine3f queryVolumeTransformation;
+	float queryResolution;
+
+protected:
+	DetailedQueryResult matchAgainst( int localSceneIndex, int sceneModelIndex ) {
+		const auto &sampledModel = database.sampledModels[ localSceneIndex ];
+
+		// check if any of the probe sample sets is empty
+		const int sampledModel_numProbeSamples = sampledModel.linearizedProbeSamples.samples.size();
+		if( sampledModel_numProbeSamples == 0 || queryVolume_numProbeSamples == 0 ) {
+			return DetailedQueryResult( sceneModelIndex );
+		}
+
+		AUTO_TIMER_FOR_FUNCTION(
+			boost::format( "id = %i, %i ref probes (%i query probes)" )
+			% sceneModelIndex
+			% sampledModel_numProbeSamples
+			% queryVolume_numProbeSamples
+		);
+
+		DetailedQueryResult detailedQueryResult( sceneModelIndex );
+		// loop over all possible orientations
+		for( int orientationIndex = 0 ; orientationIndex < ProbeGenerator::getNumOrientations() ; ++orientationIndex ) {
+			std::vector< int > queryVolumeMatches( queryVolumeSize.prod() );
+
+			const int *rotatedDirections = ProbeGenerator::getRotatedDirections( orientationIndex );
+			for( int directionIndex = 0 ; directionIndex < ProbeGenerator::getNumDirections() ; directionIndex++ ) {
+				const auto model_probeIndexMap = sampledModel.sampleProbeIndexMapByDirection[ directionIndex ];
+				const auto model_rotatedProbePositions = sampledModel.getRotatedProbePositions( orientationIndex );
+
+				// we loop over all probes in the partial probe sample list for this direction
+				const auto queryPartialProbeSamples = queryPartialProbeSamplesByDirection[ rotatedDirections[ directionIndex ] ];
+
+				for( int querySampleIndex = 0 ; querySampleIndex < queryPartialProbeSamples.getSize() ; querySampleIndex++ ) {
+					// look up in the model map
+					const SampleQuantizer::PackedSample packedSample = queryPartialProbeSamples.getSample( querySampleIndex );
+
+					if( !model_probeIndexMap.first.test( packedSample ) ) {
+						// not found
+						continue;
+					}
+
+					const auto modelMatchedRange = model_probeIndexMap.second.lookup( packedSample );
+					if( modelMatchedRange.first == modelMatchedRange.second ) {
+						// not found
+						continue;
+					}
+
+					const auto queryProbeIndex = queryPartialProbeSamples.getProbeIndex( querySampleIndex );
+					const auto queryProbe = queryProbes[ queryProbeIndex ];
+
+					// loop through all found probe indices and splat the results
+					XXXXXXXXX
+					for( auto rangeIterator = modelMatchedRange.first ; ) {
+						const auto modelProbeIndex = rangeIterator->value();
+						// calculate the target position
+						const Eigen::Vector3i targetPosition =
+								queryProbe.position.cast<int>()
+							-
+								model_rotatedProbePositions[ modelProbeIndex ].cast<int>()
+						;
+
+						const Eigen::Vector3i targetCell = targetPosition + queryVolumeOffset;
+						if( (targetCell.array() < 0).any() || (targetCell.array() >= queryVolumeSize.array()).any() ) {
+							;
+						}
+
+						const int targetCellIndex =
+								targetCell.x()
+							+
+								targetCell.y() * queryVolumeSize.x()
+							+
+								targetCell.z() * queryVolumeSize.y() * queryVolumeSize.x()
+						;
+
+						while( true ) {
+							queryVolumeMatches[ targetCellIndex ]++;
+
+							rangeIterator++;
+							if( rangeIterator == modelMatchedRange.second || rangeIterator->value() != modelProbeIndex ) {
+								break;
+							}
+						}
+						if( rangeIterator == modelMatchedRange.second ) {
+							break;
+						}
+					}
+				}
+
+				auto maxElement = boost::max_element( mergedQueryVolumeMatches );
+				const float score = float( *maxElement ) / sampledModel.getProbes().size();
+				if( detailedQueryResult.score < score ) {
+					detailedQueryResult.score = score;
+
+					const int positionIndex = maxElement - mergedQueryVolumeMatches.begin();
+					const int x = positionIndex % queryVolumeSize[0];
+					const int y = (positionIndex / queryVolumeSize[0]) % queryVolumeSize[1];
+					const int z = positionIndex / queryVolumeSize[0] / queryVolumeSize[1];
+
+					detailedQueryResult.transformation =
+							queryVolumeTransformation
+						*	Eigen::Translation3f( queryResolution * (Eigen::Vector3f( x, y, z ) - queryVolumeOffset.cast<float>()) )
+						*	Eigen::Affine3f( ProbeGenerator::getRotation( orientationIndex ) )
+					;
+				}
+
+				detailedQueryResult.matchesByOrientation[ orientationIndex ] = std::move( queryVolumeMatches );
+			}
+		}
+
+		return detailedQueryResult;
+	}
+};
+#endif
 
 struct ProbeDatabase::Query {
 	typedef std::shared_ptr<Query> Ptr;
@@ -32,7 +381,7 @@ struct ProbeDatabase::Query {
 	typedef std::vector<DetailedQueryResult> DetailedQueryResults;
 
 	Query( const ProbeDatabase &database ) : database( database ) {}
-	
+
 	void setQueryVolume( const Obb &queryVolume, float resolution ) {
 		queryVolumeTransformation = queryVolume.transformation;
 	}
@@ -569,7 +918,7 @@ protected:
 
 			detailedQueryResult.matchesByOrientation[ orientationIndex ] = std::move( mergedQueryVolumeMatches );
 		}
-		
+
 		return detailedQueryResult;
 	}
 

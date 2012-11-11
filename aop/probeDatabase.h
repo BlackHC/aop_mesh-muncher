@@ -39,17 +39,21 @@
 
 #include "queryResult.h"
 
+#include "flatmultimap.h"
+
 namespace ProbeContext {
 
 struct InstanceProbeDataset;
 struct IndexedProbeSamples;
 struct SampledModel;
+struct ProbeDatabase;
 
 }
 
 SERIALIZER_FWD_EXTERN_DECL( ProbeContext::InstanceProbeDataset )
 SERIALIZER_FWD_EXTERN_DECL( ProbeContext::IndexedProbeSamples )
 SERIALIZER_FWD_EXTERN_DECL( ProbeContext::SampledModel )
+SERIALIZER_FWD_EXTERN_DECL( ProbeContext::ProbeDatabase )
 
 namespace ProbeContext {
 
@@ -424,6 +428,220 @@ struct ProbeCounter {
 	}
 };
 
+struct SampleQuantizer {
+	/* 4 bits for a
+	 * 4 bits for b
+	 * 3 bits for L
+	 * 3 bits for occlusion
+	 * 5 bits for distance
+	 * 19 bits adressing, 2**16 storage
+	 */
+	float maxDistance;
+	static const int numBuckets = 1<<(4+4+3+3+5);
+
+	typedef unsigned PackedSample;
+	union Index {
+		struct {
+			unsigned distance: 5;
+			unsigned occlusion: 3;
+			unsigned b : 4;
+			unsigned a : 4;
+			unsigned L : 3;
+		};
+		PackedSample packedSample;
+	};
+
+	SampleQuantizer( float maxDistance = 5.0 ) 
+		: maxDistance( maxDistance )
+	{
+	}
+
+	short quantizeSample( const RawProbeSample &rawProbeSample ) const {
+		Index index;
+		index.packedSample = 0;
+		index.distance = unsigned( rawProbeSample.distance / maxDistance ) * (1<<5);
+		index.occlusion = unsigned( rawProbeSample.occlusion / OptixProgramInterface::numProbeSamples ) * (1<<3);
+
+		index.a = clamp<int>( (rawProbeSample.colorLab.y + 100) / 2 * (1<<4), 0, (1<<4) - 1 );
+		index.b = clamp<int>( (rawProbeSample.colorLab.z + 100) / 2 * (1<<4), 0, (1<<4) - 1 );
+		index.L = clamp<int>( (rawProbeSample.colorLab.x) / 2 * (1<<3), 0, (1<<3) - 1 );
+
+		return index.packedSample;
+	}
+};
+
+struct SampleBitPlane {
+	const static int numInts = SampleQuantizer::numBuckets >> 5;
+	unsigned int plane[ numInts ];
+
+	SampleBitPlane()
+		: plane()
+	{
+	}
+
+	bool test( SampleQuantizer::PackedSample packedSample ) const {
+		return (plane[ packedSample >> 5 ] & (1<<(packedSample & 31))) != 0;
+	}
+
+	void set( SampleQuantizer::PackedSample packedSample ) {
+		plane[ packedSample >> 5 ] |= 1<<(packedSample & 31);
+	}
+
+	void reset( SampleQuantizer::PackedSample packedSample ) {
+		plane[ packedSample >> 5 ] &= ~(1<<(packedSample & 31));
+	}
+
+	void clear() {
+		for( int i = 0 ; i < numInts ; i++ ) {
+			plane[ i ] = 0;
+		}
+	}
+};
+
+struct LinearizedProbeSamples {
+	int numProbes;
+	std::vector<SampleQuantizer::PackedSample> samples;
+
+	LinearizedProbeSamples()
+		: numProbes()
+	{}
+
+	LinearizedProbeSamples( LinearizedProbeSamples &&other )
+		: samples( std::move( other.samples ) )
+		, numProbes( other.numProbes )
+	{
+	}
+
+	LinearizedProbeSamples & operator =( LinearizedProbeSamples &&other ) {
+		numProbes = other.numProbes;
+		samples = std::move( other.samples );
+
+		return *this;
+	}
+
+	void init( int numProbes, int numInstances ) {
+		samples.clear();
+		samples.reserve( numProbes * numInstances );
+		this->numProbes = numProbes;
+	}
+
+	// unsorted!
+	void push_back( const SampleQuantizer &quantizer, const RawProbeSample &rawProbeSample ) {
+		samples.push_back( quantizer.quantizeSample( rawProbeSample ) );
+	}
+
+	void push_back( const SampleQuantizer &quantizer, const RawProbeSamples &rawProbeSamples ) {
+		for( auto rawProbeSample = rawProbeSamples.begin() ; rawProbeSample != rawProbeSamples.end() ; ++rawProbeSample ) {
+			samples.push_back( quantizer.quantizeSample( *rawProbeSample ) );
+		}
+	}
+
+	void push_back( const SampleQuantizer &quantizer, const DBProbeSamples &dbProbeSamples ) {
+		for( auto dbProbeSample = dbProbeSamples.begin() ; dbProbeSample != dbProbeSamples.end() ; ++dbProbeSample ) {
+			samples.push_back( quantizer.quantizeSample( *dbProbeSample ) );
+		}
+	}
+
+	int getProbeIndex( int sampleIndex ) const {
+		return sampleIndex % numProbes;
+	}
+};
+
+struct PartialProbeSamples {
+	std::vector<std::pair<SampleQuantizer::PackedSample, unsigned>> samples;
+
+	PartialProbeSamples()
+	{}
+
+	PartialProbeSamples( PartialProbeSamples &&other )
+		: samples( std::move( other.samples ) )
+	{
+	}
+
+	PartialProbeSamples & operator =( PartialProbeSamples &&other ) {
+		samples = std::move( other.samples );
+
+		return *this;
+	}
+
+	void init( int numProbes, int numInstances ) {
+		samples.clear();
+		samples.reserve( numProbes * numInstances );
+	}
+
+	// unsorted!
+	void push_back( const SampleQuantizer &quantizer, int probeIndex, const RawProbeSample &rawProbeSample ) {
+		samples.push_back( std::make_pair( quantizer.quantizeSample( rawProbeSample ), probeIndex ) );
+	}
+
+	int getSize() const {
+		return samples.size();
+	}
+
+	int getProbeIndex( int sampleIndex ) const {
+		return samples[ sampleIndex ].second;
+	}
+
+	SampleQuantizer::PackedSample getSample( int sampleIndex ) const {
+		return samples[ sampleIndex ].first;
+	}
+};
+
+namespace SampleBitPlaneHelper {
+	void splatProbeSample( SampleBitPlane &targetPlane, const SampleQuantizer &quantizer, const RawProbeSample &rawProbeSample ) {
+		targetPlane.set( quantizer.quantizeSample( rawProbeSample ) );
+	}
+
+	void splatProbeSamples( SampleBitPlane &targetPlane, const SampleQuantizer &quantizer, const RawProbeSamples &rawProbeSamples ) {
+		for( auto rawProbeSample = rawProbeSamples.begin() ; rawProbeSample != rawProbeSamples.end() ; ++rawProbeSample ) {
+			targetPlane.set( quantizer.quantizeSample( *rawProbeSample ) );
+		}
+	}
+
+	void splatProbeSamples( SampleBitPlane &targetPlane, const SampleQuantizer &quantizer, const DBProbeSamples &dbProbeSamples ) {
+		for( auto dbProbeSample = dbProbeSamples.begin() ; dbProbeSample != dbProbeSamples.end() ; ++dbProbeSample ) {
+			targetPlane.set( quantizer.quantizeSample( *dbProbeSample ) );
+		}
+	}
+}
+
+struct SampleProbeIndexMap {
+	// probeIndex is short for models
+	typedef FlatMultiMap< SampleQuantizer::PackedSample, unsigned short, std::hash<SampleQuantizer::PackedSample>, unsigned short, unsigned > SampleMultiMap;
+	SampleMultiMap sampleMultiMap;
+	SampleMultiMap::Builder *builder;
+
+	void startFilling( int numProbes, int numInstances ) {
+		// we create a hash that could be perfect if the hash function was good
+		const int numProbeSamples = numProbes * numInstances;
+		sampleMultiMap.init( numProbeSamples, numProbeSamples );
+
+		builder = new SampleMultiMap::Builder( sampleMultiMap );
+	}
+
+	void pushInstanceSample( const SampleQuantizer &quantizer, unsigned short probeIndex, const RawProbeSample &rawProbeSample ) {
+		builder->insert( quantizer.quantizeSample( rawProbeSample ), probeIndex );
+	}
+
+	/*void pushInstanceSamples( const SampleQuantizer &quantizer, const RawProbeSamples &rawProbeSamples ) {
+		const int rawProbeSamplesCount = (int) rawProbeSamples.size();
+		for( int rawProbeIndex = 0 ; rawProbeIndex < rawProbeSamplesCount ; rawProbeIndex++ ) {
+			const auto &rawProbeSample = rawProbeSamples[ rawProbeIndex ];
+
+			builder->insert( quantizer.quantizeSample( rawProbeSample ), rawProbeIndex );
+		}
+	}*/
+
+	void finishFilling() {
+		builder->finish();
+		delete [] builder;
+	}
+
+	SampleMultiMap::const_iterator_range lookup( SampleQuantizer::PackedSample packedSample ) const {
+		return sampleMultiMap.equal_range( packedSample );
+	}
+};
+
 struct ColorCounter {
 	/* 3x4 bits for colors
 	 * = 12 bits for lookup
@@ -531,7 +749,6 @@ struct ColorCounter {
 
 // this dataset creates auxiliary structures automatically
 // invariant: sorted and occlusionLowerBounds is correctlyset
-#if 0
 struct IndexedProbeSamples {
 	DBProbeSamples data;
 	std::vector<int> occlusionLowerBounds;
@@ -778,306 +995,6 @@ private:
 	IndexedProbeSamples( const IndexedProbeSamples &other );
 	IndexedProbeSamples & operator = ( const IndexedProbeSamples &other );
 };
-#else
-struct IndexedProbeSamples {
-	DBProbeSamples data;
-	std::vector<int> occlusionLowerBounds;
-	// indexed by occlusion, contains a sparse range of distance/probeSample start indices
-	std::vector<std::vector<std::pair<float, int>>> distanceLowerBounds;
-
-	const DBProbeSamples &getProbeSamples() const {
-		return data;
-	}
-
-	IndexedProbeSamples() {}
-
-	IndexedProbeSamples( DBProbeSamples &&other ) :
-		data( std::move( other ) ),
-		occlusionLowerBounds()
-	{
-		sort();
-		setOcclusionLowerBounds();
-	}
-
-	IndexedProbeSamples( IndexedProbeSamples &&other ) :
-		data( std::move( other.data ) ),
-		occlusionLowerBounds( std::move( other.occlusionLowerBounds ) )
-	{
-	}
-
-	IndexedProbeSamples & operator = ( IndexedProbeSamples && other ) {
-		data = std::move( other.data );
-		occlusionLowerBounds = std::move( other.occlusionLowerBounds );
-
-		return *this;
-	}
-
-	IndexedProbeSamples clone() const {
-		IndexedProbeSamples cloned;
-		cloned.data = data;
-		cloned.occlusionLowerBounds = occlusionLowerBounds;
-		return cloned;
-	}
-
-	int size() const {
-		return (int) data.size();
-	}
-
-	typedef std::pair< int, int > IntRange;
-	IntRange getOcclusionRange( int level ) const {
-		return std::make_pair( occlusionLowerBounds[level], occlusionLowerBounds[ level + 1 ] );
-	}
-
-	// [leftLevel, rightLevel] (ie inclusive!)
-	IntRange getOcclusionRange( int leftLevel, int rightLevel ) const {
-		return std::make_pair( occlusionLowerBounds[leftLevel], occlusionLowerBounds[ rightLevel + 1 ] );
-	}
-
-#if 0
-	struct MatcherController {
-		void onMatch( int outerProbeSampleIndex, int innerProbeSampleIndex, const DBProbeSample &outer, const DBProbeSample &inner ) {
-		}
-
-		void onNewThreadStarted() {
-		}
-	};
-#endif
-
-	template< typename Controller >
-	struct Matcher {
-		const IndexedProbeSamples &probeSamplesInner;
-		const IndexedProbeSamples &probeSamplesOuter;
-		const ProbeContextTolerance &probeContextTolerance;
-		Controller controller;
-
-		Matcher( const IndexedProbeSamples &outer, const IndexedProbeSamples &inner, const ProbeContextTolerance &probeContextTolerance, Controller &&controller )
-			: probeSamplesOuter( outer )
-			, probeSamplesInner( inner )
-			, probeContextTolerance( probeContextTolerance )
-			, controller( std::forward<Controller>( controller ) )
-		{
-		}
-
-		Matcher( const IndexedProbeSamples &outer, const IndexedProbeSamples &inner )
-			: probeSamplesOuter( outer )
-			, probeSamplesInner( inner )
-			, probeContextTolerance( probeContextTolerance )
-			, controller()
-		{
-		}
-
-		void match() {
-			if( probeSamplesOuter.size() == 0 || probeSamplesInner.size() == 0 ) {
-				return;
-			}
-
-			// idea:
-			//	use a binary search approach to generate only needed subranges
-
-			// we can compare the different occlusion ranges against each other, after including the tolerance
-
-			// TODO: is it better to make both ranges about equally big or not?
-			// its better they are equal
-
-			// assuming that the query set is smaller, we enlarge it, to have less items to sort than vice-versa
-			// we could determine this at runtime...
-			// if( sampledModels.size() > indexedProbeSamples.size() ) {...} else {...}
-			const int occlusionTolerance = int( OptixProgramInterface::numProbeSamples * probeContextTolerance.occusionTolerance + 0.5 );
-
-			// TODO: use a stack allocated array here? [9/27/2012 kirschan2]
-
-			typedef std::pair< IntRange, IntRange > RangeJob;
-			std::vector< RangeJob > rangeJobs;
-			rangeJobs.reserve( OptixProgramInterface::numProbeSamples );
-			for( int occulsionLevel = 0 ; occulsionLevel <= OptixProgramInterface::numProbeSamples ; occulsionLevel++ ) {
-				const IntRange rangeOuter = probeSamplesOuter.getOcclusionRange( occulsionLevel );
-
-				if( rangeOuter.first == rangeOuter.second ) {
-					continue;
-				}
-
-				const int leftToleranceLevel = std::max( 0, occulsionLevel - occlusionTolerance );
-				const int rightToleranceLevel = std::min( occulsionLevel + occlusionTolerance, OptixProgramInterface::numProbeSamples );
-				for( int toleranceLevel = leftToleranceLevel ; toleranceLevel <= rightToleranceLevel ; toleranceLevel++ ) {
-					const IntRange rangeInner = probeSamplesInner.getOcclusionRange( toleranceLevel );
-
-					// is one of the ranges empty? if so, we don't need to check it at all
-					if( rangeInner.first == rangeInner.second ) {
-						continue;
-					}
-
-					// store the range for later
-					rangeJobs.push_back( std::make_pair( rangeOuter, rangeInner ) );
-				}
-			}
-
-			//AUTO_TIMER_BLOCK( "matching" )
-			{
-				using namespace Concurrency;
-				parallel_for_each( rangeJobs.begin(), rangeJobs.end(),
-					[&] ( const RangeJob &rangeJob ) {
-						controller.onNewThreadStarted();
-
-						matchSortedRanges(
-							rangeJob.first,
-							rangeJob.second
-						);
-					}
-				);
-			}
-		}
-
-		void matchSortedRanges(
-			const IntRange &rangeOuter,
-			const IntRange &rangeInner
-		) {
-			const float squaredColorTolerance = probeContextTolerance.colorLabTolerance * probeContextTolerance.colorLabTolerance;
-
-			// assert: the range is not empty
-			const int beginIndexOuter = rangeOuter.first;
-			const int endIndexOuter = rangeOuter.second;
-			int indexOuter = beginIndexOuter;
-
-			const int beginIndexInner = rangeInner.first;
-			const int endIndexInner = rangeInner.second;
-			int indexInner = beginIndexInner;
-
-			DBProbeSample probeSampleOuter = probeSamplesOuter.getProbeSamples()[ indexOuter ];
-			int outerMisses = 0;
-			float lastInnerDistance = 0.0f;
-			for( ; indexOuter < endIndexOuter - 1 ; indexOuter++ ) {
-				const DBProbeSample nextSampleOuter = probeSamplesOuter.getProbeSamples()[ indexOuter + 1 ];
-				int nextIndexInner = indexInner;
-
-				const float minDistance = probeSampleOuter.distance - probeContextTolerance.distanceTolerance;
-				const float maxDistance = probeSampleOuter.distance + probeContextTolerance.distanceTolerance;
-				const float minNextDistance = nextSampleOuter.distance - probeContextTolerance.distanceTolerance;
-
-				int innerMisses = 0;
-				for( ; indexInner < endIndexInner ; indexInner++ ) {
-					const DBProbeSample probeSampleInner = probeSamplesInner.getProbeSamples()[ indexInner ];
-
-					// distance too small?
-					if( probeSampleInner.distance < minDistance ) {
-						// TODO: late addition [11/10/2012 kirschan2]
-						if( ++innerMisses == 3 ) {
-							DBProbeSample testSample;
-							testSample.distance = minDistance;
-
-							// jump to the next index
-							const auto nextInnerIter = std::lower_bound(
-								probeSamplesInner.getProbeSamples().begin() + indexInner + 1,
-								probeSamplesInner.getProbeSamples().begin() + endIndexInner,
-								testSample,
-								[] ( const DBProbeSample &sampleA, const DBProbeSample &sampleB ) {
-									return sampleA.distance < sampleB.distance;
-								}
-							);
-							indexInner = nextInnerIter - probeSamplesInner.getProbeSamples().begin();
-							indexInner -= 1; // for the loop increment
-							nextIndexInner = indexInner;
-							if( indexInner == endIndexInner ) {
-								break;
-							}
-						}
-						else {
-							// then the next one is too far away as well
-							nextIndexInner = indexInner + 1;
-						}
-						continue;
-					}
-
-					// if nextIndexInner can't use this probe, the next overlapped sample might be the first one it likes
-					if( probeSampleInner.distance < minNextDistance ) {
-						// set it to the next ref sample
-						nextIndexInner = indexInner + 1;
-					}
-					// else:
-					//  nextIndexInner points to the first overlapped sample the next pure sample might match
-
-					// are we past our interval
-					if( probeSampleInner.distance > maxDistance ) {
-						lastInnerDistance = probeSampleInner.distance;
-						outerMisses++;
-						// enough for this probe, do the next
-						break;
-					}
-					outerMisses = 0;
-
-					if( DBProbeSample::matchColor( probeSampleOuter, probeSampleInner, squaredColorTolerance ) ) {
-						controller.onMatch( indexOuter, indexInner, probeSampleOuter, probeSampleInner );
-					}
-				}
-
-				if( outerMisses == 3 ) {
-					// jump ahead
-					DBProbeSample testSample;
-					testSample.distance = lastInnerDistance - probeContextTolerance.distanceTolerance;
-					const auto nextOuterIter = std::lower_bound(
-						probeSamplesOuter.getProbeSamples().begin() + indexOuter + 1,
-						probeSamplesOuter.getProbeSamples().begin() + endIndexOuter,
-						testSample,
-						[] ( const DBProbeSample &sampleA, const DBProbeSample &sampleB ) {
-							return sampleA.distance < sampleB.distance;
-						}
-					);
-					indexOuter = nextOuterIter - probeSamplesOuter.getProbeSamples().begin();
-					if( indexOuter < endIndexOuter ) {
-						probeSampleOuter = *nextOuterIter;
-					}
-					indexOuter -= 1; // for the loop counter
-					indexInner = nextIndexInner;
-				}
-				else {
-					probeSampleOuter = nextSampleOuter;
-					indexInner = nextIndexInner;
-				}
-			}
-
-			// process the last pure probe
-			{
-				const float minDistance = probeSampleOuter.distance - probeContextTolerance.distanceTolerance;
-				const float maxDistance = probeSampleOuter.distance + probeContextTolerance.distanceTolerance;
-
-				for( ; indexInner < endIndexInner ; indexInner++ ) {
-					const DBProbeSample probeSampleInner = probeSamplesInner.getProbeSamples()[ indexInner ];
-
-					// distance too small?
-					if( probeSampleInner.distance < minDistance ) {
-						continue;
-					}
-
-					// are we past our interval
-					if( probeSampleInner.distance > maxDistance ) {
-						// enough for this probe, we're done
-						break;
-					}
-
-					if( DBProbeSample::matchColor( probeSampleOuter, probeSampleInner, squaredColorTolerance ) ) {
-						controller.onMatch( indexOuter, indexInner, probeSampleOuter, probeSampleInner );
-					}
-				}
-			}
-		}
-	};
-
-private:
-	void sort() {
-		AUTO_TIMER_FUNCTION();
-
-		boost::sort( data, DBProbeSample::lexicographicalLess );
-	}
-
-	void setOcclusionLowerBounds();
-
-	SERIALIZER_FWD_FRIEND_EXTERN( ProbeContext::IndexedProbeSamples );
-
-private:
-	// better error messages than with boost::noncopyable
-	IndexedProbeSamples( const IndexedProbeSamples &other );
-	IndexedProbeSamples & operator = ( const IndexedProbeSamples &other );
-};
-#endif
 
 namespace IndexedProbeSamplesHelper {
 	inline std::vector< IndexedProbeSamples > createIndexedProbeSamplesByDirectionIndices(
@@ -1198,6 +1115,10 @@ struct SampledModel {
 		modelColorCounter.clear();
 	}
 
+	SampleBitPlane sampleBitPlane;
+	LinearizedProbeSamples linearizedProbeSamples;
+	std::vector< std::pair< SampleBitPlane, SampleProbeIndexMap > > sampleProbeIndexMapByDirection;
+
 private:
 	ColorCounter modelColorCounter;
 	SampledInstances instances;
@@ -1215,6 +1136,8 @@ public:
 		: resolution( 0.f )
 	{
 		mergedInstancesByDirectionIndex.resize( ProbeGenerator::getNumDirections() );
+		sampleProbeIndexMapByDirection.resize( ProbeGenerator::getNumDirections() );
+
 		rotatedProbePositions.resize( ProbeGenerator::getNumOrientations() );
 	}
 
@@ -1226,9 +1149,17 @@ public:
 		, rotatedProbePositions( std::move( other.rotatedProbePositions ) )
 		, resolution( other.resolution )
 		, modelColorCounter( std::move( other.modelColorCounter ) )
+
+		, sampleBitPlane( std::move( other.sampleBitPlane ) )
+		, linearizedProbeSamples( std::move( other.linearizedProbeSamples ) )
+		, sampleProbeIndexMapByDirection( std::move( other.sampleProbeIndexMapByDirection ) )
 	{}
 
 	SampledModel & operator = ( SampledModel &&other ) {
+		sampleBitPlane = std::move( sampleBitPlane );
+		linearizedProbeSamples = std::move( linearizedProbeSamples );
+		sampleProbeIndexMapByDirection = std::move( sampleProbeIndexMapByDirection );
+
 		instances = std::move( other.instances );
 
 		mergedInstances = std::move( other.mergedInstances );
@@ -1245,7 +1176,39 @@ public:
 	}
 
 	// TODO: rename to compile
-	void mergeInstances( ColorCounter &colorCounter ) {
+	void mergeInstances( const SampleQuantizer &quantizer, ColorCounter &colorCounter ) {
+		// fast handling
+		{
+			sampleBitPlane.clear();
+			linearizedProbeSamples.init( probes.size(), instances.size() );
+			
+			// now create a splat plane and a multi map for each direction
+			for( int directionIndex = 0 ; directionIndex < ProbeGenerator::getNumDirections() ; directionIndex++ ) {
+				auto &pair = sampleProbeIndexMapByDirection[ directionIndex ];
+				pair.first.clear();
+				pair.second.startFilling( probes.size(), instances.size() );
+			}
+
+			for( auto instance = instances.begin() ; instance < instances.end() ; instance++ ) {
+				const auto probeSamples = instance->getProbeSamples();
+				for( int probeIndex = 0 ; probeIndex < probes.size() ; probeIndex++ ) {
+					const auto &probeSample = probeSamples[ probeIndex ];
+					SampleBitPlaneHelper::splatProbeSample( sampleBitPlane, quantizer, probeSample );
+					linearizedProbeSamples.push_back( quantizer, probeSample );
+
+					auto &pair = sampleProbeIndexMapByDirection[ probes[ probeIndex ].directionIndex ];
+					SampleBitPlaneHelper::splatProbeSample( pair.first, quantizer, probeSample );
+					pair.second.pushInstanceSample( quantizer, probeIndex, probeSample );
+				}
+			}
+
+			for( int directionIndex = 0 ; directionIndex < ProbeGenerator::getNumDirections() ; directionIndex++ ) {
+				auto &pair = sampleProbeIndexMapByDirection[ directionIndex ];
+				pair.second.finishFilling();
+			}
+		}
+
+
 		{
 			for( auto instance = instances.begin() ; instance < instances.end() ; instance++ ) {
 				const auto probeSamples = instance->getProbeSamples();
@@ -1364,6 +1327,9 @@ struct ProbeDatabase : IDatabase {
 		ProbeContextToleranceV2 compressionTolerance;
 	};
 
+	struct FastQuery;
+	struct FastConfigurationQuery;
+
 	struct Query;
 	struct ImportanceQuery;
 	struct FullQuery;
@@ -1394,10 +1360,12 @@ struct ProbeDatabase : IDatabase {
 	);
 
 	virtual void compile( int sceneModelIndex );
-	virtual void compileAll() {
+	virtual void compileAll( float maxDistance ) {
+		sampleQuantizer.maxDistance = maxDistance;
+
 		globalColorCounter.clear();
 		for( auto sampledModel = sampledModels.begin() ; sampledModel != sampledModels.end() ; ++sampledModel ) {
-			sampledModel->mergeInstances( globalColorCounter );
+			sampledModel->mergeInstances( sampleQuantizer, globalColorCounter );
 		}
 		globalColorCounter.calculateEntropy();
 	}
@@ -1427,6 +1395,9 @@ struct ProbeDatabase : IDatabase {
 private:
 	SampledModels sampledModels;
 	ColorCounter globalColorCounter;
+	SampleQuantizer sampleQuantizer;
+
+	SERIALIZER_FWD_FRIEND_EXTERN( ProbeContext::ProbeDatabase );
 };
 
 }

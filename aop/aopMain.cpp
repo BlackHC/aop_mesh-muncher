@@ -1180,7 +1180,7 @@ namespace aop {
 					progressTracker.markFinished();
 				}
 
-				application->probeDatabase.compileAll();
+				application->probeDatabase.compileAll( application->sceneSettings.probeGenerator_maxDistance );
 				progressTracker.markFinished();
 
 				application->endLongOperation();
@@ -1191,7 +1191,7 @@ namespace aop {
 				const auto &modelIndices = application->modelTypesUI->markedModels;
 
 				ProgressTracker::Context progressTracker( modelIndices.size() + 1 );
-				application->probeDatabase.compileAll();
+				application->probeDatabase.compileAll( application->sceneSettings.probeGenerator_maxDistance );
 				progressTracker.markFinished();
 
 				application->endLongOperation();

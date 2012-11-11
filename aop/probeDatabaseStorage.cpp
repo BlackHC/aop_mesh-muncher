@@ -1,15 +1,13 @@
 #include "probeDatabaseStorage.h"
 
-const int CACHE_FORMAT_VERSION = 5;
+const int CACHE_FORMAT_VERSION = 6;
 
 namespace ProbeContext {
 bool ProbeDatabase::load( const std::string &filename ) {
 	Serializer::BinaryReader reader( filename.c_str(), CACHE_FORMAT_VERSION );
 	if( reader.valid() ) {
-		reader.get( localModelNames );
-		reader.get( sampledModels );
-		reader.get( globalColorCounter );
-
+		Serializer::read( reader, *this );
+		
 		modelIndexMapper.registerLocalModels( localModelNames );
 
 		return true;
@@ -19,9 +17,7 @@ bool ProbeDatabase::load( const std::string &filename ) {
 
 void ProbeDatabase::store( const std::string &filename ) const {
 	Serializer::BinaryWriter writer( filename.c_str(), CACHE_FORMAT_VERSION );
-	writer.put( localModelNames );
-	writer.put( sampledModels );
-	writer.put( globalColorCounter );
+	Serializer::write( writer, *this );
 }
 
 namespace IO {

@@ -42,7 +42,40 @@ SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeContext::SampledModel,
 	(rotatedProbePositions)
 	(resolution)
 	(modelColorCounter)
+
+	(sampleBitPlane)
+	(linearizedProbeSamples)
+	(sampleProbeIndexMapByDirection)
 )
+
+SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeContext::LinearizedProbeSamples,
+	(numProbes)
+	(samples)
+)
+
+SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeContext::SampleProbeIndexMap::SampleMultiMap,
+	(items)
+	(indices)
+	(numBuckets)
+)
+
+SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeContext::SampleProbeIndexMap,
+	(sampleMultiMap)
+)
+
+SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeContext::SampleQuantizer,
+	(maxDistance)
+)
+
+// TODO: add forward friends [11/11/2012 Andreas]
+SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeContext::ProbeDatabase,
+	(sampledModels)
+	(globalColorCounter)
+	(sampleQuantizer)
+	(localModelNames)
+)
+
+SERIALIZER_ENABLE_RAW_MODE_EXTERN( ProbeContext::SampleBitPlane );
 
 SERIALIZER_ENABLE_RAW_MODE_EXTERN( OptixProgramInterface::ProbeSample );
 SERIALIZER_ENABLE_RAW_MODE_EXTERN( ProbeContext::RawProbe );
