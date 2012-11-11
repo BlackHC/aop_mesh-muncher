@@ -242,7 +242,7 @@ TEST( ProbeDatabase, zeroTolerance ) {
 	probeDatabase.registerSceneModels( modelNames );
 
 	probeDatabase.addInstanceProbes( 0, Obb::Transformation(), 1.0, probes, rawProbeSamples );
-	probeDatabase.compileAll();
+	probeDatabase.compileAll( 5.0 );
 
 	{
 		ProbeDatabase::Query query( probeDatabase );
@@ -322,7 +322,7 @@ TEST( ProbeDatabase, zeroTolerance_biggerDB ) {
 	probeDatabase.registerSceneModels( modelNames );
 
 	probeDatabase.addInstanceProbes( 0, Obb::Transformation(), 1.0, probes, rawProbeSamples );
-	probeDatabase.compileAll();
+	probeDatabase.compileAll( 5.0 );
 
 	{
 		ProbeDatabase::Query query( probeDatabase );
@@ -398,7 +398,7 @@ TEST( ProbeDatabase, oneTolerance ) {
 	probeDatabase.registerSceneModels( modelNames );
 
 	probeDatabase.addInstanceProbes( 0, Obb::Transformation(), 1.0, probes, rawProbeSamples );
-	probeDatabase.compileAll();
+	probeDatabase.compileAll( 5.0 );
 
 	ProbeContextTolerance pct;
 	pct.occusionTolerance = 1.0 / (OptixProgramInterface::numProbeSamples + 1);
@@ -470,7 +470,7 @@ TEST( ProbeDatabase, big ) {
 	probeDatabase.registerSceneModels( modelNames );
 
 	probeDatabase.addInstanceProbes( 0, Obb::Transformation(), 1.0, probes, rawProbeSamples );
-	probeDatabase.compileAll();
+	probeDatabase.compileAll( 5.0 );
 
 	{
 		ProbeDatabase::Query query( probeDatabase );
@@ -530,7 +530,7 @@ TEST( ProbeDatabase, bigWithTolerance ) {
 	probeDatabase.registerSceneModels( modelNames );
 
 	probeDatabase.addInstanceProbes( 0, Obb::Transformation(), 1.0, probes, rawProbeSamples );
-	probeDatabase.compileAll();
+	probeDatabase.compileAll( 5.0 );
 
 	{
 		ProbeDatabase::Query query( probeDatabase );

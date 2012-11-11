@@ -1097,6 +1097,8 @@ namespace aop {
 				.add( "Importance", QT_IMPORTANCE )
 				.add( "Configuration", QT_FULL )
 				.add( "Importance Configuration", QT_IMPORTANCE_FULL )
+				.add( "Fast Normal", QT_FAST_QUERY )
+				.add( "Fast Configuration", QT_FAST_FULL )
 				.define()
 			;
 
@@ -1768,6 +1770,12 @@ namespace aop {
 		case QT_IMPORTANCE_FULL:
 			queryResults = importanceFullQueryVolume( queryVolume.volume, queryProbes, queryProbeSamples );
 			break;
+		case QT_FAST_QUERY:
+			queryResults = fastNormalQueryVolume( queryVolume.volume, queryProbes, queryProbeSamples );
+			break;
+		case QT_FAST_FULL:
+			queryResults = fastFullQueryVolume( queryVolume.volume, queryProbes, queryProbeSamples );
+			break;
 		}
 		progressTracker.markFinished();
 
@@ -1781,6 +1789,66 @@ namespace aop {
 		);
 
 		return queryResults;
+	}
+
+	QueryResults Application::fastNormalQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples ) {
+		ProbeContext::ProbeDatabase::FastQuery query( probeDatabase );
+		{
+			query.setQueryDataset( queryProbeSamples );
+			query.setQueryVolume( queryVolume, sceneSettings.probeGenerator_resolution );
+
+			query.setProbeContextTolerance( getPCTFromSettings() );
+
+			query.execute();
+		}
+
+		const auto &detailedQueryResults = query.getDetailedQueryResults();
+		for( auto detailedQueryResult = detailedQueryResults.begin() ; detailedQueryResult != detailedQueryResults.end() ; ++detailedQueryResult ) {
+			log(
+				boost::format(
+					"%i:"
+					"\tdbMatchPercentage %f\n"
+					"\tqueryMatchPercentage %f\n"
+					"\tscore %f\n"
+				)
+				% detailedQueryResult->sceneModelIndex
+				% detailedQueryResult->probeMatchPercentage
+				% detailedQueryResult->queryMatchPercentage
+				% detailedQueryResult->score
+			);
+		}
+
+		return query.getQueryResults();
+	}
+
+	QueryResults Application::fastFullQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples ) {
+		ProbeContext::ProbeDatabase::FastConfigurationQuery query( probeDatabase );
+		{
+			query.setQueryVolume( queryVolume, sceneSettings.probeGenerator_resolution );
+			query.setQueryDataset( queryProbes, queryProbeSamples );
+
+			query.setProbeContextTolerance( getPCTFromSettings() );
+
+			query.execute();
+		}
+
+		const auto &queryResults = query.getQueryResults();
+		for( auto queryResult = queryResults.begin() ; queryResult != queryResults.end() ; ++queryResult ) {
+			log(
+				boost::format(
+					"%i:\n"
+					"\tscore %f\n"
+				)
+				% queryResult->sceneModelIndex
+				% queryResult->score
+			);
+		}
+
+		if( DebugObjects::ProbeDatabase::automaticallyVisualizeConfigurationQueryDetails ) {
+			probeDatabase_debugUI->addConfigurationQueryVisualization( queryVolume, query );
+		}
+
+		return query.getQueryResults();
 	}
 
 	QueryResults Application::normalQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples ) {

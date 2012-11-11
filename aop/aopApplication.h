@@ -62,7 +62,9 @@ namespace aop {
 			QT_NORMAL,
 			QT_IMPORTANCE,
 			QT_FULL,
-			QT_IMPORTANCE_FULL
+			QT_IMPORTANCE_FULL,
+			QT_FAST_QUERY,
+			QT_FAST_FULL
 		};
 
 		sf::Clock frameClock, clock;
@@ -152,8 +154,14 @@ namespace aop {
 		}
 
 		QueryResults queryVolume( const SceneSettings::NamedTargetVolume &queryVolume, QueryType queryType );
+		
 		QueryResults normalQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples );
 		QueryResults importanceQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples );
+		QueryResults fullQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples );
+		QueryResults importanceFullQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples );
+
+		QueryResults fastNormalQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples );
+		QueryResults fastFullQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples );
 
 		void ProbeDatabase_sampleInstances( int modelIndex );
 
@@ -161,9 +169,7 @@ namespace aop {
 
 		void NeighborhoodDatabase_sampleScene();
 
-		QueryResults fullQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples );
-		QueryResults importanceFullQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples );
-
+		
 		// validation helper
 		void NeighborhoodValidation_queryAllInstances( const std::string &filename );
 		void ProbesValidation_queryAllInstances( const std::string &filename );

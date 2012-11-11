@@ -23,10 +23,12 @@ ADD_EXECUTABLE(Test_framework
 
 	mathUtility.h
 
+	flatImmutableMultiMap.h
 
 	progressTracker.h
 	progressTracker.cpp
 
+	test_flatImmutableMultiMap.cpp
 	test_rayIntersections.cpp
 	test_progressTracker.cpp
 	test_antTWBarUI_exp.cpp

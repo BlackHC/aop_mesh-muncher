@@ -10,6 +10,19 @@ using namespace Neighborhood;
 
 using namespace Neighborhood;
 
+Results myExecuteQuery( NeighborhoodDatabaseV2::Query &query ) {
+	auto queryResults = query.execute();
+	boost::sort( queryResults, std::greater<Result>() );
+	return queryResults;
+}
+
+template<typename Policy>
+Results myExecuteQueryPolicy( NeighborhoodDatabaseV2::Query &query ) {
+	auto queryResults = query.executeWithPolicy<Policy>();
+	boost::sort( queryResults, std::greater<Result>() );
+	return queryResults;
+}
+
 static void sortResultEps( Results &results ) {
 	boost::sort( results, [] ( const Result &a, const Result &b ) -> bool {
 		const float eps = 0.0000001;
@@ -102,7 +115,7 @@ TEST( NeighborhoodDatabaseV2_Query, all ) {
 
 	NeighborhoodDatabaseV2::Query query( db, 2.0, std::move( rawDataset ) );
 
-	const auto results = query.execute();
+	const auto results = myExecuteQuery( query );
 
 	ASSERT_EQ( 1, results.size() );
 	EXPECT_FLOAT_EQ( 1.0f, results.front().first );
@@ -112,7 +125,7 @@ TEST( NeighborhoodDatabaseV2_Query, all ) {
 static void mockModelDatabaseWith( ModelDatabase &modelDatabase, int numModels ) {
 	for( int i = 0 ; i < numModels ; i++ ) {
 		ModelDatabase::ModelInformation info;
-		info.area = info.diagonalLength = info.volume = 0.5;
+		info.area = info.diagonalLength = info.volume = 0.1;
 		modelDatabase.informationById.emplace_back( std::move( info ) );
 	}
 }
@@ -134,6 +147,9 @@ static RawIdDistances createQueryDataset( const int queryNumInstances[ numDistan
 	return rawDataset;
 }
 
+
+// create a scene where all objects have the same distance to each other
+// more than 4 objects is not possible in 3d space but eh
 template< int numModels >
 static void addSimpleScene( int distance, NeighborhoodDatabaseV2 &database, const int sceneNumInstances[numModels] ) {
 	for( int modelIndex = 0 ; modelIndex < numModels ; modelIndex++ ) {
@@ -226,9 +242,7 @@ static void addConcentricScene( NeighborhoodDatabaseV2 &database, const int scen
 	addInstances( database, std::move( simpleInstances ), maxDistance );
 }
 
-QueryResults myExecuteQuery( NeighborhoodDatabaseV2::Query &query ) {
-	return quer
-}
+
 
 /* Case 1:
  * all distances are equal, so we only test the probability
@@ -271,7 +285,7 @@ TEST( NeighborhoodDatabase_Query, testcase1 ) {
 	{
 		NeighborhoodDatabaseV2::Query query( db, 1.0, createQueryDataset< 1, 3 >( queries[0] ) );
 
-		const auto results = query.execute();
+		const auto results = myExecuteQuery( query );
 
 		ASSERT_EQ( 3, results.size() );
 		EXPECT_EQ( 1, results[0].second );
@@ -281,7 +295,7 @@ TEST( NeighborhoodDatabase_Query, testcase1 ) {
 	{
 		NeighborhoodDatabaseV2::Query query( db, 1.0, createQueryDataset< 1, 3 >( queries[1] ) );
 
-		const auto results = query.execute();
+		const auto results = myExecuteQuery( query );
 
 		ASSERT_EQ( 3, results.size() );
 		EXPECT_FLOAT_EQ( 1.0f, results[0].first);
@@ -291,7 +305,7 @@ TEST( NeighborhoodDatabase_Query, testcase1 ) {
 	{
 		NeighborhoodDatabaseV2::Query query( db, 1.0, createQueryDataset< 1, 3 >( queries[2] ) );
 
-		const auto results = query.execute();
+		const auto results = myExecuteQuery( query );
 
 		ASSERT_EQ( 3, results.size() );
 		EXPECT_EQ( 1, results[0].second );
@@ -316,7 +330,12 @@ TEST( NeighborhoodDatabase_Query, testcase1 ) {
  * B, B, B, B, B, B
  * Result: A
  *
- * C Result: B
+ * with less probability
+ * B, B, B, B
+ * Result: A, B
+ *
+ * B, B, B, B, B
+ * Result: A, B
  */
 TEST( NeighborhoodDatabase_Query, testcase2 ) {
 	ModelDatabase modelDatabase( nullptr );
@@ -345,7 +364,7 @@ TEST( NeighborhoodDatabase_Query, testcase2 ) {
 	{
 		NeighborhoodDatabaseV2::Query query( db, 1.0, createQueryDataset< 1, 2 >( queries[0] ) );
 
-		const auto results = query.execute();
+		const auto results = myExecuteQuery( query );
 
 		ASSERT_EQ( 2, results.size() );
 		EXPECT_EQ( 0, results[0].second );
@@ -355,7 +374,7 @@ TEST( NeighborhoodDatabase_Query, testcase2 ) {
 	{
 		NeighborhoodDatabaseV2::Query query( db, 1.0, createQueryDataset< 1, 2 >( queries[1] ) );
 
-		const auto results = query.execute();
+		const auto results = myExecuteQuery( query );
 
 		ASSERT_EQ( 2, results.size() );
 		EXPECT_EQ( 0, results[0].second );
@@ -365,7 +384,7 @@ TEST( NeighborhoodDatabase_Query, testcase2 ) {
 	{
 		NeighborhoodDatabaseV2::Query query( db, 1.0, createQueryDataset< 1, 2 >( queries[2] ) );
 
-		const auto results = query.execute();
+		const auto results = myExecuteQuery( query );
 
 		ASSERT_EQ( 2, results.size() );
 		EXPECT_LT( results[0].first, perfectMatchProb );
@@ -373,7 +392,7 @@ TEST( NeighborhoodDatabase_Query, testcase2 ) {
 	{
 		NeighborhoodDatabaseV2::Query query( db, 1.0, createQueryDataset< 1, 2 >( queries[3] ) );
 
-		const auto results = query.execute();
+		const auto results = myExecuteQuery( query );
 
 		ASSERT_EQ( 2, results.size() );
 		EXPECT_LT( results[0].first, perfectMatchProb );
@@ -424,7 +443,7 @@ TEST( NeighborhoodDatabase_Query, testcase3 ) {
 	{
 		NeighborhoodDatabaseV2::Query query( db, 1.0, createQueryDataset< 1, 2 >( queries[0] ) );
 
-		const auto results = query.execute();
+		const auto results = myExecuteQuery( query );
 
 		ASSERT_EQ( 2, results.size() );
 		EXPECT_EQ( 0, results[0].second );
@@ -434,7 +453,7 @@ TEST( NeighborhoodDatabase_Query, testcase3 ) {
 	{
 		NeighborhoodDatabaseV2::Query query( db, 1.0, createQueryDataset< 1, 2 >( queries[1] ) );
 
-		const auto results = query.execute();
+		const auto results = myExecuteQuery( query );
 
 		ASSERT_EQ( 2, results.size() );
 		EXPECT_EQ( 0, results[0].second );
@@ -444,7 +463,7 @@ TEST( NeighborhoodDatabase_Query, testcase3 ) {
 	{
 		NeighborhoodDatabaseV2::Query query( db, 1.0, createQueryDataset< 1, 2 >( queries[2] ) );
 
-		const auto results = query.execute();
+		const auto results = myExecuteQuery( query );
 
 		ASSERT_EQ( 2, results.size() );
 		EXPECT_LT( results[0].first, perfectMatchProb );
@@ -452,7 +471,7 @@ TEST( NeighborhoodDatabase_Query, testcase3 ) {
 	{
 		NeighborhoodDatabaseV2::Query query( db, 1.0, createQueryDataset< 1, 2 >( queries[3] ) );
 
-		const auto results = query.execute();
+		const auto results = myExecuteQuery( query );
 
 		ASSERT_EQ( 2, results.size() );
 		EXPECT_LT( results[0].first, perfectMatchProb );
@@ -524,7 +543,7 @@ TEST( NeighborhoodDatabase_Query, failcompcase1 ) {
 	{
 		NeighborhoodDatabaseV2::Query query( example[0], 1.0, createQueryDataset< 1, 3 >( queries[0] ) );
 
-		const auto results = query.executeWithPolicy<NeighborhoodDatabaseV2::Query::UniformWeightPolicy>();
+		const auto results = myExecuteQueryPolicy<NeighborhoodDatabaseV2::Query::UniformWeightPolicy>( query );
 
 		ASSERT_EQ( 3, results.size() );
 		EXPECT_FLOAT_EQ( results[0].first, results[1].first );
@@ -535,7 +554,7 @@ TEST( NeighborhoodDatabase_Query, failcompcase1 ) {
 	{
 		NeighborhoodDatabaseV2::Query query( example[0], 1.0, createQueryDataset< 1, 3 >( queries[0] ) );
 
-		const auto results = query.executeWithPolicy<NeighborhoodDatabaseV2::Query::ImportanceWeightPolicy>();
+		const auto results = myExecuteQueryPolicy<NeighborhoodDatabaseV2::Query::ImportanceWeightPolicy>( query );
 
 		ASSERT_EQ( 3, results.size() );
 		EXPECT_FLOAT_EQ( results[0].first, results[1].first );
@@ -547,7 +566,7 @@ TEST( NeighborhoodDatabase_Query, failcompcase1 ) {
 	{
 		NeighborhoodDatabaseV2::Query query( example[1], 1.0, createQueryDataset< 1, 3 >( queries[0] ) );
 
-		const auto results = query.executeWithPolicy<NeighborhoodDatabaseV2::Query::UniformWeightPolicy>();
+		const auto results = myExecuteQueryPolicy<NeighborhoodDatabaseV2::Query::UniformWeightPolicy>( query );
 
 		ASSERT_EQ( 3, results.size() );
 		EXPECT_FLOAT_EQ( results[0].first, results[1].first );
@@ -558,7 +577,7 @@ TEST( NeighborhoodDatabase_Query, failcompcase1 ) {
 	{
 		NeighborhoodDatabaseV2::Query query( example[1], 1.0, createQueryDataset< 1, 3 >( queries[0] ) );
 
-		const auto results = query.executeWithPolicy<NeighborhoodDatabaseV2::Query::ImportanceWeightPolicy>();
+		const auto results = myExecuteQueryPolicy<NeighborhoodDatabaseV2::Query::ImportanceWeightPolicy>( query );
 
 		ASSERT_EQ( 3, results.size() );
 		EXPECT_FLOAT_EQ( results[0].first, results[1].first );
@@ -626,7 +645,7 @@ TEST( NeighborhoodDatabase_Query, compcase1 ) {
 	{
 		NeighborhoodDatabaseV2::Query query( example[0], 0, createQueryDataset< 3, 3 >( queries[0] ) );
 
-		auto results = query.executeWithPolicy<NeighborhoodDatabaseV2::Query::UniformWeightPolicy>();
+		auto results = myExecuteQueryPolicy<NeighborhoodDatabaseV2::Query::UniformWeightPolicy>( query );
 		sortResultEps( results );
 
 		ASSERT_EQ( 3, results.size() );
@@ -637,7 +656,7 @@ TEST( NeighborhoodDatabase_Query, compcase1 ) {
 	{
 		NeighborhoodDatabaseV2::Query query( example[0], 0, createQueryDataset< 3, 3 >( queries[0] ) );
 
-		auto results = query.executeWithPolicy<NeighborhoodDatabaseV2::Query::ImportanceWeightPolicy>();
+		auto results = myExecuteQueryPolicy<NeighborhoodDatabaseV2::Query::ImportanceWeightPolicy>( query );
 		sortResultEps( results );
 
 		ASSERT_EQ( 3, results.size() );
@@ -649,7 +668,7 @@ TEST( NeighborhoodDatabase_Query, compcase1 ) {
 	{
 		NeighborhoodDatabaseV2::Query query( example[1], 0, createQueryDataset< 3, 3 >( queries[0] ) );
 
-		auto results = query.executeWithPolicy<NeighborhoodDatabaseV2::Query::UniformWeightPolicy>();
+		auto results = myExecuteQueryPolicy<NeighborhoodDatabaseV2::Query::UniformWeightPolicy>( query );
 		sortResultEps( results );
 
 		ASSERT_EQ( 3, results.size() );
@@ -661,7 +680,7 @@ TEST( NeighborhoodDatabase_Query, compcase1 ) {
 	{
 		NeighborhoodDatabaseV2::Query query( example[1], 0, createQueryDataset< 3, 3 >( queries[0] ) );
 
-		auto results = query.executeWithPolicy<NeighborhoodDatabaseV2::Query::ImportanceWeightPolicy>();
+		auto results = myExecuteQueryPolicy<NeighborhoodDatabaseV2::Query::ImportanceWeightPolicy>( query );
 		sortResultEps( results );
 
 		ASSERT_EQ( 3, results.size() );
@@ -676,6 +695,7 @@ TEST( NeighborhoodDatabase_Query, compcase1 ) {
 	std::cout << uniformResult[0];
 }
 
+// with jaccard
 TEST( NeighborhoodDatabase_Query, compcase1b ) {
 	ModelDatabase modelDatabase( nullptr );
 	mockModelDatabaseWith( modelDatabase, 3 );
@@ -713,7 +733,7 @@ TEST( NeighborhoodDatabase_Query, compcase1b ) {
 	{
 		NeighborhoodDatabaseV2::Query query( example[0], 0, createQueryDataset< 3, 3 >( queries[0] ) );
 
-		auto results = query.executeWithPolicy<NeighborhoodDatabaseV2::Query::UniformWeightPolicy>();
+		auto results = myExecuteQueryPolicy<NeighborhoodDatabaseV2::Query::UniformWeightPolicy>( query );
 		sortResultEps( results );
 
 		ASSERT_EQ( 3, results.size() ) << "Uniform";
@@ -724,7 +744,7 @@ TEST( NeighborhoodDatabase_Query, compcase1b ) {
 	{
 		NeighborhoodDatabaseV2::Query query( example[0], 0, createQueryDataset< 3, 3 >( queries[0] ) );
 
-		auto results = query.executeWithPolicy<NeighborhoodDatabaseV2::Query::JaccardIndexPolicy>();
+		auto results = myExecuteQueryPolicy<NeighborhoodDatabaseV2::Query::JaccardIndexPolicy>( query );
 		sortResultEps( results );
 
 		ASSERT_EQ( 3, results.size() ) << "Jaccard";
@@ -736,7 +756,7 @@ TEST( NeighborhoodDatabase_Query, compcase1b ) {
 	{
 		NeighborhoodDatabaseV2::Query query( example[1], 0, createQueryDataset< 3, 3 >( queries[0] ) );
 
-		auto results = query.executeWithPolicy<NeighborhoodDatabaseV2::Query::UniformWeightPolicy>();
+		auto results = myExecuteQueryPolicy<NeighborhoodDatabaseV2::Query::UniformWeightPolicy>( query );
 		sortResultEps( results );
 
 		ASSERT_EQ( 3, results.size() ) << "Uniform";
@@ -748,7 +768,7 @@ TEST( NeighborhoodDatabase_Query, compcase1b ) {
 	{
 		NeighborhoodDatabaseV2::Query query( example[1], 0, createQueryDataset< 3, 3 >( queries[0] ) );
 
-		auto results = query.executeWithPolicy<NeighborhoodDatabaseV2::Query::JaccardIndexPolicy>();
+		auto results = myExecuteQueryPolicy<NeighborhoodDatabaseV2::Query::JaccardIndexPolicy>( query );
 		sortResultEps( results );
 
 		ASSERT_EQ( 3, results.size() ) << "Jaccard";
@@ -804,7 +824,7 @@ TEST( NeighborhoodDatabase_Query, compcase1 ) {
 	{
 		NeighborhoodDatabaseV2::Query query( example[0], 1.0, createQueryDataset< 1, 3 >( queries[0] ) );
 
-		const auto results = query.executeWithPolicy<NeighborhoodDatabaseV2::Query::UniformWeightPolicy>();
+		const auto results = myExecuteQueryPolicy<NeighborhoodDatabaseV2::Query::UniformWeightPolicy>( query );
 
 		ASSERT_EQ( 3, results.size() );
 		EXPECT_EQ( 0, results[0].second ) << "Uniform Weight!";
@@ -813,7 +833,7 @@ TEST( NeighborhoodDatabase_Query, compcase1 ) {
 	{
 		NeighborhoodDatabaseV2::Query query( example[0], 1.0, createQueryDataset< 1, 3 >( queries[0] ) );
 
-		const auto results = query.executeWithPolicy<NeighborhoodDatabaseV2::Query::ImportanceWeightPolicy>();
+		const auto results = myExecuteQueryPolicy<NeighborhoodDatabaseV2::Query::ImportanceWeightPolicy>( query );
 
 		ASSERT_EQ( 3, results.size() );
 		EXPECT_EQ( 0, results[0].second ) << "Importance Weight!";
@@ -824,7 +844,7 @@ TEST( NeighborhoodDatabase_Query, compcase1 ) {
 	{
 		NeighborhoodDatabaseV2::Query query( example[1], 1.0, createQueryDataset< 1, 3 >( queries[0] ) );
 
-		const auto results = query.executeWithPolicy<NeighborhoodDatabaseV2::Query::UniformWeightPolicy>();
+		const auto results = myExecuteQueryPolicy<NeighborhoodDatabaseV2::Query::UniformWeightPolicy>( query );
 
 		ASSERT_EQ( 3, results.size() );
 		EXPECT_EQ( 2, results[2].second ) << "Uniform Weight!";
@@ -835,7 +855,7 @@ TEST( NeighborhoodDatabase_Query, compcase1 ) {
 	{
 		NeighborhoodDatabaseV2::Query query( example[1], 1.0, createQueryDataset< 1, 3 >( queries[0] ) );
 
-		const auto results = query.executeWithPolicy<NeighborhoodDatabaseV2::Query::ImportanceWeightPolicy>();
+		const auto results = myExecuteQueryPolicy<NeighborhoodDatabaseV2::Query::ImportanceWeightPolicy>( query );
 
 		ASSERT_EQ( 3, results.size() );
 		EXPECT_EQ( 2, results[2].second ) << "Importance Weight!";

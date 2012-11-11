@@ -39,7 +39,7 @@
 
 #include "queryResult.h"
 
-#include "flatmultimap.h"
+#include "flatImmutableMultiMap.h"
 
 namespace ProbeContext {
 
@@ -151,7 +151,7 @@ namespace IO {
 	QueryResults loadQueryResults( const std::string &filename );
 	void storeQueryResults( const std::string &filename, const QueryResults &results );
 }
-
+/*
 struct IDatabase {
 	virtual void registerSceneModels( const std::vector< std::string > &modelNames ) = 0;
 
@@ -175,7 +175,7 @@ struct IDatabase {
 
 	// the query interface is implemented differently by every database
 };
-
+*/
 
 //////////////////////////////////////////////////////////////////////////
 
@@ -437,34 +437,42 @@ struct SampleQuantizer {
 	 * 19 bits adressing, 2**16 storage
 	 */
 	float maxDistance;
-	static const int numBuckets = 1<<(4+4+3+3+5);
+
+	enum BitCounts {
+		BC_a = 4,
+		BC_b = 4,
+		BC_L = 3,
+		BC_occlusion = 3,
+		BC_distance = 4
+	};
+	static const int numBuckets = 1<<(BC_a + BC_b + BC_L + BC_occlusion + BC_distance);
 
 	typedef unsigned PackedSample;
 	union Index {
 		struct {
-			unsigned distance: 5;
-			unsigned occlusion: 3;
-			unsigned b : 4;
-			unsigned a : 4;
-			unsigned L : 3;
+			unsigned distance: BC_distance;
+			unsigned occlusion: BC_occlusion;
+			unsigned b : BC_b;
+			unsigned a : BC_a;
+			unsigned L : BC_L;
 		};
 		PackedSample packedSample;
 	};
 
-	SampleQuantizer( float maxDistance = 5.0 ) 
+	SampleQuantizer( float maxDistance = 5.0 )
 		: maxDistance( maxDistance )
 	{
 	}
 
-	short quantizeSample( const RawProbeSample &rawProbeSample ) const {
+	PackedSample quantizeSample( const RawProbeSample &rawProbeSample ) const {
 		Index index;
 		index.packedSample = 0;
-		index.distance = unsigned( rawProbeSample.distance / maxDistance ) * (1<<5);
-		index.occlusion = unsigned( rawProbeSample.occlusion / OptixProgramInterface::numProbeSamples ) * (1<<3);
+		index.distance = clamp<int>( rawProbeSample.distance / maxDistance * (1<<BC_distance), 0, (1<<BC_distance) - 1 );
+		index.occlusion = clamp<int>( rawProbeSample.occlusion / OptixProgramInterface::numProbeSamples * (1<<BC_occlusion), 0, (1<<BC_occlusion) - 1 );
 
-		index.a = clamp<int>( (rawProbeSample.colorLab.y + 100) / 2 * (1<<4), 0, (1<<4) - 1 );
-		index.b = clamp<int>( (rawProbeSample.colorLab.z + 100) / 2 * (1<<4), 0, (1<<4) - 1 );
-		index.L = clamp<int>( (rawProbeSample.colorLab.x) / 2 * (1<<3), 0, (1<<3) - 1 );
+		index.b = clamp<int>( (rawProbeSample.colorLab.z + 100) * (1<<BC_b) / 200, 0, (1<<BC_b) - 1 );
+		index.a = clamp<int>( (rawProbeSample.colorLab.y + 100) * (1<<BC_a) / 200, 0, (1<<BC_a) - 1 );
+		index.L = clamp<int>( (rawProbeSample.colorLab.x) * (1<<BC_L) / 100, 0, (1<<BC_L) - 1 );
 
 		return index.packedSample;
 	}
@@ -588,17 +596,17 @@ struct PartialProbeSamples {
 };
 
 namespace SampleBitPlaneHelper {
-	void splatProbeSample( SampleBitPlane &targetPlane, const SampleQuantizer &quantizer, const RawProbeSample &rawProbeSample ) {
+	inline void splatProbeSample( SampleBitPlane &targetPlane, const SampleQuantizer &quantizer, const RawProbeSample &rawProbeSample ) {
 		targetPlane.set( quantizer.quantizeSample( rawProbeSample ) );
 	}
 
-	void splatProbeSamples( SampleBitPlane &targetPlane, const SampleQuantizer &quantizer, const RawProbeSamples &rawProbeSamples ) {
+	inline void splatProbeSamples( SampleBitPlane &targetPlane, const SampleQuantizer &quantizer, const RawProbeSamples &rawProbeSamples ) {
 		for( auto rawProbeSample = rawProbeSamples.begin() ; rawProbeSample != rawProbeSamples.end() ; ++rawProbeSample ) {
 			targetPlane.set( quantizer.quantizeSample( *rawProbeSample ) );
 		}
 	}
 
-	void splatProbeSamples( SampleBitPlane &targetPlane, const SampleQuantizer &quantizer, const DBProbeSamples &dbProbeSamples ) {
+	inline void splatProbeSamples( SampleBitPlane &targetPlane, const SampleQuantizer &quantizer, const DBProbeSamples &dbProbeSamples ) {
 		for( auto dbProbeSample = dbProbeSamples.begin() ; dbProbeSample != dbProbeSamples.end() ; ++dbProbeSample ) {
 			targetPlane.set( quantizer.quantizeSample( *dbProbeSample ) );
 		}
@@ -607,20 +615,26 @@ namespace SampleBitPlaneHelper {
 
 struct SampleProbeIndexMap {
 	// probeIndex is short for models
-	typedef FlatMultiMap< SampleQuantizer::PackedSample, unsigned short, std::hash<SampleQuantizer::PackedSample>, unsigned short, unsigned > SampleMultiMap;
+	typedef FlatImmutableOrderedMultiMap<
+		SampleQuantizer::PackedSample,
+		unsigned short,
+		unsigned,
+		unsigned
+	> SampleMultiMap;
+
 	SampleMultiMap sampleMultiMap;
 	SampleMultiMap::Builder *builder;
 
 	void startFilling( int numProbes, int numInstances ) {
-		// we create a hash that could be perfect if the hash function was good
+		// we create a hash that can be perfect if the hash function was perfect
 		const int numProbeSamples = numProbes * numInstances;
-		sampleMultiMap.init( numProbeSamples, numProbeSamples );
+		sampleMultiMap.init( numProbeSamples );
 
-		builder = new SampleMultiMap::Builder( sampleMultiMap );
+		builder = new SampleMultiMap::Builder( sampleMultiMap, numProbeSamples );
 	}
 
 	void pushInstanceSample( const SampleQuantizer &quantizer, unsigned short probeIndex, const RawProbeSample &rawProbeSample ) {
-		builder->insert( quantizer.quantizeSample( rawProbeSample ), probeIndex );
+		builder->push_back( quantizer.quantizeSample( rawProbeSample ), probeIndex );
 	}
 
 	/*void pushInstanceSamples( const SampleQuantizer &quantizer, const RawProbeSamples &rawProbeSamples ) {
@@ -633,8 +647,8 @@ struct SampleProbeIndexMap {
 	}*/
 
 	void finishFilling() {
-		builder->finish();
-		delete [] builder;
+		builder->build();
+		delete builder;
 	}
 
 	SampleMultiMap::const_iterator_range lookup( SampleQuantizer::PackedSample packedSample ) const {
@@ -643,11 +657,11 @@ struct SampleProbeIndexMap {
 };
 
 struct ColorCounter {
-	/* 3x4 bits for colors
-	 * = 12 bits for lookup
-	 * 2**12 * 4 = 16 KB
+	/* 3,4,4 bits for colors
+	 * = 11 bits for lookup
+	 * 2**11 * 4 = 8 KB
 	 */
-	static const int numBuckets = 1<<18;
+	static const int numBuckets = 1<<(3+4+4);
 	std::vector<unsigned> buckets;
 	int totalNumSamples;
 	float entropy;
@@ -656,7 +670,7 @@ struct ColorCounter {
 	static unsigned getBucketIndex( const RawProbeSample &probeSample ) {
 		union Index {
 			struct {
-				unsigned L : 4;
+				unsigned L : 3;
 				unsigned a : 4;
 				unsigned b : 4;
 			};
@@ -665,9 +679,9 @@ struct ColorCounter {
 
 		index.value = 0;
 
-		index.L = clamp<int>( probeSample.colorLab.x / 25, 0, 15 );
-		index.a = clamp<int>( (probeSample.colorLab.y + 100) / 12.5f, 0, 15 );
-		index.b = clamp<int>( (probeSample.colorLab.y + 100) / 12.5f, 0, 15 );
+		index.L = clamp<int>( probeSample.colorLab.x * (1<<3) / 100, 0, (1<<3) - 1 );
+		index.a = clamp<int>( (probeSample.colorLab.y + 100) * (1<<4) / 200, 0, (1<<4) - 1 );
+		index.b = clamp<int>( (probeSample.colorLab.y + 100) * (1<<4) / 200, 0, (1<<4) - 1 );
 
 		return index.value;
 	}
@@ -1156,9 +1170,9 @@ public:
 	{}
 
 	SampledModel & operator = ( SampledModel &&other ) {
-		sampleBitPlane = std::move( sampleBitPlane );
-		linearizedProbeSamples = std::move( linearizedProbeSamples );
-		sampleProbeIndexMapByDirection = std::move( sampleProbeIndexMapByDirection );
+		sampleBitPlane = std::move( other.sampleBitPlane );
+		linearizedProbeSamples = std::move( other.linearizedProbeSamples );
+		sampleProbeIndexMapByDirection = std::move( other.sampleProbeIndexMapByDirection );
 
 		instances = std::move( other.instances );
 
@@ -1178,10 +1192,10 @@ public:
 	// TODO: rename to compile
 	void mergeInstances( const SampleQuantizer &quantizer, ColorCounter &colorCounter ) {
 		// fast handling
-		{
+		AUTO_TIMER_BLOCK( "fast track merging" ) {
 			sampleBitPlane.clear();
 			linearizedProbeSamples.init( probes.size(), instances.size() );
-			
+
 			// now create a splat plane and a multi map for each direction
 			for( int directionIndex = 0 ; directionIndex < ProbeGenerator::getNumDirections() ; directionIndex++ ) {
 				auto &pair = sampleProbeIndexMapByDirection[ directionIndex ];
@@ -1189,9 +1203,11 @@ public:
 				pair.second.startFilling( probes.size(), instances.size() );
 			}
 
+			// splat all probe samples into the maps
 			for( auto instance = instances.begin() ; instance < instances.end() ; instance++ ) {
 				const auto probeSamples = instance->getProbeSamples();
 				for( int probeIndex = 0 ; probeIndex < probes.size() ; probeIndex++ ) {
+					// TODO: only calculate packedSample once..? [11/11/2012 kirschan2]
 					const auto &probeSample = probeSamples[ probeIndex ];
 					SampleBitPlaneHelper::splatProbeSample( sampleBitPlane, quantizer, probeSample );
 					linearizedProbeSamples.push_back( quantizer, probeSample );
@@ -1208,7 +1224,7 @@ public:
 			}
 		}
 
-
+		// splat the entropy
 		{
 			for( auto instance = instances.begin() ; instance < instances.end() ; instance++ ) {
 				const auto probeSamples = instance->getProbeSamples();
@@ -1319,7 +1335,7 @@ private:
 	SampledModel & operator = ( const SampledModel &other );
 };
 
-struct ProbeDatabase : IDatabase {
+struct ProbeDatabase /*: IDatabase*/ {
 	struct Settings {
 		float maxDistance;
 		float resolution;

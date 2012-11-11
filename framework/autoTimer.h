@@ -38,7 +38,7 @@ struct AutoTimer {
 #define _AUTO_TIMER_MERGE_2( x, y ) x ## y
 #define _AUTO_TIMER_MERGE( x, y ) _AUTO_TIMER_MERGE_2( x, y )
 
-#if 1
+#if 0
 // TODO: rename to AUTO_TIME* [10/13/2012 kirschan2]
 #define AUTO_TIMER_BLOCK( ... ) if( auto _AUTO_TIMER_MERGE( scopedTimer, __COUNTER__ ) = AutoTimer( __FUNCTION__, __VA_ARGS__ ) )
 #define AUTO_TIME( expression, ... ) \

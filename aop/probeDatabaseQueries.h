@@ -148,13 +148,13 @@ struct ProbeDatabase::FastConfigurationQuery {
 
 		DetailedQueryResult()
 			: QueryResult()
-			, matchesByOrientation( 24 )
+			, matchesByOrientation( 26 )
 		{
 		}
 
 		DetailedQueryResult( int sceneModelIndex )
 			: QueryResult( sceneModelIndex )
-			, matchesByOrientation( 24 )
+			, matchesByOrientation( 26 )
 		{
 		}
 	};
@@ -175,6 +175,8 @@ struct ProbeDatabase::FastConfigurationQuery {
 
 	void setQueryDataset( const RawProbes &probes, const RawProbeSamples &probeSamples ) {
 		queryProbes = probes;
+
+		queryPartialProbeSamplesByDirection.resize( ProbeGenerator::getNumDirections() );
 
 		SampleBitPlaneHelper::splatProbeSamples( queryBitPlane, database.sampleQuantizer, probeSamples );
 		for( int directionIndex = 0 ; directionIndex < ProbeGenerator::getNumDirections() ; directionIndex++ ) {
@@ -225,7 +227,7 @@ struct ProbeDatabase::FastConfigurationQuery {
 		return detailedQueryResults;
 	}
 
-protected:
+public:
 	const ProbeDatabase &database;
 
 	SampleBitPlane queryBitPlane;
@@ -291,9 +293,8 @@ protected:
 					const auto queryProbe = queryProbes[ queryProbeIndex ];
 
 					// loop through all found probe indices and splat the results
-					XXXXXXXXX
-					for( auto rangeIterator = modelMatchedRange.first ; ) {
-						const auto modelProbeIndex = rangeIterator->value();
+					for( auto rangeIterator = modelMatchedRange.first ; rangeIterator != modelMatchedRange.second ; ) {
+						const auto modelProbeIndex = rangeIterator->second;
 						// calculate the target position
 						const Eigen::Vector3i targetPosition =
 								queryProbe.position.cast<int>()
@@ -303,7 +304,8 @@ protected:
 
 						const Eigen::Vector3i targetCell = targetPosition + queryVolumeOffset;
 						if( (targetCell.array() < 0).any() || (targetCell.array() >= queryVolumeSize.array()).any() ) {
-							;
+							rangeIterator++;
+							continue;
 						}
 
 						const int targetCellIndex =
@@ -313,40 +315,39 @@ protected:
 							+
 								targetCell.z() * queryVolumeSize.y() * queryVolumeSize.x()
 						;
-
+					
+						// the multi map is sorted, so if there are more matches with the same probe index, we can avoid recalculating everything
 						while( true ) {
 							queryVolumeMatches[ targetCellIndex ]++;
 
 							rangeIterator++;
-							if( rangeIterator == modelMatchedRange.second || rangeIterator->value() != modelProbeIndex ) {
+							if( rangeIterator == modelMatchedRange.second || rangeIterator->second != modelProbeIndex ) {
 								break;
 							}
 						}
-						if( rangeIterator == modelMatchedRange.second ) {
-							break;
-						}
 					}
 				}
-
-				auto maxElement = boost::max_element( mergedQueryVolumeMatches );
-				const float score = float( *maxElement ) / sampledModel.getProbes().size();
-				if( detailedQueryResult.score < score ) {
-					detailedQueryResult.score = score;
-
-					const int positionIndex = maxElement - mergedQueryVolumeMatches.begin();
-					const int x = positionIndex % queryVolumeSize[0];
-					const int y = (positionIndex / queryVolumeSize[0]) % queryVolumeSize[1];
-					const int z = positionIndex / queryVolumeSize[0] / queryVolumeSize[1];
-
-					detailedQueryResult.transformation =
-							queryVolumeTransformation
-						*	Eigen::Translation3f( queryResolution * (Eigen::Vector3f( x, y, z ) - queryVolumeOffset.cast<float>()) )
-						*	Eigen::Affine3f( ProbeGenerator::getRotation( orientationIndex ) )
-					;
-				}
-
-				detailedQueryResult.matchesByOrientation[ orientationIndex ] = std::move( queryVolumeMatches );
 			}
+			
+			auto maxElement = boost::max_element( queryVolumeMatches );
+			const float score = float( *maxElement ) / sampledModel.getProbes().size();
+			if( detailedQueryResult.score < score ) {
+				detailedQueryResult.score = score;
+
+				const int positionIndex = maxElement - queryVolumeMatches.begin();
+				// convert back to xyz grid coords
+				const int x = positionIndex % queryVolumeSize[0];
+				const int y = (positionIndex / queryVolumeSize[0]) % queryVolumeSize[1];
+				const int z = positionIndex / queryVolumeSize[0] / queryVolumeSize[1];
+
+				detailedQueryResult.transformation =
+						queryVolumeTransformation
+					*	Eigen::Translation3f( queryResolution * (Eigen::Vector3f( x, y, z ) - queryVolumeOffset.cast<float>()) )
+					*	Eigen::Affine3f( ProbeGenerator::getRotation( orientationIndex ) )
+				;
+			}
+
+			detailedQueryResult.matchesByOrientation[ orientationIndex ] = std::move( queryVolumeMatches );
 		}
 
 		return detailedQueryResult;

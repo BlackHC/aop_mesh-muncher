@@ -55,8 +55,7 @@ SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeContext::LinearizedProbeSamples,
 
 SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeContext::SampleProbeIndexMap::SampleMultiMap,
 	(items)
-	(indices)
-	(numBuckets)
+	(bucketOffsets)
 )
 
 SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeContext::SampleProbeIndexMap,

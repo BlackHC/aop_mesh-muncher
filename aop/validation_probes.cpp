@@ -98,13 +98,15 @@ typedef std::vector< int > RankResults;
 // per validation data
 template< typename Result >
 struct KernelResults {
-	Result uniformBidirectional, importanceBidirectional, uniformConfiguration, importanceConfiguration;
+	Result uniformBidirectional, importanceBidirectional, uniformConfiguration, importanceConfiguration,
+		fastUniformBidirectional;
 
 	SERIALIZER_DEFAULT_IMPL(
 		(uniformBidirectional)
 		(importanceBidirectional)
 		(uniformConfiguration)
 		(importanceConfiguration)
+		(fastUniformBidirectional)
 	)
 
 	KernelResults()
@@ -112,6 +114,7 @@ struct KernelResults {
 		, importanceBidirectional()
 		, uniformConfiguration()
 		, importanceConfiguration()
+		, fastUniformBidirectional()
 	{}
 };
 
@@ -201,6 +204,25 @@ ProbeContextTolerance createFromSettings( const Validation::ProbeSettings &setti
 	pct.occusionTolerance = settings.occlusionTolerance;
 	return pct;
 }
+
+struct FastUniformBidirectional_ExecutionKernel {
+	static QueryResults execute( const ProbeDatabase &probeDatabase, const Validation::ProbeSettings &settings, const Validation::ProbeData::QueryData &queryData ) {
+		ProbeContext::ProbeDatabase::FastQuery query( probeDatabase );
+		{
+			query.setQueryDataset( queryData.querySamples );
+			query.setQueryVolume( queryData.queryVolume, settings.resolution );
+
+			query.setProbeContextTolerance( createFromSettings( settings ) );
+
+			query.execute();
+		}
+		return query.getQueryResults();
+	}
+
+	static std::string getInfoString() {
+		return "FastUniformBidirectional";
+	}
+};
 
 struct UniformBidirectional_ExecutionKernel {
 	static QueryResults execute( const ProbeDatabase &probeDatabase, const Validation::ProbeSettings &settings, const Validation::ProbeData::QueryData &queryData ) {
@@ -428,7 +450,21 @@ void testValidationData(
 			% config.numCores
 		);
 
-		log( "UniformBidirectional" );
+		log( "FastUniformBidirectional" );
+		executeKernel<FastUniformBidirectional_ExecutionKernel>(
+			probeDatabase,
+			validationData,
+
+			beginIndex,
+			endIndex,
+
+			expectationResult.expectedRanks.fastUniformBidirectional,
+			expectationResult.timers.fastUniformBidirectional,
+			validationDataRanks.results.fastUniformBidirectional,
+			fullResults.results.fastUniformBidirectional
+		);
+
+		/*log( "UniformBidirectional" );
 		executeKernel<UniformBidirectional_ExecutionKernel>(
 			probeDatabase,
 			validationData,
@@ -482,7 +518,7 @@ void testValidationData(
 			expectationResult.timers.importanceConfiguration,
 			validationDataRanks.results.importanceConfiguration,
 			fullResults.results.importanceConfiguration
-		);
+		);*/
 
 		{
 			const std::string resultFilePath = config.buildResultPath(
