@@ -1,0 +1,57 @@
+boxes
+spheres
+modelImports:
+	testScene3.sgsScene 'platform, brown' 'platform, green' 'platform, muddy blue' 'platform, light blue' 'platform, white' 'small cube, white' 'small cube, baby blue' 'small cube, lime green' 'small cube, red' 'small cube, purple' 'small cube, egg orange' 'small cube, light yellow' 'medium cube, white' 'medium cube, baby blue' 'medium cube, lime green' 'medium cube, red' 'medium cube, purple' 'medium cube, egg orange' 'medium cube, light yellow' 'small box, white' 'small box, baby blue' 'small box, lime green' 'small box, red' 'small box, purple' 'small box, egg orange' 'small box, light yellow' 'big box, white' 'big box, baby blue' 'big box, lime green' 'big box, red' 'big box, purple' 'big box, egg orange' 'big box, light yellow' 'wall, white' 'wall, baby blue' 'wall, lime green' 'wall, red' 'wall, purple' 'wall, egg orange' 'wall, light yellow' 'ball, white' 'ball, baby blue' 'ball, lime green' 'ball, red' 'ball, purple' 'ball, egg orange' 'ball, light yellow' 'big ball, white' 'big ball, baby blue' 'big ball, lime green' 'big ball, red' 'big ball, purple' 'big ball, egg orange' 'big ball, light yellow' Data\Models\Terrain_objects\Containers\Barrels\barrel1.s3d Data\Models\Terrain_objects\Containers\Barrels\barrel_explosive.s3d Data\Models\Terrain_objects\Containers\Crates\crate3.s3d Data\Models\Terrain_objects\Containers\Crates\crate6.s3d Data\Models\Terrain_objects\Containers\Crates\crate_01c.s3d Data\Models\Terrain_objects\Containers\Crates\crate_01b.s3d Data\Models\Terrain_objects\Walls\Solidwalls\reinforced_wall_support.s3d Data\Models\Terrain_objects\Containers\Crates\cardboard_big_box01.s3d Data\Models\Terrain_objects\Containers\Crates\supply_crate_01.s3d Data\Models\Terrain_objects\Vegetation\Trees\pine_falling_1b.s3d
+instances:
+	'platform, green':
+		position 0 0 26
+		axis 1 0 0
+		degrees 0
+	'platform, green':
+		position 30 0 26
+		axis 1 0 0
+		degrees 0
+	'wall, lime green':
+		position 0 3.49999976 26
+		axis 1 0 0
+		degrees 0
+	Data\Models\Terrain_objects\Containers\Barrels\barrel1.s3d:
+		position 1 1.5 30
+		axis 0 0 0.99999994
+		degrees 90.0000076
+	Data\Models\Terrain_objects\Containers\Barrels\barrel1.s3d:
+		position 1 1.5 28
+		axis 0 0 0.99999994
+		degrees 90.0000076
+	Data\Models\Terrain_objects\Containers\Barrels\barrel1.s3d:
+		position 1 1.5 29
+		axis 0 0 0.99999994
+		degrees 90.0000076
+	Data\Models\Terrain_objects\Containers\Barrels\barrel1.s3d:
+		position 1 2.20000005 29.5
+		axis 0 0 0.99999994
+		degrees 90.0000076
+	Data\Models\Terrain_objects\Containers\Barrels\barrel1.s3d:
+		position 1 2.20000005 28.5
+		axis 0 0 0.99999994
+		degrees 90.0000076
+	Data\Models\Terrain_objects\Containers\Barrels\barrel1.s3d:
+		position 1 2.9000001 29
+		axis 0 0 0.99999994
+		degrees 90.0000076
+	Data\Models\Terrain_objects\Containers\Barrels\barrel_explosive.s3d:
+		position -0.5 1.00000024 24
+		axis 1 0 0
+		degrees 0
+	Data\Models\Terrain_objects\Containers\Barrels\barrel_explosive.s3d:
+		position 0.5 1.00000048 24
+		axis 1 0 0
+		degrees 0
+	Data\Models\Terrain_objects\Containers\Barrels\barrel_explosive.s3d:
+		position 0 0.999999583 23.3
+		axis 1 0 0
+		degrees 0
+	'wall, lime green':
+		position 30 3.49999976 26
+		axis 1 0 0
+		degrees 0

@@ -131,7 +131,7 @@ protected:
 
 		DetailedQueryResult detailedQueryResult( sceneModelIndex );
 
-		detailedQueryResult.probeMatchPercentage = (sampledModel_numMatchedProbeSamples + 0.0f ) / (sampledModel_numProbeSamples + 0.0f);
+		detailedQueryResult.probeMatchPercentage = (sampledModel_numMatchedProbeSamples + 0.0f ) / (sampledModel.getProbes().size() + 0.0f);
 		detailedQueryResult.queryMatchPercentage = (queryVolume_numMatchedProbeSamples + 0.0f) / (queryVolume_numProbeSamples + 0.0f);
 
 		detailedQueryResult.score = detailedQueryResult.probeMatchPercentage * detailedQueryResult.queryMatchPercentage;

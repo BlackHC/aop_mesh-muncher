@@ -51,7 +51,7 @@ sceneLighting:
 
 		vec3 lightFragment( const vec3 position, const vec3 normal, const vec3 diffuseColor ) {
 			// from position to light
-			const vec3 lightDirection = normalize( vec3( 0.0, 1.0, 1.0 ) );
+			const vec3 lightDirection = normalize( vec3( 1.0, 1.0, 1.0 ) );
 			const float diffuseAttenuation = getDiffuseAttenuation( normal, lightDirection ) * 0.8;
 			const float specularAttenuation = pow( getSpecularAttenuation( position, normal, lightDirection ), 18 );
 

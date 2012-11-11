@@ -443,7 +443,7 @@ struct SampleQuantizer {
 		BC_b = 4,
 		BC_L = 3,
 		BC_occlusion = 3,
-		BC_distance = 4
+		BC_distance = 5
 	};
 	static const int numBuckets = 1<<(BC_a + BC_b + BC_L + BC_occlusion + BC_distance);
 

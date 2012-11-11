@@ -99,7 +99,7 @@ typedef std::vector< int > RankResults;
 template< typename Result >
 struct KernelResults {
 	Result uniformBidirectional, importanceBidirectional, uniformConfiguration, importanceConfiguration,
-		fastUniformBidirectional;
+		fastUniformBidirectional, fastUniformConfiguration;
 
 	SERIALIZER_DEFAULT_IMPL(
 		(uniformBidirectional)
@@ -107,6 +107,7 @@ struct KernelResults {
 		(uniformConfiguration)
 		(importanceConfiguration)
 		(fastUniformBidirectional)
+		(fastUniformConfiguration)
 	)
 
 	KernelResults()
@@ -115,6 +116,7 @@ struct KernelResults {
 		, uniformConfiguration()
 		, importanceConfiguration()
 		, fastUniformBidirectional()
+		, fastUniformConfiguration()
 	{}
 };
 
@@ -243,6 +245,24 @@ struct UniformBidirectional_ExecutionKernel {
 	}
 };
 
+struct FastUniformFull_ExecutionKernel {
+	static QueryResults execute( const ProbeDatabase &probeDatabase, const Validation::ProbeSettings &settings, const Validation::ProbeData::QueryData &queryData ) {
+		ProbeContext::ProbeDatabase::FastConfigurationQuery query( probeDatabase );
+		{
+			query.setQueryVolume( queryData.queryVolume, settings.resolution );
+			query.setQueryDataset( queryData.queryProbes, queryData.querySamples );
+
+			query.setProbeContextTolerance( createFromSettings( settings ) );
+
+			query.execute();
+		}
+		return query.getQueryResults();
+	}
+
+	static std::string getInfoString() {
+		return "FastConfigurationQuery";
+	}
+};
 struct UniformFull_ExecutionKernel {
 	static QueryResults execute( const ProbeDatabase &probeDatabase, const Validation::ProbeSettings &settings, const Validation::ProbeData::QueryData &queryData ) {
 		ProbeContext::ProbeDatabase::FullQuery query( probeDatabase );
@@ -462,6 +482,20 @@ void testValidationData(
 			expectationResult.timers.fastUniformBidirectional,
 			validationDataRanks.results.fastUniformBidirectional,
 			fullResults.results.fastUniformBidirectional
+		);
+
+		log( "FastConfigurationQuery" );
+		executeKernel<FastUniformFull_ExecutionKernel>(
+			probeDatabase,
+			validationData,
+
+			beginIndex,
+			endIndex,
+
+			expectationResult.expectedRanks.fastUniformConfiguration,
+			expectationResult.timers.fastUniformConfiguration,
+			validationDataRanks.results.fastUniformConfiguration,
+			fullResults.results.fastUniformConfiguration
 		);
 
 		/*log( "UniformBidirectional" );

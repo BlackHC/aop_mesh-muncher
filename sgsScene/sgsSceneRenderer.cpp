@@ -472,7 +472,7 @@ void SGSSceneRenderer::renderShadowmap( const RenderContext &renderContext ) {
 	// TODO: we don't have to set this every frame.. [10/19/2012 Andreas]
 	initShadowMap();
 
-	initShadowMapProjectionMatrix( sceneBoundingBox, Vector3f( 0.0, 1.0, 1.0 ).normalized() );
+	initShadowMapProjectionMatrix( sceneBoundingBox, Vector3f( 1.0, 1.0, 1.0 ).normalized() );
 
 	ScopedFramebufferObject fbo;
 	fbo.attach( sunShadowMap, GL_DEPTH_ATTACHMENT, 0 );
