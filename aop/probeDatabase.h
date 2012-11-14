@@ -439,22 +439,23 @@ struct SampleQuantizer {
 	float maxDistance;
 
 	enum BitCounts {
+		BC_L = 3,
 		BC_a = 4,
 		BC_b = 4,
-		BC_L = 3,
-		BC_occlusion = 3,
-		BC_distance = 5
+		BC_occlusion = 2,
+		BC_distance = 3
 	};
-	static const int numBuckets = 1<<(BC_a + BC_b + BC_L + BC_occlusion + BC_distance);
+	static const int numBuckets = 1<<(BC_L + BC_a + BC_b + BC_occlusion + BC_distance);
 
 	typedef unsigned PackedSample;
 	union Index {
 		struct {
+			// color comes first to match the color counter!
+			unsigned L : BC_L;
+			unsigned a : BC_a;
+			unsigned b : BC_b;
 			unsigned distance: BC_distance;
 			unsigned occlusion: BC_occlusion;
-			unsigned b : BC_b;
-			unsigned a : BC_a;
-			unsigned L : BC_L;
 		};
 		PackedSample packedSample;
 	};
@@ -467,12 +468,13 @@ struct SampleQuantizer {
 	PackedSample quantizeSample( const RawProbeSample &rawProbeSample ) const {
 		Index index;
 		index.packedSample = 0;
+
+		index.L = clamp<int>( (rawProbeSample.colorLab.x) * (1<<BC_L) / 100, 0, (1<<BC_L) - 1 );
+		index.a = clamp<int>( (rawProbeSample.colorLab.y + 100) * (1<<BC_a) / 200, 0, (1<<BC_a) - 1 );
+		index.b = clamp<int>( (rawProbeSample.colorLab.z + 100) * (1<<BC_b) / 200, 0, (1<<BC_b) - 1 );
+
 		index.distance = clamp<int>( rawProbeSample.distance / maxDistance * (1<<BC_distance), 0, (1<<BC_distance) - 1 );
 		index.occlusion = clamp<int>( rawProbeSample.occlusion / OptixProgramInterface::numProbeSamples * (1<<BC_occlusion), 0, (1<<BC_occlusion) - 1 );
-
-		index.b = clamp<int>( (rawProbeSample.colorLab.z + 100) * (1<<BC_b) / 200, 0, (1<<BC_b) - 1 );
-		index.a = clamp<int>( (rawProbeSample.colorLab.y + 100) * (1<<BC_a) / 200, 0, (1<<BC_a) - 1 );
-		index.L = clamp<int>( (rawProbeSample.colorLab.x) * (1<<BC_L) / 100, 0, (1<<BC_L) - 1 );
 
 		return index.packedSample;
 	}
@@ -661,27 +663,28 @@ struct ColorCounter {
 	 * = 11 bits for lookup
 	 * 2**11 * 4 = 8 KB
 	 */
-	static const int numBuckets = 1<<(3+4+4);
+	static const unsigned numBuckets = 1<<(SampleQuantizer::BC_L+SampleQuantizer::BC_a+SampleQuantizer::BC_b);
 	std::vector<unsigned> buckets;
 	int totalNumSamples;
 	float entropy;
 	float totalMessageLength;
+	float globalMessageLength;
 
-	static unsigned getBucketIndex( const RawProbeSample &probeSample ) {
+	static unsigned getBucketIndex( const RawProbeSample &rawProbeSample ) {
 		union Index {
 			struct {
-				unsigned L : 3;
-				unsigned a : 4;
-				unsigned b : 4;
+				unsigned L : SampleQuantizer::BC_L;
+				unsigned a : SampleQuantizer::BC_a;
+				unsigned b : SampleQuantizer::BC_b;
 			};
 			unsigned value;
 		} index;
 
 		index.value = 0;
 
-		index.L = clamp<int>( probeSample.colorLab.x * (1<<3) / 100, 0, (1<<3) - 1 );
-		index.a = clamp<int>( (probeSample.colorLab.y + 100) * (1<<4) / 200, 0, (1<<4) - 1 );
-		index.b = clamp<int>( (probeSample.colorLab.y + 100) * (1<<4) / 200, 0, (1<<4) - 1 );
+		index.L = clamp<int>( (rawProbeSample.colorLab.x) * (1<<SampleQuantizer::BC_L) / 100, 0, (1<<SampleQuantizer::BC_L) - 1 );
+		index.a = clamp<int>( (rawProbeSample.colorLab.y + 100) * (1<<SampleQuantizer::BC_a) / 200, 0, (1<<SampleQuantizer::BC_a) - 1 );
+		index.b = clamp<int>( (rawProbeSample.colorLab.z + 100) * (1<<SampleQuantizer::BC_b) / 200, 0, (1<<SampleQuantizer::BC_b) - 1 );
 
 		return index.value;
 	}
@@ -691,6 +694,7 @@ struct ColorCounter {
 		, totalNumSamples()
 		, entropy()
 		, totalMessageLength()
+		, globalMessageLength()
 	{
 	}
 
@@ -699,6 +703,7 @@ struct ColorCounter {
 		, totalNumSamples( other.totalNumSamples )
 		, entropy( other.entropy )
 		, totalMessageLength( other.totalMessageLength )
+		, globalMessageLength( other.globalMessageLength )
 	{
 	}
 
@@ -707,6 +712,7 @@ struct ColorCounter {
 		totalNumSamples = other.totalNumSamples;
 		entropy = other.entropy;
 		totalMessageLength = other.totalMessageLength;
+		globalMessageLength = other.globalMessageLength;
 	}
 
 	void splat( const RawProbeSample &probeSample ) {
@@ -721,8 +727,8 @@ struct ColorCounter {
 		}
 	}
 
-	float getAdjustedFrequency( int bucketIndex ) const {
-		const int matches = buckets[ bucketIndex ];
+	float getAdjustedFrequency( unsigned bucketIndex ) const {
+		const int matches = buckets[ bucketIndex & (numBuckets - 1) ]; // mask for packed samples
 		return (matches + 1.0) / (totalNumSamples + 2.0);
 	}
 
@@ -733,6 +739,10 @@ struct ColorCounter {
 
 	float getMessageLength( const RawProbeSample &probeSample ) const {
 		return ::getMessageLength( getAdjustedFrequency( probeSample ) );
+	}
+
+	float getMessageLength( unsigned bucketIndex ) const {
+		return ::getMessageLength( getAdjustedFrequency( bucketIndex ) );
 	}
 
 	void calculateEntropy() {
@@ -749,6 +759,19 @@ struct ColorCounter {
 			const float messageLength = ::getMessageLength( adjustedFrequency );
 			totalMessageLength += bucketSize * messageLength;
 			entropy += frequency * messageLength;
+		}
+	}
+
+	void calculateGlobalMessageLength( const ColorCounter &globalCounter ) {
+		globalMessageLength = 0.0f;
+		for( int bucketIndex = 0 ; bucketIndex < numBuckets ; bucketIndex++ ) {
+			const int bucketSize = buckets[ bucketIndex ];
+			if( bucketSize == 0 ) {
+				continue;
+			}
+
+			const float messageLength = globalCounter.getMessageLength( bucketIndex );
+			globalMessageLength += bucketSize * messageLength;
 		}
 	}
 
@@ -1133,8 +1156,9 @@ struct SampledModel {
 	LinearizedProbeSamples linearizedProbeSamples;
 	std::vector< std::pair< SampleBitPlane, SampleProbeIndexMap > > sampleProbeIndexMapByDirection;
 
-private:
 	ColorCounter modelColorCounter;
+
+private:
 	SampledInstances instances;
 	IndexedProbeSamples mergedInstances;
 
@@ -1345,6 +1369,7 @@ struct ProbeDatabase /*: IDatabase*/ {
 
 	struct FastQuery;
 	struct FastConfigurationQuery;
+	struct FastImportanceQuery;
 
 	struct Query;
 	struct ImportanceQuery;
@@ -1384,6 +1409,9 @@ struct ProbeDatabase /*: IDatabase*/ {
 			sampledModel->mergeInstances( sampleQuantizer, globalColorCounter );
 		}
 		globalColorCounter.calculateEntropy();
+		for( auto sampledModel = sampledModels.begin() ; sampledModel != sampledModels.end() ; ++sampledModel ) {
+			sampledModel->modelColorCounter.calculateGlobalMessageLength( globalColorCounter );
+		}
 	}
 
 	int getNumSampledModels() const {

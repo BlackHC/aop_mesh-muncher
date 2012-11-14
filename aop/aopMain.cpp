@@ -1098,6 +1098,7 @@ namespace aop {
 				.add( "Configuration", QT_FULL )
 				.add( "Importance Configuration", QT_IMPORTANCE_FULL )
 				.add( "Fast Normal", QT_FAST_QUERY )
+				.add( "Fast Importance", QT_FAST_IMPORTANCE )
 				.add( "Fast Configuration", QT_FAST_FULL )
 				.define()
 			;
@@ -1773,6 +1774,9 @@ namespace aop {
 		case QT_FAST_QUERY:
 			queryResults = fastNormalQueryVolume( queryVolume.volume, queryProbes, queryProbeSamples );
 			break;
+		case QT_FAST_IMPORTANCE:
+			queryResults = fastImportanceQueryVolume( queryVolume.volume, queryProbes, queryProbeSamples );
+			break;
 		case QT_FAST_FULL:
 			queryResults = fastFullQueryVolume( queryVolume.volume, queryProbes, queryProbeSamples );
 			break;
@@ -1803,6 +1807,36 @@ namespace aop {
 		}
 
 		const auto &detailedQueryResults = query.getDetailedQueryResults();
+		for( auto detailedQueryResult = detailedQueryResults.begin() ; detailedQueryResult != detailedQueryResults.end() ; ++detailedQueryResult ) {
+			log(
+				boost::format(
+					"%i:"
+					"\tdbMatchPercentage %f\n"
+					"\tqueryMatchPercentage %f\n"
+					"\tscore %f\n"
+				)
+				% detailedQueryResult->sceneModelIndex
+				% detailedQueryResult->probeMatchPercentage
+				% detailedQueryResult->queryMatchPercentage
+				% detailedQueryResult->score
+			);
+		}
+
+		return query.getQueryResults();
+	}
+
+	QueryResults Application::fastImportanceQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples ) {
+		ProbeContext::ProbeDatabase::FastImportanceQuery query( probeDatabase );
+		{
+			query.setQueryDataset( queryProbeSamples );
+			query.setQueryVolume( queryVolume, sceneSettings.probeGenerator_resolution );
+
+			query.setProbeContextTolerance( getPCTFromSettings() );
+
+			query.execute();
+		}
+
+		auto detailedQueryResults = query.getDetailedQueryResults();
 		for( auto detailedQueryResult = detailedQueryResults.begin() ; detailedQueryResult != detailedQueryResults.end() ; ++detailedQueryResult ) {
 			log(
 				boost::format(
@@ -2374,6 +2408,9 @@ namespace aop {
 
 			log( boost::format( "sampling model %i" ) % sceneModelIndex );
 
+			auto modelBoundingBox = world->sceneRenderer.getModelBoundingBox( sceneModelIndex );
+			modelBoundingBox.extend( Vector3f::Zero() );
+
 			auto instanceIndices = world->sceneRenderer.getModelInstances( sceneModelIndex );
 			data.instanceCounts.count( localModelIndex, instanceIndices.size() );
 
@@ -2394,7 +2431,11 @@ namespace aop {
 					Validation::ProbeData::QueryData queryData;
 
 					queryData.expectedSceneModelIndex = sceneModelIndex;
-					queryData.queryVolume = Obb( Obb::Transformation( Eigen::Translation3f( position + shift ) ), Eigen::Vector3f::Constant( queryVolumeSize ) );
+					//queryData.queryVolume = Obb( Obb::Transformation( Eigen::Translation3f( position + shift ) ), Eigen::Vector3f::Constant( queryVolumeSize ) );
+					
+					auto instanceBoundingBox = makeOBB( world->sceneRenderer.getInstanceTransformation( *instanceIndex ), modelBoundingBox );
+					instanceBoundingBox.size += Vector3f::Constant( 0.25 );
+					queryData.queryVolume = instanceBoundingBox;
 
 					ProbeGenerator::generateQueryProbes( queryData.queryVolume.size, resolution, queryData.queryProbes );
 

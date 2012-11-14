@@ -216,7 +216,7 @@ void executeKernel(
 	RankResults &rankResults,
 	FullResults &unsortedResults
 ) {
-	const float tolerance = validationData.settings.positionVariance + 0.25;
+	const float tolerance = 5.0; // validationData.settings.positionVariance + 0.25;
 
 	const int numSamples = validationData.settings.numSamples;
 	const int numTotalSamples = validationData.queryDatasets.size() / numSamples;

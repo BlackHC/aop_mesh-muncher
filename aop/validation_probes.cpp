@@ -99,7 +99,7 @@ typedef std::vector< int > RankResults;
 template< typename Result >
 struct KernelResults {
 	Result uniformBidirectional, importanceBidirectional, uniformConfiguration, importanceConfiguration,
-		fastUniformBidirectional, fastUniformConfiguration;
+		fastUniformBidirectional, fastImportanceBidirectional, fastUniformConfiguration;
 
 	SERIALIZER_DEFAULT_IMPL(
 		(uniformBidirectional)
@@ -108,6 +108,7 @@ struct KernelResults {
 		(importanceConfiguration)
 		(fastUniformBidirectional)
 		(fastUniformConfiguration)
+		(fastImportanceBidirectional)
 	)
 
 	KernelResults()
@@ -116,6 +117,7 @@ struct KernelResults {
 		, uniformConfiguration()
 		, importanceConfiguration()
 		, fastUniformBidirectional()
+		, fastImportanceBidirectional()
 		, fastUniformConfiguration()
 	{}
 };
@@ -201,9 +203,9 @@ typedef std::vector< ExpectationsResult > ExpectationsResults;
 
 ProbeContextTolerance createFromSettings( const Validation::ProbeSettings &settings ) {
 	ProbeContextTolerance pct;
-	pct.colorLabTolerance = settings.colorTolerance;
-	pct.distanceTolerance = settings.distanceTolerance;
-	pct.occusionTolerance = settings.occlusionTolerance;
+	pct.colorLabTolerance = 4; //settings.colorTolerance;
+	pct.distanceTolerance = 0.75; //settings.distanceTolerance;
+	pct.occusionTolerance = 0.25; //settings.occlusionTolerance;
 	return pct;
 }
 
@@ -223,6 +225,25 @@ struct FastUniformBidirectional_ExecutionKernel {
 
 	static std::string getInfoString() {
 		return "FastUniformBidirectional";
+	}
+};
+
+struct FastImportanceBidirectional_ExecutionKernel {
+	static QueryResults execute( const ProbeDatabase &probeDatabase, const Validation::ProbeSettings &settings, const Validation::ProbeData::QueryData &queryData ) {
+		ProbeContext::ProbeDatabase::FastImportanceQuery query( probeDatabase );
+		{
+			query.setQueryDataset( queryData.querySamples );
+			query.setQueryVolume( queryData.queryVolume, settings.resolution );
+
+			query.setProbeContextTolerance( createFromSettings( settings ) );
+
+			query.execute();
+		}
+		return query.getQueryResults();
+	}
+
+	static std::string getInfoString() {
+		return "FastImportanceBidirectional";
 	}
 };
 
@@ -484,6 +505,21 @@ void testValidationData(
 			fullResults.results.fastUniformBidirectional
 		);
 
+		log( "FastImportanceBidirectional" );
+		executeKernel<FastImportanceBidirectional_ExecutionKernel>(
+			probeDatabase,
+			validationData,
+
+			beginIndex,
+			endIndex,
+
+			expectationResult.expectedRanks.fastImportanceBidirectional,
+			expectationResult.timers.fastImportanceBidirectional,
+			validationDataRanks.results.fastImportanceBidirectional,
+			fullResults.results.fastImportanceBidirectional
+		);
+
+#if 1
 		log( "FastConfigurationQuery" );
 		executeKernel<FastUniformFull_ExecutionKernel>(
 			probeDatabase,
@@ -497,7 +533,7 @@ void testValidationData(
 			validationDataRanks.results.fastUniformConfiguration,
 			fullResults.results.fastUniformConfiguration
 		);
-
+#endif	
 		/*log( "UniformBidirectional" );
 		executeKernel<UniformBidirectional_ExecutionKernel>(
 			probeDatabase,
@@ -510,9 +546,9 @@ void testValidationData(
 			expectationResult.timers.uniformBidirectional,
 			validationDataRanks.results.uniformBidirectional,
 			fullResults.results.uniformBidirectional
-		);
+		);*/
 
-		log( "UniformConfiguration" );
+		/*log( "UniformConfiguration" );
 		executeKernel<UniformFull_ExecutionKernel>(
 			probeDatabase,
 			validationData,

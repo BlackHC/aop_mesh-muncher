@@ -120,7 +120,6 @@ protected:
 			}
 		}
 
-
 		int queryVolume_numMatchedProbeSamples = 0;
 		for( auto queryPackedSample = queryLinearizedProbeSamples.samples.begin() ; queryPackedSample != queryLinearizedProbeSamples.samples.end() ; ++queryPackedSample ) {
 			// look up
@@ -131,8 +130,164 @@ protected:
 
 		DetailedQueryResult detailedQueryResult( sceneModelIndex );
 
-		detailedQueryResult.probeMatchPercentage = (sampledModel_numMatchedProbeSamples + 0.0f ) / (sampledModel.getProbes().size() + 0.0f);
+		detailedQueryResult.probeMatchPercentage = (sampledModel_numMatchedProbeSamples + 0.0f ) / (sampledModel.uncompressedProbeSampleCount() + 0.0f);
 		detailedQueryResult.queryMatchPercentage = (queryVolume_numMatchedProbeSamples + 0.0f) / (queryVolume_numProbeSamples + 0.0f);
+
+		detailedQueryResult.score = detailedQueryResult.probeMatchPercentage * detailedQueryResult.queryMatchPercentage;
+
+		detailedQueryResult.transformation = queryVolumeTransformation;
+
+		return detailedQueryResult;
+	}
+};
+
+struct ProbeDatabase::FastImportanceQuery {
+	struct DetailedQueryResult : QueryResult {
+		float queryMatchPercentage;
+		float probeMatchPercentage;
+
+		DetailedQueryResult()
+			: QueryResult()
+			, queryMatchPercentage()
+			, probeMatchPercentage()
+		{
+		}
+
+		DetailedQueryResult( int sceneModelIndex )
+			: QueryResult( sceneModelIndex )
+			, queryMatchPercentage()
+			, probeMatchPercentage()
+		{
+		}
+	};
+	typedef std::vector<DetailedQueryResult> DetailedQueryResults;
+
+	FastImportanceQuery( const ProbeDatabase &database ) : database( database ) {}
+
+	void setQueryVolume( const Obb &queryVolume, float resolution ) {
+		queryVolumeTransformation = queryVolume.transformation;
+	}
+
+	void setProbeContextTolerance( const ProbeContextTolerance &pct ) {
+		probeContextTolerance = pct;
+	}
+
+	void setQueryDataset( const RawProbeSamples &rawProbeSamples ) {
+		queryColorCounter.splatSamples( rawProbeSamples );
+		queryColorCounter.calculateEntropy();
+		queryColorCounter.calculateGlobalMessageLength( database.globalColorCounter );
+
+		SampleBitPlaneHelper::splatProbeSamples( queryBitPlane, database.sampleQuantizer, rawProbeSamples );
+		queryLinearizedProbeSamples.push_back( database.sampleQuantizer, rawProbeSamples );
+	}
+
+	void execute() {
+		if( !queryResults.empty() ) {
+			throw std::logic_error( "queryResults is not empty!" );
+		}
+
+		detailedQueryResults.resize( database.sampledModels.size() );
+
+		using namespace Concurrency;
+
+		AUTO_TIMER_MEASURE() {
+			int logScope = Log::getScope();
+
+			parallel_for< int >(
+				0,
+				(int) database.sampledModels.size(),
+				[&] ( int localModelIndex ) {
+					Log::initThreadScope( logScope, 0 );
+
+					detailedQueryResults[ localModelIndex ] = matchAgainst( localModelIndex, database.modelIndexMapper.getSceneModelIndex( localModelIndex ) );
+				}
+			);
+		}
+
+		boost::remove_erase_if( detailedQueryResults, [] ( const DetailedQueryResult &r ) { return r.score == 0.0f; });
+
+		queryResults.resize( detailedQueryResults.size() );
+		boost::transform( detailedQueryResults, queryResults.begin(), [] ( const DetailedQueryResult &r ) { return QueryResult( r ); } );
+	}
+
+	const QueryResults & getQueryResults() const {
+		return queryResults;
+	}
+
+	const DetailedQueryResults & getDetailedQueryResults() const {
+		return detailedQueryResults;
+	}
+
+protected:
+	const ProbeDatabase &database;
+
+	ColorCounter queryColorCounter;
+
+	SampleBitPlane queryBitPlane;
+	LinearizedProbeSamples queryLinearizedProbeSamples;
+
+	ProbeContextTolerance probeContextTolerance;
+
+	DetailedQueryResults detailedQueryResults;
+	QueryResults queryResults;
+
+	Eigen::Affine3f queryVolumeTransformation;
+
+protected:
+	DetailedQueryResult matchAgainst( int localSceneIndex, int sceneModelIndex ) {
+		const auto &sampledModel = database.sampledModels[ localSceneIndex ];
+
+		// check if any of the probe sample sets is empty
+		const int sampledModel_numProbeSamples = sampledModel.linearizedProbeSamples.samples.size();
+		const int queryVolume_numProbeSamples = queryLinearizedProbeSamples.samples.size();
+		if( sampledModel_numProbeSamples == 0 || queryVolume_numProbeSamples == 0 ) {
+			return DetailedQueryResult( sceneModelIndex );
+		}
+
+		AUTO_TIMER_FOR_FUNCTION(
+			boost::format( "id = %i, %i ref probes (%i query probes)" )
+			% sceneModelIndex
+			% sampledModel_numProbeSamples
+			% queryVolume_numProbeSamples
+		);
+
+		// loop through the query linearized array and look up everything in the sampled model bit plane
+		// and vice versa
+
+		float sampledModel_importanceScore = 0.0f;
+		for( auto modelPackedSample = sampledModel.linearizedProbeSamples.samples.begin() ; modelPackedSample != sampledModel.linearizedProbeSamples.samples.end() ; ++modelPackedSample ) {
+			// look up
+			if( queryBitPlane.test( *modelPackedSample ) ) {
+				const float importanceWeight =
+						database.globalColorCounter.getMessageLength( *modelPackedSample )
+					/*+
+						sampledModel.getColorCounter().getMessageLength( probeSample )*/
+				;
+				sampledModel_importanceScore += importanceWeight;
+			}
+		}
+
+		float queryVolume_importanceScore = 0.0f;
+		for( auto queryPackedSample = queryLinearizedProbeSamples.samples.begin() ; queryPackedSample != queryLinearizedProbeSamples.samples.end() ; ++queryPackedSample ) {
+			// look up
+			if( sampledModel.sampleBitPlane.test( *queryPackedSample ) ) {
+				const float importanceWeight =
+						database.globalColorCounter.getMessageLength( *queryPackedSample )
+					/*+
+						queryColorCounter.getMessageLength( probeSample )*/
+				;
+				queryVolume_importanceScore += importanceWeight;
+			}
+		}
+
+		DetailedQueryResult detailedQueryResult( sceneModelIndex );
+
+		//const float avgTotalModelWeight = sampledModel.uncompressedProbeSampleCount() * database.globalColorCounter.entropy + sampledModel.getColorCounter().totalMessageLength;
+		const float avgTotalModelWeight = sampledModel.getColorCounter().globalMessageLength;
+		detailedQueryResult.probeMatchPercentage = sampledModel_importanceScore / avgTotalModelWeight;
+		//const float avgTotalQueryWeight = indexedProbeSamples.size() * database.globalColorCounter.entropy + queryColorCounter.totalMessageLength;
+		const float avgTotalQueryWeight = queryColorCounter.globalMessageLength;
+		detailedQueryResult.queryMatchPercentage = queryVolume_importanceScore / avgTotalQueryWeight;
 
 		detailedQueryResult.score = detailedQueryResult.probeMatchPercentage * detailedQueryResult.queryMatchPercentage;
 

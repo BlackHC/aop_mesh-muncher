@@ -1,0 +1,18 @@
+-:
+	views:
+		'Default  view':
+			position 40.8827171 14.0314417 26.063879
+			direction -0.7766729 -0.629320145 -0.0271218065
+	volumes:
+		'':
+			volume:
+				transformation 1 0 0 0 0 1 0 0 0 0 1 0 30 2.50000048 28 1
+				size 3 3 3
+	markedModels Data\Models\Terrain_objects\Containers\Barrels\barrel1.s3d Data\Models\Terrain_objects\Containers\Barrels\barrel_explosive.s3d
+	neighborhoodDatabase_queryTolerance 1
+	neighborhoodDatabase_maxDistance 4
+	probeGenerator_maxDistance 5
+	probeGenerator_resolution 0.25
+	probeQuery_occlusionTolerance 0.25
+	probeQuery_distanceTolerance 1
+	probeQuery_colorTolerance 15

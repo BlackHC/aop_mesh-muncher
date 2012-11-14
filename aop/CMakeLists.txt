@@ -226,6 +226,19 @@ ADD_EXECUTABLE(Validate_aop_neighborhood
 )
 
 
+ADD_EXECUTABLE(Validate_aop_combineResults
+	../framework/logger.h
+	../framework/logger.cpp
+
+	../framework/progressTracker.h
+	../framework/progressTracker.cpp
+
+	../framework/autoTimer.h
+	../framework/autoTimer.cpp
+
+	validation_combineResults.cpp
+)
+
 ADD_EXECUTABLE(Validate_aop_probes
 	queryResult.h
 	queryResultStorage.h
@@ -349,6 +362,9 @@ TARGET_LINK_LIBRARIES(Validate_aop_probes ${SFML_LIBRARIES})
 TARGET_LINK_LIBRARIES(Validate_aop_probes ${Boost_LIBRARIES})
 TARGET_LINK_LIBRARIES(Validate_aop_probes ${SOIL_LIBRARY})
 TARGET_LINK_LIBRARIES(Validate_aop_probes ${optix_LIBRARY})
+
+TARGET_LINK_LIBRARIES(Validate_aop_combineResults ${Boost_LIBRARIES})
+TARGET_LINK_LIBRARIES(Validate_aop_combineResults ${SFML_LIBRARIES})
 
 TARGET_LINK_LIBRARIES(Test_aop ${ANTTWEAKBAR_LIBRARY})
 TARGET_LINK_LIBRARIES(Test_aop ${SFML_LIBRARIES})

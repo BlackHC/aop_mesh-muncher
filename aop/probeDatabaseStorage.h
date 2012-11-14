@@ -32,6 +32,7 @@ SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeContext::ColorCounter,
 	(totalNumSamples)
 	(entropy)
 	(totalMessageLength)
+	(globalMessageLength)
 )
 
 SERIALIZER_DEFAULT_EXTERN_IMPL( ProbeContext::SampledModel,

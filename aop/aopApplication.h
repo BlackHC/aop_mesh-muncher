@@ -64,6 +64,7 @@ namespace aop {
 			QT_FULL,
 			QT_IMPORTANCE_FULL,
 			QT_FAST_QUERY,
+			QT_FAST_IMPORTANCE,
 			QT_FAST_FULL
 		};
 
@@ -161,6 +162,7 @@ namespace aop {
 		QueryResults importanceFullQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples );
 
 		QueryResults fastNormalQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples );
+		QueryResults fastImportanceQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples );
 		QueryResults fastFullQueryVolume( const Obb &queryVolume, const ProbeContext::RawProbes &queryProbes, const ProbeContext::RawProbeSamples &queryProbeSamples );
 
 		void ProbeDatabase_sampleInstances( int modelIndex );
