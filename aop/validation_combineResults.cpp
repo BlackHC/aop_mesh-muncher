@@ -219,12 +219,10 @@ struct Combination {
 };*/
 
 struct CombinedRanks {
-	std::string info;
 	float averageRank;
 	std::vector<int> ranks;
 
 	SERIALIZER_DEFAULT_IMPL(
-		(info)
 		(averageRank)
 		(ranks)
 	)
@@ -234,47 +232,10 @@ const std::string basePath = "C:/Andreas/selectedProbeValidations/";
 const std::string mergedDataBinary = "mergedResults.bin";
 const std::string probeFullResultsFilename = "wakeup/probes/0__5_0_1.probe.fullResults.wml";
 const std::string neighborhoodFullResultsFilename = "wakeup/neighborhood/0__10_0_1.fullResults.wml";
-std::string resultsFilename = "combi .wml";
+//std::string resultsFilename = "results.wml";
 
-#if 1 // convert data to binary
-void main( int argc, const char **argv ) {
+void combineResults( const std::string &resultsFilename, const ProbeValidation::FullResults &probeResults, const NeighborhoodValidation::FullResults &neighborhoodResults ) {
 	CombinedRanks combinedRanks;
-
-	combinedRanks.info = probeFullResultsFilename + " " + neighborhoodFullResultsFilename;
-
-	// load the probe results
-	ProbeValidation::ValidationDataResults<ProbeValidation::FullResults> probesFullResults;
-	{
-		Serializer::TextReader reader( basePath + probeFullResultsFilename );
-		Serializer::read( reader, probesFullResults );
-	}
-	NeighborhoodValidation::ValidationDataResults<NeighborhoodValidation::FullResults> neighborhoodFullResults;
-	{
-		Serializer::TextReader reader( basePath + neighborhoodFullResultsFilename );
-		Serializer::read( reader, neighborhoodFullResults );
-	}
-	/*
-	{
-		Serializer::BinaryWriter writer( basePath + mergedDataBinary );
-		Serializer::write( writer, probesFullResults );
-		Serializer::write( writer, neighborhoodFullResults );
-	}
-}
-
-#elif 1 // read in binary and merge results
-void main( int argc, const char **argv ) {
-	ProbeValidation::ValidationDataResults<ProbeValidation::FullResults> probesFullResults;
-	NeighborhoodValidation::ValidationDataResults<NeighborhoodValidation::FullResults> neighborhoodFullResults;
-	{
-		Serializer::BinaryReader reader( basePath + mergedDataBinary );
-		Serializer::read( reader, probesFullResults );
-		Serializer::read( reader, neighborhoodFullResults );
-	}
-	*/
-	const auto &probeResults = probesFullResults.results.fastUniformConfiguration;
-	const auto &neighborhoodResults = neighborhoodFullResults.results.jaccardIndex;
-
-	//resultsFilename += " imp";
 
 	// should be the same
 	log(
@@ -285,7 +246,7 @@ void main( int argc, const char **argv ) {
 
 	int numModels = 0;
 	int maxModelIndex = 0;
-	int currentModel = 0;
+	int currentModel = -1;
 	for( auto result = probeResults.begin() ; result != probeResults.end() ; ++result ) {
 		if( currentModel != result->first ) {
 			currentModel = result->first;
@@ -295,14 +256,14 @@ void main( int argc, const char **argv ) {
 	}
 	log( boost::format( "numModels: %i, maxModelIndex %i" ) % numModels % maxModelIndex );
 
-	return; 
+	//return;
 	// merge all results and create a new ranking
 	float rankSum = 0.0f;
 
 	const int instanceCount = probeResults.size();
 	std::vector<int> ranks( instanceCount );
 	for( int instanceIndex = 0 ; instanceIndex < instanceCount ; instanceIndex++ ) {
-		std::vector< float > combinedScores( maxModelIndex + 1 );
+		std::vector< double > combinedScores( maxModelIndex + 1 );
 
 		if( probeResults[ instanceIndex ].first != neighborhoodResults[ instanceIndex ].first ) {
 			logError( "FUCK" );
@@ -330,20 +291,25 @@ void main( int argc, const char **argv ) {
 		}
 
 		// create a Results list again
-		Neighborhood::Results combinedResults( maxModelIndex + 1 );
+		std::vector<std::pair<double, int>> combinedResults( maxModelIndex + 1 );
 		for( int modelIndex = 0 ; modelIndex <= maxModelIndex ; modelIndex++ ) {
 			combinedResults[ modelIndex ].first = combinedScores[ modelIndex ];
 			combinedResults[ modelIndex ].second = modelIndex;
 		}
 
 		// filter results
-		boost::remove_erase_if( combinedResults, [] ( const Neighborhood::Result &result ) { return result.first == 0.0f; } );
+		boost::remove_erase_if( combinedResults, [] ( const std::pair<double, int> &result ) { return result.first == 0.0f; } );
 		// sort
-		boost::sort( combinedResults, std::greater< Neighborhood::Result >() );
+		boost::sort( combinedResults, std::greater< std::pair<double, int> >() );
+
+		if( combinedResults.size() > numModels ) {
+			logError( boost::format( "%i" ) % combinedResults.size() );
+			//return;
+		}
 
 		// determine the rank
 		int rank = numModels;
-		for( int resultIndex = 0 ; resultIndex < combinedScores.size() ; resultIndex++ ) {
+		for( int resultIndex = 0 ; resultIndex < combinedResults.size() ; resultIndex++ ) {
 			if( combinedResults[ resultIndex ].second == expectedModelIndex ) {
 				rank = resultIndex;
 				break;
@@ -356,13 +322,96 @@ void main( int argc, const char **argv ) {
 	const float rankExpectation = rankSum / instanceCount;
 	combinedRanks.averageRank = rankExpectation;
 	combinedRanks.ranks = ranks;
-	log( boost::format( "expectation: %f" ) % rankExpectation );
+	log( boost::format( "%s expectation: %f" ) % resultsFilename % rankExpectation );
 
 	// dump the results
 	{
-		Serializer::TextWriter writer( basePath + resultsFilename );
+		Serializer::TextWriter writer( basePath + resultsFilename + ".wml" );
 
 		Serializer::write( writer, combinedRanks );
 	}
+}
+
+void combineAllCombinations(
+	const std::string &baseResultName,
+	const ProbeValidation::ValidationDataResults<ProbeValidation::FullResults> probesFullResults,
+	const NeighborhoodValidation::ValidationDataResults<NeighborhoodValidation::FullResults> neighborhoodFullResults
+) {
+	combineResults( baseResultName + " config uni", probesFullResults.results.fastUniformConfiguration, neighborhoodFullResults.results.uniformWeight );
+	combineResults( baseResultName + " config imp", probesFullResults.results.fastUniformConfiguration, neighborhoodFullResults.results.importanceWeight );
+	combineResults( baseResultName + " config jac", probesFullResults.results.fastUniformConfiguration, neighborhoodFullResults.results.jaccardIndex );
+
+	combineResults( baseResultName + " uni bi uni", probesFullResults.results.fastUniformBidirectional, neighborhoodFullResults.results.uniformWeight );
+	combineResults( baseResultName + " uni bi imp", probesFullResults.results.fastUniformBidirectional, neighborhoodFullResults.results.importanceWeight );
+	combineResults( baseResultName + " uni bi jac", probesFullResults.results.fastUniformBidirectional, neighborhoodFullResults.results.jaccardIndex );
+
+	combineResults( baseResultName + " imp bi uni", probesFullResults.results.fastImportanceBidirectional, neighborhoodFullResults.results.uniformWeight );
+	combineResults( baseResultName + " imp bi imp", probesFullResults.results.fastImportanceBidirectional, neighborhoodFullResults.results.importanceWeight );
+	combineResults( baseResultName + " imp bi jac", probesFullResults.results.fastImportanceBidirectional, neighborhoodFullResults.results.jaccardIndex );
+}
+
+#if 0 // convert data to binary
+void main( int argc, const char **argv ) {
+	CombinedRanks combinedRanks;
+
+	combinedRanks.info = probeFullResultsFilename + " " + neighborhoodFullResultsFilename;
+
+	// load the probe results
+	ProbeValidation::ValidationDataResults<ProbeValidation::FullResults> probesFullResults;
+	{
+		Serializer::TextReader reader( basePath + probeFullResultsFilename );
+		Serializer::read( reader, probesFullResults );
+	}
+	NeighborhoodValidation::ValidationDataResults<NeighborhoodValidation::FullResults> neighborhoodFullResults;
+	{
+		Serializer::TextReader reader( basePath + neighborhoodFullResultsFilename );
+		Serializer::read( reader, neighborhoodFullResults );
+	}
+	///*
+	{
+		Serializer::BinaryWriter writer( basePath + mergedDataBinary );
+		Serializer::write( writer, probesFullResults );
+		Serializer::write( writer, neighborhoodFullResults );
+	}
+}
+
+#elif 0 // read in binary and merge results
+void main( int argc, const char **argv ) {
+	CombinedRanks combinedRanks;
+	ProbeValidation::ValidationDataResults<ProbeValidation::FullResults> probesFullResults;
+	NeighborhoodValidation::ValidationDataResults<NeighborhoodValidation::FullResults> neighborhoodFullResults;
+	{
+		Serializer::BinaryReader reader( basePath + mergedDataBinary );
+		Serializer::read( reader, probesFullResults );
+		Serializer::read( reader, neighborhoodFullResults );
+	}
+	//*/
+	const auto &probeResults = probesFullResults.results.fastUniformBidirectional;
+	const auto &neighborhoodResults = neighborhoodFullResults.results.jaccardIndex;
+
+	//resultsFilename += " imp";
+
+}
+#else
+void combineResultFiles( const std::string &baseName, const std::string &probeFile, const std::string &neighborhoodFile ) {
+	// load the probe results
+	ProbeValidation::ValidationDataResults<ProbeValidation::FullResults> probesFullResults;
+	{
+		Serializer::TextReader reader( basePath + probeFile );
+		Serializer::read( reader, probesFullResults );
+	}
+	NeighborhoodValidation::ValidationDataResults<NeighborhoodValidation::FullResults> neighborhoodFullResults;
+	{
+		Serializer::TextReader reader( basePath + neighborhoodFile );
+		Serializer::read( reader, neighborhoodFullResults );
+	}
+
+	combineAllCombinations( baseName, probesFullResults, neighborhoodFullResults );
+} 
+
+void main( int argc, const char **argv ) {
+	combineResultFiles( "wakeup", "wakeup/probes/0__5_0_1.probe.fullResults.wml", "wakeup/neighborhood/0__10_0_1.fullResults.wml" );
+	combineResultFiles( "road", "road/probes/0__5_0_1.probe.fullResults.wml", "road/neighborhood/0__10_0_1.fullResults.wml" );
+	combineResultFiles( "road big", "road/probesBig/0__5_0_1.probe.fullResults.wml", "road/neighborhood/0__10_0_1.fullResults.wml" );
 }
 #endif

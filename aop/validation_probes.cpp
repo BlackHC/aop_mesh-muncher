@@ -519,7 +519,7 @@ void testValidationData(
 			fullResults.results.fastImportanceBidirectional
 		);
 
-#if 1
+#if 0
 		log( "FastConfigurationQuery" );
 		executeKernel<FastUniformFull_ExecutionKernel>(
 			probeDatabase,
@@ -534,7 +534,7 @@ void testValidationData(
 			fullResults.results.fastUniformConfiguration
 		);
 #endif	
-		/*log( "UniformBidirectional" );
+		log( "UniformBidirectional" );
 		executeKernel<UniformBidirectional_ExecutionKernel>(
 			probeDatabase,
 			validationData,
@@ -546,9 +546,9 @@ void testValidationData(
 			expectationResult.timers.uniformBidirectional,
 			validationDataRanks.results.uniformBidirectional,
 			fullResults.results.uniformBidirectional
-		);*/
+		);
 
-		/*log( "UniformConfiguration" );
+		log( "UniformConfiguration" );
 		executeKernel<UniformFull_ExecutionKernel>(
 			probeDatabase,
 			validationData,
@@ -588,7 +588,7 @@ void testValidationData(
 			expectationResult.timers.importanceConfiguration,
 			validationDataRanks.results.importanceConfiguration,
 			fullResults.results.importanceConfiguration
-		);*/
+		);
 
 		{
 			const std::string resultFilePath = config.buildResultPath(

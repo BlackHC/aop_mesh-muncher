@@ -1173,6 +1173,7 @@ namespace aop {
 			//ui.add( AntTWBarUI::makeSharedVector< NamedTargetVolumeView >( "Camera Views", application->settings.volumes) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
 			ui.add( AntTWBarUI::makeSharedButton( "Sample marked objects", [this] {
+				AUTO_TIMER_DEFAULT();
 				application->startLongOperation();
 
 				const auto &modelIndices = application->modelTypesUI->markedModels;
