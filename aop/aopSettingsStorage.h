@@ -16,7 +16,6 @@ SERIALIZER_DEFAULT_EXTERN_IMPL( aop::SceneSettings,
 	(views)
 	(volumes)
 	(markedModels)
-	(neighborhoodDatabase_queryTolerance)
 	(neighborhoodDatabase_maxDistance)
 	(probeGenerator_maxDistance)
 	(probeGenerator_resolution)

@@ -68,6 +68,12 @@ namespace aop {
 			QT_FAST_FULL
 		};
 
+		enum MeasureType {
+			MT_NORMAL,
+			MT_IMPORTANCE_WEIGHTED,
+			MT_JACCARD
+		};
+
 		sf::Clock frameClock, clock;
 
 		sf::RenderWindow mainWindow;
@@ -169,9 +175,10 @@ namespace aop {
 
 		ProbeContext::ProbeContextTolerance getPCTFromSettings();
 
-		void NeighborhoodDatabase_sampleScene();
+		void NeighborhoodDatabase_sampleScene( float maxDistance );
+		void NeighborhoodDatabase_sampleModels( std::vector<int> modelIndices, float maxDistance );
+		Neighborhood::Results NeighborhoodDatabase_queryVolume( const Obb &queryVolume, float maxDistance, MeasureType measureType );
 
-		
 		// validation helper
 		void NeighborhoodValidation_queryAllInstances( const std::string &filename );
 		void ProbesValidation_queryAllInstances( const std::string &filename );

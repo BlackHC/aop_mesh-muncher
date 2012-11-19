@@ -210,7 +210,7 @@ rtDeclareVariable(rtObject, rootObject, , );
 
 #define sceneEpsilon 0.005f
 
-rtDeclareVariable( float3, sunDirection, , ) = { 0.0, -1.0, -1.0 };
+rtDeclareVariable( float3, sunDirection, , ) = { -1.0, -1.0, -1.0 };
 rtDeclareVariable( float, maxDistance, , ) = RT_DEFAULT_MAX;
 
 // render context

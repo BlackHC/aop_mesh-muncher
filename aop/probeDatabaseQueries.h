@@ -470,7 +470,7 @@ protected:
 							+
 								targetCell.z() * queryVolumeSize.y() * queryVolumeSize.x()
 						;
-					
+
 						// the multi map is sorted, so if there are more matches with the same probe index, we can avoid recalculating everything
 						while( true ) {
 							queryVolumeMatches[ targetCellIndex ]++;
@@ -483,7 +483,7 @@ protected:
 					}
 				}
 			}
-			
+
 			auto maxElement = boost::max_element( queryVolumeMatches );
 			const float score = float( *maxElement ) / sampledModel.getProbes().size();
 			if( detailedQueryResult.score < score ) {

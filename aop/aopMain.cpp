@@ -84,64 +84,6 @@ boost::mt19937 randomNumberGenerator(static_cast<unsigned int>(std::time(0)));
 std::weak_ptr<AntTweakBarEventHandler::GlobalScope> AntTweakBarEventHandler::globalScope;
 
 //////////////////////////////////////////////////////////////////////////
-// V2
-//
-//
-void sampleAllNeighborsForV2( std::vector<int> modelIndices, float maxDistance, Neighborhood::NeighborhoodDatabaseV2 &database, SGSInterface::World &world ) {
-	AUTO_TIMER_FOR_FUNCTION();
-
-	for( auto modelIndex = modelIndices.begin() ; modelIndex != modelIndices.end() ; ++modelIndex ) {
-		const auto instanceIndices = world.sceneRenderer.getModelInstances( *modelIndex );
-
-		for( auto instanceIndex = instanceIndices.begin() ; instanceIndex != instanceIndices.end() ; ++instanceIndex ) {
-			auto queryResults = world.sceneGrid.query(
-				-1,
-				*instanceIndex,
-				world.sceneRenderer.getInstanceTransformation( *instanceIndex ).translation(),
-				maxDistance
-			);
-
-			const int modelIndex = world.sceneRenderer.getModelIndex( *instanceIndex );
-
-			database.addInstance( modelIndex, std::move( queryResults ) );
-		}
-	}
-}
-
-void sampleAllNeighborsV2( float maxDistance, Neighborhood::NeighborhoodDatabaseV2 &database, SGSInterface::World &world ) {
-	AUTO_TIMER_FOR_FUNCTION();
-
-	const int numInstances = world.sceneRenderer.getNumInstances();
-
-	for( int instanceIndex = 0 ; instanceIndex < numInstances ; instanceIndex++ ) {
-		auto queryResults = world.sceneGrid.query(
-			-1,
-			instanceIndex,
-			world.sceneRenderer.getInstanceTransformation( instanceIndex ).translation(),
-			maxDistance
-		);
-
-		const int modelIndex = world.sceneRenderer.getModelIndex( instanceIndex );
-
-		database.addInstance( modelIndex, std::move( queryResults ) );
-	}
-}
-
-Neighborhood::Results queryVolumeNeighborsV2( SGSInterface::World *world, Neighborhood::NeighborhoodDatabaseV2 &database, const Vector3f &position, float maxDistance, float tolerance ) {
-	AUTO_TIMER_FOR_FUNCTION();
-
-	auto sceneQueryResults = world->sceneGrid.query( -1, -1, position, maxDistance );
-
-	Neighborhood::NeighborhoodDatabaseV2::Query query( database, tolerance, std::move( sceneQueryResults ) );
-	auto results = query.execute();
-
-	for( auto result = results.begin() ; result != results.end() ; ++result ) {
-		log( boost::format( "%i: %f" ) % result->second % result->first );
-	}
-
-	return results;
-}
-//////////////////////////////////////////////////////////////////////////
 
 #if 1
 
@@ -1076,8 +1018,9 @@ namespace aop {
 		Application *application;
 		AntTWBarUI::SimpleContainer ui;
 		QueryType queryType;
+		MeasureType measureType;
 
-		MainUI( Application *application ) : application( application ), queryType( QT_NORMAL ) {
+		MainUI( Application *application ) : application( application ), queryType( QT_NORMAL ), measureType( MT_JACCARD ) {
 			init();
 		}
 
@@ -1100,6 +1043,13 @@ namespace aop {
 				.add( "Fast Normal", QT_FAST_QUERY )
 				.add( "Fast Importance", QT_FAST_IMPORTANCE )
 				.add( "Fast Configuration", QT_FAST_FULL )
+				.define()
+			;
+
+			AntTWBarUI::TypeBuilder::Enum< MeasureType >( "MeasureType" )
+				.add( "Normal", MT_NORMAL )
+				.add( "Importance weighted", MT_IMPORTANCE_WEIGHTED )
+				.add( "Jaccard index", MT_JACCARD )
 				.define()
 			;
 
@@ -1231,12 +1181,12 @@ namespace aop {
 
 					void visit( Editor::ObbSelection *selection ) {
 						application->startLongOperation();
-						auto queryResults = application->queryVolume( application->sceneSettings.volumes[ selection->index ], queryType );
+						auto probeResults = application->queryVolume( application->sceneSettings.volumes[ selection->index ], queryType );
 						application->endLongOperation();
 
-						application->candidateSidebarUI->setModels( queryResults );
+						application->candidateSidebarUI->setModels( probeResults );
 						application->localCandidateBarUIs.emplace_back(
-							std::make_shared<LocalCandidateBarUI>( application, queryResults, selection->getObb() )
+							std::make_shared<LocalCandidateBarUI>( application, probeResults, selection->getObb() )
 						);
 					}
 				};
@@ -1246,15 +1196,15 @@ namespace aop {
 				application->startLongOperation();
 				ProgressTracker::Context progressTracker( application->sceneSettings.volumes.size() );
 				for( auto queryVolume = application->sceneSettings.volumes.begin() ; queryVolume != application->sceneSettings.volumes.end() ; ++queryVolume ) {
-					auto queryResults = application->queryVolume( *queryVolume, queryType );
+					auto probeResults = application->queryVolume( *queryVolume, queryType );
 
 					boost::sort(
-						queryResults,
+						probeResults,
 						QueryResult::greaterByScoreAndModelIndex
 					);
 
 					application->localCandidateBarUIs.emplace_back(
-						std::make_shared<LocalCandidateBarUI>( application, queryResults, queryVolume->volume )
+						std::make_shared<LocalCandidateBarUI>( application, probeResults, queryVolume->volume )
 					);
 
 					progressTracker.markFinished();
@@ -1262,105 +1212,103 @@ namespace aop {
 				application->endLongOperation();
 			} ) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
+			ui.add( AntTWBarUI::makeSharedVariable( "Measure type", AntTWBarUI::makeReferenceAccessor( measureType ) ) );
 			ui.add( AntTWBarUI::makeSharedVariable(
 				"Neighborhood max distance",
 				AntTWBarUI::makeReferenceAccessor( application->sceneSettings.neighborhoodDatabase_maxDistance )
 			) );
-			ui.add( AntTWBarUI::makeSharedVariable(
-				"Neighborhood query tolerance",
-				AntTWBarUI::makeReferenceAccessor( application->sceneSettings.neighborhoodDatabase_queryTolerance )
-			) );
-			ui.add( AntTWBarUI::makeSharedButton( "Query neighbors V2", [this] () {
+			ui.add( AntTWBarUI::makeSharedButton( "Query neighbors", [this] () {
 				struct QueryNeighborsVisitor : Editor::SelectionVisitor {
 					Application *application;
+					Application::MeasureType measureType;
 
-					QueryNeighborsVisitor( Application *application ) : application( application ) {}
+					QueryNeighborsVisitor( Application *application, Application::MeasureType measureType )
+						: application( application )
+						, measureType( measureType )
+					{}
 
 					void visit() {
 						logError( "No volume selected!\n" );
 					}
+
 					void visit( Editor::ObbSelection *selection ) {
 						application->startLongOperation();
-						Neighborhood::Results queryResults = queryVolumeNeighborsV2(
-							application->world.get(),
-							application->neighborDatabaseV2,
-							selection->getObb().transformation.translation(),
+						Neighborhood::Results neighborhoodResults = application->NeighborhoodDatabase_queryVolume(
+							selection->getObb(),
 							application->sceneSettings.neighborhoodDatabase_maxDistance,
-							application->sceneSettings.neighborhoodDatabase_queryTolerance
+							measureType
 						);
-						boost::sort( queryResults, std::greater< Neighborhood::Result >() );
+
+						boost::sort( neighborhoodResults, std::greater< Neighborhood::Result >() );
 						application->endLongOperation();
 
-						QueryResults transformedQueryResults;
-						for( auto queryResult = queryResults.begin() ; queryResult != queryResults.end() ; ++queryResult ) {
-							QueryResult transformedQueryResult;
-							transformedQueryResult.score = queryResult->first;
-							transformedQueryResult.sceneModelIndex = queryResult->second;
-							transformedQueryResult.transformation = selection->getObb().transformation;
-							transformedQueryResults.push_back( transformedQueryResult );
+						QueryResults transformedNeighborhoodResults;
+						for( auto neighborhoodResult = neighborhoodResults.begin() ; neighborhoodResult != neighborhoodResults.end() ; ++neighborhoodResult ) {
+							QueryResult transformedNeighborhoodResult;
+							transformedNeighborhoodResult.score = neighborhoodResult->first;
+							transformedNeighborhoodResult.sceneModelIndex = neighborhoodResult->second;
+							transformedNeighborhoodResult.transformation = selection->getObb().transformation;
+							transformedNeighborhoodResults.push_back( transformedNeighborhoodResult );
 						}
 
-						application->candidateSidebarUI->setModels( transformedQueryResults );
+						application->candidateSidebarUI->setModels( transformedNeighborhoodResults );
 					}
 				};
-				QueryNeighborsVisitor( application ).dispatch( application->editor.selection );
+				QueryNeighborsVisitor( application, measureType ).dispatch( application->editor.selection );
 			} ) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
-			ui.add( AntTWBarUI::makeSharedButton( "Query volume & neighbors", [this] () {
+			ui.add( AntTWBarUI::makeSharedButton( "Query combined", [this] () {
 				struct QueryVolumeVisitor : Editor::SelectionVisitor {
 					Application *application;
+					Application::QueryType queryType;
+					Application::MeasureType measureType;
 
-					QueryVolumeVisitor( Application *application ) : application( application ) {}
+					QueryVolumeVisitor( Application *application, Application::QueryType queryType, Application::MeasureType measureType )
+						: application( application )
+						, queryType( queryType )
+						, measureType( measureType )
+					{}
 
 					void visit() {
 						std::cerr << "No volume selected!\n";
 					}
 					void visit( Editor::ObbSelection *selection ) {
 						application->startLongOperation();
-						auto matchInfos = application->queryVolume( application->sceneSettings.volumes[ selection->index ], Application::QT_NORMAL );
+						auto probeResults = application->queryVolume( application->sceneSettings.volumes[ selection->index ], queryType);
 						application->endLongOperation();
-
-						/*typedef ProbeDatabase::WeightedQuery::MatchInfo MatchInfo;
-						boost::sort(
-							matchInfos,
-							[] (const MatchInfo &a, MatchInfo &b ) {
-								return a.score > b.score;
-							}
-						);*/
 
 						application->startLongOperation();
-						Neighborhood::Results queryResults = queryVolumeNeighborsV2(
-							application->world.get(),
-							application->neighborDatabaseV2,
-							selection->getObb().transformation.translation(),
+						Neighborhood::Results neighborhoodResults = application->NeighborhoodDatabase_queryVolume(
+							selection->getObb(),
 							application->sceneSettings.neighborhoodDatabase_maxDistance,
-							application->sceneSettings.neighborhoodDatabase_queryTolerance
+							measureType
 						);
-						boost::sort( queryResults, std::greater< Neighborhood::Result >() );
+
 						application->endLongOperation();
 
-						std::vector< std::pair< float, int > > scores( application->modelDatabase.informationById.size() );
+						// expand the neighborhood query results
+						std::vector< float > expandedNeighborhoodScores( application->modelDatabase.informationById.size() );
 
-						// merge both results
-						for( auto queryResult = queryResults.begin() ; queryResult != queryResults.end() ; ++queryResult ) {
-							scores[ queryResult->second ] = std::make_pair( queryResult->first, queryResult->second );
+						for( auto neighborhoodResult = neighborhoodResults.begin() ; neighborhoodResult != neighborhoodResults.end() ; ++neighborhoodResult ) {
+							 expandedNeighborhoodScores[ neighborhoodResult->second ] = neighborhoodResult->first;
 						}
 
-						for( auto matchInfo = matchInfos.begin() ; matchInfo != matchInfos.end() ; ++matchInfo ) {
-							if( scores[ matchInfo->sceneModelIndex ].first > 0.0f ) {
-								matchInfo->score += scores[ matchInfo->sceneModelIndex ].first * 0.5f;
-							}
+						// combine both results
+						for( auto probeResult = probeResults.begin() ; probeResult != probeResults.end() ; ++probeResult ) {
+							probeResult->score *= expandedNeighborhoodScores[ probeResult->sceneModelIndex ];
 						}
 
 						boost::sort(
-							matchInfos,
+							probeResults,
 							QueryResult::greaterByScoreAndModelIndex
 						);
 
-						application->candidateSidebarUI->setModels( matchInfos );
+						// TODO: we could also remove zero results again [11/19/2012 kirschan2]
+
+						application->candidateSidebarUI->setModels( probeResults );
 					}
 				};
-				QueryVolumeVisitor( application ).dispatch( application->editor.selection );
+				QueryVolumeVisitor( application, queryType, measureType ).dispatch( application->editor.selection );
 			} ) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
 			ui.add( AntTWBarUI::makeSharedButton( "Load probe database", [this] {
@@ -1382,11 +1330,11 @@ namespace aop {
 			} ) );
 			ui.add( AntTWBarUI::makeSharedButton( "All // sample neighborhood database", [this] {
 				application->neighborDatabaseV2.clear();
-				sampleAllNeighborsV2( application->sceneSettings.neighborhoodDatabase_maxDistance, application->neighborDatabaseV2, *application->world );
+				application->NeighborhoodDatabase_sampleScene( application->sceneSettings.neighborhoodDatabase_maxDistance );
 			} ) );
 			ui.add( AntTWBarUI::makeSharedButton( "Marked // sample neighborhood database", [this] {
 				application->neighborDatabaseV2.clear();
-				sampleAllNeighborsForV2( application->modelTypesUI->markedModels, application->sceneSettings.neighborhoodDatabase_maxDistance, application->neighborDatabaseV2, *application->world );
+				application->NeighborhoodDatabase_sampleModels( application->modelTypesUI->markedModels, application->sceneSettings.neighborhoodDatabase_maxDistance );
 			} ) );
 			ui.add( AntTWBarUI::makeSharedButton( "Store neighborhood database", [this] {
 				application->neighborDatabaseV2.store( application->settings.neighborhoodDatabaseV2Path );
@@ -2283,6 +2231,74 @@ namespace aop {
 		ProgressTracker::onMarkFinished = nullptr;
 	}
 
+	void Application::NeighborhoodDatabase_sampleScene( float maxDistance ) {
+		AUTO_TIMER_FOR_FUNCTION();
+
+		const int numInstances = world->sceneRenderer.getNumInstances();
+
+		for( int instanceIndex = 0 ; instanceIndex < numInstances ; instanceIndex++ ) {
+			auto queryResults = world->sceneGrid.query(
+				-1,
+				instanceIndex,
+				world->sceneRenderer.getInstanceTransformation( instanceIndex ).translation(),
+				maxDistance
+			);
+
+			const int modelIndex = world->sceneRenderer.getModelIndex( instanceIndex );
+
+			neighborDatabaseV2.addInstance( modelIndex, std::move( queryResults ) );
+		}
+	}
+
+	void Application::NeighborhoodDatabase_sampleModels( std::vector<int> modelIndices, float maxDistance ) {
+		AUTO_TIMER_FOR_FUNCTION();
+
+		for( auto modelIndex = modelIndices.begin() ; modelIndex != modelIndices.end() ; ++modelIndex ) {
+			const auto instanceIndices = world->sceneRenderer.getModelInstances( *modelIndex );
+
+			for( auto instanceIndex = instanceIndices.begin() ; instanceIndex != instanceIndices.end() ; ++instanceIndex ) {
+				auto queryResults = world->sceneGrid.query(
+					-1,
+					*instanceIndex,
+					world->sceneRenderer.getInstanceTransformation( *instanceIndex ).translation(),
+					maxDistance
+				);
+
+				const int modelIndex = world->sceneRenderer.getModelIndex( *instanceIndex );
+
+				neighborDatabaseV2.addInstance( modelIndex, std::move( queryResults ) );
+			}
+		}
+	}
+
+	Neighborhood::Results Application::NeighborhoodDatabase_queryVolume( const Obb &queryVolume, float maxDistance, MeasureType measureType ) {
+		AUTO_TIMER_FOR_FUNCTION();
+
+		auto sceneQueryResults = world->sceneGrid.query( -1, -1, queryVolume.transformation.translation(), maxDistance );
+
+		const float tolerance = queryVolume.size.norm() * 0.5f;
+		Neighborhood::NeighborhoodDatabaseV2::Query query( neighborDatabaseV2, tolerance, std::move( sceneQueryResults ) );
+		Neighborhood::Results results;
+
+		switch( measureType ) {
+		case MT_NORMAL:
+			results = query.executeWithPolicy<Neighborhood::NeighborhoodDatabaseV2::Query::UniformWeightPolicy>();
+			break;
+		case MT_IMPORTANCE_WEIGHTED:
+			results = query.executeWithPolicy<Neighborhood::NeighborhoodDatabaseV2::Query::ImportanceWeightPolicy>();
+			break;
+		case MT_JACCARD:
+			results = query.executeWithPolicy<Neighborhood::NeighborhoodDatabaseV2::Query::JaccardIndexPolicy>();
+			break;
+		}
+
+		for( auto result = results.begin() ; result != results.end() ; ++result ) {
+			log( boost::format( "%i: %f" ) % result->second % result->first );
+		}
+
+		return results;
+	}
+
 	void Application::NeighborhoodValidation_queryAllInstances( const std::string &filename ) {
 		const int numModels = world->scene.models.size();
 		const float maxDistance = sceneSettings.neighborhoodDatabase_maxDistance;
@@ -2433,7 +2449,7 @@ namespace aop {
 
 					queryData.expectedSceneModelIndex = sceneModelIndex;
 					//queryData.queryVolume = Obb( Obb::Transformation( Eigen::Translation3f( position + shift ) ), Eigen::Vector3f::Constant( queryVolumeSize ) );
-					
+
 					auto instanceBoundingBox = makeOBB( world->sceneRenderer.getInstanceTransformation( *instanceIndex ), modelBoundingBox );
 					instanceBoundingBox.size += Vector3f::Constant( 0.25 );
 					queryData.queryVolume = instanceBoundingBox;

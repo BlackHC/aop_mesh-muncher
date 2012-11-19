@@ -68,7 +68,6 @@ namespace aop {
 		std::vector<NamedTargetVolume> volumes;
 		ModelGroup markedModels;
 
-		float neighborhoodDatabase_queryTolerance;
 		float neighborhoodDatabase_maxDistance;
 
 		float probeGenerator_maxDistance;
@@ -79,8 +78,7 @@ namespace aop {
 		float probeQuery_colorTolerance;
 
 		SceneSettings()
-			: neighborhoodDatabase_queryTolerance( 1.0 )
-			, neighborhoodDatabase_maxDistance( 150.0 )
+			: neighborhoodDatabase_maxDistance( 150.0 )
 			, probeGenerator_maxDistance( 5.0 )
 			, probeGenerator_resolution( 0.25 )
 			, probeQuery_occlusionTolerance( 0.125 )
