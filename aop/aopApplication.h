@@ -123,7 +123,6 @@ namespace aop {
 
 		std::shared_ptr< NamedVolumesEditorView > namedVolumesEditorView;
 		std::shared_ptr< CandidateSidebarUI > candidateSidebarUI;
-		std::vector< std::shared_ptr< LocalCandidateBarUI > > localCandidateBarUIs;
 		std::shared_ptr< ModelSelectionBarUI > modelSelectionBarUI;
 
 		std::shared_ptr< ModelDatabaseUI > modelDatabaseUI;
@@ -131,6 +130,17 @@ namespace aop {
 
 		std::shared_ptr< DebugUI > debugUI;
 		std::shared_ptr< DebugObjects::ProbeDatabase > probeDatabase_debugUI;
+
+		std::vector< std::shared_ptr< LocalCandidateBarUI > > localCandidateBarUIs;
+
+		void removeLocalCandidateBarUI( LocalCandidateBarUI *localCandidateBarUIPtr ) {
+			for( auto localCandidateBarUI = localCandidateBarUIs.begin() ; localCandidateBarUI != localCandidateBarUIs.end() ; ++localCandidateBarUI ) {
+				if( localCandidateBarUI->get() == localCandidateBarUIPtr ) {
+					localCandidateBarUIs.erase( localCandidateBarUI );
+					break;
+				}
+			}
+		}
 
 		void init();
 

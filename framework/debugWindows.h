@@ -156,6 +156,7 @@ struct MultiDisplayListVisualizationWindow : std::enable_shared_from_this<MultiD
 		glEnable(GL_DEPTH_TEST);
 		glDepthMask(GL_TRUE);
 		glClearDepth(1.f);
+		glClearColor( 1.0, 0.3, 0.8, 1.0 );
 
 		// init the camera
 		camera.perspectiveProjectionParameters.aspect = 640.0f / 480.0f;

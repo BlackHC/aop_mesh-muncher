@@ -19,13 +19,13 @@ namespace aop {
 			template< typename ElementAccessor >
 			void setup( AntTWBarUI::Container *container, ElementAccessor &accessor ) const {
 				container->add(
-					AntTWBarUI::makeSharedVariableWithConfig< AntTWBarUI::VariableConfigs::SetContainerName >( 
+					AntTWBarUI::makeSharedVariableWithConfig< AntTWBarUI::VariableConfigs::SetContainerName >(
 						"Name",
 						AntTWBarUI::makeMemberAccessor( accessor, &aop::SceneSettings::NamedTargetVolume::name )
 					)
 				);
 				container->add(
-					EigenVector3fUIFactory().makeShared( 
+					EigenVector3fUIFactory().makeShared(
 						AntTWBarUI::CallbackAccessor<Eigen::Vector3f>(
 							[&] ( Eigen::Vector3f &shadow ) {
 								shadow = accessor.pull().volume.transformation.translation();
@@ -39,7 +39,7 @@ namespace aop {
 					)
 				);
 				container->add(
-					EigenRotationMatrix().makeShared( 
+					EigenRotationMatrix().makeShared(
 						AntTWBarUI::CallbackAccessor<Eigen::Matrix3f>(
 							[&] ( Eigen::Matrix3f &shadow ) {
 								shadow = accessor.pull().volume.transformation.linear();
@@ -76,9 +76,8 @@ namespace aop {
 						const auto &camera = this->application->mainCamera;
 						aop::SceneSettings::NamedTargetVolume volume;
 
-						volume.volume.size = Eigen::Vector3f::Constant( 5.0 );
 						volume.volume.transformation =
-							Eigen::Translation3f( camera.getPosition() + 5.0 * camera.getDirection() ) *
+							Eigen::Translation3f( camera.getPosition() + volume.volume.size.norm() * camera.getDirection() ) *
 							camera.getViewRotation().transpose()
 						;
 

@@ -55,6 +55,11 @@ namespace aop {
 		struct NamedTargetVolume {
 			std::string name;
 			Obb volume;
+
+			NamedTargetVolume()
+				: name()
+				, volume( Eigen::Affine3f::Identity(), Eigen::Vector3f::Constant( 2.7f ) )
+			{}
 		};
 
 		typedef std::vector< std::string > ModelGroup;

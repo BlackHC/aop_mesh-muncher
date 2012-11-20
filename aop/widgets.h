@@ -264,6 +264,30 @@ struct ClippedContainer : WidgetContainer  {
 
 	void onRender();
 
+	void onKeyboard( EventState &eventState ) {
+		if( visible ) {
+			WidgetContainer::onKeyboard( eventState );
+		}
+	}
+
+	void onMouse( EventState &eventState ) {
+		if( visible ) {
+			WidgetContainer::onMouse( eventState );
+		}
+	}
+
+	bool acceptFocus( FocusType focusType ) {
+		if( !visible ) {
+			return false;
+		}
+		return WidgetContainer::acceptFocus( focusType );
+	}
+
+	void gainFocus( FocusType focusType )  {
+		visible = true;
+		WidgetContainer::gainFocus( focusType );
+	}
+
 	virtual Eigen::AlignedBox2f getLocalArea() {
 		return localArea;
 	}

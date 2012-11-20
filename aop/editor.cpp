@@ -341,9 +341,9 @@ void Editor::Selecting::onMouse( EventState &eventState ) {
 		// NOTE: this all only works if direction is normalized, so we can compare hitDistance with bestT! [9/30/2012 kirschan2]
 		SGSInterface::SelectionResult result;
 		if( editor->world->selectFromView( *editor->view, xh, yh, &result ) ) {
-			if( 
-					result.objectIndex != SGSInterface::SelectionResult::SELECTION_INDEX_TERRAIN 
-				&& 
+			if(
+					result.objectIndex != SGSInterface::SelectionResult::SELECTION_INDEX_TERRAIN
+				&&
 					(bestOBB == -1 || result.hitDistance < bestT)
 			) {
 				bestOBB = -1;
@@ -400,7 +400,7 @@ void Editor::Placing::onMouse( EventState &eventState ) {
 
 		SGSInterface::SelectionResult result;
 		bool hitFound = editor->world->selectFromView( *editor->view, xh, yh, &result );
-		
+
 		Vector3f normal = map( result.hitNormal );
 		Vector3f position = map( result.hitPosition );
 
@@ -426,11 +426,7 @@ void Editor::Placing::onMouse( EventState &eventState ) {
 				// we create a new query volume
 				aop::SceneSettings::NamedTargetVolume volume;
 
-				const float size = 5.0;
-
-				volume.volume.size = Eigen::Vector3f::Constant( size );
-
-				const Vector3f obbCenter = position + saturateInBox( normal, Eigen::Vector3f::Constant( size ) );
+				const Vector3f obbCenter = position + saturateInBox( normal, volume.volume.size );
 
 				volume.volume.transformation = Eigen::Translation3f( obbCenter );
 

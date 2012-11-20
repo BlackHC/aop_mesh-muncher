@@ -617,6 +617,24 @@ namespace Serializer {
 		} \
 	};
 
+	// TODO: fix this "hack" [11/20/2012 kirschan2]
+	template< typename Value >
+	typename boost::enable_if< detail::has_reflection< Value >, std::string >::type
+	stringFromValue( const Value &value ) {
+		for( int index = 0 ; ; ++index ) {
+			std::pair< const char *, Value > labelValuePair = Reflection<Value>::get( index );
+
+			if( !labelValuePair.first ) {
+				break;
+			}
+
+			if( value == labelValuePair.second ) {
+				return labelValuePair.first;
+			}
+		}
+		return "(--unknown--)";
+	}
+
 	// using serializer_reflection
 	template< typename Value >
 	typename boost::enable_if< detail::has_reflection< Value > >::type

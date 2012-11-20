@@ -44,6 +44,10 @@ namespace aop {
 			init();
 		}
 
+		~LocalCandidateBarUI() {
+			application->widgetRoot.removeEventHandler( &clipper );
+		}
+
 		void init();
 		void refresh();
 	};

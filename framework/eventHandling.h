@@ -635,6 +635,19 @@ struct TemplateEventDispatcher : BaseDispatcher {
 		eventHandlers.clear();
 	}
 
+	void removeEventHandler( BaseEventHandler *handler ) {
+		for( auto element = eventHandlers.begin() ; element != eventHandlers.end() ; ++element ) {
+			if( element->get() == handler ) {
+				handler->setParent( nullptr );
+				handler->setEventSystem( nullptr );
+				getEventSystem()->onEventHandlerRemove( handler );
+
+				eventHandlers.erase( element );
+				break;
+			}
+		}
+	}
+
 	void addEventHandler( const std::shared_ptr<BaseEventHandler> &handler ) {
 		eventHandlers.push_back( handler );
 		handler->setParent( this );

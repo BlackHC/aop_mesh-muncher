@@ -134,7 +134,6 @@ struct DebugUI {
 	struct Tag {};
 
 	DebugUI() : container( "Debug" ), debugObjectsContainer( "Objects" ) {
-		onAddStaticUI( container );
 		container.add( make_nonallocated_shared( debugObjectsContainer ) );
 
 		container.link();
@@ -173,8 +172,6 @@ private:
 	std::vector< IDebugObject::SPtr > debugObjects;
 	AntTWBarUI::SimpleContainer debugObjectsContainer;
 	AntTWBarUI::SimpleContainer container;
-
-	virtual void onAddStaticUI( AntTWBarUI::SimpleContainer &container, Tag = Tag() ) {}
 };
 
 namespace aop {
@@ -737,6 +734,56 @@ namespace DebugObjects {
 		}
 	};
 
+	struct LocalCandidateBar : IDebugObject {
+		// TODO: scoped objects should accept nonscoped objects as move targets! [10/15/2012 kirschan2]
+		GL::DisplayList displayList;
+
+		DebugUI *debugUI;
+		Application *application;
+
+		AntTWBarUI::SimpleContainer container;
+		LocalCandidateBarUI localCandidateBarUI;
+		const QueryResults queryResults; 
+		const Obb volume;
+
+		LocalCandidateBar( Application *application, const std::string &name, const QueryResults &queryResults, const Obb &volume, bool visible = true )
+			: container( AntTWBarUI::CT_GROUP, name )
+			, application( application )
+			, queryResults( queryResults )
+			, volume( volume )
+			, localCandidateBarUI( application, queryResults, volume )
+		{
+			init();
+			localCandidateBarUI.clipper.visible = visible;
+		}
+
+		~LocalCandidateBar() {
+			application->removeLocalCandidateBarUI( &localCandidateBarUI );
+		}
+		
+		void init() {
+			//container.add( AntTWBarUI::makeSharedVariable( "Visible", AntTWBarUI::makeReferenceAccessor( localCandidateBarUI.clipper.visible ) ) );
+			container.add( AntTWBarUI::makeSharedButton( "Remove",
+				[&] () {
+					debugUI->remove( this );
+				}
+			) );
+
+			application->localCandidateBarUIs.push_back( make_nonallocated_shared( localCandidateBarUI ) );
+		}
+
+		virtual void link( DebugUI *debugUI, Tag ) {
+			this->debugUI = debugUI;
+		}
+
+		virtual AntTWBarUI::Element::SPtr getUI( Tag ) {
+			return make_nonallocated_shared( container );
+		}
+
+		virtual void renderScene( Tag ) {
+		}
+	};
+
 	struct ModelDatabase : IDebugObject {
 		Application *application;
 
@@ -945,7 +992,7 @@ namespace aop {
 
 		ClippedContainer clipper;
 		ScrollableContainer scroller;
-
+		
 		ModelSelectionBarUI( Application *application )
 			: application( application  )
 		{
@@ -1101,6 +1148,10 @@ namespace aop {
 					[&] ( const Editor::ModeState &v ) { application->editor.selectMode( v ); }
 				)
 			));
+			ui.add( AntTWBarUI::makeSharedVariable( 
+				"Model selection bar",
+				AntTWBarUI::makeReferenceAccessor( application->modelSelectionBarUI->clipper.visible )
+			));
 			ui.add( AntTWBarUI::makeSharedSeparator() );
 			ui.add( AntTWBarUI::makeSharedVariable(
 				"Probe maxDistance",
@@ -1185,9 +1236,8 @@ namespace aop {
 						application->endLongOperation();
 
 						application->candidateSidebarUI->setModels( probeResults );
-						application->localCandidateBarUIs.emplace_back(
-							std::make_shared<LocalCandidateBarUI>( application, probeResults, selection->getObb() )
-						);
+
+						application->debugUI->add( std::make_shared< DebugObjects::LocalCandidateBar >( application, "Query result", probeResults, selection->getObb() ) );
 					}
 				};
 				QueryVolumeVisitor( application, queryType ).dispatch( application->editor.selection );
@@ -1405,7 +1455,7 @@ namespace aop {
 	}
 
 	void Application::initUI() {
-		mainUI.reset( new MainUI( this ) ) ;
+		
 		cameraViewsUI.reset( new CameraViewsUI( this ) );
 		targetVolumesUI.reset( new TargetVolumesUI( this ) );
 		modelTypesUI.reset( new ModelTypesUI( this ) );
@@ -1425,6 +1475,8 @@ namespace aop {
 		debugUI->add( probeDatabase_debugUI );
 
 		debugUI->add( std::make_shared< DebugObjects::OptixView >( this ) );
+
+		mainUI.reset( new MainUI( this ) ) ;
 	}
 
 	void Application::initMainWindow() {
