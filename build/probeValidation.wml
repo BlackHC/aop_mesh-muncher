@@ -1,0 +1,10 @@
+sampleSelector 0
+base 'C:/Andreas/probeValidationData/road'
+results results
+modelDatabase modelDatabase
+probeDatabase probeDatabase
+validationData probe.validationData
+jobs:
+	5 0
+numMachines 3
+machineIndex 1

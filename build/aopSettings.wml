@@ -1,0 +1,12 @@
+scenePath scene.sgsScene
+sceneSettingsPath aopSceneSettings.wml
+probeDatabasePath probeDatabase
+modelDatabasePath modelDatabase
+neighborhoodDatabaseV2Path neighborhoodDatabaseV2
+neighborhoodValidationDataPath neighborhood.validationData
+validation_neighborhood_positionVariance 4
+validation_neighborhood_numSamples 10
+probeValidationDataPath probe.validationData
+validation_probes_positionVariance 1
+validation_probes_numSamples 4
+validation_probes_queryVolumeSize 3.5

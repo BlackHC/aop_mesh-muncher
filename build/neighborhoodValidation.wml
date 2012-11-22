@@ -1,0 +1,11 @@
+sampleSelector 0
+base 'C:/Andreas/neighborhoodValidationData'
+results results/
+modelDatabase modelDatabase
+neighborhoodDatabase neighborhoodDatabaseV2
+validationData neighborhood.validationData
+jobs:
+	5 0	1 2
+	10 0 2 4
+	20 0 2 4 8
+	40 0 2 4 8

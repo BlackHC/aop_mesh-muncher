@@ -1,0 +1,18 @@
+boxes:
+	-:
+		size 5 5 5
+		color 1 0.5 0.5
+	-:
+		size 10 10 10
+		color 1 0.5 0.5
+spheres:
+	-:
+		radius 5
+		color 1 0.5 0.5
+		u 10
+		v 20
+	-:
+		radius 10
+		color 1 0.5 0.5
+		u 10
+		v 20

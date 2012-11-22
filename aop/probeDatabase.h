@@ -245,7 +245,7 @@ struct DBProbeSample : RawProbeSample {
 	{
 	}
 
-	static __forceinline__ bool lexicographicalLess( const DBProbeSample &a, const DBProbeSample &b ) {
+	static __forceinline__ bool lexicographicalLess( const RawProbeSample &a, const RawProbeSample &b ) {
 		return
 				boost::make_tuple( a.occlusion, a.distance, a.colorLab.x, a.colorLab.y, a.colorLab.z )
 			<
@@ -257,7 +257,7 @@ struct DBProbeSample : RawProbeSample {
 		return a.probeIndex < b.probeIndex;
 	}
 
-	static __forceinline__ bool lexicographicalLess_startWithDistance( const DBProbeSample &a, const DBProbeSample &b ) {
+	static __forceinline__ bool lexicographicalLess_startWithDistance( const RawProbeSample &a, const RawProbeSample &b ) {
 		return
 				boost::make_tuple( a.distance, a.colorLab.x, a.colorLab.y, a.colorLab.z )
 			<
@@ -265,7 +265,7 @@ struct DBProbeSample : RawProbeSample {
 		;
 	}
 
-	static __forceinline__ bool matchColor( const DBProbeSample &a, const DBProbeSample &b, const float squaredTolerance ) {
+	static __forceinline__ bool matchColor( const RawProbeSample &a, const RawProbeSample &b, const int squaredTolerance ) {
 		Eigen::Vector3i colorDistance(
 			a.colorLab.x - b.colorLab.x,
 			a.colorLab.y - b.colorLab.y,
@@ -277,17 +277,17 @@ struct DBProbeSample : RawProbeSample {
 		return true;
 	}
 
-	static __forceinline__ bool matchDistance( const DBProbeSample &a, const DBProbeSample &b, const float tolerance ) {
+	static __forceinline__ bool matchDistance( const RawProbeSample &a, const RawProbeSample &b, const float tolerance ) {
 		return fabs( a.distance - b.distance ) <= tolerance;
 	}
 
-	static __forceinline__ bool matchOcclusion( const DBProbeSample &a, const DBProbeSample &b, const int integerTolerance) {
+	static __forceinline__ bool matchOcclusion( const RawProbeSample &a, const RawProbeSample &b, const int integerTolerance) {
 		return abs( a.occlusion - b.occlusion ) <= integerTolerance;
 	}
 
 	static __forceinline__ bool matchOcclusionDistanceColor(
-		const DBProbeSample &a,
-		const DBProbeSample &b,
+		const RawProbeSample &a,
+		const RawProbeSample &b,
 		const int occlusion_integerTolerance,
 		const float distance_tolerance,
 		const float color_squaredTolerance
@@ -478,6 +478,21 @@ struct SampleQuantizer {
 
 		return index.packedSample;
 	}
+
+	RawProbeSample unquantizeSample( const PackedSample packedSample ) const {
+		RawProbeSample rawProbeSample;
+
+		Index index;
+		index.packedSample = packedSample;
+
+		rawProbeSample.distance = (index.distance + 0.5f) * maxDistance / (1<<BC_distance);
+		rawProbeSample.occlusion = (index.occlusion + 0.5f) * OptixProgramInterface::numProbeSamples / (1<<BC_occlusion);
+		rawProbeSample.colorLab.x = (index.L + 0.5f) * 100.0f / (1<<BC_L);
+		rawProbeSample.colorLab.y = (index.a + 0.5f) * 200.0f / (1<<BC_a) - 100.f;
+		rawProbeSample.colorLab.z = (index.b + 0.5f) * 200.0f / (1<<BC_b) - 100.f;
+
+		return rawProbeSample;
+	}
 };
 
 struct SampleBitPlane {
@@ -600,6 +615,48 @@ struct PartialProbeSamples {
 namespace SampleBitPlaneHelper {
 	inline void splatProbeSample( SampleBitPlane &targetPlane, const SampleQuantizer &quantizer, const RawProbeSample &rawProbeSample ) {
 		targetPlane.set( quantizer.quantizeSample( rawProbeSample ) );
+	}
+
+	inline void splatProbeSample( SampleBitPlane &targetPlane, const SampleQuantizer &quantizer, const RawProbeSample &rawProbeSample, const ProbeContextToleranceV2 &pct ) {
+		RawProbeSample minRawProbeSample = rawProbeSample;
+		RawProbeSample maxRawProbeSample = rawProbeSample;
+		minRawProbeSample.distance -= pct.distance_tolerance;
+		maxRawProbeSample.distance += pct.distance_tolerance;
+
+		minRawProbeSample.occlusion = std::max<int>( rawProbeSample.occlusion - pct.occlusion_integerTolerance, 0 );
+		maxRawProbeSample.occlusion = std::min<int>( rawProbeSample.occlusion + pct.occlusion_integerTolerance, 255 );
+
+		minRawProbeSample.colorLab.x = std::max<int>( rawProbeSample.colorLab.x - pct.colorLab_squaredTolerance - 0.5f, 0 );
+		maxRawProbeSample.colorLab.x = std::min<int>( rawProbeSample.colorLab.x + pct.colorLab_squaredTolerance + 0.5f, 127 );
+
+		minRawProbeSample.colorLab.y = std::max<int>( rawProbeSample.colorLab.y - pct.colorLab_squaredTolerance - 0.5f, -127 );
+		maxRawProbeSample.colorLab.y = std::min<int>( rawProbeSample.colorLab.y + pct.colorLab_squaredTolerance + 0.5f, 127 );
+
+		minRawProbeSample.colorLab.z = std::max<int>( rawProbeSample.colorLab.z - pct.colorLab_squaredTolerance - 0.5f, -127 );
+		maxRawProbeSample.colorLab.z = std::min<int>( rawProbeSample.colorLab.z + pct.colorLab_squaredTolerance + 0.5f, 127 );
+
+		SampleQuantizer::Index minPackedProbeSample;
+		minPackedProbeSample.packedSample = quantizer.quantizeSample( minRawProbeSample );
+		SampleQuantizer::Index maxPackedProbeSample;
+		maxPackedProbeSample.packedSample = quantizer.quantizeSample( maxRawProbeSample );
+
+		SampleQuantizer::Index index;
+		index.packedSample = 0;
+		for( index.occlusion = minPackedProbeSample.occlusion ; index.occlusion <= maxPackedProbeSample.occlusion ; index.occlusion++ ) {
+			for( index.distance = minPackedProbeSample.distance ; index.distance <= maxPackedProbeSample.distance ; index.distance++ ) {
+				for( index.L = minPackedProbeSample.L ; index.L <= maxPackedProbeSample.L ; index.L++ ) {
+					for( index.a = minPackedProbeSample.a ; index.a <= maxPackedProbeSample.a ; index.a++ ) {
+						for( index.b = minPackedProbeSample.b ; index.b <= maxPackedProbeSample.b ; index.b++ ) {
+							const RawProbeSample sample = quantizer.unquantizeSample( index.packedSample );
+
+							if( DBProbeSample::matchColor( sample, rawProbeSample, pct.colorLab_squaredTolerance ) ) {
+								targetPlane.set( index.packedSample );
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 
 	inline void splatProbeSamples( SampleBitPlane &targetPlane, const SampleQuantizer &quantizer, const RawProbeSamples &rawProbeSamples ) {
@@ -1213,42 +1270,46 @@ public:
 		return *this;
 	}
 
+	void mergeInstancesFast( const SampleQuantizer &quantizer ) {
+		AUTO_TIMER_FUNCTION();
+
+		sampleBitPlane.clear();
+		linearizedProbeSamples.init( probes.size(), instances.size() );
+
+		// now create a splat plane and a multi map for each direction
+		for( int directionIndex = 0 ; directionIndex < ProbeGenerator::getNumDirections() ; directionIndex++ ) {
+			auto &pair = sampleProbeIndexMapByDirection[ directionIndex ];
+			pair.first.clear();
+			pair.second.startFilling( probes.size(), instances.size() );
+		}
+
+		// splat all probe samples into the maps
+		for( auto instance = instances.begin() ; instance < instances.end() ; instance++ ) {
+			const auto probeSamples = instance->getProbeSamples();
+			for( int probeIndex = 0 ; probeIndex < probes.size() ; probeIndex++ ) {
+				// TODO: only calculate packedSample once..? [11/11/2012 kirschan2]
+				const auto &probeSample = probeSamples[ probeIndex ];
+				SampleBitPlaneHelper::splatProbeSample( sampleBitPlane, quantizer, probeSample );
+				linearizedProbeSamples.push_back( quantizer, probeSample );
+
+				auto &pair = sampleProbeIndexMapByDirection[ probes[ probeIndex ].directionIndex ];
+				SampleBitPlaneHelper::splatProbeSample( pair.first, quantizer, probeSample );
+				pair.second.pushInstanceSample( quantizer, probeIndex, probeSample );
+			}
+		}
+
+		for( int directionIndex = 0 ; directionIndex < ProbeGenerator::getNumDirections() ; directionIndex++ ) {
+			auto &pair = sampleProbeIndexMapByDirection[ directionIndex ];
+			pair.second.finishFilling();
+
+			boost::sort( linearizedProbeSamples.samples );
+		}
+	}
+
 	// TODO: rename to compile
 	void mergeInstances( const SampleQuantizer &quantizer, ColorCounter &colorCounter ) {
 		// fast handling
-		AUTO_TIMER_BLOCK( "fast track merging" ) {
-			sampleBitPlane.clear();
-			linearizedProbeSamples.init( probes.size(), instances.size() );
-
-			// now create a splat plane and a multi map for each direction
-			for( int directionIndex = 0 ; directionIndex < ProbeGenerator::getNumDirections() ; directionIndex++ ) {
-				auto &pair = sampleProbeIndexMapByDirection[ directionIndex ];
-				pair.first.clear();
-				pair.second.startFilling( probes.size(), instances.size() );
-			}
-
-			// splat all probe samples into the maps
-			for( auto instance = instances.begin() ; instance < instances.end() ; instance++ ) {
-				const auto probeSamples = instance->getProbeSamples();
-				for( int probeIndex = 0 ; probeIndex < probes.size() ; probeIndex++ ) {
-					// TODO: only calculate packedSample once..? [11/11/2012 kirschan2]
-					const auto &probeSample = probeSamples[ probeIndex ];
-					SampleBitPlaneHelper::splatProbeSample( sampleBitPlane, quantizer, probeSample );
-					linearizedProbeSamples.push_back( quantizer, probeSample );
-
-					auto &pair = sampleProbeIndexMapByDirection[ probes[ probeIndex ].directionIndex ];
-					SampleBitPlaneHelper::splatProbeSample( pair.first, quantizer, probeSample );
-					pair.second.pushInstanceSample( quantizer, probeIndex, probeSample );
-				}
-			}
-
-			for( int directionIndex = 0 ; directionIndex < ProbeGenerator::getNumDirections() ; directionIndex++ ) {
-				auto &pair = sampleProbeIndexMapByDirection[ directionIndex ];
-				pair.second.finishFilling();
-
-				boost::sort( linearizedProbeSamples.samples );
-			}
-		}
+		mergeInstancesFast( quantizer );
 
 		// splat the entropy
 		{

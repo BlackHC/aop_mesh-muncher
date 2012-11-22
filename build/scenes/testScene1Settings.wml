@@ -1,0 +1,15 @@
+-:
+	views
+	volumes:
+		'':
+			volume:
+				transformation 1 0 0 0 0 1 0 0 0 0 1 0 -2.98440194 1.97308421 79.5916367 1
+				size 2.6749258 1.94616818 2.71006107
+	markedModels Data\Models\Terrain_objects\Containers\Barrels\barrel1.s3d Data\Models\Terrain_objects\Containers\Barrels\barrel_explosive.s3d
+	neighborhoodDatabase_queryTolerance 1
+	neighborhoodDatabase_maxDistance 150
+	probeGenerator_maxDistance 5
+	probeGenerator_resolution 0.25
+	probeQuery_occlusionTolerance 0.125
+	probeQuery_distanceTolerance 0.25
+	probeQuery_colorTolerance 1

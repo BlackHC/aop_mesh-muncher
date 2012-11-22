@@ -1066,8 +1066,14 @@ namespace aop {
 		AntTWBarUI::SimpleContainer ui;
 		QueryType queryType;
 		MeasureType measureType;
+		bool spawnLocalCandidateBars;
 
-		MainUI( Application *application ) : application( application ), queryType( QT_NORMAL ), measureType( MT_JACCARD ) {
+		MainUI( Application *application ) 
+			: application( application )
+			, queryType( QT_NORMAL )
+			, measureType( MT_JACCARD )
+			, spawnLocalCandidateBars( false )
+		{
 			init();
 		}
 
@@ -1215,15 +1221,21 @@ namespace aop {
 				AntTWBarUI::makeReferenceAccessor( application->sceneSettings.probeQuery_colorTolerance )
 			) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
+			ui.add( AntTWBarUI::makeSharedVariable(
+				"Spawn local candidate bars",
+				AntTWBarUI::makeReferenceAccessor( spawnLocalCandidateBars )
+			));
 			ui.add( AntTWBarUI::makeSharedVariable( "Query type", AntTWBarUI::makeReferenceAccessor( queryType ) ) );
 			ui.add( AntTWBarUI::makeSharedButton( "Query selected volume", [this] () {
 				struct QueryVolumeVisitor : Editor::SelectionVisitor {
 					Application *application;
 					Application::QueryType queryType;
+					bool spawnLocalCandidateBars;
 
-					QueryVolumeVisitor( Application *application, Application::QueryType queryType )
+					QueryVolumeVisitor( Application *application, Application::QueryType queryType, bool spawnLocalCandidateBars )
 						: application( application )
 						, queryType( queryType )
+						, spawnLocalCandidateBars( spawnLocalCandidateBars )
 					{}
 
 					void visit() {
@@ -1237,10 +1249,12 @@ namespace aop {
 
 						application->candidateSidebarUI->setModels( probeResults );
 
-						application->debugUI->add( std::make_shared< DebugObjects::LocalCandidateBar >( application, "Query result", probeResults, selection->getObb() ) );
+						if( spawnLocalCandidateBars ) {
+							application->debugUI->add( std::make_shared< DebugObjects::LocalCandidateBar >( application, "Query result", probeResults, selection->getObb() ) );
+						}
 					}
 				};
-				QueryVolumeVisitor( application, queryType ).dispatch( application->editor.selection );
+				QueryVolumeVisitor( application, queryType, spawnLocalCandidateBars ).dispatch( application->editor.selection );
 			} ) );
 			ui.add( AntTWBarUI::makeSharedButton( "Query all volumes", [this] () {
 				application->startLongOperation();
@@ -1253,9 +1267,7 @@ namespace aop {
 						QueryResult::greaterByScoreAndModelIndex
 					);
 
-					application->localCandidateBarUIs.emplace_back(
-						std::make_shared<LocalCandidateBarUI>( application, probeResults, queryVolume->volume )
-					);
+					application->debugUI->add( std::make_shared< DebugObjects::LocalCandidateBar >( application, "Query result", probeResults, queryVolume->volume ) );
 
 					progressTracker.markFinished();
 				}
@@ -1271,10 +1283,12 @@ namespace aop {
 				struct QueryNeighborsVisitor : Editor::SelectionVisitor {
 					Application *application;
 					Application::MeasureType measureType;
+					bool spawnLocalCandidateBars;
 
-					QueryNeighborsVisitor( Application *application, Application::MeasureType measureType )
+					QueryNeighborsVisitor( Application *application, Application::MeasureType measureType, bool spawnLocalCandidateBars )
 						: application( application )
 						, measureType( measureType )
+						, spawnLocalCandidateBars( spawnLocalCandidateBars )
 					{}
 
 					void visit() {
@@ -1302,9 +1316,13 @@ namespace aop {
 						}
 
 						application->candidateSidebarUI->setModels( transformedNeighborhoodResults );
+
+						if( spawnLocalCandidateBars ) {
+							application->debugUI->add( std::make_shared< DebugObjects::LocalCandidateBar >( application, "Query result", transformedNeighborhoodResults, selection->getObb() ) );
+						}
 					}
 				};
-				QueryNeighborsVisitor( application, measureType ).dispatch( application->editor.selection );
+				QueryNeighborsVisitor( application, measureType, spawnLocalCandidateBars ).dispatch( application->editor.selection );
 			} ) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
 			ui.add( AntTWBarUI::makeSharedButton( "Query combined", [this] () {
@@ -1312,11 +1330,13 @@ namespace aop {
 					Application *application;
 					Application::QueryType queryType;
 					Application::MeasureType measureType;
+					bool spawnLocalCandidateBars;
 
-					QueryVolumeVisitor( Application *application, Application::QueryType queryType, Application::MeasureType measureType )
+					QueryVolumeVisitor( Application *application, Application::QueryType queryType, Application::MeasureType measureType, bool spawnLocalCandidateBars )
 						: application( application )
 						, queryType( queryType )
 						, measureType( measureType )
+						, spawnLocalCandidateBars( spawnLocalCandidateBars )
 					{}
 
 					void visit() {
@@ -1354,11 +1374,14 @@ namespace aop {
 						);
 
 						// TODO: we could also remove zero results again [11/19/2012 kirschan2]
-
 						application->candidateSidebarUI->setModels( probeResults );
+
+						if( spawnLocalCandidateBars ) {
+							application->debugUI->add( std::make_shared< DebugObjects::LocalCandidateBar >( application, "Query result", probeResults, selection->getObb() ) );
+						}
 					}
 				};
-				QueryVolumeVisitor( application, queryType, measureType ).dispatch( application->editor.selection );
+				QueryVolumeVisitor( application, queryType, measureType, spawnLocalCandidateBars ).dispatch( application->editor.selection );
 			} ) );
 			ui.add( AntTWBarUI::makeSharedSeparator() );
 			ui.add( AntTWBarUI::makeSharedButton( "Load probe database", [this] {
