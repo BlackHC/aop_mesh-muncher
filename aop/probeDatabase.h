@@ -1245,6 +1245,8 @@ public:
 			for( int directionIndex = 0 ; directionIndex < ProbeGenerator::getNumDirections() ; directionIndex++ ) {
 				auto &pair = sampleProbeIndexMapByDirection[ directionIndex ];
 				pair.second.finishFilling();
+
+				boost::sort( linearizedProbeSamples.samples );
 			}
 		}
 
