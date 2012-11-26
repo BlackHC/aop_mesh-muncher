@@ -315,7 +315,7 @@ struct ProbeDatabase::FastConfigurationQuery {
 	};
 	typedef std::vector<DetailedQueryResult> DetailedQueryResults;
 
-	FastConfigurationQuery( const ProbeDatabase &database ) : database( database ) {}
+	FastConfigurationQuery( const ProbeDatabase &database ) : database( database ), queryVolume_numProbeSamples( 0 ) {}
 
 	void setQueryVolume( const Obb &queryVolume, float resolution ) {
 		queryVolumeOffset = ProbeGenerator::getGridHalfExtent( queryVolume.size, resolution );
@@ -329,6 +329,8 @@ struct ProbeDatabase::FastConfigurationQuery {
 	}
 
 	void setQueryDataset( const RawProbes &probes, const RawProbeSamples &probeSamples ) {
+		queryVolume_numProbeSamples = probeSamples.size();
+
 		queryProbes = probes;
 
 		queryPartialProbeSamplesByDirection.resize( ProbeGenerator::getNumDirections() );
@@ -353,6 +355,8 @@ struct ProbeDatabase::FastConfigurationQuery {
 		detailedQueryResults.resize( database.sampledModels.size() );
 
 		using namespace Concurrency;
+
+		log( boost::format( "executing fast conf query on %i models" ) % database.sampledModels.size() );
 
 		AUTO_TIMER_MEASURE() {
 			int logScope = Log::getScope();
@@ -406,6 +410,7 @@ protected:
 		// check if any of the probe sample sets is empty
 		const int sampledModel_numProbeSamples = sampledModel.linearizedProbeSamples.samples.size();
 		if( sampledModel_numProbeSamples == 0 || queryVolume_numProbeSamples == 0 ) {
+			//logError( boost::format( "no samples (%i, %i) for %i" ) % sampledModel_numProbeSamples % queryVolume_numProbeSamples % sceneModelIndex );
 			return DetailedQueryResult( sceneModelIndex );
 		}
 
@@ -505,6 +510,7 @@ protected:
 			detailedQueryResult.matchesByOrientation[ orientationIndex ] = std::move( queryVolumeMatches );
 		}
 
+		//log( boost::format( "%i %f" ) % detailedQueryResult.sceneModelIndex % detailedQueryResult.score );
 		return detailedQueryResult;
 	}
 };

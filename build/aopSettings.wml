@@ -1,5 +1,5 @@
-scenePath scene.sgsScene
-sceneSettingsPath aopSceneSettings.wml
+scenePath scenes/testScene3.sgsScene
+sceneSettingsPath scenes/testScene3Settings.wml
 probeDatabasePath probeDatabase
 modelDatabasePath modelDatabase
 neighborhoodDatabaseV2Path neighborhoodDatabaseV2

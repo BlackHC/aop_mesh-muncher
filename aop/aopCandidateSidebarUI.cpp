@@ -16,7 +16,8 @@ void aop::LocalCandidateBarUI::init() {
 
 	const float totalEntryHeight = buttonHeight + barHeight + buttonVerticalPadding;
 
-	const int numQueryResults = std::min<int>( 30, (int) queryResults.size() );
+	//const int numQueryResults = std::min<int>( 30, (int) queryResults.size() );
+	const int numQueryResults = queryResults.size();
 	const int numDisplayedModels = std::min<int>( numQueryResults, static_cast< int >( 1.0f / totalEntryHeight ) );
 	const float totalHeight = totalEntryHeight * numDisplayedModels;
 
@@ -97,9 +98,11 @@ void aop::CandidateSidebarUI::setModels( const QueryResults &_queryResults  ) {
 
 	const float totalEntryHeight = buttonHeight + barHeight + buttonVerticalPadding;
 
+	/*
 	const int maxNumCandidates = 30;
-
 	const int numQueryResults = std::min<int>( maxNumCandidates, queryResults.size() );
+	*/
+	const int numQueryResults = queryResults.size();
 
 	sidebar.minY = 0;
 	sidebar.maxY = (numQueryResults - 1 ) * totalEntryHeight;

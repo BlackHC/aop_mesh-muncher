@@ -10,15 +10,15 @@
 
 /*
 namespace Serializer {
-		template< typename Reader >
-		void read( Reader &reader, type &value ) {
+	template< typename Reader >
+	void read( Reader &reader, type &value ) {
 
-		}
-		template< typename Writer > \
-		void write( Writer &writer, const type &value ) {
+	}
+	template< typename Writer > \
+	void write( Writer &writer, const type &value ) {
 
-		}
-	}*/
+	}
+}*/
 
 BOOST_STATIC_ASSERT( sizeof( ProbeContext::RawProbe ) == 4 );
 BOOST_STATIC_ASSERT( sizeof( ProbeContext::RawProbeSample ) == 8 );

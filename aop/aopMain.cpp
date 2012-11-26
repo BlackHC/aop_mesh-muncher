@@ -338,10 +338,15 @@ namespace DebugObjects {
 		template< typename FullQueryType >
 		void addConfigurationQueryVisualization( const Obb &volume, const FullQueryType &query ) {
 			const float scaleFactor = 0.25f;
-			const auto details = query.getDetailedQueryResults();
+			auto details = query.getDetailedQueryResults();
 
-			// only do the first two models for now
-			int numDetails = std::min<int>( details.size(), 2 );
+			boost::sort(
+				details,
+				QueryResult::greaterByScoreAndModelIndex
+			);
+
+			// only do the first few models for now
+			int numDetails = std::min<int>( details.size(), 30 );
 			for( int detailIndex = 0 ; detailIndex < numDetails ; detailIndex++ ) {
 				const auto &detailedQueryResult = details[ detailIndex ];
 
@@ -1070,7 +1075,7 @@ namespace aop {
 
 		MainUI( Application *application ) 
 			: application( application )
-			, queryType( QT_NORMAL )
+			, queryType( QT_FAST_QUERY )
 			, measureType( MT_JACCARD )
 			, spawnLocalCandidateBars( false )
 		{
